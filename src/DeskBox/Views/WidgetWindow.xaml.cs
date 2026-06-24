@@ -211,7 +211,7 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             0,
             Win32Helper.SWP_NOMOVE | Win32Helper.SWP_NOSIZE | Win32Helper.SWP_NOACTIVATE | Win32Helper.SWP_FRAMECHANGED);
 
-        _appWindow.IsShownInSwitchers = false;
+        try { _appWindow.IsShownInSwitchers = false; } catch { }
         ExtendsContentIntoTitleBar = false;
 
         var config = ViewModel.Config;

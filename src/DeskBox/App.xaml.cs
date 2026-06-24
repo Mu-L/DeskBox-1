@@ -447,7 +447,7 @@ public partial class App : Application
         _trayExitItem = exitItem;
 
         _trayWindow = new Window();
-        _trayWindow.AppWindow.IsShownInSwitchers = false;
+        try { _trayWindow.AppWindow.IsShownInSwitchers = false; } catch { }
         AppBranding.ApplyWindowIcon(_trayWindow.AppWindow);
         _trayWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(1, 1));
 
@@ -455,7 +455,7 @@ public partial class App : Application
         {
             Icon = AppBranding.CreateTrayIcon(IsDarkThemeActive()),
             ToolTipText = localization.T("Tray.Tooltip"),
-            ContextMenuMode = ContextMenuMode.SecondWindow,
+            ContextMenuMode = ContextMenuMode.PopupMenu,
             MenuActivation = PopupActivationMode.None,
             NoLeftClickDelay = true,
             RightClickCommand = new RelayCommand(ShowTrayContextMenuFromTray),
@@ -495,12 +495,23 @@ public partial class App : Application
         ThemeService.TrackWindow(_trayWindow);
         _trayWindow.Activate();
 
-        if (!_trayIcon.IsCreated)
-        {
-            _trayIcon.ForceCreate();
-        }
-
         GlobalHotkeyService?.Attach(WindowNative.GetWindowHandle(_trayWindow));
+
+        _trayWindow.DispatcherQueue.TryEnqueue(async () =>
+        {
+            await System.Threading.Tasks.Task.Delay(200);
+            try
+            {
+                if (_trayIcon is not null && !_trayIcon.IsCreated)
+                {
+                    _trayIcon.ForceCreate();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[Tray] Delayed ForceCreate failed: {ex.Message}");
+            }
+        });
 
         _trayWindow.DispatcherQueue.TryEnqueue(() =>
         {
