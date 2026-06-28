@@ -1627,7 +1627,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private async void EditSaveButton_Click(object sender, RoutedEventArgs e)
     {
-        await SaveInlineEditAsync();
+        App.SafeFireAndForget(async () => await SaveInlineEditAsync());
     }
 
     private void EditCancelButton_Click(object sender, RoutedEventArgs e)
@@ -1647,7 +1647,7 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
         if (e.Key == Windows.System.VirtualKey.Enter &&
             Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
         {
-            await SaveInlineEditAsync();
+            App.SafeFireAndForget(async () => await SaveInlineEditAsync());
             e.Handled = true;
         }
     }
@@ -1806,10 +1806,13 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private async void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        if (App.Current.WidgetManager is { } widgetManager)
+        App.SafeFireAndForget(async () =>
         {
-            await widgetManager.SetQuickCaptureEnabledAsync(false, reveal: false);
-        }
+            if (App.Current.WidgetManager is { } widgetManager)
+            {
+                await widgetManager.SetQuickCaptureEnabledAsync(false, reveal: false);
+            }
+        });
     }
 
     private void ShowFlyoutWithElevation(MenuFlyout flyout, FrameworkElement target, Windows.Foundation.Point? position = null)
@@ -1931,6 +1934,10 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
                 e.AcceptedOperation = await HasSupportedQuickCaptureStorageDropAsync(e.DataView)
                     ? DataPackageOperation.Copy
                     : DataPackageOperation.None;
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[QuickCapture] RootGrid_DragOver failed: {ex}");
             }
             finally
             {
@@ -2075,17 +2082,20 @@ public sealed partial class QuickCaptureWidgetWindow : Window, IDesktopWidgetWin
 
     private async void StatusToastActionButton_Click(object sender, RoutedEventArgs e)
     {
-        var snapshot = _pendingDeletedItemSnapshot;
-        if (snapshot is null)
+        App.SafeFireAndForget(async () =>
         {
-            return;
-        }
+            var snapshot = _pendingDeletedItemSnapshot;
+            if (snapshot is null)
+            {
+                return;
+            }
 
-        _pendingDeletedItemSnapshot = null;
-        if (await ViewModel.RestoreDeletedItemAsync(snapshot))
-        {
-            ShowStatusToast(_localizationService.T("Common.Undone"));
-        }
+            _pendingDeletedItemSnapshot = null;
+            if (await ViewModel.RestoreDeletedItemAsync(snapshot))
+            {
+                ShowStatusToast(_localizationService.T("Common.Undone"));
+            }
+        });
     }
 
     private static async Task<QuickCaptureDropContent> TryReadDroppedContentAsync(DataPackageView dataView)

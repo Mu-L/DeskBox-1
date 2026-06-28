@@ -2901,12 +2901,12 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
 
     private async void ItemsView_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        await HandleItemsKeyDownAsync(e);
+        App.SafeFireAndForget(async () => await HandleItemsKeyDownAsync(e));
     }
 
     private async void RootGrid_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        await HandleItemsKeyDownAsync(e);
+        App.SafeFireAndForget(async () => await HandleItemsKeyDownAsync(e));
     }
 
     private async Task HandleItemsKeyDownAsync(KeyRoutedEventArgs e)
@@ -4301,6 +4301,10 @@ public sealed partial class WidgetWindow : Window, IDesktopWidgetWindow
             {
                 await app.WidgetManager.CreateFolderWidgetAsync(folderPath);
             }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Widget] MapFolderButton_Click failed: {ex}");
         }
         finally
         {

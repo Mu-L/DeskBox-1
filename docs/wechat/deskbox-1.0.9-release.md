@@ -5,8 +5,6 @@ digest: "DeskBox 1.0.9 集中优化设置、排序、随记、拖拽、层级和
 
 # windows桌面管理工具：DeskBox 1.0.9更新，把这段时间的问题集中修了一遍
 
-【封面图占位：DeskBox 1.0.9 / Windows 桌面整理工具 / 设置与交互优化】
-
 这段时间收到很多关于 DeskBox 的反馈，我其实挺受宠若惊的。
 
 一开始写这个工具，只是为了解决自己工作里的一个小痛点：桌面文件太乱，项目素材、临时文件、常用目录来回找，很容易打断手上的事情。
@@ -173,6 +171,7 @@ DeskBox 现在还是一个早期工具。
 
 也谢谢所有愿意试用 DeskBox 的人。它本来只是我给自己写的一个工作小工具，现在有人愿意认真使用它，我会继续把它打磨下去。
 
-1.0.9 已经打包好，测试没问题后会同步到 GitHub Releases。
+1.0.9 已经同步到 GitHub Releases，可以在这里下载：
 
-【下载链接占位：GitHub Release / 国内镜像】
+- GitHub Release：https://github.com/Tianyu199509/DeskBox/releases/tag/v1.0.9
+- 安装包：https://github.com/Tianyu199509/DeskBox/releases/download/v1.0.9/DeskBox_Setup_1.0.9_x64.exe
