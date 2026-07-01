@@ -9,16 +9,12 @@ interface RoadmapItem {
   tag?: string;
 }
 
-const phases: { phase: string; label: string; color: string; icon: React.ReactNode; items: RoadmapItem[] }[] = [
+const phases: { phase: string; label: string; color: string; icon: string; items: RoadmapItem[] }[] = [
   {
     phase: "P1",
     label: "架构铺底",
     color: "var(--accent)",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-      </svg>
-    ),
+    icon: "🧩",
     items: [
       { title: "统一 WidgetShell", desc: "抽取通用外壳，新增格子只写内容", tag: "进行中" },
       { title: "注册表 / 工厂", desc: "格子类型集中管理" },
@@ -31,11 +27,7 @@ const phases: { phase: string; label: string; color: string; icon: React.ReactNo
     phase: "P2",
     label: "功能格子",
     color: "#8B5CF6",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
-      </svg>
-    ),
+    icon: "🚀",
     items: [
       { title: "天气格子", desc: "定位 + 手动选城市" },
       { title: "系统监控", desc: "CPU / 内存 / 网络" },
@@ -48,11 +40,7 @@ const phases: { phase: string; label: string; color: string; icon: React.ReactNo
     phase: "P3",
     label: "体验增强",
     color: "#F59E0B",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-      </svg>
-    ),
+    icon: "✨",
     items: [
       { title: "格子合并", desc: "同类文件格子合并" },
       { title: "多显示器", desc: "跨屏自由移动" },
@@ -88,10 +76,7 @@ export default function RoadmapPage() {
             >
               {/* Phase Header */}
               <div className="flex items-center gap-4 mb-7">
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-md"
-                  style={{ background: phase.color }}
-                >
+                <div className="w-11 h-11 flex items-center justify-center text-2xl">
                   {phase.icon}
                 </div>
                 <div>

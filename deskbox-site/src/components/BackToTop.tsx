@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { FluentIcon } from "@/components/FluentIcon";
 
 export function BackToTop() {
   const [show, setShow] = useState(false);
@@ -24,9 +25,7 @@ export function BackToTop() {
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           aria-label="返回顶部"
         >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M10 16V4M10 4L4 10M10 4L16 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <FluentIcon name="arrow-up" size={20} />
         </motion.button>
       )}
     </AnimatePresence>

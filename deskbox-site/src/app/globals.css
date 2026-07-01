@@ -116,6 +116,12 @@ body {
   transform: translateY(-2px);
 }
 
+.fluent-card-interactive:hover {
+  box-shadow: none;
+  transform: none;
+  background: var(--background);
+}
+
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 4px; }

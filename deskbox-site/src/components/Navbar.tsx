@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { FluentIcon } from "@/components/FluentIcon";
 
 const navItems = [
   { href: "/", label: "首页" },
@@ -49,49 +50,25 @@ function ThemeToggle() {
     >
       <AnimatePresence mode="wait" initial={false}>
         {theme === "light" ? (
-          <motion.svg
+          <motion.div
             key="sun"
             initial={{ rotate: -90, opacity: 0 }}
             animate={{ rotate: 0, opacity: 1 }}
             exit={{ rotate: 90, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
           >
-            <circle cx="12" cy="12" r="5" />
-            <line x1="12" y1="1" x2="12" y2="3" />
-            <line x1="12" y1="21" x2="12" y2="23" />
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-            <line x1="1" y1="12" x2="3" y2="12" />
-            <line x1="21" y1="12" x2="23" y2="12" />
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-          </motion.svg>
+            <FluentIcon name="sun" size={18} />
+          </motion.div>
         ) : (
-          <motion.svg
+          <motion.div
             key="moon"
             initial={{ rotate: 90, opacity: 0 }}
             animate={{ rotate: 0, opacity: 1 }}
             exit={{ rotate: -90, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
           >
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-          </motion.svg>
+            <FluentIcon name="moon" size={18} />
+          </motion.div>
         )}
       </AnimatePresence>
     </button>
@@ -168,9 +145,7 @@ export function Navbar() {
           <div className="flex md:hidden items-center gap-1">
             <ThemeToggle />
             <button className="p-2 rounded-lg hover:bg-[var(--card-border)] transition-colors" onClick={() => setIsOpen(!isOpen)} aria-label="Toggle menu">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {isOpen ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />}
-              </svg>
+              <FluentIcon name={isOpen ? "dismiss" : "line-horizontal-3"} size={24} />
             </button>
           </div>
         </div>

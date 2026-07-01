@@ -5,24 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 
-const FolderIcon = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M2 6C2 4.89543 2.89543 4 4 4H9L11 6H20C21.1046 6 22 6.89543 22 8V18C22 19.1046 21.1046 20 20 20H4C2.89543 20 2 19.1046 2 18V6Z" fill="currentColor" opacity="0.9"/>
-  </svg>
-);
-
-const BookIcon = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M21 5C21 3.9 20.1 3 19 3H7C5.9 3 5 3.9 5 5V21L12 18L19 21V5ZM19 5L12 7.25L5 5V18.5L12 15.75L19 18.5V5Z" fill="currentColor" opacity="0.9"/>
-  </svg>
-);
-
-const MapIcon = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M9 2L7.17 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4H16.83L15 2H9ZM12 17C9.24 17 7 14.76 7 12C7 9.24 9.24 7 12 7C14.76 7 17 9.24 17 12C17 14.76 14.76 17 12 17Z" fill="currentColor" opacity="0.9"/>
-  </svg>
-);
-
 function useGitHubStats() {
   const [stars, setStars] = useState(850);
   const [downloads, setDownloads] = useState(12000);
@@ -73,8 +55,7 @@ function CharByChar({ text, className, delay = 0 }: { text: string; className?: 
         <motion.span
           key={i}
           initial={{ opacity: 0, y: 16, filter: "blur(4px)" }}
-          whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          viewport={{ once: true, margin: "-40px" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.45, delay: delay + i * 0.035, ease: [0.16, 1, 0.3, 1] }}
           style={{ display: "inline-block", whiteSpace: char === " " ? "pre" : undefined }}
         >
@@ -82,6 +63,15 @@ function CharByChar({ text, className, delay = 0 }: { text: string; className?: 
         </motion.span>
       ))}
     </span>
+  );
+}
+
+function SectionTitle({ text, subtitle }: { text: string; subtitle?: string }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+      <h2 className="text-3xl sm:text-4xl font-bold mb-3">{text}</h2>
+      {subtitle && <p className="text-[var(--secondary)] text-lg">{subtitle}</p>}
+    </motion.div>
   );
 }
 
@@ -132,7 +122,7 @@ function CountUp({ target, suffix = "" }: { target: number; suffix?: string }) {
 function FAQItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="fluent-card" style={{ padding: 0, overflow: "hidden" }}>
+    <div className="fluent-card fluent-card-interactive" style={{ padding: 0, overflow: "hidden" }}>
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between p-5 text-left cursor-pointer"
@@ -160,33 +150,17 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
   );
 }
 
-const scenarios = [
-  { Icon: FolderIcon, title: "办公桌整理", desc: "把散落在桌面的文档、表格、快捷方式收进不同格子，需要时一键唤起。" },
-  { Icon: BookIcon, title: "学习资料管理", desc: "课程资料、笔记、参考文档按科目分格，不再翻文件夹找文件。" },
-  { Icon: MapIcon, title: "项目文件归档", desc: "把已有项目文件夹映射为桌面格子，不移动文件，原地管理。" },
-];
-
-const workflowSteps = [
-  { step: "01", title: "安装启动", desc: "下载安装包，双击运行。无需复杂配置，开箱即用。" },
-  { step: "02", title: "创建格子", desc: "右键桌面或按 F7，一键创建收纳格子。支持自定义大小和位置。" },
-  { step: "03", title: "拖入文件", desc: "把桌面文件直接拖进格子，按类型自动分类，也可以手动排序。" },
-  { step: "04", title: "随时唤起", desc: "F7 全局快捷键一键呼出，全屏应用下也能使用。拖拽内容到其他应用。" },
-];
-
 const techHighlights = [
-  { icon: "⚡", title: "WinUI 3 原生", desc: "基于最新 WinUI 3 框架，完美适配 Windows 11 Fluent Design，原生性能体验。" },
-  { icon: "🚀", title: ".NET 8 驱动", desc: "使用 .NET 8 构建，启动速度快，内存占用低，后台常驻不卡顿。" },
-  { icon: "🔓", title: "完全开源", desc: "MIT 协议开源，代码透明可审计。欢迎社区贡献，共同改进。" },
-  { icon: "🎨", title: "Fluent Design", desc: "遵循微软 Fluent Design 设计语言，圆角、透明、动效，与系统浑然一体。" },
-  { icon: "📦", title: "轻量无依赖", desc: "安装包仅 21 MB，运行时自动安装，不捆绑任何第三方软件。" },
-  { icon: "🔧", title: "自动修复", desc: "内置拖拽诊断工具，一键修复 Windows 10/11 常见的拖拽兼容性问题。" },
+  { icon: "⚡", title: "原生体验", desc: "基于 WinUI 3 + .NET 8，性能、外观与 Windows 原生应用一致。" },
+  { icon: "🔓", title: "开源免费", desc: "GPLv3 协议，代码透明可审计，无广告无捆绑。" },
+  { icon: "📦", title: "轻量无依赖", desc: "安装包仅 21 MB，运行时自动安装，后台常驻不卡顿。" },
 ];
 
 const faqs = [
-  { question: "DeskBox 是免费的吗？", answer: "完全免费，MIT 开源协议。你可以自由使用、修改和分发。" },
+  { question: "DeskBox 是免费的吗？", answer: "DeskBox 面向个人用户免费使用，当前源码以 GPLv3 协议公开。分发修改版本时，需要遵守 GPLv3 并公开相应源码。" },
   { question: "支持 Windows 10 吗？", answer: "支持。推荐 Windows 11 以获得最佳体验，但 Windows 10 (1809+) 也能正常运行。" },
   { question: "安装后需要联网吗？", answer: "不需要。DeskBox 是纯本地应用，所有数据存储在你的电脑上，不会上传任何信息。" },
-  { question: "和腾讯桌面整理有什么区别？", answer: "DeskBox 完全开源免费，无广告无捆绑。使用原生 WinUI 3 框架，性能更好，界面更现代。" },
+  { question: "和腾讯桌面整理有什么区别？", answer: "DeskBox 源码开放、无广告无捆绑。使用原生 WinUI 3 框架，性能更好，界面更现代。" },
   { question: "文件放在格子里会被移动吗？", answer: "收纳格子会移动文件，但文件夹映射功能不会。你可以选择适合自己的方式。" },
   { question: "支持多显示器吗？", answer: "已在规划中，格子可以在多个显示器间自由移动。查看路线图了解详情。" },
 ];
@@ -237,32 +211,9 @@ export default function Home() {
               className="text-sm text-[var(--secondary)] mt-6"
             >
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[var(--accent-light)] text-[var(--accent)] font-medium text-xs mr-2">v1.1.4</span>
-              Windows 11/10 · 免费开源
+              Windows 11/10 · 个人免费 · 源码开放
             </motion.p>
           </motion.div>
-        </div>
-      </section>
-
-      {/* Stats Bar */}
-      <section className="py-8 px-4 sm:px-6 lg:px-8 border-y border-[var(--card-border)] bg-[var(--card-background)]">
-        <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {stats.map((s, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="text-center"
-              >
-                <div className="text-2xl sm:text-3xl font-bold text-[var(--accent)]">
-                  <CountUp target={s.value} suffix={s.suffix} />
-                </div>
-                <div className="text-sm text-[var(--secondary)] mt-1">{s.label}</div>
-              </motion.div>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -284,103 +235,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Workflow Demo */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-3"><CharByChar text="四步开始整理" /></h2>
-            <p className="text-[var(--secondary)] text-lg">从安装到上手，只需要一分钟</p>
-          </motion.div>
-          <div className="relative">
-            <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-[var(--card-border)]" />
-            <div className="space-y-12 md:space-y-0">
-              {workflowSteps.map((step, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: i % 2 === 0 ? -30 : 30 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.6, delay: i * 0.1 }}
-                  className={`relative md:flex items-center ${i % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"}`}
-                >
-                  <div className={`md:w-1/2 ${i % 2 === 0 ? "md:pr-12 md:text-right" : "md:pl-12"}`}>
-                    <div className="fluent-card">
-                      <div className="text-[var(--accent)] font-mono text-sm font-bold mb-2">STEP {step.step}</div>
-                      <h3 className="text-lg font-semibold mb-2">{step.title}</h3>
-                      <p className="text-[var(--secondary)] text-sm leading-relaxed">{step.desc}</p>
-                    </div>
-                  </div>
-                  <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-[var(--accent)] text-white items-center justify-center text-sm font-bold z-10 shadow-lg">
-                    {step.step}
-                  </div>
-                  <div className="md:w-1/2" />
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Scenarios */}
+      {/* Core Features */}
       <section className="py-24 px-4 sm:px-6 lg:px-8 bg-[var(--card-background)]">
         <div className="max-w-5xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }} className="mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-3"><CharByChar text="用在这些场景" /></h2>
-            <p className="text-[var(--secondary)] text-lg">不是替代桌面，是帮桌面多一层整理能力</p>
-          </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {scenarios.map((s, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: i * 0.1 }} className="fluent-card group">
-                <div className="w-10 h-10 rounded-lg bg-[var(--accent-light)] flex items-center justify-center mb-4 text-[var(--accent)] group-hover:animate-[float-anim_2s_ease-in-out_infinite]">
-                  <s.Icon />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">{s.title}</h3>
-                <p className="text-[var(--secondary)] text-sm leading-relaxed">{s.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Tech Highlights - Bento Grid */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-3"><CharByChar text="技术亮点" /></h2>
-            <p className="text-[var(--secondary)] text-lg">为什么 DeskBox 值得选择</p>
-          </motion.div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {techHighlights.map((t, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.06 }}
-                className="fluent-card group"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-[var(--accent-light)] flex items-center justify-center text-xl flex-shrink-0">
-                    {t.icon}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">{t.title}</h3>
-                    <p className="text-[var(--secondary)] text-sm leading-relaxed">{t.desc}</p>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Core Features - Compact Icon List */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8 bg-[var(--card-background)]">
-        <div className="max-w-5xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-3"><CharByChar text="核心功能" /></h2>
-            <p className="text-[var(--secondary)] text-lg">简洁高效，专注于桌面文件整理</p>
-          </motion.div>
+          <SectionTitle text="核心功能" subtitle="简洁高效，专注于桌面文件整理" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-6">
             {[
               { icon: "📦", title: "收纳格子", desc: "拖拽文件入格，支持排序、搜索、批量操作" },
@@ -398,7 +256,7 @@ export default function Home() {
                 transition={{ delay: i * 0.05 }}
                 className="flex items-start gap-4 group"
               >
-                <div className="w-10 h-10 rounded-lg bg-[var(--accent-light)] flex items-center justify-center text-lg flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
+                <div className="w-10 h-10 flex items-center justify-center text-2xl flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
                   {f.icon}
                 </div>
                 <div>
@@ -411,13 +269,62 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Tech Highlights */}
+      <section className="py-24 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <SectionTitle text="技术亮点" subtitle="为什么 DeskBox 值得选择" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {techHighlights.map((t, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.08 }}
+                className="fluent-card"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 flex items-center justify-center text-2xl flex-shrink-0">
+                    {t.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-1">{t.title}</h3>
+                    <p className="text-[var(--secondary)] text-sm leading-relaxed">{t.desc}</p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Stats Bar */}
+      <section className="py-10 px-4 sm:px-6 lg:px-8 border-y border-[var(--card-border)] bg-[var(--card-background)]">
+        <div className="max-w-4xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {stats.map((s, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="text-center"
+              >
+                <div className="text-2xl sm:text-3xl font-bold text-[var(--accent)]">
+                  <CountUp target={s.value} suffix={s.suffix} />
+                </div>
+                <div className="text-sm text-[var(--secondary)] mt-1">{s.label}</div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* FAQ */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8 bg-[var(--card-background)]">
+      <section className="py-24 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-3"><CharByChar text="常见问题" /></h2>
-            <p className="text-[var(--secondary)] text-lg">关于 DeskBox 的疑问，这里都有答案</p>
-          </motion.div>
+          <SectionTitle text="常见问题" subtitle="关于 DeskBox 的疑问，这里都有答案" />
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -435,7 +342,7 @@ export default function Home() {
       <section className="py-24 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
-            <h2 className="text-3xl font-bold mb-3"><CharByChar text="免费下载" /></h2>
+            <h2 className="text-3xl font-bold mb-3">免费下载</h2>
             <p className="text-[var(--secondary)] mb-8">21 MB · Windows 11/10 · 运行时依赖自动安装</p>
             <Link href="/download" className="fluent-button fluent-button-primary-shimmer text-lg px-10 py-4">下载 DeskBox v1.1.4</Link>
           </motion.div>

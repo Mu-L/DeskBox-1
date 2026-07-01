@@ -36,7 +36,7 @@ export function Footer() {
           </div>
         </div>
         <div className="mt-8 pt-8 border-t border-[var(--card-border)] flex flex-col sm:flex-row justify-between items-center gap-4">
-          <p className="text-[var(--secondary)] text-sm">© {new Date().getFullYear()} DeskBox. MIT License.</p>
+          <p className="text-[var(--secondary)] text-sm">© {new Date().getFullYear()} DeskBox. GPLv3 License.</p>
           <p className="text-[var(--secondary)] text-sm">Made with ❤️ and AI</p>
         </div>
       </div>

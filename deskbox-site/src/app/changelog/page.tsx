@@ -37,12 +37,12 @@ function parseChangelog(content: string): ChangelogEntry[] {
   return entries;
 }
 
-function classifyItem(item: string): { type: string; color: string; bg: string } {
+function classifyItem(item: string, isDark: boolean): { type: string; color: string; bg: string } {
   const lower = item.toLowerCase();
-  if (/新增|add|new|支持|implement/i.test(lower)) return { type: "新增", color: "#16a34a", bg: "#f0fdf4" };
-  if (/修复|fix|bug|crash|问题/i.test(lower)) return { type: "修复", color: "#ea580c", bg: "#fff7ed" };
-  if (/优化|improve|update|增强|调整|重构|refactor/i.test(lower)) return { type: "优化", color: "#2563eb", bg: "#eff6ff" };
-  return { type: "变更", color: "#6b7280", bg: "#f9fafb" };
+  if (/新增|add|new|支持|implement/i.test(lower)) return isDark ? { type: "新增", color: "#4ade80", bg: "#052e16" } : { type: "新增", color: "#16a34a", bg: "#f0fdf4" };
+  if (/修复|fix|bug|crash|问题/i.test(lower)) return isDark ? { type: "修复", color: "#fb923c", bg: "#431407" } : { type: "修复", color: "#ea580c", bg: "#fff7ed" };
+  if (/优化|improve|update|增强|调整|重构|refactor/i.test(lower)) return isDark ? { type: "优化", color: "#60a5fa", bg: "#172554" } : { type: "优化", color: "#2563eb", bg: "#eff6ff" };
+  return isDark ? { type: "变更", color: "#9ca3af", bg: "#1f2937" } : { type: "变更", color: "#6b7280", bg: "#f9fafb" };
 }
 
 function SkeletonLoader() {
@@ -73,6 +73,12 @@ export default function ChangelogPage() {
   const [lang, setLang] = useState<"zh" | "en">("zh");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const theme = document.documentElement.getAttribute("data-theme");
+    setIsDark(theme === "dark");
+  }, []);
 
   useEffect(() => {
     const cacheKey = "deskbox_changelog";
@@ -186,7 +192,7 @@ export default function ChangelogPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-20px" }}
                   transition={{ duration: 0.4, delay: index < 3 ? index * 0.05 : 0 }}
-                  className="fluent-card !p-0 overflow-hidden"
+                  className="fluent-card fluent-card-interactive !p-0 overflow-hidden"
                 >
                   {/* Version Header - Clickable */}
                   <button
@@ -227,7 +233,7 @@ export default function ChangelogPage() {
                         <div className="px-5 pb-5 pt-0 border-t border-[var(--card-border)]">
                           <div className="pt-4 space-y-2.5">
                             {items.map((item, i) => {
-                              const cls = classifyItem(item);
+                              const cls = classifyItem(item, isDark);
                               return (
                                 <div key={i} className="flex items-start gap-2.5">
                                   <span

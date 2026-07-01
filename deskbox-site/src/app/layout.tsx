@@ -5,6 +5,7 @@ import { Footer } from "@/components/Footer";
 import { BackToTop } from "@/components/BackToTop";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("http://8.148.87.90"),
   title: "DeskBox - 轻量级 Windows 11 桌面整理工具",
   description:
     "DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具，用轻量桌面格子帮你收纳文件、映射文件夹、管理剪贴板。",
@@ -13,11 +14,18 @@ export const metadata: Metadata = {
     "desktop organizer", "Windows 11 widget", "file manager", "clipboard manager",
     "桌面文件收纳", "剪贴板管理器", "桌面文件夹映射", "Windows 桌面整理工具",
   ],
+  icons: {
+    icon: [
+      { url: "/favicon.png", type: "image/png" },
+      { url: "/favicon.ico", type: "image/x-icon" },
+    ],
+  },
   openGraph: {
     title: "DeskBox - 轻量级 Windows 11 桌面整理工具",
     description: "用轻量桌面格子帮你收纳文件、映射文件夹、管理剪贴板。",
     type: "website",
     locale: "zh_CN",
+    images: ["/og-image.png"],
   },
 };
 
