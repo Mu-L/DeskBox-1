@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#F3F3F3"/>
+  <rect x="0" y="0" width="1200" height="630" fill="#0078D4" opacity="0.05"/>
+  <rect x="500" y="180" width="200" height="200" rx="40" fill="#0078D4" opacity="0.1"/>
+  <text x="600" y="430" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-size="48" font-weight="700" fill="#1A1A1A">DeskBox</text>
+  <text x="600" y="480" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-size="20" fill="#616161">轻量级 Windows 11 桌面整理工具</text>
+  <text x="600" y="550" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-size="16" fill="#9E9E9E">deskbox.fun</text>
+</svg>
