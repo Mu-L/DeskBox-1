@@ -94,6 +94,9 @@
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
+  <!-- PRI resources (.resw) in Resources/ subdirectories are auto-included by the .NET SDK -->
+  <!-- They provide AppDisplayName and AppDescription for the MSIX manifest's ms-resource: references -->
+
   <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)' != 'true' and '$(EnableMsixTooling)' == 'true'">
     <ProjectCapability Include="Msix" />
   </ItemGroup>
