@@ -1741,6 +1741,17 @@ public partial class App : Application
         _todoReminderService = null;
         _usnIndexService?.Dispose();
         _usnIndexService = null;
+
+        // Dispose hotkey services FIRST so their WH_KEYBOARD_LL hooks are
+        // removed before the tray window is destroyed.  If the hooks remain
+        // installed while the owning window is torn down, the OS may briefly
+        // keep the gesture key in a "pressed" state, leaving keys like 'D'
+        // appearing stuck even after the app exits.
+        _searchHotkeyService?.Dispose();
+        _searchHotkeyService = null;
+        GlobalHotkeyService?.Dispose();
+        GlobalHotkeyService = null;
+
         WidgetManager?.CloseAll();
         _trayIcon?.Dispose();
         _trayIcon = null;

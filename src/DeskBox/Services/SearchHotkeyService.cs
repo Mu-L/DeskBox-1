@@ -6,7 +6,9 @@ namespace DeskBox.Services;
 
 /// <summary>
 /// Manages the global hotkey for invoking the search popup.
-/// Operates independently from the main F7 show/hide hotkey.
+/// Uses the standard Win32 RegisterHotKey + WM_HOTKEY mechanism only.
+/// No WH_KEYBOARD_LL low-level hook — that hook intercepted every keystroke
+/// of the gesture key (e.g. 'D'), risking stuck keys and input latency.
 /// </summary>
 public sealed class SearchHotkeyService : IDisposable
 {
@@ -20,13 +22,10 @@ public sealed class SearchHotkeyService : IDisposable
     private readonly SettingsService _settingsService;
     private readonly Func<Task> _invokeAsync;
     private readonly Win32Helper.SubclassProc _subclassProc;
-    private readonly Win32Helper.LowLevelKeyboardProc _keyboardHookProc;
     private IntPtr _windowHandle;
-    private IntPtr _keyboardHookHandle;
     private bool _isSubclassInstalled;
     private bool _isRegistered;
     private bool _isInvoking;
-    private bool _hookGestureIsDown;
 
     public SearchHotkeyService(
         SettingsService settingsService,
@@ -35,7 +34,6 @@ public sealed class SearchHotkeyService : IDisposable
         _settingsService = settingsService;
         _invokeAsync = invokeAsync;
         _subclassProc = WindowSubclassProc;
-        _keyboardHookProc = KeyboardHookProc;
     }
 
     public bool IsRegistered => _isRegistered;
@@ -68,7 +66,6 @@ public sealed class SearchHotkeyService : IDisposable
 
         _isSubclassInstalled = false;
         _windowHandle = IntPtr.Zero;
-        UninstallKeyboardHook();
     }
 
     public void RefreshRegistration()
@@ -77,32 +74,24 @@ public sealed class SearchHotkeyService : IDisposable
 
         if (_windowHandle == IntPtr.Zero || !_settingsService.Settings.SearchHotkeyEnabled)
         {
-            UninstallKeyboardHook();
             return;
         }
 
         var gesture = CurrentGesture;
         if (!GlobalHotkeyService.IsValidGesture(gesture))
         {
-            UninstallKeyboardHook();
             return;
         }
 
         if (Register(_windowHandle, gesture))
         {
             _isRegistered = true;
-            App.Log($"[SearchHotkey] Registered gesture={FormatGesture(gesture)}; hookCompanion=active");
+            App.Log($"[SearchHotkey] Registered gesture={FormatGesture(gesture)}");
         }
         else
         {
-            App.Log($"[SearchHotkey] Failed to register gesture={FormatGesture(gesture)}; hookFallback=active");
+            App.Log($"[SearchHotkey] Failed to register gesture={FormatGesture(gesture)} (may be in use by another app)");
         }
-
-        // Always keep the low-level hook installed as a companion path: Windows does
-        // not deliver WM_HOTKEY to a non-elevated process while an elevated app owns
-        // the foreground (UIPI), but WH_KEYBOARD_LL still receives the keystroke.
-        // The hook suppresses the gesture key, so both paths never double-fire.
-        InstallKeyboardHook();
     }
 
     public bool TryApplyGesture(GlobalHotkeyGesture gesture)
@@ -133,88 +122,18 @@ public sealed class SearchHotkeyService : IDisposable
         RefreshRegistration();
     }
 
-    private void InstallKeyboardHook()
-    {
-        if (_keyboardHookHandle != IntPtr.Zero)
-        {
-            return;
-        }
-
-        _keyboardHookHandle = Win32Helper.SetWindowsHookEx(
-            Win32Helper.WH_KEYBOARD_LL,
-            _keyboardHookProc,
-            Win32Helper.GetModuleHandle(null),
-            0);
-        if (_keyboardHookHandle == IntPtr.Zero)
-        {
-            App.Log($"[SearchHotkey] Failed to install low-level keyboard hook error={Marshal.GetLastWin32Error()}");
-            return;
-        }
-
-        App.Log("[SearchHotkey] Low-level keyboard hook installed");
-    }
-
-    private void UninstallKeyboardHook()
-    {
-        if (_keyboardHookHandle == IntPtr.Zero)
-        {
-            return;
-        }
-
-        Win32Helper.UnhookWindowsHookEx(_keyboardHookHandle);
-        _keyboardHookHandle = IntPtr.Zero;
-        _hookGestureIsDown = false;
-        App.Log("[SearchHotkey] Low-level keyboard hook removed");
-    }
-
-    private IntPtr KeyboardHookProc(int nCode, IntPtr wParam, IntPtr lParam)
-    {
-        bool isKeyDown = wParam == Win32Helper.WM_KEYDOWN || wParam == Win32Helper.WM_SYSKEYDOWN;
-        bool isKeyUp = wParam == Win32Helper.WM_KEYUP || wParam == Win32Helper.WM_SYSKEYUP;
-        if (nCode < 0 ||
-            !_settingsService.Settings.SearchHotkeyEnabled ||
-            (!isKeyDown && !isKeyUp))
-        {
-            return Win32Helper.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
-        }
-
-        var data = Marshal.PtrToStructure<Win32Helper.KBDLLHOOKSTRUCT>(lParam);
-        var gesture = CurrentGesture;
-        if (!GlobalHotkeyService.IsValidGesture(gesture) ||
-            data.vkCode != (uint)gesture.VirtualKey)
-        {
-            return Win32Helper.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
-        }
-
-        if (isKeyUp)
-        {
-            _hookGestureIsDown = false;
-            return (IntPtr)1;
-        }
-
-        if (!GlobalHotkeyService.AreCurrentModifiersPressed(gesture.Modifiers))
-        {
-            return Win32Helper.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
-        }
-
-        if (_hookGestureIsDown)
-        {
-            return (IntPtr)1;
-        }
-
-        _hookGestureIsDown = true;
-        App.UiDispatcherQueue.TryEnqueue(async () =>
-        {
-            await InvokeAsync();
-        });
-        return (IntPtr)1;
-    }
-
     private IntPtr WindowSubclassProc(IntPtr hWnd, uint message, UIntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, UIntPtr dwRefData)
     {
         if (message == GlobalHotkeyService.WmHotkey &&
             wParam.ToUInt32() == SearchHotkeyId)
         {
+            // Immediately release all modifier keys to clear any stuck state.
+            // In RDP sessions, the modifier key-up event can be lost or delayed,
+            // leaving the system thinking Alt is still held.  This would cause
+            // every subsequent press of the gesture key (e.g. 'D') to be
+            // intercepted as Alt+D by RegisterHotKey, making the key appear dead.
+            Win32Helper.ReleaseAllModifiers();
+
             App.UiDispatcherQueue.TryEnqueue(async () =>
             {
                 await InvokeAsync();

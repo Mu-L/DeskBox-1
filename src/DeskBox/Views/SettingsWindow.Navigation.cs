@@ -472,6 +472,10 @@ public sealed partial class SettingsWindow
         {
             _ = RefreshBackupSnapshotInventoryAsync();
         }
+        if (sectionTag == "InteractionHotkeySettings")
+        {
+            RefreshSearchHotkeyControls();
+        }
         SettingsNavigationView.IsBackButtonVisible = isNestedSection
             ? NavigationViewBackButtonVisible.Visible
             : NavigationViewBackButtonVisible.Collapsed;

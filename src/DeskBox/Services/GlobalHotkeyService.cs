@@ -20,13 +20,10 @@ public sealed class GlobalHotkeyService : IDisposable
     private readonly LocalizationService _localizationService;
     private readonly Func<Task> _invokeAsync;
     private readonly Win32Helper.SubclassProc _subclassProc;
-    private readonly Win32Helper.LowLevelKeyboardProc _keyboardHookProc;
     private IntPtr _windowHandle;
-    private IntPtr _keyboardHookHandle;
     private bool _isSubclassInstalled;
     private bool _isRegistered;
     private bool _isInvoking;
-    private bool _hookGestureIsDown;
 
     public GlobalHotkeyService(
         SettingsService settingsService,
@@ -37,7 +34,6 @@ public sealed class GlobalHotkeyService : IDisposable
         _localizationService = localizationService;
         _invokeAsync = invokeAsync;
         _subclassProc = WindowSubclassProc;
-        _keyboardHookProc = KeyboardHookProc;
     }
 
     public event Action? RegistrationChanged;
@@ -77,7 +73,6 @@ public sealed class GlobalHotkeyService : IDisposable
 
         _isSubclassInstalled = false;
         _windowHandle = IntPtr.Zero;
-        UninstallKeyboardHook();
     }
 
     public void RefreshRegistration()
@@ -90,7 +85,6 @@ public sealed class GlobalHotkeyService : IDisposable
         if (_windowHandle == IntPtr.Zero || !_settingsService.Settings.GlobalHotkeyEnabled)
         {
             App.Log("[GlobalHotkey] RefreshRegistration skipped: handle=0 or disabled");
-            UninstallKeyboardHook();
             NotifyRegistrationChanged();
             return;
         }
@@ -99,7 +93,6 @@ public sealed class GlobalHotkeyService : IDisposable
         if (!IsValidGesture(gesture))
         {
             App.Log("[GlobalHotkey] RefreshRegistration skipped: invalid gesture");
-            UninstallKeyboardHook();
             LastError = _localizationService.T("Settings.GlobalHotkey.Status.Invalid");
             NotifyRegistrationChanged();
             return;
@@ -108,18 +101,12 @@ public sealed class GlobalHotkeyService : IDisposable
         if (Register(_windowHandle, MainHotkeyId, gesture))
         {
             _isRegistered = true;
-            // Keep the low-level hook installed as a companion path: Windows does not
-            // deliver WM_HOTKEY to a non-elevated process while an elevated app owns
-            // the foreground (UIPI), but WH_KEYBOARD_LL still receives the keystroke.
-            // The hook suppresses the gesture key, so both paths never double-fire.
-            InstallKeyboardHook();
-            App.Log($"[GlobalHotkey] Registered gesture={CurrentGestureText} hwnd=0x{_windowHandle.ToInt64():X}; hookCompanion=active");
+            App.Log($"[GlobalHotkey] Registered gesture={CurrentGestureText} hwnd=0x{_windowHandle.ToInt64():X}");
             NotifyRegistrationChanged();
             return;
         }
 
-        InstallKeyboardHook();
-        App.Log($"[GlobalHotkey] RegisterHotKey failed gesture={CurrentGestureText} error={Marshal.GetLastWin32Error()}; hookFallback=active");
+        App.Log($"[GlobalHotkey] RegisterHotKey failed gesture={CurrentGestureText} error={Marshal.GetLastWin32Error()}");
         LastError = _localizationService.T("Settings.GlobalHotkey.Status.Conflict");
         NotifyRegistrationChanged();
     }
@@ -174,40 +161,6 @@ public sealed class GlobalHotkeyService : IDisposable
     public void Dispose()
     {
         Detach();
-    }
-
-    private void InstallKeyboardHook()
-    {
-        if (_keyboardHookHandle != IntPtr.Zero)
-        {
-            return;
-        }
-
-        _keyboardHookHandle = Win32Helper.SetWindowsHookEx(
-            Win32Helper.WH_KEYBOARD_LL,
-            _keyboardHookProc,
-            Win32Helper.GetModuleHandle(null),
-            0);
-        if (_keyboardHookHandle == IntPtr.Zero)
-        {
-            App.Log($"[GlobalHotkey] Failed to install low-level keyboard hook error={Marshal.GetLastWin32Error()}");
-            return;
-        }
-
-        App.Log("[GlobalHotkey] Low-level keyboard hook installed");
-    }
-
-    private void UninstallKeyboardHook()
-    {
-        if (_keyboardHookHandle == IntPtr.Zero)
-        {
-            return;
-        }
-
-        Win32Helper.UnhookWindowsHookEx(_keyboardHookHandle);
-        _keyboardHookHandle = IntPtr.Zero;
-        _hookGestureIsDown = false;
-        App.Log("[GlobalHotkey] Low-level keyboard hook removed");
     }
 
     public static GlobalHotkeyGesture NormalizeGesture(int modifiers, int virtualKey)
@@ -280,6 +233,10 @@ public sealed class GlobalHotkeyService : IDisposable
     {
         if (message == WmHotkey && wParam == (UIntPtr)MainHotkeyId)
         {
+            // Immediately release all modifier keys to clear any stuck state.
+            // See SearchHotkeyService for the full explanation.
+            Win32Helper.ReleaseAllModifiers();
+
             App.UiDispatcherQueue.TryEnqueue(() =>
             {
                 _ = InvokeHotkeyAsync("registered");
@@ -288,48 +245,6 @@ public sealed class GlobalHotkeyService : IDisposable
         }
 
         return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
-    }
-
-    private IntPtr KeyboardHookProc(int nCode, IntPtr wParam, IntPtr lParam)
-    {
-        bool isKeyDown = wParam == Win32Helper.WM_KEYDOWN || wParam == Win32Helper.WM_SYSKEYDOWN;
-        bool isKeyUp = wParam == Win32Helper.WM_KEYUP || wParam == Win32Helper.WM_SYSKEYUP;
-        if (nCode < 0 ||
-            !_settingsService.Settings.GlobalHotkeyEnabled ||
-            (!isKeyDown && !isKeyUp))
-        {
-            return Win32Helper.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
-        }
-
-        var data = Marshal.PtrToStructure<Win32Helper.KBDLLHOOKSTRUCT>(lParam);
-        var gesture = CurrentGesture;
-        if (data.vkCode != (uint)gesture.VirtualKey)
-        {
-            return Win32Helper.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
-        }
-
-        if (isKeyUp)
-        {
-            _hookGestureIsDown = false;
-            return (IntPtr)1;
-        }
-
-        if (!AreCurrentModifiersPressed(gesture.Modifiers))
-        {
-            return Win32Helper.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
-        }
-
-        if (_hookGestureIsDown)
-        {
-            return (IntPtr)1;
-        }
-
-        _hookGestureIsDown = true;
-        App.UiDispatcherQueue.TryEnqueue(() =>
-        {
-            _ = InvokeHotkeyAsync("hook");
-        });
-        return (IntPtr)1;
     }
 
     private async Task InvokeHotkeyAsync(string source)

@@ -307,6 +307,47 @@ public static partial class Win32Helper
         return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
     }
 
+    /// <summary>
+    /// Synthesizes key-up events for all modifier keys (Alt, Ctrl, Shift,
+    /// including left/right variants).  This clears any "stuck" modifier
+    /// state that can occur in RDP sessions where the modifier key-up
+    /// event is lost or delayed by the remote desktop protocol.
+    ///
+    /// When RegisterHotKey registers e.g. Alt+D, a stuck Alt state causes
+    /// every subsequent D press to be intercepted as Alt+D, making the D
+    /// key appear dead.  Calling this right after the hotkey fires
+    /// prevents that.
+    /// </summary>
+    public static void ReleaseAllModifiers()
+    {
+        // VK codes for all modifier keys
+        int[] modifierVks =
+        [
+            0x10, // VK_SHIFT
+            0x11, // VK_CONTROL
+            0x12, // VK_MENU (Alt)
+            0xA0, // VK_LSHIFT
+            0xA1, // VK_RSHIFT
+            0xA2, // VK_LCONTROL
+            0xA3, // VK_RCONTROL
+            0xA4, // VK_LMENU
+            0xA5, // VK_RMENU
+        ];
+
+        foreach (int vk in modifierVks)
+        {
+            if (IsKeyDown(vk))
+            {
+                keybd_event((byte)vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+            }
+        }
+    }
+
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+
+    [LibraryImport("user32.dll")]
+    private static partial void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
     public static bool HasMouseButtonActivity()
     {
         return HasAsyncKeyActivity(0x01) ||
