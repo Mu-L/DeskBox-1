@@ -1843,6 +1843,14 @@ public partial class App : Application
             return Task.CompletedTask;
         }
 
+        // If the search feature widget has been disabled by the user,
+        // the hotkey should not be able to invoke the popup either.
+        if (!FeatureWidgetSettings.IsEnabled(SettingsService.Settings, WidgetKind.Search))
+        {
+            Log("[Search] Popup toggle blocked: search feature widget is disabled");
+            return Task.CompletedTask;
+        }
+
         if (_searchEngineService is null)
         {
             Log("[Search] Engine not initialized");

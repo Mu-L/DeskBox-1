@@ -15,7 +15,6 @@
     </UserControl.Resources>
 
     <StackPanel Style="{StaticResource SectionPanelStyle}">
-        <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Search.Title" />
         <StackPanel Margin="0,8,0,0" Spacing="4">
 
             <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">

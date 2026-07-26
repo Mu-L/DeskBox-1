@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deskbox-1.3.2-update-pro_排版_石墨极简(graphite-minimal) · 公众号排版预览</title>
+<style>
+  body{margin:0;background:#eef0f2;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;-webkit-text-size-adjust:100%;}
+  .gzh-toolbar{position:fixed;top:0;left:0;right:0;height:54px;background:#ffffff;box-shadow:0 1px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:99;}
+  .gzh-hint{font-size:13px;color:#6b7280;line-height:1.4;}
+  .gzh-hint b{color:#111827;}
+  .gzh-copy{background:#059669;color:#fff;border:0;border-radius:9px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(5,150,105,.28);white-space:nowrap;transition:transform .08s,background .15s;}
+  .gzh-copy:hover{background:#047857;}
+  .gzh-copy:active{transform:translateY(1px);}
+  .gzh-toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s;z-index:100;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:88vw;text-align:center;}
+  .gzh-toast.show{opacity:1;}
+  .gzh-stage{max-width:700px;margin:78px auto 64px;padding:0 8px;}
+  @media(max-width:520px){.gzh-hint{max-width:150px;}}
+</style>
+</head>
+<body>
+<div class="gzh-toolbar">
+  <span class="gzh-hint">👇 下方是排版效果 · 点右侧 <b>复制</b> 直接粘到公众号</span>
+  <button class="gzh-copy" id="gzhCopyBtn" onclick="gzhCopy()">📋 复制到公众号</button>
+</div>
+<div class="gzh-toast" id="gzhToast"></div>
+<div class="gzh-stage">
+  <div id="gzh-content">
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <!-- 1. 开头引言卡片 -->
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+      <span leaf="">QUOTE</span>
+    </p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">一个被收拾干净的桌面，最怕的从来不是乱，而是</span>
+      <span style="border-bottom:2px solid #52525B;"><span leaf="">找不到</span></span>
+      <span leaf="">。</span>
+    </p>
+  </section>
+
+  <!-- 2. 前言正文 -->
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">1.3.0 把桌面收拾成了可以</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">收起的胶囊</span></span>
+      <span leaf="">，1.3.1 又默默把图标、动画和启动项打磨了一遍。到了 1.3.2，我们想认真解决一个一直悬在桌面工具头顶的问题，当你把文件收进格子之后，怎么</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">最快地找到其中某一个</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">答案不是再开一个系统搜索窗口，而是</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">把搜索直接长在 DeskBox 里</span></span>
+      <span leaf="">。</span>
+    </p>
+  </section>
+
+  <!-- 3. 前言导读 -->
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+      <span leaf="">本文看点</span>
+    </p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">桌面搜索：基于 NTFS USN 日志的即时检索</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">五门语言与本地化架构重写</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">胶囊样式与动画的视觉打磨</span></p>
+      </section>
+    </section>
+  </section>
+
+  <!-- 4. 第一章 -->
+  <section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">01</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">SEARCH</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">桌面搜索：这次的主角</span>
+        </h3>
+      </section>
+    </section>
+    <p style="margin:24px 0 22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">过去要在 DeskBox 里找一个文件，你得</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">点开对应的格子</span></span>
+      <span leaf="">，在列表里翻。文件一多，这个过程就开始产生摩擦。1.3.2 新增的搜索系统，目标是让「找」比「翻」</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">快一个数量级</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">它的底层没有走最省事的那条路，即调用系统搜索框或现成索引，而是直接读取了</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">NTFS 的 USN 日志</span></span>
+      <span leaf="">（变更日志）。Windows 在 NTFS 分区上会持续记录每一个文件的创建、修改、删除和移动，相当于一份</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">始终在更新的磁盘账本</span></span>
+      <span leaf="">。搜索时直接消费这份账本，就不需要遍历目录树去逐个扫描，无论首次建索引还是后续增量更新，都比目录遍历快得多。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">在此之上，搜索还接入了</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Windows 索引</span></span>
+      <span leaf="">，因此不仅能按文件名和路径匹配，也能搜到</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">文件正文里的内容</span></span>
+      <span leaf="">。比如你只记得某份文档里写过的一句话，输入关键词就能把对应文件定位出来。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">交互层面，搜索是一个独立的弹窗，通过</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">全局快捷键唤起</span></span>
+      <span leaf="">，输入即出结果。结果经过加权排序：名称命中、使用频率、最近访问时间都会影响排位，最常用的内容会自然靠前。它还提供搜索历史、按类型排序与筛选，以及一个可以用</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">纯键盘上下导航</span></span>
+      <span leaf="">的推荐应用面板。用完关掉弹窗，桌面依旧是那副干净的样子。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">值得强调的一点是，这套搜索是</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">「为桌面而生」</span></span>
+      <span leaf="">的，而不是又一个全盘搜索器。它理解 DeskBox 所管理的那块空间，在你精心整理过的格子里找东西，比在系统搜索里</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">大海捞针</span></span>
+      <span leaf="">要精准。</span>
+    </p>
+    <section style="border:1px solid #E4E4E7;padding:4px;margin:0 0 12px;">
+      <section style="margin:0;overflow:hidden;">
+        <span leaf=""><img src="图片URL" style="max-width:100%;height:auto;display:block;margin:0 auto;"></span>
+      </section>
+    </section>
+    <p style="font-size:12px;color:#A1A1AA;text-align:center;margin:0 0 28px;letter-spacing:0.5px;">
+      <span leaf="">— 搜索弹窗界面：左侧结果列表、右侧推荐应用面板，快捷键提示</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 5. 第二章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">02</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">LOCALIZATION</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">五种语言，和一次本地化架构重写</span>
+        </h3>
+      </section>
+    </section>
+    <p style="margin:24px 0 22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">1.3.2 之前，DeskBox 只有中文和英文。这一版新增了</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">日语、德语和巴西葡萄牙语</span></span>
+      <span leaf="">，每种语言都补齐了一千五百余条界面文案，现在一共支持</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">五门语言</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">比新增语言本身更关键的是底层改动。我们把沿用了许久的</span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">.resw</span></span>
+      <span leaf="">资源方案，整体重写为一套基于 JSON 的本地化服务（</span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">LocalizationService</span></span>
+      <span leaf="">）。新的结构让翻译贡献变得简单很多：译者面对的是清晰可读的 JSON，而不是散落在多处、难以对照的旧格式。对一款想要走向更多地区用户的桌面软件来说，这是一次</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">必要的地基升级</span></span>
+      <span leaf="">。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 6. 第三章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">03</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">INSTALL</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">安装与更新：ARM64 终于来了</span>
+        </h3>
+      </section>
+    </section>
+    <p style="margin:24px 0 22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">长久以来，DeskBox 只提供 x64 安装包，用 Surface、骁龙笔记本等 ARM64 设备的朋友只能旁观。1.3.2 补齐了</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">ARM64 安装包</span></span>
+      <span leaf="">，并会在安装时正确识别 ARM64 平台的 .NET 10 与 Windows App Runtime，</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">自动补齐缺失的依赖</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">安装器本身也变聪明了。覆盖安装前，它会</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">可靠地关闭正在运行的 DeskBox 进程</span></span>
+      <span leaf="">，再执行文件替换，告别过去偶尔弹出的「重试 / 忽略 / 取消」。安装器现在还会</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">根据系统区域预选语言</span></span>
+      <span leaf="">（中文、英文、日语、德语、巴西葡萄牙语），并把选择写入注册表，DeskBox 首次启动默认沿用，当然你在应用内手动切换依然优先。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 7. 第四章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">04</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">FIXES</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">让日常更稳的那些修复</span>
+        </h3>
+      </section>
+    </section>
+    <p style="margin:24px 0 22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这一版也修掉了一些会</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">打断体验的问题</span></span>
+      <span leaf="">，单独看都不大，但每一个都关系到「用着用着会不会</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">突然别扭</span></span>
+      <span leaf="">」。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">最值得说的一个，关于</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">QuickLook 兼容</span></span>
+      <span leaf="">。1.3.0 我们加过一个很轻的 QuickLook 兼容：选中文件按空格即可预览，DeskBox 不去接管、不去扫描，有就用、没有就当不存在。但后来发现一个隐蔽的崩溃，当 QuickLook 建立了一个空连接时，DeskBox 的管道服务会直接挂掉，而且不容易复现。1.3.2 调整了可用性检查的逻辑，让它</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">不再去触碰那条命名管道</span></span>
+      <span leaf="">，从根本上避开了这个崩溃。</span>
+    </p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+        <span leaf="">「有就用，没有就当不存在——软件之间，不一定要互相接管。」</span>
+      </p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">其余修复还包括：防止托盘动画过程中</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">丢失桌面壁纸</span></span>
+      <span leaf="">、修正托盘菜单高度、清理失效的 .lnk 快捷方式、修正天气代码映射。它们不会出现在更新日志的标题里，却是日常</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">顺不顺手的分界</span></span>
+      <span leaf="">。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 8. 第五章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">05</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">ONBOARDING</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">引导与天气的小升级</span>
+        </h3>
+      </section>
+    </section>
+    <p style="margin:24px 0 22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">第一次打开 DeskBox 的</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">引导流程被重做了</span></span>
+      <span leaf="">。旧版一上来就是成排的设置，容易让人发怵；新版拆成欢迎、功能、收纳、快捷键、完成五步，带入场动画，并且</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">完整覆盖五种语言</span></span>
+      <span leaf="">，新用户能在几屏之内理解这个工具能做什么、该怎么开始。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">天气部件也更好用了。</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">城市数据库从约 500 条扩展到 5000 多条</span></span>
+      <span leaf="">，并加入了</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">面向中日韩的模糊搜索</span></span>
+      <span leaf="">，小城市基本都能搜到。定位服务增加了超时处理与「上次已知位置」兜底，四种尺寸布局也做了细化。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 9. 第六章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">06</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">DESIGN</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">视觉与交互的打磨</span>
+        </h3>
+      </section>
+    </section>
+    <p style="margin:24px 0 22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这一版在</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">「看着舒服、用着跟手」</span></span>
+      <span leaf="">上花的功夫，不比搜索少。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">胶囊样式做了一次</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">全面的视觉优化</span></span>
+      <span leaf="">。收起状态下，图标、文字与间距的对齐被重新校准，整体</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">更紧凑、更一致</span></span>
+      <span leaf="">；展开与收回的过渡也更顺。天气胶囊还移除了多余的标题图标，只保留天气 emoji，视觉更干净。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">动画方面，1.3.2 引入了一套</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">硬件自适应的托盘动画系统</span></span>
+      <span leaf="">。它会根据你的 GPU 能力动态调整动画的精细程度：性能强的设备多给细节，弱一些的设备则自动收敛复杂度，保证流畅。配合批量动画驱动与同步调度，多个格子同时显示或隐藏时能够整齐联动，即便快速反复切换（比如连续按 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">F7</span></span>
+      <span leaf="">），也不会再出现</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">画面撕裂或黑屏闪断</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这些改进很难用一句话说清「好在哪」，但它们决定了你每天收起、展开格子几十次时，</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">手感和心情是否始终平稳</span></span>
+      <span leaf="">。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 10. 结语章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">∞</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">EPILOGUE</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">写在最后</span>
+        </h3>
+      </section>
+    </section>
+    <p style="margin:24px 0 22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">1.3.0 让桌面</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">安静下来</span></span>
+      <span leaf="">，1.3.2 让桌面也变得「</span>
+      <span style="border-bottom:2px solid #F97316;font-weight:700;color:#27272A;"><span leaf="">找得到</span></span>
+      <span leaf="">」。它不是一个靠单个炸裂功能博眼球的版本，而是把过去几个月里，那些一直想补、该补的地方，一件件补上。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">如果你已经在用旧版本，</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">直接覆盖安装即可</span></span>
+      <span leaf="">，格子、设置、待办、随记和收纳目录都会保留。考虑到这是一次较大的版本，升级前仍然建议先到「设置 › 诊断与维护 › 备份与恢复」</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">导出一份备份</span></span>
+      <span leaf="">，图个安心。</span>
+    </p>
+  </section>
+
+  <!-- 11. 下载块 -->
+  <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 8px;letter-spacing:2px;font-weight:500;">
+      <span leaf="">DOWNLOAD</span>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0 0 10px;line-height:1.8;text-align:justify;">
+      <span leaf="">官网：</span><a href="https://deskbox.fun" style="color:#52525B;text-decoration:none;border-bottom:1px solid #A1A1AA;"><span leaf="">deskbox.fun</span></a>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0 0 10px;line-height:1.8;text-align:justify;">
+      <span leaf="">GitHub Release：</span><a href="https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.2" style="color:#52525B;text-decoration:none;border-bottom:1px solid #A1A1AA;"><span leaf="">github.com/Tianyu199509/DeskBox/releases/tag/v1.3.2</span></a>
+    </p>
+    <p style="font-size:15px;color:#3F3F46;margin:0;line-height:1.8;text-align:justify;">
+      <span leaf="">提供 </span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">x64 与 ARM64 两种安装包</span></span><span leaf="">，适用 Windows 11。安装包为框架依赖型，会检查本机的 .NET 10 Desktop Runtime 与 Windows App Runtime 2.2，已安装则跳过，缺失时才联网下载。</span>
+    </p>
+  </section>
+
+  <!-- 12. 感谢 -->
+  <section style="padding:0 10px;">
+    <p style="margin-bottom:18px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+      <span leaf="">感谢每一位帮忙测试搜索、多语言与安装器的朋友。</span>
+    </p>
+  </section>
+
+  <!-- 13. END -->
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <!-- 14. 签名区 -->
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 {{作者名}}，{{一句话简介，如：DeskBox 的独立开发者}}。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果你觉得今天这篇有收获，欢迎</span>
+        <strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong>
+        <span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
+  </div>
+</div>
+<script>
+  function gzhShowToast(msg){
+    var t=document.getElementById('gzhToast');
+    t.textContent=msg;t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer=setTimeout(function(){t.classList.remove('show');},2800);
+  }
+  function gzhCopy(){
+    var el=document.getElementById('gzh-content');
+    // 选中渲染后的富文本节点并复制（等价于手动 Ctrl+A / Ctrl+C，保留全部样式）
+    var range=document.createRange();
+    range.selectNodeContents(el);
+    var sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var ok=false;
+    try{ok=document.execCommand('copy');}catch(e){ok=false;}
+    sel.removeAllRanges();
+    var btn=document.getElementById('gzhCopyBtn');
+    if(ok){
+      gzhShowToast('✅ 已复制！去公众号编辑器按 Ctrl/⌘+V 粘贴即可');
+      var old=btn.textContent;btn.textContent='✅ 已复制';
+      setTimeout(function(){btn.textContent=old;},2200);
+    }else{
+      gzhShowToast('⚠ 自动复制失败，请手动全选(Ctrl/⌘+A)再复制(Ctrl/⌘+C)');
+    }
+  }
+</script>
+</body>
+</html>
