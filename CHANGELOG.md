@@ -92,6 +92,44 @@
 - 在全部五种语言（zh-CN、en-US、ja-JP、de-DE、pt-BR）中新增天气数据源、叠放组管理和搜索清空按钮的翻译字符串。
 - 修复全部语言中托盘图标颜色标签颠倒的问题。
 
+#### Hotkey Fixes & Search Hotkey Improvements
+
+- **Removed low-level keyboard hooks**: Completely removed `WH_KEYBOARD_LL` hooks from both `SearchHotkeyService` and `GlobalHotkeyService`. These hooks intercepted every keystroke of the gesture key (e.g. 'D'), causing stuck keys, repeated characters, and input latency. Now uses only the standard Win32 `RegisterHotKey` + `WM_HOTKEY` mechanism.
+- **RDP Alt-stuck fix**: After a hotkey fires, the app immediately synthesizes key-up events for all modifier keys (Alt, Ctrl, Shift) via `keybd_event`. This clears the "stuck Alt" state that Remote Desktop Protocol (RDP) causes when the modifier key-up event is lost or delayed — previously, every subsequent press of the gesture key (e.g. 'D') was intercepted as Alt+D, making the key appear dead.
+- **Search hotkey toggle bug fix**: Fixed a bug where disabling the search hotkey in Settings had no effect — the `RegisterHotKey` registration remained active because the toggle handler set the setting value before calling `SetEnabled`, causing `SetEnabled`'s early-return guard to skip `RefreshRegistration`.
+- **Search widget hotkey linkage**: When the search feature widget is disabled, the search hotkey can no longer invoke the search popup. The popup toggle method now checks `FeatureWidgetSettings.IsEnabled` before proceeding.
+- **Search hotkey settings relocated**: Moved the search hotkey configuration (enable toggle, custom shortcut capture, reset) from the Search settings section (three-level nested menu) to the top-level "Shortcuts & Interaction" → "Hotkeys" page, alongside the global hotkey settings.
+- **Accordion hotkey cards**: Both the global hotkey and search hotkey settings are now presented as collapsible `SettingsExpander` cards — the toggle is in the header, and the shortcut capture/reset controls are in the expandable body, reducing visual clutter.
+- **Clean exit**: Hotkey services are now properly disposed during `ShutdownApplicationAsync`, ensuring `RegisterHotKey` is unregistered and the subclass is removed before the process exits.
+
+#### Search Settings Polish
+
+- **Removed redundant title**: The "Search" section title in the search settings page (three-level menu) has been removed since the breadcrumb already indicates the section name.
+
+#### Image Widget Removed
+
+- **Album/photo widget deleted**: Completely removed the image gallery widget (ImageWidget) and all associated code: `ImageWidgetData`, `ImageWidgetViewModel`, `ImageWidgetContent`, `ImageSettingsDialog`, `ImageManagerDialog`, `ImagePickerService`, `WallpaperHelper`, `ImageWidgetStore`, `ImageWidgetContentProvider`, `ImageWidgetContentAdapter`, and `BingWallpaperService`. Approximately 3,500 lines of code removed.
+
+### 中文
+
+#### 热键修复与搜索快捷键改进
+
+- **移除低级键盘钩子**：完全移除 `SearchHotkeyService` 和 `GlobalHotkeyService` 中的 `WH_KEYBOARD_LL` 低级键盘钩子。这些钩子会拦截手势键（如 D 键）的每一次键盘事件，导致按键卡住、重复输入和延迟。现在只使用标准的 Win32 `RegisterHotKey` + `WM_HOTKEY` 机制。
+- **远程桌面 Alt 卡键修复**：热键触发后，应用立即通过 `keybd_event` 合成释放所有修饰键（Alt、Ctrl、Shift）事件。这清除了远程桌面协议（RDP）中因修饰键抬起事件丢失或延迟而导致的"Alt 卡住"状态——此前，后续每次按手势键（如 D）都会被系统误判为 Alt+D 并被 `RegisterHotKey` 拦截，导致该按键完全失效。
+- **搜索热键开关 Bug 修复**：修复了在设置中关闭搜索热键后无效的问题——`RegisterHotKey` 注册仍然保持活跃，因为开关处理器在调用 `SetEnabled` 之前就设置了设置值，导致 `SetEnabled` 的早退检查跳过了 `RefreshRegistration`。
+- **搜索格子快捷键联动**：当搜索功能格子被关闭时，搜索快捷键不能再唤起搜索弹窗。弹窗切换方法现在会先检查 `FeatureWidgetSettings.IsEnabled`。
+- **搜索快捷键设置位置调整**：将搜索快捷键配置（开关、自定义快捷键捕获、重置）从搜索设置页（三级嵌套菜单）移至一级菜单「快捷与交互」→「热键」页面，与全局快捷键设置并列。
+- **风琴卡片式热键设置**：全局快捷键和搜索快捷键设置现在以可折叠的 `SettingsExpander` 风琴卡片呈现——开关在外层，快捷键捕获/重置控件在展开内容中，减少视觉杂乱。
+- **退出清理**：热键服务现在在 `ShutdownApplicationAsync` 中被正确 Dispose，确保 `RegisterHotKey` 在进程退出前被注销、子类被移除。
+
+#### 搜索设置打磨
+
+- **移除冗余标题**：搜索设置页（三级菜单）中的"搜索"章节标题已被移除，因为面包屑导航已经指示了当前所在位置。
+
+#### 删除相册功能
+
+- **图片格子完全移除**：完全删除了图片画廊格子（ImageWidget）及其所有关联代码：`ImageWidgetData`、`ImageWidgetViewModel`、`ImageWidgetContent`、`ImageSettingsDialog`、`ImageManagerDialog`、`ImagePickerService`、`WallpaperHelper`、`ImageWidgetStore`、`ImageWidgetContentProvider`、`ImageWidgetContentAdapter`、`BingWallpaperService`。共移除约 3,500 行代码。
+
 ## 1.3.2 - 2026-07-23
 
 ### English
