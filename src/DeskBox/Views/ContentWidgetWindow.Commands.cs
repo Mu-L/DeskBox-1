@@ -175,11 +175,9 @@ public sealed partial class ContentWidgetWindow
 
     private void ContentWidgetShell_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if (ContentWidgetShell.ChromeMode is not (WidgetChromeMode.Overlay or WidgetChromeMode.Hidden))
-        {
-            return;
-        }
-
+        // Item-level context menus mark the event handled before it reaches the shell.
+        // Any remaining right click is therefore on the content background and should
+        // expose the same widget actions as the title bar.
         ShowFlyoutWithInteraction(CreateMoreFlyout(), ContentWidgetShell, e.GetPosition(ContentWidgetShell));
         e.Handled = true;
     }

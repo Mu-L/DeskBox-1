@@ -262,24 +262,26 @@ public sealed partial class WidgetWindow
     {
         var flyout = new MenuFlyout();
 
-        var pasteItem = new MenuFlyoutItem
+        if (CanPasteFromClipboard())
         {
-            Text = _localizationService.T("Common.Paste"),
-            Icon = new FontIcon { Glyph = "\uE77F" },
-            IsEnabled = CanPasteFromClipboard()
-        };
-        pasteItem.Click += async (_, _) =>
-        {
-            try
+            var pasteItem = new MenuFlyoutItem
             {
-                await PasteFromClipboardAsync();
-            }
-            catch (Exception ex)
+                Text = _localizationService.T("Common.Paste"),
+                Icon = new FontIcon { Glyph = "\uE77F" }
+            };
+            pasteItem.Click += async (_, _) =>
             {
-                await ShowErrorDialogAsync(_localizationService.T("Widget.PasteFailed"), ex.Message);
-            }
-        };
-        flyout.Items.Add(pasteItem);
+                try
+                {
+                    await PasteFromClipboardAsync();
+                }
+                catch (Exception ex)
+                {
+                    await ShowErrorDialogAsync(_localizationService.T("Widget.PasteFailed"), ex.Message);
+                }
+            };
+            flyout.Items.Add(pasteItem);
+        }
 
         if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
         {
@@ -334,6 +336,16 @@ public sealed partial class WidgetWindow
         flyout.Items.Add(CreateStackSettingsMenu());
 
         flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
+            ViewModel.Config,
+            _chromeDescriptor,
+            _localizationService,
+            SetChromeModeOverride));
+        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
+            ViewModel.Config,
+            _localizationService,
+            SetCollapseBehaviorOverride,
+            ResetCompactWidthOverride));
 
         var sortSubItem = new MenuFlyoutSubItem
         {
