@@ -161,6 +161,8 @@ docs\releases               GitHub Releases 发布文案
 
 尽管如此，DeskBox 的成长离不开社区的反馈！如果您在使用中遇到了 Bug，或者对新功能有绝佳的想法，非常欢迎您通过提交 [Issue](https://github.com/Tianyu199509/DeskBox/issues) 的方式与我交流。感谢您的理解与支持！
 
+💕特别感谢@https://github.com/magisph 提供的巴西巴西葡萄牙语本地化支持。💕
+
 ## 反馈
 
 DeskBox 仍处于早期公开版本。如果 Win10/Win11 遇到文件拖不进格子的问题，请先尝试"设置 -> 拖拽异常诊断 -> 一键修复"。如果仍有问题，可以扫码关注应用"关于"页里的公众号留言，或在 GitHub 提交 [Issue](https://github.com/Tianyu199509/DeskBox/issues)。
