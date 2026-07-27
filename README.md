@@ -163,6 +163,8 @@ DeskBox is currently developed and maintained entirely by a solo developer. To e
 
 However, community feedback is crucial to the project's growth! If you encounter any bugs, have feature requests, or want to share UI/UX feedback, please feel free to open an [Issue](https://github.com/Tianyu199509/DeskBox/issues). Thank you for your support and understanding!
 
+💕Special thanks to @https://github.com/magisph for providing Brazilian Portuguese localization support.💕
+
 ## Feedback
 
 DeskBox is still an early public release. If file drag/drop fails on Windows 10/11, try Settings -> Drag-and-drop diagnostics -> Repair first. If the issue remains, please open an [issue](https://github.com/Tianyu199509/DeskBox/issues) with reproduction details, or follow the WeChat public account shown in the app's About page and leave a message there.
