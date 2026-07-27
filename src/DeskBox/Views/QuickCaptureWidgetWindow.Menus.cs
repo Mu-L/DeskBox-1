@@ -57,12 +57,9 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void QuickCaptureShell_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if (QuickCaptureShell.ChromeMode is not (WidgetChromeMode.Overlay or WidgetChromeMode.Hidden) ||
-            !ShouldOpenTitleBarFlyout(e.OriginalSource))
-        {
-            return;
-        }
-
+        // Item-level context menus mark the event handled before it reaches the shell.
+        // Any remaining right click is on the blank content background, where the
+        // title-bar menu is the appropriate widget-level menu.
         ShowFlyoutWithElevation(CreateMoreFlyout(), QuickCaptureShell, e.GetPosition(QuickCaptureShell));
         e.Handled = true;
     }
