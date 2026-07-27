@@ -36,6 +36,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localizationService;
     private readonly SemaphoreSlim _folderRefreshGate = new(1, 1);
     private int _itemHydrationGeneration;
+    private int _iconDecodePixelWidth;
 
     private string _name = string.Empty;
     private ViewMode _viewMode;

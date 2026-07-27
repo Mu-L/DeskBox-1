@@ -392,7 +392,8 @@
                 Background="#66000000"
                 CornerRadius="12"
                 Opacity="0.18"
-                Translation="0,2,0" />
+                Translation="0,2,0"
+                Visibility="{Binding ThumbnailVisibility}" />
 
             <Border
                 x:Name="AlbumArtSurface"
@@ -418,7 +419,8 @@
                         Visibility="{Binding ThumbnailVisibility}" />
                     <Border
                         IsHitTestVisible="False"
-                        Opacity="0.34">
+                        Opacity="0.34"
+                        Visibility="{Binding ThumbnailVisibility}">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Offset="0" Color="#66FFFFFF" />
@@ -433,12 +435,12 @@
                         BorderThickness="1"
                         CornerRadius="11"
                         IsHitTestVisible="False"
+                        Visibility="{Binding ThumbnailVisibility}"
                         x:Name="AlbumArtInnerBorder" />
                     <Grid Visibility="{Binding ThumbnailPlaceholderVisibility}">
                         <Border
                             x:Name="AlbumArtPlaceholderBackground"
-                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                            CornerRadius="12" />
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
                         <FontIcon
                             FontSize="30"
                             Glyph="&#xEC4F;"

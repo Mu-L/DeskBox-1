@@ -89,6 +89,7 @@ public sealed partial class ContentWidgetWindow
 
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        CancelPendingTitleBarClickCollapse();
         var properties = e.GetCurrentPoint(ContentWidgetShell.TitleBar).Properties;
         if (!properties.IsLeftButtonPressed) return;
         if (ContentWidgetShell.TitleEditorContent is TextBox &&
@@ -99,6 +100,7 @@ public sealed partial class ContentWidgetWindow
             return;
         }
 
+        BeginTitleBarClickCollapse(e, ShouldOpenTitleBarFlyout(e.OriginalSource));
         if (ShouldOpenTitleBarFlyout(e.OriginalSource))
         {
             App.Current.WidgetManager?.ActivateAllVisibleWidgetsFromTitle(HWnd);
@@ -155,6 +157,7 @@ public sealed partial class ContentWidgetWindow
 
     private void TitleBarGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        CompleteTitleBarClickCollapse(e, HasMovedTitleBarDrag);
         EndWindowDragCore(e);
     }
 

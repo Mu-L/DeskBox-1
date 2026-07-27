@@ -184,6 +184,7 @@ public sealed partial class ContentWidgetWindow
 
     private void ContentWidgetShell_TitleDoubleTapped(object? sender, DoubleTappedRoutedEventArgs e)
     {
+        CancelPendingTitleBarClickCollapse();
         e.Handled = true;
         DispatcherQueue.TryEnqueue(() =>
         {

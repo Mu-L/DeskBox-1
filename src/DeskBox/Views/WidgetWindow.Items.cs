@@ -164,9 +164,17 @@ public sealed partial class WidgetWindow
     private void OpenItem(WidgetItem item)
     {
         App.Log($"[DIAG] OpenItem path='{item.Path}' target='{item.TargetPath}' isShortcut={item.IsShortcut} isFolder={item.IsFolder}");
-        var result = ViewModel.OpenItem(item, _hWnd);
-        if (result == FileService.OpenItemResult.Failed)
+        try
         {
+            var result = ViewModel.OpenItem(item, _hWnd);
+            if (result == FileService.OpenItemResult.Failed)
+            {
+                NotifyOpenFailed();
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[OpenItem] Unhandled UI open failure for '{item.Path}': {ex}");
             NotifyOpenFailed();
         }
 

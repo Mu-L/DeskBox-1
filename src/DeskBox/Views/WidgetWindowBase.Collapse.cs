@@ -39,6 +39,7 @@ public abstract partial class WidgetWindowBase
     private DispatcherQueueTimer? _collapseDragRestoreTimer;
     private DispatcherQueueTimer? _compactBoundsSettleTimer;
     private DispatcherQueueTimer? _collapseAnimationWatchdogTimer;
+    private DispatcherQueueTimer? _titleBarClickCollapseTimer;
     private RectInt32 _collapseAnimationFrom;
     private RectInt32 _collapseAnimationTo;
     private WidgetCompactExpansionAnchor? _collapseAnimationAnchor;
@@ -71,6 +72,7 @@ public abstract partial class WidgetWindowBase
     private bool _isBoundsInteractionActive;
     private bool _isRaisedForExpandedState;
     private bool _isSmartPinnedOpen;
+    private bool _isTitleBarClickCollapseCandidate;
     private int _compactInteractionDepth;
     private int _compactBoundsSettleStage;
     private WidgetCompactState _compactState = WidgetCompactState.Expanded;
@@ -294,6 +296,66 @@ public abstract partial class WidgetWindowBase
             allowDuringInteraction: true);
     }
 
+    protected void BeginTitleBarClickCollapse(PointerRoutedEventArgs e, bool isTitleArea)
+    {
+        CancelPendingTitleBarClickCollapse();
+        if (!isTitleArea ||
+            EffectiveCollapseBehavior != WidgetCollapseBehavior.Click ||
+            _targetCollapsed ||
+            !e.GetCurrentPoint(WidgetShellControl.TitleBar).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _isTitleBarClickCollapseCandidate = true;
+    }
+
+    protected void CompleteTitleBarClickCollapse(PointerRoutedEventArgs e, bool hasMoved)
+    {
+        bool isCandidate = _isTitleBarClickCollapseCandidate;
+        _isTitleBarClickCollapseCandidate = false;
+        if (!isCandidate ||
+            hasMoved ||
+            e.GetCurrentPoint(WidgetShellControl.TitleBar).Properties.PointerUpdateKind !=
+                Microsoft.UI.Input.PointerUpdateKind.LeftButtonReleased ||
+            EffectiveCollapseBehavior != WidgetCollapseBehavior.Click ||
+            _targetCollapsed)
+        {
+            return;
+        }
+
+        _titleBarClickCollapseTimer = DispatcherQueue.CreateTimer();
+        _titleBarClickCollapseTimer.IsRepeating = false;
+        _titleBarClickCollapseTimer.Interval = TimeSpan.FromMilliseconds(420);
+        _titleBarClickCollapseTimer.Tick += TitleBarClickCollapseTimer_Tick;
+        _titleBarClickCollapseTimer.Start();
+    }
+
+    protected void CancelPendingTitleBarClickCollapse()
+    {
+        _isTitleBarClickCollapseCandidate = false;
+        if (_titleBarClickCollapseTimer is null)
+        {
+            return;
+        }
+
+        _titleBarClickCollapseTimer.Stop();
+        _titleBarClickCollapseTimer.Tick -= TitleBarClickCollapseTimer_Tick;
+        _titleBarClickCollapseTimer = null;
+    }
+
+    private void TitleBarClickCollapseTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        CancelPendingTitleBarClickCollapse();
+        if (!IsClosing &&
+            EffectiveCollapseBehavior == WidgetCollapseBehavior.Click &&
+            !_targetCollapsed &&
+            !HasBlockingFlyoutOpen())
+        {
+            CollapseWidgetFromHost();
+        }
+    }
+
     protected void SetCollapseBehaviorOverride(WidgetCollapseBehavior behavior)
     {
         WidgetCollapseBehaviorNames.SetOverride(Config, behavior);
@@ -448,6 +510,7 @@ public abstract partial class WidgetWindowBase
         CancelTimer(ref _collapseDragRestoreTimer);
         CancelTimer(ref _compactBoundsSettleTimer);
         CancelTimer(ref _collapseAnimationWatchdogTimer);
+        CancelPendingTitleBarClickCollapse();
         StopCollapseAnimation();
         WidgetShellControl.CancelResponsiveLayoutTransition();
 

@@ -302,6 +302,7 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void QuickCaptureShell_TitleDoubleTapped(object? sender, DoubleTappedRoutedEventArgs e)
     {
+        CancelPendingTitleBarClickCollapse();
         e.Handled = true;
         DispatcherQueue.TryEnqueue(StartTitleRename);
     }
