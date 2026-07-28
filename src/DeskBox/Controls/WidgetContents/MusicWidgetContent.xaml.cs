@@ -19,7 +19,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private const double TitleMarqueeStartDelayMs = 900.0;
     private const double TitleMarqueeSpeedPixelsPerSecond = 50.0;
     private const double TitleMarqueeOverflowTolerance = 4.0;
-    private const int TitleMarqueeDeferredMeasureMs = 300;
+    private const int TitleMarqueeDeferredMeasureMs = 120;
     private const int ArtworkTransitionDurationMs = 420;
     private const double MinimumResponsiveWidth = 180.0;
     private const double WideResponsiveWidth = 320.0;
@@ -27,10 +27,10 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private const double WideResponsiveHeight = 240.0;
     private const double WideAlbumArtSize = 82.0;
     private const double MinimumAlbumArtSize = 60.0;
-    private const double WideIconButtonSize = 30.0;
-    private const double CompactIconButtonSize = 30.0;
-    private const double WidePrimaryButtonSize = 42.0;
-    private const double CompactPrimaryButtonSize = 30.0;
+    private const double WideSecondaryButtonSize = 28.0;
+    private const double CompactSecondaryButtonSize = 26.0;
+    private const double WidePlayButtonSize = 44.0;
+    private const double CompactPlayButtonSize = 34.0;
     private bool _isProgressDragging;
     private bool _isProgressHovering;
     private bool _isInlineVolumeRefreshing;
@@ -40,6 +40,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private int _titleMarqueeMeasureVersion;
     private int _artworkTransitionVersion;
     private bool _isDisposed;
+    private bool _isHostWindowVisible;
+    private bool _isHostCompactCollapsed;
     private bool _isMinimalLayout;
     private bool _isRecordLayout;
     private Storyboard? _recordVinylRotationStoryboard;
@@ -214,21 +216,50 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             _titleMarqueeTimer.Stop();
             _titleMarqueeTimer.Tick -= TitleMarqueeTimer_Tick;
             _titleMarqueeTimer = null;
+            PerformanceLogger.RecordTransientUiTimerReleased();
         }
 
+        StopRecordVinylRotation();
+        StopRecordHorizontalVinylRotation();
         ViewModel = null;
     }
 
     public void OnWindowVisibilityChanged(bool visible)
     {
-        if (visible)
+        _isHostWindowVisible = visible;
+        if (visible && !_isHostCompactCollapsed)
         {
             QueueTitleMarqueeUpdate();
+            UpdateRecordVinylRotation();
+            UpdateRecordHorizontalVinylRotation();
         }
         else
         {
             StopTitleMarquee();
+            StopRecordVinylRotation();
+            StopRecordHorizontalVinylRotation();
         }
+    }
+
+    public void OnCompactStateChanged(bool collapsed)
+    {
+        if (_isHostCompactCollapsed == collapsed)
+        {
+            return;
+        }
+
+        _isHostCompactCollapsed = collapsed;
+        if (collapsed || !_isHostWindowVisible)
+        {
+            StopTitleMarquee();
+            StopRecordVinylRotation();
+            StopRecordHorizontalVinylRotation();
+            return;
+        }
+
+        QueueTitleMarqueeUpdate();
+        UpdateRecordVinylRotation();
+        UpdateRecordHorizontalVinylRotation();
     }
 
     internal void BeginResponsiveLayoutTransition(
@@ -448,8 +479,14 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         double densityRatio = Math.Min(widthRatio, heightRatio);
 
         double albumSize = Math.Round(Lerp(MinimumAlbumArtSize, WideAlbumArtSize, densityRatio));
-        double iconButtonSize = Math.Round(Lerp(CompactIconButtonSize, WideIconButtonSize, widthRatio));
-        double primaryButtonSize = Math.Round(Lerp(CompactPrimaryButtonSize, WidePrimaryButtonSize, widthRatio));
+        double secondaryButtonSize = Math.Round(Lerp(
+            CompactSecondaryButtonSize,
+            WideSecondaryButtonSize,
+            widthRatio));
+        double playButtonSize = Math.Round(Lerp(
+            CompactPlayButtonSize,
+            WidePlayButtonSize,
+            widthRatio));
         double contentPadding = Math.Round(Lerp(8, 12, densityRatio));
         double columnSpacing = Math.Round(Lerp(8, 12, widthRatio));
         double rowSpacing = Math.Round(Lerp(4, 8, heightRatio));
@@ -471,11 +508,11 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         TrackInfoGrid.RowSpacing = Math.Round(Lerp(2, 4, heightRatio));
         ControlsPanel.Margin = new Thickness(0, controlsTopMargin, 0, 0);
         ControlsPanel.Spacing = controlsSpacing;
-        SetButtonSize(PlaybackModeButton, iconButtonSize);
-        SetButtonSize(PreviousButton, primaryButtonSize);
-        SetButtonSize(NextButton, primaryButtonSize);
-        SetButtonSize(VolumeButton, iconButtonSize);
-        SetButtonSize(PlayPauseButton, primaryButtonSize);
+        SetButtonSize(PlaybackModeButton, secondaryButtonSize);
+        SetButtonSize(PreviousButton, secondaryButtonSize);
+        SetButtonSize(NextButton, secondaryButtonSize);
+        SetButtonSize(VolumeButton, secondaryButtonSize);
+        SetButtonSize(PlayPauseButton, playButtonSize);
         PlaybackModeButton.CornerRadius = new CornerRadius(5);
         PreviousButton.CornerRadius = new CornerRadius(5);
         NextButton.CornerRadius = new CornerRadius(5);
@@ -503,26 +540,31 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private void ApplyRecordLayoutSizing(double width, double height)
     {
-        // Reuse the Controls-mode button sizing so both modes stay consistent.
         double widthRatio = Math.Clamp(
             (width - MinimumResponsiveWidth) / (WideResponsiveWidth - MinimumResponsiveWidth),
             0.0,
             1.0);
-        double iconButtonSize = Math.Round(Lerp(CompactIconButtonSize, WideIconButtonSize, widthRatio));
-        double primaryButtonSize = Math.Round(Lerp(CompactPrimaryButtonSize, WidePrimaryButtonSize, widthRatio));
+        double secondaryButtonSize = Math.Round(Lerp(
+            CompactSecondaryButtonSize,
+            WideSecondaryButtonSize,
+            widthRatio));
+        double playButtonSize = Math.Round(Lerp(
+            CompactPlayButtonSize,
+            WidePlayButtonSize,
+            widthRatio));
 
-        SetButtonSize(RecordPlaybackModeButton, iconButtonSize);
-        SetButtonSize(RecordPreviousButton, primaryButtonSize);
-        SetButtonSize(RecordPlayPauseButton, primaryButtonSize);
-        SetButtonSize(RecordNextButton, primaryButtonSize);
-        SetButtonSize(RecordVolumeButton, iconButtonSize);
+        SetButtonSize(RecordPlaybackModeButton, secondaryButtonSize);
+        SetButtonSize(RecordPreviousButton, secondaryButtonSize);
+        SetButtonSize(RecordPlayPauseButton, playButtonSize);
+        SetButtonSize(RecordNextButton, secondaryButtonSize);
+        SetButtonSize(RecordVolumeButton, secondaryButtonSize);
         RecordControlsPanel.Spacing = Math.Round(Lerp(4, 10, widthRatio));
 
         // On narrow grids drop the playback-mode button first; volume stays.
         RecordPlaybackModeButton.Visibility = width < 190 ? Visibility.Collapsed : Visibility.Visible;
 
         // Reserve room for the title/artist/progress/controls rows below the disc.
-        double reserved = 108 + primaryButtonSize;
+        double reserved = 108 + playButtonSize;
         double vinylSize = Math.Clamp(Math.Min(width - 24, height - reserved), 64, 230);
         RecordVinylHost.Width = vinylSize;
         RecordVinylHost.Height = vinylSize;
@@ -587,7 +629,9 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private void UpdateRecordVinylRotation()
     {
-        bool shouldRotate = RecordLayout.Visibility == Visibility.Visible &&
+        bool shouldRotate = _isHostWindowVisible &&
+            !_isHostCompactCollapsed &&
+            RecordLayout.Visibility == Visibility.Visible &&
             ViewModel?.IsPlaying == true;
         if (shouldRotate == _isRecordVinylRotating)
         {
@@ -619,19 +663,24 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private void ApplyRecordHorizontalSizing(double width, double height)
     {
-        // Reuse the Controls-mode button sizing so both modes stay consistent.
         double widthRatio = Math.Clamp(
             (width - MinimumResponsiveWidth) / (WideResponsiveWidth - MinimumResponsiveWidth),
             0.0,
             1.0);
-        double iconButtonSize = Math.Round(Lerp(CompactIconButtonSize, WideIconButtonSize, widthRatio));
-        double primaryButtonSize = Math.Round(Lerp(CompactPrimaryButtonSize, WidePrimaryButtonSize, widthRatio));
+        double secondaryButtonSize = Math.Round(Lerp(
+            CompactSecondaryButtonSize,
+            WideSecondaryButtonSize,
+            widthRatio));
+        double playButtonSize = Math.Round(Lerp(
+            CompactPlayButtonSize,
+            WidePlayButtonSize,
+            widthRatio));
 
-        SetButtonSize(RecordHorizontalPlaybackModeButton, iconButtonSize);
-        SetButtonSize(RecordHorizontalPreviousButton, primaryButtonSize);
-        SetButtonSize(RecordHorizontalPlayPauseButton, primaryButtonSize);
-        SetButtonSize(RecordHorizontalNextButton, primaryButtonSize);
-        SetButtonSize(RecordHorizontalVolumeButton, iconButtonSize);
+        SetButtonSize(RecordHorizontalPlaybackModeButton, secondaryButtonSize);
+        SetButtonSize(RecordHorizontalPreviousButton, secondaryButtonSize);
+        SetButtonSize(RecordHorizontalPlayPauseButton, playButtonSize);
+        SetButtonSize(RecordHorizontalNextButton, secondaryButtonSize);
+        SetButtonSize(RecordHorizontalVolumeButton, secondaryButtonSize);
         double controlsSpacing = Math.Round(Lerp(3, 8, widthRatio));
         RecordHorizontalControlsPanel.Spacing = controlsSpacing;
 
@@ -649,7 +698,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
         // Never let the vinyl squeeze the controls: budget the buttons' width first.
         int buttonCount = showPlaybackMode ? 5 : 4;
-        double buttonsWidth = 3 * primaryButtonSize + (buttonCount - 3) * iconButtonSize +
+        double buttonsWidth = playButtonSize + (buttonCount - 1) * secondaryButtonSize +
             (buttonCount - 1) * controlsSpacing;
         double vinylBudget = width - buttonsWidth - padding * 2 - columnSpacing;
         double vinylSize = Math.Clamp(
@@ -683,7 +732,9 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private void UpdateRecordHorizontalVinylRotation()
     {
-        bool shouldRotate = RecordHorizontalLayout.Visibility == Visibility.Visible &&
+        bool shouldRotate = _isHostWindowVisible &&
+            !_isHostCompactCollapsed &&
+            RecordHorizontalLayout.Visibility == Visibility.Visible &&
             ViewModel?.IsPlaying == true;
         if (shouldRotate == _isRecordHorizontalVinylRotating)
         {
@@ -873,9 +924,21 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             nameof(MusicWidgetViewModel.PlaybackState))
         {
             UpdateRecordHorizontalVinylRotation();
-            if (RecordTonearm.Visibility == Visibility.Visible)
+            UpdateRecordVinylRotation();
+            if (_isHostWindowVisible &&
+                !_isHostCompactCollapsed &&
+                RecordTonearm.Visibility == Visibility.Visible)
             {
                 AnimateTonearmForState();
+            }
+
+            if (ViewModel?.IsPlaying == true)
+            {
+                QueueTitleMarqueeUpdate();
+            }
+            else
+            {
+                StopTitleMarquee();
             }
         }
 
@@ -890,6 +953,13 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         }
 
         int version = ++_artworkTransitionVersion;
+        if (!_isHostWindowVisible || _isHostCompactCollapsed)
+        {
+            ResetArtworkVisual(MinimalArtworkImage);
+            ResetArtworkVisual(AlbumArtworkImage);
+            return;
+        }
+
         if (ViewModel?.ThumbnailImage is null)
         {
             ResetArtworkVisual(MinimalArtworkImage);
@@ -965,27 +1035,35 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         }
 
         _titleMarqueeTimer = DispatcherQueue.CreateTimer();
-        _titleMarqueeTimer.Interval = TimeSpan.FromMilliseconds(16);
+        _titleMarqueeTimer.Interval = TimeSpan.FromMilliseconds(33);
         _titleMarqueeTimer.IsRepeating = true;
         _titleMarqueeTimer.Tick += TitleMarqueeTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
     }
 
     private void QueueTitleMarqueeUpdate()
     {
-        if (!IsLoaded)
+        if (!IsLoaded ||
+            !_isHostWindowVisible ||
+            _isHostCompactCollapsed ||
+            ViewModel?.IsPlaying != true)
         {
             return;
         }
 
         int version = ++_titleMarqueeMeasureVersion;
-        _ = DispatcherQueue.TryEnqueue(() => UpdateTitleMarquee(version));
+        StopTitleMarquee();
         _ = RunDeferredTitleMarqueeUpdateAsync(version);
     }
 
     private async Task RunDeferredTitleMarqueeUpdateAsync(int version)
     {
         await Task.Delay(TitleMarqueeDeferredMeasureMs);
-        if (version != _titleMarqueeMeasureVersion || !IsLoaded)
+        if (version != _titleMarqueeMeasureVersion ||
+            !IsLoaded ||
+            !_isHostWindowVisible ||
+            _isHostCompactCollapsed ||
+            ViewModel?.IsPlaying != true)
         {
             return;
         }
@@ -995,7 +1073,10 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private void UpdateTitleMarquee(int version)
     {
-        if (version != _titleMarqueeMeasureVersion)
+        if (version != _titleMarqueeMeasureVersion ||
+            !_isHostWindowVisible ||
+            _isHostCompactCollapsed ||
+            ViewModel?.IsPlaying != true)
         {
             return;
         }
@@ -1050,10 +1131,11 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private void TitleMarqueeTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
         var elements = GetActiveTitleMarqueeElements();
-        double titleWidth = MeasureTitleWidth();
         if (_titleMarqueeDistance <= 0 ||
-            elements.Host.ActualWidth <= 0 ||
-            titleWidth <= elements.Host.ActualWidth + TitleMarqueeOverflowTolerance)
+            !_isHostWindowVisible ||
+            _isHostCompactCollapsed ||
+            ViewModel?.IsPlaying != true ||
+            elements.Host.ActualWidth <= 0)
         {
             StopTitleMarquee();
             return;

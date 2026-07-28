@@ -29,12 +29,12 @@ public static class WeatherCodeMapper
     {
         return code switch
         {
-            0 => isDay ? "\U0001F31E" : "\U0001F319",       // ☀️ Clear sky day / 🌙 night
-            1 => isDay ? "\U0001F31E" : "\U0001F319",       // Mainly clear
+            0 => isDay ? "\u2600\uFE0F" : "\U0001F319",     // ☀️ Clear sky day / 🌙 night
+            1 => isDay ? "\u2600\uFE0F" : "\U0001F319",     // Mainly clear
             2 => isDay ? "\u26C5" : "\U0001F319",           // ⛅ Partly cloudy / 🌙
             3 => "\U0001F325\uFE0F",                          // 🌥️ Overcast
-            45 => "\U0001F32B\uFE0F",                         // 🌫️ Fog
-            48 => "\U0001F32B\uFE0F",                         // 🌫️ Depositing rime fog
+            45 => "\u2601\uFE0F",                              // ☁️ Fog (avoids boxed 🌫️ rendering)
+            48 => "\u2601\uFE0F",                              // ☁️ Depositing rime fog
             51 => "\U0001F326\uFE0F",                         // 🌦️ Light drizzle
             53 => "\U0001F326\uFE0F",                         // 🌦️ Moderate drizzle
             55 => "\U0001F326\uFE0F",                         // 🌦️ Dense drizzle
@@ -57,7 +57,7 @@ public static class WeatherCodeMapper
             95 => "\U0001F329\uFE0F",                         // 🌩️ Thunderstorm
             96 => "\u26C8\uFE0F",                             // ⛈️ Thunderstorm with slight hail
             99 => "\u26C8\uFE0F",                             // ⛈️ Thunderstorm with heavy hail
-            _ => "\U0001F31E"                                  // ☀️ Unknown → sun
+            _ => "\u2600\uFE0F"                               // ☀️ Unknown → sun
         };
     }
 

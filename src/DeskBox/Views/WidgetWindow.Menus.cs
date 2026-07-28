@@ -376,6 +376,7 @@ public sealed partial class WidgetWindow
         flyout.Items.Add(sortSubItem);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(CreateDeleteWidgetMenuItem());
 
         var refreshItem = new MenuFlyoutItem
         {
@@ -470,8 +471,14 @@ public sealed partial class WidgetWindow
         flyout.Items.Add(rename);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(CreateDeleteWidgetMenuItem());
 
-        var deleteWidget = new MenuFlyoutItem
+        return flyout;
+    }
+
+    private MenuFlyoutItem CreateDeleteWidgetMenuItem()
+    {
+        var item = new MenuFlyoutItem
         {
             Text = _localizationService.T("Widget.Tooltip.DeleteWidget"),
             Icon = new FontIcon
@@ -480,10 +487,8 @@ public sealed partial class WidgetWindow
                 Foreground = new SolidColorBrush(Colors.Red)
             }
         };
-        deleteWidget.Click += DeleteWidget_Click;
-        flyout.Items.Add(deleteWidget);
-
-        return flyout;
+        item.Click += DeleteWidget_Click;
+        return item;
     }
 
     private void AddCreateWidgetItems(MenuFlyout flyout)

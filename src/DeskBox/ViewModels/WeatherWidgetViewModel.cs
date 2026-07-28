@@ -25,6 +25,10 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     private bool _isRefreshing;
     private bool _isWidgetActive;
     private bool _refreshWasUserTriggered;
+    private bool _refreshPending;
+    private bool _pendingForceRefresh;
+    private bool _pendingUserTriggeredRefresh;
+    private int _refreshRequestVersion;
 
     // Cached location settings for change detection
     private bool _lastWeatherAutoLocation;
@@ -47,7 +51,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     private bool _isWeekView;
     private string _temperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
     private string _windSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
-    private string _skin = SettingsService.WeatherSkinStandard;
+    private string _skin = SettingsService.WeatherSkinRich;
     private bool _showForecast = true;
     private bool _showSunrise = true;
     private bool _showUvIndex = true;
@@ -60,7 +64,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     // Current weather display values
     private string _currentTemperatureText = "--\u00B0";
     private string _currentDescription = string.Empty;
-    private string _currentEmoji = "\U0001F31E";
+    private string _currentEmoji = "\u2600\uFE0F";
     private string _currentIconGlyph = "\uE706";
     private string _apparentTemperatureText = string.Empty;
     private string _humidityText = string.Empty;
@@ -68,6 +72,11 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     private string _pressureText = string.Empty;
     private string _uvIndexText = string.Empty;
     private string _precipitationText = string.Empty;
+    private string _humidityValueText = string.Empty;
+    private string _windValueText = string.Empty;
+    private string _pressureValueText = string.Empty;
+    private string _uvIndexValueText = string.Empty;
+    private string _precipitationValueText = string.Empty;
     private string _sunriseText = string.Empty;
     private string _sunsetText = string.Empty;
     private string _locationDisplay = string.Empty;
@@ -215,6 +224,36 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         private set => SetProperty(ref _precipitationText, value);
     }
 
+    public string HumidityValueText
+    {
+        get => _humidityValueText;
+        private set => SetProperty(ref _humidityValueText, value);
+    }
+
+    public string WindValueText
+    {
+        get => _windValueText;
+        private set => SetProperty(ref _windValueText, value);
+    }
+
+    public string PressureValueText
+    {
+        get => _pressureValueText;
+        private set => SetProperty(ref _pressureValueText, value);
+    }
+
+    public string UvIndexValueText
+    {
+        get => _uvIndexValueText;
+        private set => SetProperty(ref _uvIndexValueText, value);
+    }
+
+    public string PrecipitationValueText
+    {
+        get => _precipitationValueText;
+        private set => SetProperty(ref _precipitationValueText, value);
+    }
+
     public string SunriseText
     {
         get => _sunriseText;
@@ -300,6 +339,8 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
             if (SetProperty(ref _isWeekView, value))
             {
                 UpdateViewSwitchButton();
+                OnPropertyChanged(nameof(ForecastVisibility));
+                OnPropertyChanged(nameof(WeekForecastVisibility));
             }
         }
     }
@@ -351,12 +392,12 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     {
         "Mini" => Math.Min(26, TextSize + 14),
         "Compact" => Math.Min(34, TextSize + 21),
-        _ => Math.Min(44, TextSize + 28)
+        _ => Math.Min(38, TextSize + 23)
     };
 
     // Emoji font size scales with layout
-    public double CurrentEmojiSize => _layoutMode == "Mini" ? 26 : _layoutMode == "Compact" ? 28 : 32;
-    public double ForecastEmojiSize => _layoutMode == "Expanded" ? 18 : 14;
+    public double CurrentEmojiSize => _layoutMode == "Mini" ? 30 : _layoutMode == "Compact" ? 36 : 48;
+    public double ForecastEmojiSize => _layoutMode == "Expanded" ? 18 : 15;
     public double ForecastHourTextSize => Math.Max(9, TextSize - 3);
     public double ForecastTempTextSize => Math.Max(10, TextSize - 1);
     public double WeekDayLabelTextSize => Math.Max(11, TextSize - 1);
@@ -374,8 +415,8 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     public Visibility MiniPrecipVisibility => !string.IsNullOrEmpty(_precipitationText) ? Visibility.Visible : Visibility.Collapsed;
 
     // Rich skin gradient colors (updated based on weather condition)
-    public Color RichBackdropTopColor { get; private set; } = Color.FromArgb(0xFF, 0x4A, 0x90, 0xD9);
-    public Color RichBackdropBottomColor { get; private set; } = Color.FromArgb(0xFF, 0x74, 0xB9, 0xFF);
+    public Color RichBackdropTopColor { get; private set; } = Color.FromArgb(0xFF, 0x28, 0x5F, 0x8E);
+    public Color RichBackdropBottomColor { get; private set; } = Color.FromArgb(0xFF, 0x3C, 0x76, 0x94);
     public Color RichOverlayColor { get; private set; } = Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF);
 
     // Visibility helpers for settings-driven content
@@ -387,6 +428,10 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     public Visibility HumidityVisibility => _showHumidity ? Visibility.Visible : Visibility.Collapsed;
     public Visibility WindVisibility => _showWind ? Visibility.Visible : Visibility.Collapsed;
     public Visibility PressureVisibility => _showPressure ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PrimaryMetricsVisibility =>
+        _showHumidity || _showWind || _showPrecipitation
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     public Visibility ViewSwitchVisibility => _showForecast ? Visibility.Visible : Visibility.Collapsed;
     public Visibility MiniLayoutVisibility => _layoutMode == "Mini" ? Visibility.Visible : Visibility.Collapsed;
     public Visibility MiniLocationVisibility => !string.IsNullOrEmpty(_locationDisplay) ? Visibility.Visible : Visibility.Collapsed;
@@ -396,28 +441,56 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 
     // Expanded layout: progressive visibility based on available height
     public Visibility ExpandedSunriseVisibility =>
-        _layoutMode == "Expanded" && _showSunrise && _lastAvailableHeight >= 260 ? Visibility.Visible : Visibility.Collapsed;
+        _layoutMode == "Expanded" && _showSunrise && _lastAvailableHeight >= 300 ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility ExpandedHourlyPrecipVisibility =>
         _layoutMode == "Expanded" && _lastAvailableHeight >= 220 ? Visibility.Visible : Visibility.Collapsed;
 
     public double ExpandedHourlyCardHeight =>
-        _lastAvailableHeight >= 280 ? 92 : (_lastAvailableHeight >= 220 ? 80 : 72);
+        _lastAvailableHeight >= 280 ? 92 : (_lastAvailableHeight >= 220 ? 80 : 64);
 
-    public Visibility RichSkinVisibility => _skin == SettingsService.WeatherSkinRich ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ExpandedSecondaryMetricsVisibility =>
+        _layoutMode == "Expanded" &&
+        _lastAvailableHeight >= 300 &&
+        (_showUvIndex || _showPressure)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    public bool UsesRichSkin => _skin == SettingsService.WeatherSkinRich;
+    public Visibility RichSkinVisibility => UsesRichSkin ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>
-    /// When the Rich skin gradient is dark (night, storms, etc.), text should use
-    /// light colors even in light theme mode. This is determined by checking the
-    /// average luminance of the gradient colors.
+    /// Selects the foreground theme that provides the stronger worst-case
+    /// contrast against both ends of the Rich skin gradient.
     /// </summary>
-    public bool RichSkinUsesLightText { get; private set; }
+    public bool RichSkinUsesLightText { get; private set; } = true;
 
-    private static bool IsColorDark(Color c)
+    private static double GetRelativeLuminance(Color color)
     {
-        // Standard luminance formula: 0.299R + 0.587G + 0.114B
-        double luminance = (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
-        return luminance < 0.45;
+        static double ToLinear(byte channel)
+        {
+            double value = channel / 255.0;
+            return value <= 0.04045
+                ? value / 12.92
+                : Math.Pow((value + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * ToLinear(color.R) +
+               0.7152 * ToLinear(color.G) +
+               0.0722 * ToLinear(color.B);
+    }
+
+    private static bool ShouldUseLightText(Color top, Color bottom)
+    {
+        double topLuminance = GetRelativeLuminance(top);
+        double bottomLuminance = GetRelativeLuminance(bottom);
+        double minimumLightContrast = Math.Min(
+            1.05 / (topLuminance + 0.05),
+            1.05 / (bottomLuminance + 0.05));
+        double minimumDarkContrast = Math.Min(
+            (topLuminance + 0.05) / 0.05,
+            (bottomLuminance + 0.05) / 0.05);
+        return minimumLightContrast >= minimumDarkContrast;
     }
 
     // Animation visibility
@@ -445,6 +518,17 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     public string RefreshTooltip => _localizationService.T("Common.Refresh");
 
     public string LoadingText => _localizationService.T("Weather.Loading");
+    public string HumidityLabel => _localizationService.T("Weather.Metric.Humidity");
+    public string WindLabel => _localizationService.T("Weather.Metric.Wind");
+    public string PrecipitationLabel => _localizationService.T("Weather.Metric.Precipitation");
+    public string UvIndexLabel => _localizationService.T("Weather.Metric.UV");
+    public string PressureLabel => _localizationService.T("Weather.Metric.Pressure");
+    public string SunriseLabel => _localizationService.T("Weather.Metric.Sunrise");
+    public string SunsetLabel => _localizationService.T("Weather.Metric.Sunset");
+    public string TodayViewText => _localizationService.T("Weather.View.Today");
+    public string WeekViewText => _localizationService.T("Weather.View.Week");
+    public string DayViewText => _localizationService.T("Weather.View.DayShort");
+    public string WeekViewShortText => _localizationService.T("Weather.View.WeekShort");
 
     // ─── Refresh status toast ───
 
@@ -552,6 +636,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         if (_skin != settings.WeatherSkin)
         {
             _skin = settings.WeatherSkin;
+            OnPropertyChanged(nameof(UsesRichSkin));
             OnPropertyChanged(nameof(RichSkinVisibility));
             OnPropertyChanged(nameof(RainAnimationVisibility));
             OnPropertyChanged(nameof(SnowAnimationVisibility));
@@ -594,6 +679,8 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(HumidityVisibility));
         OnPropertyChanged(nameof(WindVisibility));
         OnPropertyChanged(nameof(PressureVisibility));
+        OnPropertyChanged(nameof(PrimaryMetricsVisibility));
+        OnPropertyChanged(nameof(ExpandedSecondaryMetricsVisibility));
         OnPropertyChanged(nameof(ViewSwitchVisibility));
     }
 
@@ -682,6 +769,17 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(LoadingText));
         OnPropertyChanged(nameof(RefreshTooltip));
+        OnPropertyChanged(nameof(HumidityLabel));
+        OnPropertyChanged(nameof(WindLabel));
+        OnPropertyChanged(nameof(PrecipitationLabel));
+        OnPropertyChanged(nameof(UvIndexLabel));
+        OnPropertyChanged(nameof(PressureLabel));
+        OnPropertyChanged(nameof(SunriseLabel));
+        OnPropertyChanged(nameof(SunsetLabel));
+        OnPropertyChanged(nameof(TodayViewText));
+        OnPropertyChanged(nameof(WeekViewText));
+        OnPropertyChanged(nameof(DayViewText));
+        OnPropertyChanged(nameof(WeekViewShortText));
         UpdateViewSwitchButton();
         if (_weatherData is not null)
         {
@@ -696,7 +794,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 public sealed partial class WeatherDayViewModel : ObservableObject
 {
     public string DayLabel { get; set; } = string.Empty;
-    public string Emoji { get; set; } = "\U0001F31E";
+    public string Emoji { get; set; } = "\u2600\uFE0F";
     public string IconGlyph { get; set; } = "\uE706";
     public string Description { get; set; } = string.Empty;
     public string TempMaxText { get; set; } = string.Empty;
@@ -718,7 +816,7 @@ public sealed partial class WeatherHourViewModel : ObservableObject
     public string HourLabel { get; set; } = string.Empty;
     public string TemperatureText { get; set; } = string.Empty;
     public string PrecipitationText { get; set; } = string.Empty;
-    public string Emoji { get; set; } = "\U0001F31E";
+    public string Emoji { get; set; } = "\u2600\uFE0F";
     public string IconGlyph { get; set; } = "\uE706";
 
     /// <summary>Whether this is the current hour (used for highlight).</summary>

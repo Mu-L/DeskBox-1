@@ -19,8 +19,13 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     private readonly SynchronizationContext? _uiContext;
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _indexRefreshCts;
+    private CancellationTokenSource? _recommendationCts;
+    private readonly object _metadataTaskGate = new();
+    private readonly Dictionary<SearchResultItem, Task> _metadataTasks =
+        new(ReferenceEqualityComparer.Instance);
     private long _searchGeneration;
     private bool _isDisposed;
+    private const int MaxEnrichedSearchResults = 40;
 
     /// <summary>Flat results for the active query, in engine relevance order.</summary>
     private List<SearchResultItem> _allResults = [];
@@ -223,6 +228,10 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task LoadRecommendationsAsync()
     {
+        _recommendationCts?.Cancel();
+        _recommendationCts?.Dispose();
+        _recommendationCts = new CancellationTokenSource();
+        CancellationToken token = _recommendationCts.Token;
         _recentContentItems.Clear();
 
         if (_settingsService.Settings.SearchShowRecommendations)
@@ -230,9 +239,10 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             try
             {
                 var identities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var engineItems = await _searchEngine.GetRecommendationsAsync();
+                var engineItems = await _searchEngine.GetRecommendationsAsync(token);
                 foreach (var recommendation in engineItems.Where(IsApplicationRecommendation))
                 {
+                    token.ThrowIfCancellationRequested();
                     var item = ToResultItem(recommendation);
                     if (identities.Add(Services.SearchResultRanker.GetIdentityKey(item)))
                     {
@@ -244,6 +254,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
                 // remain first because the engine intentionally returns them first.
                 foreach (var recent in _historyService.RecentResults.Where(IsApplicationRecommendation))
                 {
+                    token.ThrowIfCancellationRequested();
                     var item = ToResultItem(recent);
                     if (identities.Add(Services.SearchResultRanker.GetIdentityKey(item)))
                     {
@@ -251,10 +262,19 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
                     }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
             catch (Exception ex)
             {
                 App.Log($"[SearchPopup] Failed to load recommendations: {ex.Message}");
             }
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return;
         }
 
         RebuildEmptyStateItems();
@@ -265,8 +285,13 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         {
             await EnrichResultsAsync(
                 _recentContentItems,
-                CancellationToken.None,
+                token,
                 hideShortcutArrowOverlay: true);
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return;
         }
 
         // Mark the cache timestamp so subsequent popup opens can skip the load
@@ -368,7 +393,9 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
                 response.Elapsed.TotalMilliseconds);
             RebuildTabs();
 
-            _ = EnrichResultsAsync(_allResults, token);
+            _ = EnrichResultsAsync(
+                _allResults.Take(MaxEnrichedSearchResults).ToList(),
+                token);
         }
         catch (OperationCanceledException)
         {
@@ -415,6 +442,70 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             App.Log($"[SearchPopup] Metadata enrichment error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Resolves metadata for a result only when its row is actually realized.
+    /// This keeps large result sets cheap while ensuring rows beyond the initial
+    /// enrichment batch never remain as empty icon placeholders.
+    /// </summary>
+    public Task EnsureResultMetadataAsync(SearchResultItem item)
+    {
+        if (_isDisposed ||
+            item.IconResolved ||
+            item.Kind is not (SearchResultKind.File or SearchResultKind.Folder) ||
+            string.IsNullOrWhiteSpace(item.DetailPath))
+        {
+            return Task.CompletedTask;
+        }
+
+        lock (_metadataTaskGate)
+        {
+            if (_metadataTasks.TryGetValue(item, out var existing))
+            {
+                return existing;
+            }
+
+            Task task = EnrichVisibleResultAsync(item);
+            _metadataTasks[item] = task;
+            _ = task.ContinueWith(
+                _ =>
+                {
+                    lock (_metadataTaskGate)
+                    {
+                        if (_metadataTasks.TryGetValue(item, out var current) &&
+                            ReferenceEquals(current, task))
+                        {
+                            _metadataTasks.Remove(item);
+                        }
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            return task;
+        }
+    }
+
+    private async Task EnrichVisibleResultAsync(SearchResultItem item)
+    {
+        try
+        {
+            CancellationToken token = _searchCts?.Token ?? CancellationToken.None;
+            await _fileMetaService.EnrichAsync([item], token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The row belonged to a superseded query.
+        }
+        catch (ObjectDisposedException)
+        {
+            // The popup closed while the row metadata was being resolved.
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SearchPopup] Visible metadata enrichment error: {ex.Message}");
         }
     }
 
@@ -888,6 +979,31 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         RebuildEmptyStateItems();
     }
 
+    /// <summary>
+    /// Cancels all transient popup work and releases result/icon references while
+    /// the initialized popup shell remains available for a fast reopen.
+    /// </summary>
+    public void OnPopupHidden()
+    {
+        _searchCts?.Cancel();
+        _indexRefreshCts?.Cancel();
+        _recommendationCts?.Cancel();
+        Query = string.Empty;
+        _allResults = [];
+        _emptyStateItems.Clear();
+        _recentContentItems.Clear();
+        CurrentResults.Clear();
+        Tabs.Clear();
+        SelectedItem = null;
+        SelectedTab = null;
+        IsQueryActive = false;
+        IsSearching = false;
+        HasResults = false;
+        HasCurrentResults = false;
+        StatusText = string.Empty;
+        _lastRecommendationLoadUtc = DateTime.MinValue;
+    }
+
     public Task RefreshSearchAsync()
     {
         return string.IsNullOrWhiteSpace(Query)
@@ -1031,7 +1147,19 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         _searchEngine.IndexUpdated -= OnIndexUpdated;
         _indexRefreshCts?.Cancel();
         _indexRefreshCts?.Dispose();
+        _recommendationCts?.Cancel();
+        _recommendationCts?.Dispose();
         _searchCts?.Cancel();
         _searchCts?.Dispose();
+        _allResults = [];
+        _emptyStateItems.Clear();
+        _recentContentItems.Clear();
+        CurrentResults.Clear();
+        Tabs.Clear();
+        lock (_metadataTaskGate)
+        {
+            _metadataTasks.Clear();
+        }
+        HidePopupCallback = null;
     }
 }

@@ -128,11 +128,14 @@ public sealed partial class WeatherWidgetViewModel
         
         ApparentTemperatureText = _localizationService.Format("Weather.FeelsLike", FormatTemperature(current.ApparentTemperature));
         
-        HumidityText = _localizationService.Format("Weather.HumidityLabel", $"{(int)current.Humidity}%");
+        HumidityValueText = $"{(int)current.Humidity}%";
+        HumidityText = _localizationService.Format("Weather.HumidityLabel", HumidityValueText);
         
-        WindText = $"{FormatWindSpeed(current.WindSpeed)} {GetWindDirectionText(current.WindDirection)}";
+        WindValueText = FormatWindSpeed(current.WindSpeed);
+        WindText = $"{WindValueText} {GetWindDirectionText(current.WindDirection)}";
         
-        PressureText = _localizationService.Format("Weather.PressureLabel", $"{(int)current.Pressure} hPa");
+        PressureValueText = $"{(int)current.Pressure} hPa";
+        PressureText = _localizationService.Format("Weather.PressureLabel", PressureValueText);
         
         LocationDisplay = string.IsNullOrWhiteSpace(data.LocationName)
             ? _locationName
@@ -146,13 +149,15 @@ public sealed partial class WeatherWidgetViewModel
             if (data.Daily.UvIndexMax.Count > 0)
             {
                 double uv = data.Daily.UvIndexMax[0];
-                UvIndexText = _localizationService.Format("Weather.UVLabel", $"{uv:0}");
+                UvIndexValueText = $"{uv:0}";
+                UvIndexText = _localizationService.Format("Weather.UVLabel", UvIndexValueText);
             }
         
             if (data.Daily.PrecipitationProbabilityMax.Count > 0)
             {
                 double precip = data.Daily.PrecipitationProbabilityMax[0];
-                PrecipitationText = _localizationService.Format("Weather.PrecipChance", $"{(int)precip}%");
+                PrecipitationValueText = $"{(int)precip}%";
+                PrecipitationText = _localizationService.Format("Weather.PrecipChance", PrecipitationValueText);
             }
 
             if (data.Daily.Sunrise.Count > 0)
@@ -165,11 +170,25 @@ public sealed partial class WeatherWidgetViewModel
                 SunsetText = FormatTime(data.Daily.Sunset[0]);
             }
         }
+        else
+        {
+            DailyForecast.Clear();
+            UvIndexValueText = string.Empty;
+            UvIndexText = string.Empty;
+            PrecipitationValueText = string.Empty;
+            PrecipitationText = string.Empty;
+            SunriseText = string.Empty;
+            SunsetText = string.Empty;
+        }
 
         // Hourly forecast
         if (data.Hourly is not null)
         {
             PopulateHourlyForecast(data.Hourly);
+        }
+        else
+        {
+            HourlyForecast.Clear();
         }
 
         // Update rich skin gradient based on condition
@@ -200,34 +219,32 @@ public sealed partial class WeatherWidgetViewModel
 
     private void UpdateRichSkinColors()
     {
-        // Condition-based gradient colors inspired by premium weather apps
+        // Each Rich gradient stop keeps at least a 4.5:1 contrast ratio against
+        // white text. The same pair is also reused by the collapsed capsule so
+        // both presentations remain visually identical.
         (Color top, Color bottom) = _currentCondition switch
         {
             WeatherCodeMapper.WeatherCondition.Clear when IsDay =>
-                (Color.FromArgb(0xFF, 0x2E, 0x86, 0xDE), Color.FromArgb(0xFF, 0x5A, 0xBF, 0xF3)),  // Sky blue
+                (Color.FromArgb(0xFF, 0x1F, 0x5F, 0x9B), Color.FromArgb(0xFF, 0x2D, 0x72, 0x97)),
             WeatherCodeMapper.WeatherCondition.Clear when !IsDay =>
-                (Color.FromArgb(0xFF, 0x1A, 0x1A, 0x3E), Color.FromArgb(0xFF, 0x2D, 0x35, 0x61)),  // Night dark blue
+                (Color.FromArgb(0xFF, 0x10, 0x19, 0x2E), Color.FromArgb(0xFF, 0x29, 0x3D, 0x69)),
             WeatherCodeMapper.WeatherCondition.Cloudy =>
-                (Color.FromArgb(0xFF, 0x57, 0x60, 0x6F), Color.FromArgb(0xFF, 0x77, 0x8C, 0xA3)),  // Gray
+                (Color.FromArgb(0xFF, 0x3C, 0x52, 0x66), Color.FromArgb(0xFF, 0x52, 0x68, 0x78)),
             WeatherCodeMapper.WeatherCondition.Rain or WeatherCodeMapper.WeatherCondition.Drizzle =>
-                (Color.FromArgb(0xFF, 0x37, 0x47, 0x4F), Color.FromArgb(0xFF, 0x54, 0x6E, 0x7A)),  // Slate blue
+                (Color.FromArgb(0xFF, 0x15, 0x3A, 0x5A), Color.FromArgb(0xFF, 0x35, 0x6B, 0x88)),
             WeatherCodeMapper.WeatherCondition.Snow =>
-                (Color.FromArgb(0xFF, 0x64, 0x7D, 0x8C), Color.FromArgb(0xFF, 0xA5, 0xB4, 0xC4)),  // Light gray-blue
+                (Color.FromArgb(0xFF, 0x4B, 0x69, 0x7A), Color.FromArgb(0xFF, 0x5C, 0x72, 0x7E)),
             WeatherCodeMapper.WeatherCondition.Thunderstorm =>
-                (Color.FromArgb(0xFF, 0x2A, 0x12, 0x3A), Color.FromArgb(0xFF, 0x3D, 0x1B, 0x5E)),  // Dark purple
+                (Color.FromArgb(0xFF, 0x25, 0x21, 0x3E), Color.FromArgb(0xFF, 0x51, 0x4B, 0x74)),
             WeatherCodeMapper.WeatherCondition.Fog =>
-                (Color.FromArgb(0xFF, 0x6E, 0x7B, 0x8B), Color.FromArgb(0xFF, 0x9C, 0xAA, 0xBC)),  // Foggy gray
-            _ => (Color.FromArgb(0xFF, 0x4A, 0x90, 0xD9), Color.FromArgb(0xFF, 0x74, 0xB9, 0xFF))   // Default
+                (Color.FromArgb(0xFF, 0x53, 0x62, 0x6F), Color.FromArgb(0xFF, 0x60, 0x71, 0x7E)),
+            _ => (Color.FromArgb(0xFF, 0x28, 0x5F, 0x8E), Color.FromArgb(0xFF, 0x3C, 0x76, 0x94))
         };
 
         RichBackdropTopColor = top;
         RichBackdropBottomColor = bottom;
 
-        // Determine if the rich skin background is dark enough to need light text.
-        // This handles the case where light mode + night/dark-weather conditions
-        // would result in dark text on a dark background.
-        bool needsLightText = _skin == SettingsService.WeatherSkinRich &&
-            (IsColorDark(top) || IsColorDark(bottom));
+        bool needsLightText = UsesRichSkin && ShouldUseLightText(top, bottom);
         if (RichSkinUsesLightText != needsLightText)
         {
             RichSkinUsesLightText = needsLightText;

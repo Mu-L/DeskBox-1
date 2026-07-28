@@ -343,13 +343,19 @@ public sealed class AdaptiveTrayAnimationController
             // 使用更精确的完成回调时机（考虑动画帧对齐）
             var timer = _dispatcherQueue.CreateTimer();
             timer.Interval = TimeSpan.FromMilliseconds(durationMs + 16);  // +1 frame for 60Hz sync
-            timer.Tick += (s, a) =>
+            timer.IsRepeating = false;
+            timer.Tick += OnGpuAnimationCompletionTimerTick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
+            timer.Start();
+
+            void OnGpuAnimationCompletionTimerTick(DispatcherQueueTimer sender, object args)
             {
+                sender.Stop();
+                sender.Tick -= OnGpuAnimationCompletionTimerTick;
+                PerformanceLogger.RecordTransientUiTimerReleased();
                 CleanupTranslationAnimation();
                 completed?.Invoke();
-                timer.Stop();
-            };
-            timer.Start();
+            }
         }
         catch (Exception ex)
         {

@@ -36,6 +36,7 @@ public sealed partial class QuickCaptureWidgetViewModel
         OnPropertyChanged(nameof(RecentCaptureActionVisibility));
         OnPropertyChanged(nameof(CreatedTimeVisibility));
         await RefreshFromDataAsync(data);
+        IsInitialized = true;
     }
 
     public void RefreshAfterViewReady()

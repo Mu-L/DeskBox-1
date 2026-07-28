@@ -10,6 +10,8 @@ var
   IsMigrationAdminCleanupMode: Boolean;
   MigrationAdminCleanupPath: string;
 
+function PrepareDeskBoxDependencies(var NeedsRestart: Boolean): string; forward;
+
 procedure ExitProcess(ExitCode: Integer);
   external 'ExitProcess@kernel32.dll stdcall';
 
@@ -285,6 +287,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): string;
 var
   ResultCode: Integer;
+  DependencyError: string;
 begin
   Result := '';
 
@@ -304,4 +307,11 @@ begin
   Sleep(2000);
 
   Log('DeskBox process termination completed.');
+
+  if IsMigrationAdminCleanupMode then
+    Exit;
+
+  DependencyError := PrepareDeskBoxDependencies(NeedsRestart);
+  if DependencyError <> '' then
+    Result := DependencyError;
 end;

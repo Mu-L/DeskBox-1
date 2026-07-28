@@ -15,8 +15,33 @@ namespace DeskBox.ViewModels;
 
 public sealed partial class MusicWidgetViewModel
 {
-    private async Task ApplyInfoAsync(MusicSessionInfo? info)
+    private async Task ApplyInfoAsync(MusicSessionInfo? info, int? mediaPropertiesGeneration = null)
     {
+        // A player can raise MediaPropertiesChanged before its new metadata is
+        // readable. Re-read once after the event burst settles and discard the
+        // original snapshot if a newer event arrived while waiting. This keeps
+        // the capsule on the last complete track until the next complete track
+        // is ready, instead of rendering old/partial metadata for a frame.
+        if (mediaPropertiesGeneration is { } expectedGeneration)
+        {
+            await Task.Delay(100);
+            if (_isDisposed || expectedGeneration != Volatile.Read(ref _mediaPropertiesPendingGeneration))
+            {
+                return;
+            }
+
+            MusicSessionInfo? settledInfo = await _musicSessionService.GetCurrentSessionInfoAsync(_preferredSessionId);
+            if (_isDisposed || expectedGeneration != Volatile.Read(ref _mediaPropertiesPendingGeneration))
+            {
+                return;
+            }
+
+            if (settledInfo is not null)
+            {
+                info = settledInfo;
+            }
+        }
+
         if (ShouldDeferEmptyInfo(info))
         {
             ScheduleTransientEmptyInfoRetry();

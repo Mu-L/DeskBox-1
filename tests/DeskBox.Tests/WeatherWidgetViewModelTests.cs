@@ -1,9 +1,23 @@
+using DeskBox.Helpers;
 using DeskBox.ViewModels;
 
 namespace DeskBox.Tests;
 
 public sealed class WeatherWidgetViewModelTests
 {
+    [Theory]
+    [InlineData(0, true, "\u2600\uFE0F")]
+    [InlineData(0, false, "\U0001F319")]
+    [InlineData(45, true, "\u2601\uFE0F")]
+    [InlineData(48, true, "\u2601\uFE0F")]
+    public void WeatherEmoji_UsesUnboxedIcons(
+        int weatherCode,
+        bool isDay,
+        string expectedEmoji)
+    {
+        Assert.Equal(expectedEmoji, WeatherCodeMapper.GetEmoji(weatherCode, isDay));
+    }
+
     [Theory]
     [InlineData(150, 104)]
     [InlineData(168, 116)]
@@ -98,7 +112,7 @@ public sealed class WeatherWidgetViewModelTests
     [Theory]
     [InlineData(300, 290, 92)]
     [InlineData(300, 230, 80)]
-    [InlineData(300, 180, 72)]
+    [InlineData(300, 180, 64)]
     public void ExpandedHourlyCardHeight_AdaptsToAvailableHeight(double width, double height, double expectedCardHeight)
     {
         WeatherWidgetViewModel viewModel = CreateViewModel();
@@ -114,10 +128,10 @@ public sealed class WeatherWidgetViewModelTests
     {
         WeatherWidgetViewModel viewModel = CreateViewModel();
 
-        viewModel.UpdateAvailableSize(300, 290);
+        viewModel.UpdateAvailableSize(320, 310);
         Assert.Equal(Microsoft.UI.Xaml.Visibility.Visible, viewModel.ExpandedSunriseVisibility);
 
-        viewModel.UpdateAvailableSize(300, 230);
+        viewModel.UpdateAvailableSize(300, 290);
         Assert.Equal(Microsoft.UI.Xaml.Visibility.Collapsed, viewModel.ExpandedSunriseVisibility);
     }
 
@@ -131,6 +145,36 @@ public sealed class WeatherWidgetViewModelTests
 
         viewModel.UpdateAvailableSize(300, 180);
         Assert.Equal(Microsoft.UI.Xaml.Visibility.Collapsed, viewModel.ExpandedHourlyPrecipVisibility);
+    }
+
+    [Fact]
+    public void UpdateAvailableSize_DoesNotNotifyWhenResponsiveValuesAreUnchanged()
+    {
+        WeatherWidgetViewModel viewModel = CreateViewModel();
+        viewModel.UpdateAvailableSize(300, 290);
+
+        List<string?> changedProperties = [];
+        viewModel.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName);
+
+        viewModel.UpdateAvailableSize(301, 291);
+
+        Assert.Empty(changedProperties);
+    }
+
+    [Fact]
+    public void UpdateAvailableSize_NotifiesOnlyHeightDerivedValuesThatActuallyChange()
+    {
+        WeatherWidgetViewModel viewModel = CreateViewModel();
+        viewModel.UpdateAvailableSize(300, 290);
+
+        List<string?> changedProperties = [];
+        viewModel.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName);
+
+        viewModel.UpdateAvailableSize(300, 270);
+
+        Assert.DoesNotContain(nameof(WeatherWidgetViewModel.ExpandedSunriseVisibility), changedProperties);
+        Assert.DoesNotContain(nameof(WeatherWidgetViewModel.ExpandedHourlyPrecipVisibility), changedProperties);
+        Assert.Contains(nameof(WeatherWidgetViewModel.ExpandedHourlyCardHeight), changedProperties);
     }
 
     private static WeatherWidgetViewModel CreateViewModel()

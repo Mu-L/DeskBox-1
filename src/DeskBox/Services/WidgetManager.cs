@@ -115,6 +115,11 @@ public sealed partial class WidgetManager
                                      _quickCaptureWidgets.Values.Any(entry => entry.Window.Visible) ||
                                      _contentWidgets.Values.Any(window => window.Visible);
 
+    internal int LoadedWidgetCount =>
+        _widgets.Count + _quickCaptureWidgets.Count + _contentWidgets.Count;
+
+    internal int VisibleWidgetCount => GetLoadedDesktopWindows().Count(window => window.Visible);
+
     public bool IsWidgetWindow(IntPtr hwnd)
     {
         return _widgetWindowHandles.Contains(hwnd);
@@ -799,6 +804,7 @@ public sealed partial class WidgetManager
         _trayBatchAnimationDriver.Cancel();
         if (visible)
         {
+            App.CancelBackgroundMemoryCleanup();
             var candidates = _settingsService.Settings.Widgets
                 .Where(IsSessionCandidate)
                 .ToList();
@@ -890,6 +896,7 @@ public sealed partial class WidgetManager
             StopTrayLayerRestoreMonitor();
             SaveBatchVisibilityState();
             App.LogVerbose($"[TrayBatch] SetAllVisible completed visible=false prepared={windowsToHide.Count}");
+            App.ScheduleBackgroundMemoryCleanup();
         });
 
         return;

@@ -231,6 +231,7 @@ public sealed partial class WidgetManager
                 _ => Math.Max(_settingsService.Settings.DefaultWidgetHeight, 360)
             }
         };
+        ApplyDefaultFeatureWidgetChromeMode(config, kind);
 
         _settingsService.Settings.Widgets.Add(config);
         await _settingsService.SaveAsync();
@@ -716,6 +717,7 @@ public sealed partial class WidgetManager
         config.IsSizeLocked = false;
         config.Metadata ??= [];
         config.Metadata.Clear();
+        ApplyDefaultFeatureWidgetChromeMode(config, kind);
         config.MappedFolderPath = null;
         config.FollowsDefaultStoragePath = false;
         config.ManagedFolderName = null;
@@ -723,6 +725,14 @@ public sealed partial class WidgetManager
         config.SortDescending = false;
         config.Items ??= [];
         config.Items.Clear();
+    }
+
+    internal static void ApplyDefaultFeatureWidgetChromeMode(WidgetConfig config, WidgetKind kind)
+    {
+        if (kind == WidgetKind.Search)
+        {
+            WidgetChromeModeNames.SetOverrideMode(config, WidgetChromeMode.Overlay);
+        }
     }
 
     private void CloseLoadedFeatureWidgetWindows(WidgetKind kind)
@@ -781,10 +791,9 @@ public sealed partial class WidgetManager
 
     private async Task SetContentFeatureWidgetEnabledAsync(WidgetKind kind, bool enabled, bool reveal = true)
     {
-        SetFeatureWidgetEnabledState(kind, enabled);
-
         if (enabled)
         {
+            SetFeatureWidgetEnabledState(kind, true);
             if (reveal)
             {
                 await CreateSingletonContentFeatureWidgetAsync(kind);
@@ -814,6 +823,10 @@ public sealed partial class WidgetManager
         }
 
         HideAndCloseFeatureWidgetAsync(kind);
+        // Close the content window while feature-owned services are still
+        // available. Search content, for example, must unsubscribe from the
+        // exact SearchHistoryService instance before that service is released.
+        SetFeatureWidgetEnabledState(kind, false);
         await _settingsService.SaveAsync();
     }
 
@@ -844,6 +857,10 @@ public sealed partial class WidgetManager
     {
         FeatureWidgetSettings.SetEnabled(_settingsService.Settings, kind, enabled);
         _lastFeatureWidgetEnabledStates[kind] = enabled;
+        if (kind == WidgetKind.Search)
+        {
+            App.Current.SetSearchFeatureEnabled(enabled);
+        }
     }
 
     public void HideAndCloseFeatureWidgetAsync(WidgetKind kind)
@@ -901,6 +918,10 @@ public sealed partial class WidgetManager
         }
 
         _settingsService.SaveDebounced();
+        if (FeatureWidgetSettings.IsFeatureWidget(window.Config.WidgetKind))
+        {
+            App.ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+        }
     }
 
     private async Task<QuickCaptureWidgetWindow> CreateQuickCaptureWidgetFromConfigAsync(

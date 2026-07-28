@@ -241,7 +241,7 @@ public class AppSettings
     public string WidgetCollapseBehavior { get; set; } = "Smart";
 
     /// <summary>Whether widgets are allowed to enter compact capsule mode.</summary>
-    public bool WidgetCapsuleModeEnabled { get; set; } = true;
+    public bool WidgetCapsuleModeEnabled { get; set; }
 
     /// <summary>
     /// How compact and expanded widget widths relate to each other.
@@ -503,7 +503,7 @@ public class AppSettings
     /// <summary>
     /// Weather widget skin/theme. Valid values: <c>"Standard"</c>, <c>"Rich"</c>.
     /// </summary>
-    public string WeatherSkin { get; set; } = "Standard";
+    public string WeatherSkin { get; set; } = "Rich";
 
     /// <summary>
     /// Whether to show the 7-day forecast in the widget.
@@ -548,7 +548,7 @@ public class AppSettings
     // ─── Search Settings ───────────────────────────────────────────────
 
     /// <summary>Whether the search global hotkey is enabled.</summary>
-    public bool SearchHotkeyEnabled { get; set; } = true;
+    public bool SearchHotkeyEnabled { get; set; }
 
     /// <summary>Search hotkey modifier bit flags.</summary>
     public int SearchHotkeyModifiers { get; set; } = (int)HotkeyModifierKeys.Alt;

@@ -93,7 +93,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 private string _selectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
 private string _selectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
 private string _selectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
-private string _selectedWeatherSkin = SettingsService.WeatherSkinStandard;
+private string _selectedWeatherSkin = SettingsService.WeatherSkinRich;
 private string _selectedWeatherDataSource = SettingsService.WeatherDataSourceMsn;
 private int _selectedWeatherRefreshInterval = 60;
     private bool _useSystemAccentColor;

@@ -16,7 +16,9 @@ namespace DeskBox.ViewModels;
 public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 {
     private const int MaxTransientEmptyInfoRetries = 4;
-    private const int ProgressRefreshMs = 500;
+    private const int ExpandedProgressRefreshMs = 500;
+    private const int CompactProgressRefreshMs = 1000;
+    private const int MediaPropertiesSettleDelayMs = 180;
 
     private readonly MusicSessionService _musicSessionService;
     private readonly MusicVolumeService _musicVolumeService;
@@ -54,6 +56,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private int _transientEmptyInfoGeneration;
     private bool _fullRefreshPending;
     private bool _isWindowVisible;
+    private bool _isCompactCollapsed;
     private bool _isSeeking;
     private bool _isChangingPlaybackMode;
     private bool _isChangingSystemVolume;
@@ -103,10 +106,11 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         if (_dispatcherQueue is not null)
         {
             _progressTimer = _dispatcherQueue.CreateTimer();
-            _progressTimer.Interval = TimeSpan.FromMilliseconds(ProgressRefreshMs);
+            _progressTimer.Interval = TimeSpan.FromMilliseconds(
+                ResolveProgressRefreshIntervalMs(isCompactCollapsed: false));
             _progressTimer.IsRepeating = true;
             _progressTimer.Tick += ProgressTimer_Tick;
-
+            PerformanceLogger.RecordTransientUiTimerCreated();
         }
 
         AttachServiceEvents();
@@ -123,6 +127,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             return null;
         }
     }
+
+    internal static int ResolveProgressRefreshIntervalMs(bool isCompactCollapsed) =>
+        isCompactCollapsed ? CompactProgressRefreshMs : ExpandedProgressRefreshMs;
 
     public ObservableCollection<string> SessionDisplayNames { get; } = [];
 
@@ -190,30 +197,21 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         get => _playbackState;
         private set
         {
-        if (SetProperty(ref _playbackState, value))
-        {
-            OnPropertyChanged(nameof(IsPlaying));
-            OnPropertyChanged(nameof(PlayPauseGlyph));
-            OnPropertyChanged(nameof(PlayIconVisibility));
-            OnPropertyChanged(nameof(PauseIconVisibility));
-            OnPropertyChanged(nameof(PlayPauseTooltip));
-            OnPropertyChanged(nameof(StatusText));
+            if (SetProperty(ref _playbackState, value))
+            {
+                OnPropertyChanged(nameof(IsPlaying));
+                OnPropertyChanged(nameof(PlayPauseGlyph));
+                OnPropertyChanged(nameof(PlayIconVisibility));
+                OnPropertyChanged(nameof(PauseIconVisibility));
+                OnPropertyChanged(nameof(PlayPauseTooltip));
+                OnPropertyChanged(nameof(StatusText));
 
-            // Start or stop the progress timer based on playback state.
-            // Also start for Unknown — many players report "Changing" (buffering)
-            // at song start, which maps to Unknown. The audio is already playing
-            // during this window, so the progress bar should keep moving.
-            if (value is MusicPlaybackState.Playing or MusicPlaybackState.Unknown
-                && _isWindowVisible)
-            {
-                _progressTimer?.Start();
+                // Start or stop the progress timer based on playback state.
+                // Also start for Unknown — many players report "Changing" (buffering)
+                // at song start, which maps to Unknown. The audio is already playing
+                // during this window, so the progress bar should keep moving.
+                UpdateProgressTimerState();
             }
-            else
-            {
-                _progressTimer?.Stop();
-            }
-            UpdateMusicTimerDiagnostics();
-        }
         }
     }
 
@@ -549,6 +547,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         {
             _progressTimer.Stop();
             _progressTimer.Tick -= ProgressTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerReleased();
         }
 
         _localizationService.LanguageChanged -= OnLanguageChanged;
@@ -564,6 +563,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         ThumbnailImage = null;
 
         PerformanceLogger.ActiveMusicTimerCount = 0;
+        PerformanceLogger.MusicProgressTimerIntervalMs = 0;
     }
 
     private void RefreshSessionList()
@@ -608,31 +608,39 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     /// to prevent the title/artist from flickering.
     /// </summary>
     private int _mediaPropertiesPendingGeneration;
+    private int? _pendingFullRefreshMediaGeneration;
     private void OnSessionsChanged(object? sender, EventArgs e) => ScheduleFullRefresh();
     private void OnCurrentSessionChanged(object? sender, EventArgs e) => ScheduleFullRefresh();
     private void OnMediaPropertiesChanged(object? sender, EventArgs e)
     {
-        if (_isDisposed) return;
-
-        // Debounce: wait 60ms before refreshing. If another MediaPropertiesChanged
-        // arrives within that window, the previous refresh is superseded.
-        int gen = ++_mediaPropertiesPendingGeneration;
-        if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
-        {
-            _dispatcherQueue.TryEnqueue(() => ScheduleDebouncedMediaRefresh(gen));
-            return;
-        }
-        ScheduleDebouncedMediaRefresh(gen);
+        ScheduleDebouncedMediaRefresh();
     }
 
-    private async void ScheduleDebouncedMediaRefresh(int generation)
+    private void ScheduleDebouncedMediaRefresh()
     {
-        await Task.Delay(60);
+        if (_isDisposed) return;
+
+        // SMTC commonly publishes old, partial, and final metadata snapshots while
+        // changing tracks. Wait for that burst to settle and let the newest request
+        // supersede every earlier one, including the fallback queued by the button.
+        int gen = Interlocked.Increment(ref _mediaPropertiesPendingGeneration);
+        if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
+        {
+            _dispatcherQueue.TryEnqueue(() => _ = RunDebouncedMediaRefreshAsync(gen));
+            return;
+        }
+
+        _ = RunDebouncedMediaRefreshAsync(gen);
+    }
+
+    private async Task RunDebouncedMediaRefreshAsync(int generation)
+    {
+        await Task.Delay(MediaPropertiesSettleDelayMs);
         if (_isDisposed || generation != _mediaPropertiesPendingGeneration)
         {
             return;
         }
-        _ = RefreshAsync();
+        _ = RefreshAsync(generation);
     }
 
     /// <summary>
@@ -741,13 +749,16 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private void ProgressTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
-        if (_isDisposed)
+        if (_isDisposed ||
+            !_isWindowVisible ||
+            PlaybackState is not (MusicPlaybackState.Playing or MusicPlaybackState.Unknown))
         {
+            sender.Stop();
+            UpdateMusicTimerDiagnostics();
             return;
         }
 
-        if (PlaybackState is MusicPlaybackState.Playing or MusicPlaybackState.Unknown &&
-            Duration > TimeSpan.Zero && !_isSeeking)
+        if (Duration > TimeSpan.Zero && !_isSeeking)
         {
             // Extrapolate from the last SMTC-synced position so the progress bar
             // grows smoothly from zero. This also covers the buffering/Changing
@@ -757,17 +768,36 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             double newPosition = Math.Min(Duration.TotalSeconds, _lastSyncedPosition.TotalSeconds + elapsedSinceSync);
             Position = TimeSpan.FromSeconds(newPosition);
         }
-        else if (!IsPlaying && Duration > TimeSpan.Zero && !_isSeeking)
-        {
-            // When paused, keep the progress bar synced with the actual SMTC position
-            // by scheduling a lightweight timeline refresh.
-            _ = RefreshTimelineAsync();
-        }
     }
 
     private void UpdateMusicTimerDiagnostics()
     {
         PerformanceLogger.ActiveMusicTimerCount = _progressTimer?.IsRunning == true ? 1 : 0;
+        PerformanceLogger.MusicProgressTimerIntervalMs = _progressTimer is null
+            ? 0
+            : ResolveProgressRefreshIntervalMs(_isCompactCollapsed);
+    }
+
+    private void UpdateProgressTimerState()
+    {
+        if (_progressTimer is null)
+        {
+            UpdateMusicTimerDiagnostics();
+            return;
+        }
+
+        _progressTimer.Stop();
+        _progressTimer.Interval = TimeSpan.FromMilliseconds(
+            ResolveProgressRefreshIntervalMs(_isCompactCollapsed));
+
+        if (!_isDisposed &&
+            _isWindowVisible &&
+            PlaybackState is (MusicPlaybackState.Playing or MusicPlaybackState.Unknown))
+        {
+            _progressTimer.Start();
+        }
+
+        UpdateMusicTimerDiagnostics();
     }
 
     private void OnLanguageChanged()

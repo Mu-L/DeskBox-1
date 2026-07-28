@@ -1374,6 +1374,8 @@
     "Weather.CitySearch.Placeholder": "Pesquisar cidade…",
     "Weather.View.Today": "Hoje",
     "Weather.View.Week": "Semana",
+    "Weather.View.DayShort": "Dia",
+    "Weather.View.WeekShort": "Semana",
     "Weather.Unit.Celsius": "Celsius",
     "Weather.Unit.Fahrenheit": "Fahrenheit",
     "Weather.Skin.Standard": "Padrão",
@@ -1619,6 +1621,13 @@
     "Weather.PressureLabel": "Pressão {0}",
     "Weather.UVLabel": "UV {0}",
     "Weather.PrecipChance": "Chuva {0}",
+    "Weather.Metric.Humidity": "Umidade",
+    "Weather.Metric.Wind": "Vento",
+    "Weather.Metric.Precipitation": "Chuva",
+    "Weather.Metric.UV": "Índice UV",
+    "Weather.Metric.Pressure": "Pressão",
+    "Weather.Metric.Sunrise": "Nascer do sol",
+    "Weather.Metric.Sunset": "Pôr do sol",
     "Weather.Today": "Hoje",
     "Weather.Tomorrow": "Amanhã",
     "Weather.Wind.N": "N",
@@ -1640,5 +1649,8 @@
     "Widget.Stack.MoveUp": "Mover para cima",
     "Widget.Stack.MoveDown": "Mover para baixo",
     "Widget.Stack.DisableGroup": "Não empilhar este grupo",
-    "Widget.Stack.RestoreGroups": "Restaurar grupos desativados"
+    "Widget.Stack.RestoreGroups": "Restaurar grupos desativados",
+    "Settings.Update.Detail.CurrentVersion": "v{0} · verificado em {1} · {2}",
+    "Widget.FeatureWidget.DisableConfirmNote": "Você pode reativar o recurso nas Configurações. Nenhum dado será perdido.",
+    "Widget.FeatureWidget.DisableConfirmTitle": "Desativar “{0}”"
 }

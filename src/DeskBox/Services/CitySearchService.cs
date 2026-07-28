@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeskBox.Models;
@@ -132,7 +134,8 @@ public sealed class CitySearchService
     /// Returns merged results from the local pre-defined list (instant)
     /// and the Open-Meteo geocoding API (broader coverage).
     /// Results are deduplicated by coordinate proximity.
-    /// When userLat/userLon are provided, results are sorted by distance.
+    /// Text relevance and trusted local matches are always ranked before
+    /// optional proximity, which is used only as a tie-breaker.
     /// </summary>
     public async Task<List<WeatherCitySearchResult>> SearchAsync(
         string query,
@@ -147,6 +150,10 @@ public sealed class CitySearchService
         }
 
         query = query.Trim();
+        if (NormalizeSearchText(query).Length == 0)
+        {
+            return [];
+        }
 
         // P1-1: Allow single CJK character search (e.g. "京" → 北京).
         // Latin queries still require at least 2 characters.
@@ -165,7 +172,11 @@ public sealed class CitySearchService
         List<WeatherGeocodingItem>? apiResults = null;
         try
         {
-            apiResults = await _weatherService.SearchCityAsync(query, language);
+            apiResults = await _weatherService.SearchCityAsync(query, language, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return [];
         }
         catch (Exception ex)
         {
@@ -178,8 +189,9 @@ public sealed class CitySearchService
         }
 
         // 3. Merge & deduplicate
-        var merged = new List<WeatherCitySearchResult>();
+        var merged = new List<CitySearchCandidate>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int sequence = 0;
 
         // Add local results first (they have proper zh/en names)
         foreach (var r in localResults)
@@ -187,7 +199,11 @@ public sealed class CitySearchService
             var key = $"{r.Latitude:F2},{r.Longitude:F2}";
             if (seen.Add(key))
             {
-                merged.Add(r);
+                merged.Add(new CitySearchCandidate(
+                    r,
+                    GetLocalResultRelevance(r, query),
+                    IsLocal: true,
+                    Sequence: sequence++));
             }
         }
 
@@ -196,10 +212,15 @@ public sealed class CitySearchService
         {
             foreach (var item in apiResults)
             {
+                if (!IsValidCoordinate(item.Latitude, item.Longitude))
+                {
+                    continue;
+                }
+
                 var key = $"{item.Latitude:F2},{item.Longitude:F2}";
                 if (seen.Add(key))
                 {
-                    merged.Add(new WeatherCitySearchResult
+                    var result = new WeatherCitySearchResult
                     {
                         Name = item.Name ?? string.Empty,
                         DisplayName = BuildDisplayName(item),
@@ -207,20 +228,31 @@ public sealed class CitySearchService
                         Longitude = item.Longitude,
                         Country = item.Country ?? string.Empty,
                         Admin1 = item.Admin1 ?? string.Empty
-                    });
+                    };
+                    merged.Add(new CitySearchCandidate(
+                        result,
+                        GetResultRelevance(result, query),
+                        IsLocal: false,
+                        Sequence: sequence++));
                 }
             }
         }
 
-        // P1-2: Sort by distance to user location when available.
-        if (userLat.HasValue && userLon.HasValue)
-        {
-            merged = merged
-                .OrderBy(r => HaversineDistance(userLat.Value, userLon.Value, r.Latitude, r.Longitude))
-                .ToList();
-        }
-
-        return merged.Take(10).ToList();
+        return merged
+            .OrderByDescending(candidate => candidate.Relevance)
+            .ThenByDescending(candidate => candidate.IsLocal)
+            .ThenBy(candidate =>
+                userLat.HasValue && userLon.HasValue
+                    ? HaversineDistance(
+                        userLat.Value,
+                        userLon.Value,
+                        candidate.Result.Latitude,
+                        candidate.Result.Longitude)
+                    : double.MaxValue)
+            .ThenBy(candidate => candidate.Sequence)
+            .Take(10)
+            .Select(candidate => candidate.Result)
+            .ToList();
     }
 
     /// <summary>
@@ -271,25 +303,26 @@ public sealed class CitySearchService
 
     // ─── Private helpers ───
 
-    private static List<WeatherCitySearchResult> SearchLocal(string query, bool isEn)
+    internal static List<WeatherCitySearchResult> SearchLocal(string query, bool isEn)
     {
         var lower = query.ToLowerInvariant();
+        string normalizedQuery = NormalizeSearchText(query);
         bool isPinyinInitials = lower.Length >= 2 && lower.All(c => c >= 'a' && c <= 'z');
 
         var matches = Predefined
             .Where(c =>
             {
                 // Search across all name variants
-                return c.Zh.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || c.En.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || c.Pinyin.Contains(lower, StringComparison.OrdinalIgnoreCase)
-                    || c.CountryZh.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || c.CountryEn.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || c.Admin1Zh.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || c.Admin1En.Contains(query, StringComparison.OrdinalIgnoreCase)
+                return NormalizeSearchText(c.Zh).Contains(normalizedQuery, StringComparison.Ordinal)
+                    || NormalizeSearchText(c.En).Contains(normalizedQuery, StringComparison.Ordinal)
+                    || NormalizeSearchText(c.Pinyin).Contains(normalizedQuery, StringComparison.Ordinal)
+                    || NormalizeSearchText(c.CountryZh).Contains(normalizedQuery, StringComparison.Ordinal)
+                    || NormalizeSearchText(c.CountryEn).Contains(normalizedQuery, StringComparison.Ordinal)
+                    || NormalizeSearchText(c.Admin1Zh).Contains(normalizedQuery, StringComparison.Ordinal)
+                    || NormalizeSearchText(c.Admin1En).Contains(normalizedQuery, StringComparison.Ordinal)
                     || (isPinyinInitials && MatchesPinyinInitials(c.Pinyin, lower));
             })
-            .OrderByDescending(c => GetSearchRelevance(c, query, lower))
+            .OrderByDescending(c => GetSearchRelevance(c, normalizedQuery))
             .Take(8)
             .Select(c => ToSearchResult(c, isEn))
             .ToList();
@@ -355,34 +388,107 @@ public sealed class CitySearchService
     /// <summary>
     /// Scores search relevance: exact name match > prefix match > contains > pinyin.
     /// </summary>
-    private static int GetSearchRelevance(PredefinedCity city, string query, string lower)
+    private static int GetSearchRelevance(PredefinedCity city, string normalizedQuery)
     {
-        if (city.Zh.Equals(query, StringComparison.OrdinalIgnoreCase) ||
-            city.En.Equals(query, StringComparison.OrdinalIgnoreCase))
+        string zh = NormalizeSearchText(city.Zh);
+        string en = NormalizeSearchText(city.En);
+        string pinyin = NormalizeSearchText(city.Pinyin);
+
+        if (zh == normalizedQuery || en == normalizedQuery)
         {
-            return 100;
+            return 500;
         }
 
-        if (city.Zh.StartsWith(query, StringComparison.OrdinalIgnoreCase) ||
-            city.En.StartsWith(query, StringComparison.OrdinalIgnoreCase) ||
-            city.Pinyin.StartsWith(lower, StringComparison.OrdinalIgnoreCase))
+        if (pinyin == normalizedQuery)
         {
-            return 80;
+            return 450;
         }
 
-        if (city.Zh.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            city.En.Contains(query, StringComparison.OrdinalIgnoreCase))
+        if (zh.StartsWith(normalizedQuery, StringComparison.Ordinal) ||
+            en.StartsWith(normalizedQuery, StringComparison.Ordinal) ||
+            pinyin.StartsWith(normalizedQuery, StringComparison.Ordinal))
         {
-            return 60;
+            return 350;
         }
 
-        if (city.Pinyin.Contains(lower, StringComparison.OrdinalIgnoreCase))
+        if (zh.Contains(normalizedQuery, StringComparison.Ordinal) ||
+            en.Contains(normalizedQuery, StringComparison.Ordinal) ||
+            pinyin.Contains(normalizedQuery, StringComparison.Ordinal))
         {
-            return 40;
+            return 250;
         }
 
-        return 20;
+        return 100;
     }
+
+    private static int GetResultRelevance(WeatherCitySearchResult result, string query)
+    {
+        string normalizedQuery = NormalizeSearchText(query);
+        string name = NormalizeSearchText(result.Name);
+        string displayName = NormalizeSearchText(result.DisplayName);
+
+        if (name == normalizedQuery)
+        {
+            return 500;
+        }
+
+        if (name.StartsWith(normalizedQuery, StringComparison.Ordinal))
+        {
+            return 350;
+        }
+
+        if (name.Contains(normalizedQuery, StringComparison.Ordinal))
+        {
+            return 250;
+        }
+
+        return displayName.Contains(normalizedQuery, StringComparison.Ordinal) ? 100 : 0;
+    }
+
+    private static int GetLocalResultRelevance(WeatherCitySearchResult result, string query)
+    {
+        PredefinedCity? city = Predefined.FirstOrDefault(candidate =>
+            Math.Abs(candidate.Lat - result.Latitude) < 0.0001 &&
+            Math.Abs(candidate.Lon - result.Longitude) < 0.0001);
+        return city is null
+            ? GetResultRelevance(result, query)
+            : GetSearchRelevance(city, NormalizeSearchText(query));
+    }
+
+    internal static string NormalizeSearchText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        string decomposed = value.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        foreach (char character in decomposed)
+        {
+            UnicodeCategory category = CharUnicodeInfo.GetUnicodeCategory(character);
+            if (category != UnicodeCategory.NonSpacingMark && char.IsLetterOrDigit(character))
+            {
+                builder.Append(char.ToLowerInvariant(character));
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    private static bool IsValidCoordinate(double latitude, double longitude)
+    {
+        return double.IsFinite(latitude) &&
+               double.IsFinite(longitude) &&
+               latitude is >= -90 and <= 90 &&
+               longitude is >= -180 and <= 180;
+    }
+
+    private sealed record CitySearchCandidate(
+        WeatherCitySearchResult Result,
+        int Relevance,
+        bool IsLocal,
+        int Sequence);
 
     private static WeatherCitySearchResult ToSearchResult(PredefinedCity c, bool isEn)
     {

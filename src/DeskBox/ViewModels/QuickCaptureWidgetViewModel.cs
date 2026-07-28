@@ -55,6 +55,8 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public WidgetConfig Config { get; }
 
+    public bool IsInitialized { get; private set; }
+
     public QuickCaptureWidgetViewModel(
         WidgetConfig config,
         QuickCaptureService quickCaptureService,

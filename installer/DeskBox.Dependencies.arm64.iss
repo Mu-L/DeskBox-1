@@ -28,28 +28,83 @@ begin
   Result := StrToIntDef(MajorText, 0) = ExpectedMajor;
 end;
 
-function IsDotNet10RuntimeInstalled: Boolean;
+function IsCompatibleDotNetRuntimeVersion(Value: string): Boolean;
+begin
+  // A preview/RC folder such as 10.0.0-preview.7 cannot satisfy an app that
+  // targets the stable Microsoft.NETCore.App 10.0.0 framework.
+  Result := (Pos('-', Value) = 0) and IsMajorVersion(Value, 10);
+end;
+
 var
-  FindRec: TFindRec;
+  DotNet10RuntimeDetected: Boolean;
+
+procedure DetectDotNet10RuntimeFromOutput(
+  const S: String;
+  const Error, FirstLine: Boolean);
+var
+  LineText: string;
+  VersionText: string;
+  VersionEnd: Integer;
+begin
+  if Error then
+  begin
+    Log('dotnet --list-runtimes error: ' + S);
+    Exit;
+  end;
+
+  LineText := Trim(S);
+  if Pos('Microsoft.NETCore.App ', LineText) <> 1 then
+    Exit;
+
+  VersionText := Copy(LineText, Length('Microsoft.NETCore.App ') + 1, MaxInt);
+  VersionEnd := Pos(' ', VersionText);
+  if VersionEnd > 0 then
+    VersionText := Copy(VersionText, 1, VersionEnd - 1);
+
+  if IsCompatibleDotNetRuntimeVersion(VersionText) then
+    DotNet10RuntimeDetected := True;
+end;
+
+function IsDotNet10RuntimeInstalledAt(BasePath: string): Boolean;
+var
+  DotNetPath: string;
+  ResultCode: Integer;
 begin
   Result := False;
-  if FindFirst(ExpandConstant('{pf}\dotnet\shared\Microsoft.NETCore.App\*'), FindRec) then
-  begin
-    try
-      repeat
-        if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
-        begin
-          if IsMajorVersion(FindRec.Name, 10) then
-          begin
-            Result := True;
-            Exit;
-          end;
-        end;
-      until not FindNext(FindRec);
-    finally
-      FindClose(FindRec);
+  DotNetPath := AddBackslash(BasePath) + 'dotnet\dotnet.exe';
+  if not FileExists(DotNetPath) then
+    Exit;
+
+  DotNet10RuntimeDetected := False;
+  try
+    if not ExecAndLogOutput(
+      DotNetPath,
+      '--list-runtimes',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode,
+      @DetectDotNet10RuntimeFromOutput) then
+    begin
+      Log('DeskBox dependency check could not run: ' + DotNetPath);
+      Exit;
     end;
+  except
+    Log('DeskBox dependency check failed: ' + GetExceptionMessage);
+    Exit;
   end;
+
+  Result := (ResultCode = 0) and DotNet10RuntimeDetected;
+end;
+
+function IsDotNet10RuntimeInstalled: Boolean;
+begin
+  // {autopf} follows the installer architecture (Program Files on x64 and
+  // native ARM64 Program Files on Windows ARM). Keep {pf} as a compatibility
+  // fallback for older Inno Setup installations and custom layouts.
+  Result :=
+    IsDotNet10RuntimeInstalledAt(ExpandConstant('{autopf}')) or
+    IsDotNet10RuntimeInstalledAt(ExpandConstant('{pf}'));
 end;
 
 function IsWindowsAppRuntime22Installed: Boolean;
@@ -74,6 +129,24 @@ begin
 
   Log('DeskBox dependency check: dotnet10Missing=' + IntToStr(Integer(ShouldInstallDotNetRuntime)));
   Log('DeskBox dependency check: windowsAppRuntimeMissing=' + IntToStr(Integer(ShouldInstallWindowsAppRuntime)));
+end;
+
+procedure WaitForDeskBoxDependencies;
+var
+  Attempt: Integer;
+begin
+  // Runtime installers can return just before Windows finishes publishing the
+  // machine-wide registration. Recheck for a few seconds before continuing.
+  for Attempt := 1 to 10 do
+  begin
+    DetectDeskBoxDependencies;
+    if not (ShouldInstallDotNetRuntime or ShouldInstallWindowsAppRuntime) then
+      Exit;
+
+    Sleep(1000);
+  end;
+
+  DetectDeskBoxDependencies;
 end;
 
 function DownloadDependencyWithProgress(
@@ -281,13 +354,10 @@ begin
   DependencyInstallPage := CreateOutputProgressPage(ExpandConstant('{cm:DependencyInstallTitle}'), ExpandConstant('{cm:DependencyInstallSubtitle}'));
 end;
 
-function NextButtonClick(CurPageID: Integer): Boolean;
-var
-  NeedsRestart: Boolean;
+function PrepareDeskBoxDependencies(var NeedsRestart: Boolean): String;
 begin
-  Result := True;
-
-  if (CurPageID <> wpReady) or DependenciesPrepared then
+  Result := '';
+  if DependenciesPrepared then
     Exit;
 
   NeedsRestart := False;
@@ -295,21 +365,28 @@ begin
 
   if not DownloadDeskBoxDependencies then
   begin
-    Result := False;
+    Result := 'DeskBox dependencies could not be downloaded.';
     Exit;
   end;
 
   if not InstallDeskBoxDependencies(NeedsRestart) then
   begin
-    Result := False;
+    Result := 'DeskBox dependencies could not be installed.';
+    Exit;
+  end;
+
+  if NeedsRestart then
+  begin
+    Result := ExpandConstant('{cm:NeedsRestart}');
+    Exit;
+  end;
+
+  WaitForDeskBoxDependencies;
+  if ShouldInstallDotNetRuntime or ShouldInstallWindowsAppRuntime then
+  begin
+    Result := ExpandConstant('{cm:DependencyVerificationFailed}');
     Exit;
   end;
 
   DependenciesPrepared := True;
-
-  if NeedsRestart then
-  begin
-    SuppressibleMsgBox(ExpandConstant('{cm:NeedsRestart}'), mbInformation, MB_OK, IDOK);
-    Result := False;
-  end;
 end;

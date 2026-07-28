@@ -102,7 +102,7 @@ public sealed partial class SearchSettingsSection : UserControl
         settings.SearchIncludeSystemIndex = SearchSystemIndexToggle.IsOn;
         settings.SearchCustomIndexerEnabled = SearchCustomIndexerToggle.IsOn;
         Settings.SaveDebounced();
-        App.Current.SearchEngineService?.SetCustomIndexingEnabled(settings.SearchCustomIndexerEnabled);
+        App.Current.SetSearchCustomIndexingEnabled(settings.SearchCustomIndexerEnabled);
         RefreshIndexStatus();
         UpdateDashboardVisibility();
     }

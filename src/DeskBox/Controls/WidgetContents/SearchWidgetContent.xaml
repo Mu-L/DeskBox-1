@@ -6,144 +6,234 @@
     xmlns:controls="using:DeskBox.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:DeskBox.Models"
     mc:Ignorable="d">
 
     <UserControl.Resources>
-        <!-- Hover style for interactive items in the widget -->
-        <Style x:Key="WidgetItemHoverStyle" TargetType="Grid">
-            <Setter Property="Background" Value="Transparent"/>
+        <Style
+            x:Key="SearchLaunchButtonStyle"
+            BasedOn="{StaticResource DefaultButtonStyle}"
+            TargetType="Button">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+        </Style>
+
+        <Style
+            x:Key="SearchHistoryItemStyle"
+            BasedOn="{StaticResource SubtleButtonStyle}"
+            TargetType="Button">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <Style
+            x:Key="SearchTextActionStyle"
+            BasedOn="{StaticResource SubtleButtonStyle}"
+            TargetType="Button">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Padding" Value="5,2" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <Style
+            x:Key="SearchDeleteButtonStyle"
+            BasedOn="{StaticResource SubtleButtonStyle}"
+            TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
         </Style>
     </UserControl.Resources>
 
-    <Grid x:Name="RootGrid" Padding="12,10">
+    <Grid
+        x:Name="RootGrid"
+        Padding="12,14,12,10"
+        SizeChanged="RootGrid_SizeChanged">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Search Bar Button -->
-        <Grid Grid.Row="0" x:Name="SearchBarButton" Padding="10,8" CornerRadius="6"
-              Background="{ThemeResource ControlFillColorDefaultBrush}"
-              BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-              BorderThickness="1"
-              PointerEntered="SearchBar_PointerEntered"
-              PointerExited="SearchBar_PointerExited"
-              PointerPressed="SearchBar_PointerPressed">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+        <Button
+            x:Name="SearchBarButton"
+            Grid.Row="0"
+            Click="SearchBar_Click"
+            Style="{StaticResource SearchLaunchButtonStyle}">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-            <controls:WidgetTitleIcon x:Name="SearchIcon" Grid.Column="0"
-                                      IconKind="Search" IconSize="12"
-                                      VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <controls:WidgetTitleIcon
+                    x:Name="SearchIcon"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IconKind="Search"
+                    IconSize="12" />
 
-            <TextBlock Grid.Column="1" x:Name="PlaceholderText"
-                       FontSize="12.5"
-                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                       VerticalAlignment="Center"/>
+                <TextBlock
+                    x:Name="PlaceholderText"
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    FontSize="12.5"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextTrimming="CharacterEllipsis" />
 
-            <Border Grid.Column="2" Padding="5,2" CornerRadius="3"
-                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                    VerticalAlignment="Center">
-                <TextBlock x:Name="HotkeyBadge" FontSize="10"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            </Border>
-        </Grid>
+                <TextBlock
+                    x:Name="HotkeyBadge"
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    FontSize="9.5"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </Grid>
+        </Button>
 
-        <!-- Scrollable content area: history + recommendations -->
-        <ScrollViewer Grid.Row="1" x:Name="ContentScrollViewer"
-                      VerticalScrollBarVisibility="Auto"
-                      VerticalScrollMode="Auto"
-                      HorizontalScrollMode="Disabled"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Margin="0,6,0,0">
-            <StackPanel>
-                <!-- Recent Search History -->
-                <ItemsControl x:Name="HistoryList" Visibility="Collapsed">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Margin="0,1" Padding="6,5" CornerRadius="5"
-                                  PointerEntered="HistoryItem_PointerEntered"
-                                  PointerExited="HistoryItem_PointerExited"
-                                  PointerPressed="HistoryItem_PointerPressed"
-                                  Tag="{Binding}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Grid.Column="0" Glyph="&#xE81C;" FontSize="11"
-                                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                          VerticalAlignment="Center" Margin="2,0,8,0"/>
-                                <TextBlock Grid.Column="1" Text="{Binding}" FontSize="11.5"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+        <Grid
+            x:Name="HistoryArea"
+            Grid.Row="1"
+            Margin="0,8,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="24" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-                <!-- Recommendation Cards -->
-                <ItemsControl x:Name="RecommendationsList" Visibility="Collapsed">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Margin="0,1" Padding="6,5" CornerRadius="5"
-                                  PointerEntered="RecItem_PointerEntered"
-                                  PointerExited="RecItem_PointerExited">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Grid.Column="0" Glyph="{Binding Glyph}" FontSize="11"
-                                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                          VerticalAlignment="Center" Margin="2,0,8,0"/>
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="11.5"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+            <TextBlock
+                x:Name="HistorySectionTitle"
+                Margin="3,0,0,0"
+                VerticalAlignment="Center"
+                FontSize="10.5"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
-                <!-- Empty state hint -->
-                <StackPanel x:Name="EmptyStateHint"
-                            Margin="8,18"
-                            Visibility="Visible">
-                    <FontIcon Glyph="&#xE721;" FontSize="22"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                              HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                    <TextBlock x:Name="EmptyStateHintText"
-                               FontSize="11.5"
-                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap"/>
-                </StackPanel>
-            </StackPanel>
-        </ScrollViewer>
+            <ScrollViewer
+                Grid.Row="1"
+                Margin="0,2,0,0"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Auto"
+                VerticalScrollMode="Auto">
+                <Grid>
+                    <ItemsControl
+                        x:Name="HistoryList"
+                        Visibility="Collapsed">
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:SearchHistoryEntry">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        Grid.Column="0"
+                                        AutomationProperties.Name="{x:Bind Query, Mode=OneWay}"
+                                        Tag="{x:Bind Query, Mode=OneWay}"
+                                        Click="HistoryItem_Click"
+                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                        Style="{StaticResource SearchHistoryItemStyle}">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="14" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontSize="9.5"
+                                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                Glyph="&#xE81C;" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                FontSize="11.5"
+                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                Text="{x:Bind Query, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </Grid>
+                                    </Button>
+                                    <Button
+                                        Grid.Column="1"
+                                        AutomationProperties.Name="{x:Bind DeleteLabel, Mode=OneWay}"
+                                        Tag="{x:Bind Query, Mode=OneWay}"
+                                        Margin="2,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Click="DeleteHistoryItem_Click"
+                                        Style="{StaticResource SearchDeleteButtonStyle}"
+                                        ToolTipService.ToolTip="{x:Bind DeleteLabel, Mode=OneWay}">
+                                        <FontIcon
+                                            FontSize="9"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Glyph="&#xE711;" />
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
-        <!-- Footer: clear history (compact, right-aligned). Only visible when
-             there is recent search history to clear. -->
-        <Grid Grid.Row="2" Margin="0,6,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <Button x:Name="ClearHistoryButton" Grid.Column="1"
-                    Padding="8,4" MinHeight="0"
-                    Background="Transparent" BorderThickness="0"
-                    VerticalAlignment="Center" HorizontalAlignment="Right"
-                    Click="ClearHistoryButton_Click"
-                    Visibility="Collapsed">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <FontIcon Glyph="&#xE74D;" FontSize="11"
-                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                              VerticalAlignment="Center"/>
-                    <TextBlock x:Name="ClearHistoryLabel" FontSize="11.5"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
+                    <StackPanel
+                        x:Name="EmptyStateHint"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="6">
+                        <FontIcon
+                            FontSize="10"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE81C;" />
+                        <TextBlock
+                            x:Name="EmptyStateHintText"
+                            VerticalAlignment="Center"
+                            FontSize="10.5"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+
+            <Button
+                x:Name="ClearHistoryButton"
+                Grid.Row="2"
+                Margin="0,3,0,0"
+                HorizontalAlignment="Right"
+                Click="ClearHistoryButton_Click"
+                Style="{StaticResource SearchTextActionStyle}"
+                Visibility="Collapsed">
+                <TextBlock
+                    x:Name="ClearHistoryLabel"
+                    FontSize="10.5"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Button>
         </Grid>
     </Grid>

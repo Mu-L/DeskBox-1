@@ -1,5 +1,167 @@
 # Changelog
 
+## 1.3.4 - 2026-07-29
+
+### English
+
+#### Resource Lifecycle and Memory
+
+- **Feature widgets now release their UI**: Disabling Todo, Quick Capture, Music, Weather, or Search closes the corresponding window and releases its content, view model, subscriptions, timers, and feature-owned services while preserving saved data.
+- **Settings closes instead of hiding**: Closing Settings now destroys the window and releases its WinUI visual tree. Reopening Settings creates a fresh window.
+- **Transient timer ownership fixed**: One-shot capsule timers now detach their handlers when they fire or are cancelled, and music timers, storyboards, and event subscriptions stop with their owning view instead of remaining rooted for the process lifetime.
+- **Guarded idle maintenance**: DeskBox can compact managed/native heaps and trim resident pages after full background inactivity. A separate threshold-based maintenance pass can also run while widgets remain visible but DeskBox is not being used; foreground, pointer, resize, search, indexing, and other active work suppress collection.
+- **Bounded caches**: File icons, decoded bitmaps, and metadata caches now have count and estimated-memory limits, with diagnostics for verifying their size.
+
+#### Search Responsiveness and Index Residency
+
+- **Search follows its feature switch**: Heavy search services are not initialized at startup when Search is disabled. Turning Search off releases its popup, hotkey registration, custom/USN indexes, history/action services, file metadata service, and icon cache.
+- **Popup shell warm-up**: When Search is enabled, DeskBox prepares the empty popup shell during a low-priority idle slice so a desktop-widget click does not have to construct the full WinUI window first.
+- **Open-only widget action**: Repeated search-widget clicks now open or refocus the popup and can no longer toggle it closed while queued pointer events are still arriving.
+- **Window-first loading**: The native popup is shown and focused before recommendations, result icons, or an idle-unloaded index do work. Index restoration starts when the popup is invoked, not after the user types.
+- **Idle index unload**: After five minutes without Search, the large resident custom index is saved and released while lightweight file-system watchers remain active. Changes are collected in a small delta map and reconciled when the popup restores the index.
+- **Lower-cost indexing and ranking**: Persisted indexes are streamed instead of building a second full JSON copy; directory strings are pooled; stale scans are cancellable; fresh indexes can be reused; and searches retain only the highest-ranked candidates.
+- **Visible result fallbacks**: File and folder results without a decoded Shell icon now display an appropriate fallback glyph instead of an empty icon column.
+
+#### Capsule Mode and Window Layering
+
+- **Idle expansion warm-up**: Collapsed widgets pre-measure their expanded layout during an idle UI slice, reducing the first hover expansion hitch without visibly opening every capsule.
+- **First-hover recovery**: Smart hover expansion reads the native cursor position after startup, tray restore, and wake, so a capsule no longer needs an activating click before hover works.
+- **No hover-through between capsules**: Smart expansion verifies the native pointer root window before opening. Moving inside an expanded widget can no longer trigger an overlapping collapsed capsule underneath it or let that capsule steal the foreground layer.
+- **Foreground-safe hover expansion**: If a capsule is still physically above the desktop after a temporary tray/F7 raise has ended, hover expansion reorders it only among DeskBox windows and keeps the current external application in front.
+- **Immediate title-bar collapse**: In click-to-toggle mode, clicking the expanded title bar collapses the widget on the next UI turn without the previous fixed 420 ms delay. Other expansion modes are unchanged.
+
+#### Weather Redesign
+
+- **Responsive information hierarchy**: Mini, compact, and expanded layouts were rebuilt around current conditions, compact metrics, hourly forecast, sunrise/sunset, and a scrollable Week view.
+- **Standard and Rich skins**: Standard follows the selected app theme and capsule surface; Rich uses condition-aware gradients and matching compact presentation. Rich is now the default for new users and after reset.
+- **Contrast across conditions**: Rich-skin text is selected from the weather backdrop rather than blindly following app light/dark mode, while interaction indicators and daylight details use palettes tuned separately for Standard and Rich surfaces.
+- **Cleaner native selection**: Day/Week and current-hour selection use a small system-style bottom indicator without changing label weight or color, and labels no longer clip at compact heights.
+- **Compact sunrise arc**: The previous tall divider was replaced by a lower sunrise/sunset arc with a daylight progress marker.
+- **Reduced continuous effects**: Decorative perpetual weather animations were removed. Only short, state-driven feedback such as the active refresh rotation remains.
+- **Forecast and symbol fixes**: Restored the multi-day forecast in the largest single-day layout and replaced the boxed fog emoji with a compatible cloud symbol.
+- **Late-day hourly continuity**: MSN forecasts now continue into following days when the current day has no remaining hourly rows.
+- **Reliable city selection**: City search ignores spacing, punctuation, and diacritics, ranks exact text matches before proximity, validates coordinates, and queues a fresh request when the previous city's refresh is still running.
+
+#### Music Stability and Efficiency
+
+- **Stable track handoff**: Bursts of media-property events are settled and generation-checked before display, keeping the previous complete track visible until the next complete title and artist are available.
+- **Transient empty-state protection**: Brief empty metadata returned while changing tracks is retried instead of clearing the capsule and rebuilding its text several times.
+- **Cover work is deduplicated**: Covers reload only when the session/track signature changes, decode at a bounded size, and discard stale asynchronous results.
+- **Inactive animation work stops**: Title marquee and record rotation stop while the widget is hidden or collapsed and are restarted only when the expanded surface is visible. The marquee no longer leaves a flashing trailing clone while paused.
+- **Lower-cost progress updates**: Expanded, collapsed, hidden, and non-seekable states use different refresh behavior instead of running the full timeline path continuously.
+- **Control sizing polish**: Play is slightly larger in Controls, Record vertical, and Record horizontal layouts; previous/next, playback mode, and volume use a smaller consistent secondary size.
+- **Empty-cover corners**: Fixed the soft upper corners around the empty album-art surface in Controls mode.
+
+#### File Icons and Launching
+
+- **Sharper large icons**: Executables and shortcuts request higher-resolution Windows Shell icon sources, fixing visibly blurred enlarged icons for apps such as packaged or custom launchers.
+- **Cleaner small icons**: High-quality downsampling reduces the jagged look that appeared after improving large icon extraction.
+- **Stack icon scaling**: Icons inside automatic stacks now follow the configured file-icon size.
+- **Bounded thumbnail memory**: Decoded icon and thumbnail data is evicted by both item count and estimated bytes.
+- **Shortcut launch compatibility**: `.lnk` files use the Windows Shell execution path, avoiding direct-resolution failures and reducing shortcut-specific crashes or long stalls.
+
+#### Widgets and Context Menus
+
+- **Blank-area menus**: Todo and Quick Capture blank content areas now expose the same widget menu as their title bars.
+- **File-widget menu completion**: The file content menu includes Title style and Expansion mode, positioned below Auto stack and above Sort by.
+- **Conditional Paste**: Paste is omitted when the clipboard does not contain content that the file widget can accept, instead of showing a disabled command.
+- **Close from file content**: File and mapped-folder content menus now include the same Close widget command and second-step confirmation used by the title-bar menu, positioned above Refresh.
+
+#### Hotkeys and Product Cleanup
+
+- **Removed low-level keyboard hooks**: Global and Search hotkeys now use standard `RegisterHotKey`/`WM_HOTKEY` handling, avoiding intercepted D-key input, repeats, and latency.
+- **RDP modifier recovery**: Modifier key-up recovery prevents Alt/Ctrl/Shift from remaining logically pressed after a Remote Desktop hotkey.
+- **Correct Search hotkey lifecycle**: The Search hotkey switch refreshes registration correctly and cannot open Search while the Search widget feature is disabled.
+- **Simplified hotkey settings**: Global and Search hotkeys share the top-level Shortcuts & Interaction page in compact expandable cards.
+- **Opt-in first-run behavior**: New installations and reset defaults keep capsule mode and the global Search hotkey off until the user enables them.
+- **Search widget title default**: Newly created Search widgets use floating title chrome by default, matching Weather and Music.
+- **Image widget removed**: The legacy image-gallery widget and its associated services, settings, models, and views were removed.
+
+#### Distribution
+
+- **Version 1.3.4**: Application, file, assembly, MSIX, and installer versions are aligned to 1.3.4.
+- **x64 and ARM64 installers**: Both packages are framework-dependent. Setup checks the matching .NET 10 Runtime and Windows App Runtime 2.2 architecture and downloads only a missing dependency.
+
+### 中文
+
+#### 资源生命周期与内存
+
+- **功能格子关闭后释放界面**：关闭待办、随记、音乐、天气或搜索功能时，会关闭对应窗口并释放内容、ViewModel、订阅、定时器和功能专属服务，同时保留已保存数据。
+- **设置窗口真正关闭**：关闭设置页时不再只隐藏窗口，而是销毁窗口并释放 WinUI 视觉树；下次打开时重新创建。
+- **临时定时器正确释放**：胶囊一次性定时器在触发或取消时会解绑事件；音乐定时器、Storyboard 与订阅跟随所属视图停止，不再被意外保留到进程结束。
+- **受保护的空闲整理**：应用完全进入后台后可整理托管堆、原生堆与工作集；即使格子仍显示，只要 DeskBox 未被操作且达到资源阈值，也可执行另一组保守维护。前台、鼠标、缩放、搜索、索引等活动会阻止回收。
+- **缓存增加上限**：文件图标、解码位图和元数据缓存同时受条目数与估算内存限制，并增加可观测诊断数据。
+
+#### 搜索响应与索引常驻
+
+- **搜索资源与功能开关联动**：搜索未开启时，启动阶段不初始化重型搜索服务；关闭搜索会释放弹窗、快捷键注册、自定义/USN 索引、历史与操作服务、文件元数据服务和图标缓存。
+- **空闲预热弹窗外壳**：搜索开启后，DeskBox 会在低优先级空闲切片中准备空弹窗，点击桌面搜索格子时无需先构造完整 WinUI 窗口。
+- **搜索格子只负责打开**：连续点击搜索格子只会打开或重新聚焦弹窗，不会因为排队到达的指针事件把刚打开的窗口再次关闭。
+- **窗口优先显示**：先显示并聚焦原生弹窗，再加载推荐内容、结果图标和已卸载索引；索引恢复在弹窗唤起时开始，不再等到用户输入文字。
+- **索引空闲卸载**：搜索连续五分钟未使用时，保存并释放常驻的大型自定义索引，但保留轻量文件监听；期间变化进入小型增量表，下次弹窗恢复索引时再合并。
+- **降低索引与排序成本**：索引改为流式写入，避免构造第二份完整 JSON；复用目录字符串；过期扫描可取消；可复用新鲜索引；搜索只保留最高排名候选。
+- **结果图标占位修复**：无法解码 Shell 图标的文件和文件夹会显示对应的后备图标，不再留下空白图标列。
+
+#### 胶囊模式与窗口层级
+
+- **空闲预热展开布局**：收起的格子会在 UI 空闲切片中预先测量展开布局，改善第一次悬停展开的卡顿，不会在桌面上逐个可见展开。
+- **首次悬停恢复**：应用启动、托盘恢复或唤醒后通过原生光标位置同步悬停状态，胶囊无需先点击即可自动展开。
+- **相邻胶囊不再穿透误触**：智能展开前会核对原生指针所属窗口；在已展开格子内操作时，不会触发其下方重叠的收起胶囊，也不会让下方胶囊抢占前台层级。
+- **悬停展开不越过前台应用**：托盘/F7 临时唤起结束后，如果胶囊仍在桌面上方，悬停展开只调整 DeskBox 格子之间的顺序，不会盖住当前外部前台应用。
+- **标题栏立即收起**：点击切换模式下，点击展开格子的标题栏会在下一个 UI 调度立即收起，移除原来的固定 420 ms 延迟；其他展开模式不变。
+
+#### 天气视觉重构
+
+- **重建响应式信息层级**：迷你、紧凑和展开布局围绕当前天气、紧凑指标、逐小时预报、日出日落与可滚动周视图重新组织。
+- **标准与高级皮肤**：标准皮肤跟随应用主题和标准胶囊表面；高级皮肤使用随天气变化的渐变，并同步高级胶囊样式。新用户与恢复默认后使用高级皮肤。
+- **不同天气下保持对比度**：高级皮肤文字根据天气背景亮度选择，不再简单套用应用明暗模式；交互指示与日照细节也分别适配标准/高级表面。
+- **原生化选中状态**：日/周和当前时段仅使用系统风格的底部小横条，不改变文字粗细与颜色，并修复紧凑高度下文字裁切。
+- **收紧日出日落圆弧**：用更低的日照进度圆弧替换原先偏高的分隔视觉，并增加日照位置标记。
+- **降低持续动效开销**：移除持续运行的装饰性天气动效，仅保留刷新中旋转等短时、状态驱动反馈。
+- **预报与符号修复**：恢复最大单日布局中的多日预报，并用兼容性更好的云符号替换会显示成白块的雾 Emoji。
+- **跨日小时预报连续显示**：MSN 当天已没有小时数据时，会继续读取后续预报日，避免日视图下方留白。
+- **城市选择更可靠**：城市搜索忽略空格、标点和重音符号，精确文本优先于距离排序；同时校验坐标，并在旧城市刷新仍运行时排队刷新新城市。
+
+#### 音乐稳定性与效率
+
+- **切歌信息稳定交接**：媒体属性事件集中到达时先等待稳定并核对代次，在下一首完整歌曲名与歌手名可用前保留上一首完整内容。
+- **保护瞬时空数据**：切歌时播放器短暂返回空信息会先重试，不再立刻清空胶囊并让文字重复重排。
+- **封面工作去重**：只有媒体会话/歌曲签名变化时才重新加载封面；限制解码尺寸，并丢弃已经过期的异步结果。
+- **非活跃时停止动画**：音乐格子隐藏或收起后停止跑马灯和唱片旋转，只在展开表面可见时恢复；暂停后跑马灯尾部副本也不再闪烁。
+- **降低进度刷新成本**：展开、收起、隐藏和不可拖动状态使用不同刷新策略，不再持续执行完整时间轴刷新。
+- **控制按钮尺寸统一**：控制、唱片竖排、唱片横排中的播放键略微放大；上一首、下一首、播放模式和音量统一使用更小的辅助尺寸。
+- **空封面圆角修复**：修复控制模式空封面上方左右圆角发虚。
+
+#### 文件图标与启动
+
+- **大图标更清晰**：可执行文件和快捷方式会请求更高分辨率的 Windows Shell 图标源，改善放大后明显模糊的问题。
+- **小图标更平滑**：改进高质量缩小采样，减少大图标优化后小尺寸出现的锯齿。
+- **叠放图标同步缩放**：自动叠放中的图标会跟随文件图标尺寸设置。
+- **缩略图内存有界**：图标和缩略图解码数据会按条目数与估算字节数淘汰。
+- **快捷方式兼容启动**：`.lnk` 使用 Windows Shell 路径打开，避免直接解析启动带来的失败，并降低快捷方式特有的崩溃或长时间等待。
+
+#### 格子与右键菜单
+
+- **空白区域菜单**：待办和随记的空白内容区域现在显示与标题栏一致的格子菜单。
+- **补全文件格子菜单**：文件内容区域新增“标题样式”和“展开方式”，位于“自动叠放”下方、“排序方式”上方。
+- **按需显示粘贴**：剪贴板没有文件格子可接受的内容时，直接隐藏“粘贴”，不再显示置灰项。
+- **内容区域可关闭格子**：文件格子和映射文件夹格子的内容菜单在“刷新”上方加入“关闭格子”，并保留与标题栏一致的二级确认。
+
+#### 热键与功能精简
+
+- **移除低级键盘钩子**：全局与搜索热键改为标准 `RegisterHotKey`/`WM_HOTKEY`，避免 D 键被拦截、重复输入和延迟。
+- **远程桌面修饰键恢复**：热键触发后补充修饰键释放，避免 RDP 环境下 Alt/Ctrl/Shift 保持按下状态。
+- **搜索热键生命周期修复**：搜索热键开关会正确刷新注册，搜索功能关闭时也无法再唤起搜索弹窗。
+- **简化热键设置**：全局和搜索热键统一放到一级“快捷与交互”页面，并使用紧凑的可展开卡片。
+- **首次使用按需开启**：新用户安装和恢复默认后，胶囊模式与搜索全局快捷键默认关闭，由用户主动开启。
+- **搜索格子标题默认值**：新建搜索格子默认使用与天气、音乐一致的悬浮标题样式。
+- **移除图片格子**：删除旧图片画廊格子以及相关服务、设置、模型和界面。
+
+#### 发布
+
+- **版本统一为 1.3.4**：应用、文件、程序集、MSIX 和安装器版本号保持一致。
+- **x64 与 ARM64 安装包**：两个包均不内置运行时；安装器会检测匹配架构的 .NET 10 Runtime 与 Windows App Runtime 2.2，只在缺少时下载。
+
 ## 1.3.3 - 2026-07-24
 
 ### English
@@ -91,44 +253,6 @@
 
 - 在全部五种语言（zh-CN、en-US、ja-JP、de-DE、pt-BR）中新增天气数据源、叠放组管理和搜索清空按钮的翻译字符串。
 - 修复全部语言中托盘图标颜色标签颠倒的问题。
-
-#### Hotkey Fixes & Search Hotkey Improvements
-
-- **Removed low-level keyboard hooks**: Completely removed `WH_KEYBOARD_LL` hooks from both `SearchHotkeyService` and `GlobalHotkeyService`. These hooks intercepted every keystroke of the gesture key (e.g. 'D'), causing stuck keys, repeated characters, and input latency. Now uses only the standard Win32 `RegisterHotKey` + `WM_HOTKEY` mechanism.
-- **RDP Alt-stuck fix**: After a hotkey fires, the app immediately synthesizes key-up events for all modifier keys (Alt, Ctrl, Shift) via `keybd_event`. This clears the "stuck Alt" state that Remote Desktop Protocol (RDP) causes when the modifier key-up event is lost or delayed — previously, every subsequent press of the gesture key (e.g. 'D') was intercepted as Alt+D, making the key appear dead.
-- **Search hotkey toggle bug fix**: Fixed a bug where disabling the search hotkey in Settings had no effect — the `RegisterHotKey` registration remained active because the toggle handler set the setting value before calling `SetEnabled`, causing `SetEnabled`'s early-return guard to skip `RefreshRegistration`.
-- **Search widget hotkey linkage**: When the search feature widget is disabled, the search hotkey can no longer invoke the search popup. The popup toggle method now checks `FeatureWidgetSettings.IsEnabled` before proceeding.
-- **Search hotkey settings relocated**: Moved the search hotkey configuration (enable toggle, custom shortcut capture, reset) from the Search settings section (three-level nested menu) to the top-level "Shortcuts & Interaction" → "Hotkeys" page, alongside the global hotkey settings.
-- **Accordion hotkey cards**: Both the global hotkey and search hotkey settings are now presented as collapsible `SettingsExpander` cards — the toggle is in the header, and the shortcut capture/reset controls are in the expandable body, reducing visual clutter.
-- **Clean exit**: Hotkey services are now properly disposed during `ShutdownApplicationAsync`, ensuring `RegisterHotKey` is unregistered and the subclass is removed before the process exits.
-
-#### Search Settings Polish
-
-- **Removed redundant title**: The "Search" section title in the search settings page (three-level menu) has been removed since the breadcrumb already indicates the section name.
-
-#### Image Widget Removed
-
-- **Album/photo widget deleted**: Completely removed the image gallery widget (ImageWidget) and all associated code: `ImageWidgetData`, `ImageWidgetViewModel`, `ImageWidgetContent`, `ImageSettingsDialog`, `ImageManagerDialog`, `ImagePickerService`, `WallpaperHelper`, `ImageWidgetStore`, `ImageWidgetContentProvider`, `ImageWidgetContentAdapter`, and `BingWallpaperService`. Approximately 3,500 lines of code removed.
-
-### 中文
-
-#### 热键修复与搜索快捷键改进
-
-- **移除低级键盘钩子**：完全移除 `SearchHotkeyService` 和 `GlobalHotkeyService` 中的 `WH_KEYBOARD_LL` 低级键盘钩子。这些钩子会拦截手势键（如 D 键）的每一次键盘事件，导致按键卡住、重复输入和延迟。现在只使用标准的 Win32 `RegisterHotKey` + `WM_HOTKEY` 机制。
-- **远程桌面 Alt 卡键修复**：热键触发后，应用立即通过 `keybd_event` 合成释放所有修饰键（Alt、Ctrl、Shift）事件。这清除了远程桌面协议（RDP）中因修饰键抬起事件丢失或延迟而导致的"Alt 卡住"状态——此前，后续每次按手势键（如 D）都会被系统误判为 Alt+D 并被 `RegisterHotKey` 拦截，导致该按键完全失效。
-- **搜索热键开关 Bug 修复**：修复了在设置中关闭搜索热键后无效的问题——`RegisterHotKey` 注册仍然保持活跃，因为开关处理器在调用 `SetEnabled` 之前就设置了设置值，导致 `SetEnabled` 的早退检查跳过了 `RefreshRegistration`。
-- **搜索格子快捷键联动**：当搜索功能格子被关闭时，搜索快捷键不能再唤起搜索弹窗。弹窗切换方法现在会先检查 `FeatureWidgetSettings.IsEnabled`。
-- **搜索快捷键设置位置调整**：将搜索快捷键配置（开关、自定义快捷键捕获、重置）从搜索设置页（三级嵌套菜单）移至一级菜单「快捷与交互」→「热键」页面，与全局快捷键设置并列。
-- **风琴卡片式热键设置**：全局快捷键和搜索快捷键设置现在以可折叠的 `SettingsExpander` 风琴卡片呈现——开关在外层，快捷键捕获/重置控件在展开内容中，减少视觉杂乱。
-- **退出清理**：热键服务现在在 `ShutdownApplicationAsync` 中被正确 Dispose，确保 `RegisterHotKey` 在进程退出前被注销、子类被移除。
-
-#### 搜索设置打磨
-
-- **移除冗余标题**：搜索设置页（三级菜单）中的"搜索"章节标题已被移除，因为面包屑导航已经指示了当前所在位置。
-
-#### 删除相册功能
-
-- **图片格子完全移除**：完全删除了图片画廊格子（ImageWidget）及其所有关联代码：`ImageWidgetData`、`ImageWidgetViewModel`、`ImageWidgetContent`、`ImageSettingsDialog`、`ImageManagerDialog`、`ImagePickerService`、`WallpaperHelper`、`ImageWidgetStore`、`ImageWidgetContentProvider`、`ImageWidgetContentAdapter`、`BingWallpaperService`。共移除约 3,500 行代码。
 
 ## 1.3.2 - 2026-07-23
 

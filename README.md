@@ -1,183 +1,234 @@
 # DeskBox
 
+**A local-first Windows 11 desktop organizer for files, folders, todos, quick notes, search, weather, and music controls.**
+
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/badge/release-1.3.4-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.4)
+[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#system-requirements)
+[![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#requirements)
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](#build)
 
-DeskBox is a lightweight WinUI 3 desktop organizer for Windows 11. It creates native-feeling desktop widgets for collecting files, mapping folders, keeping todos, capturing quick notes, and controlling music from the desktop. It does not replace the Windows desktop shell; it adds one focused layer for keeping everyday things easier to reach, easier to sort, and easier to bring forward when you need them.
+![DeskBox Windows 11 desktop organizer with file, todo, search, weather, and music widgets](docs/images/brand/readme-hero-1-3-4-option-c-mica.png)
 
-![DeskBox product cover](docs/images/brand/product-cover-en-us-1280x720.png)
+DeskBox adds native-feeling WinUI 3 widgets to the Windows desktop without replacing Explorer or changing how your files work. Create a desktop file organizer backed by a real folder, map an existing folder, keep todos and quick notes close at hand, search the PC, view weather, or control the active media session. Widgets can stay expanded, collapse into compact capsules, or be raised temporarily from the tray or a global hotkey.
+
+## DeskBox at a glance
+
+| | |
+| --- | --- |
+| **Platform** | Windows 11, x64 and ARM64 |
+| **Technology** | C#, WinUI 3, .NET 10, Windows App SDK 2.2 |
+| **Storage model** | Local-first; files, notes, tasks, settings, and layouts remain on the PC |
+| **Languages** | English, Simplified Chinese, Japanese, German, Brazilian Portuguese |
+| **License** | GPL-3.0-only |
 
 ## Download
 
-Download the latest installer from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases).
+Download DeskBox 1.3.4 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.4):
 
-Current release: 1.3.3
+- [DeskBox 1.3.4 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.4/DeskBox_Setup_1.3.4_x64.exe) — most Intel and AMD PCs.
+- [DeskBox 1.3.4 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.4/DeskBox_Setup_1.3.4_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
-- [DeskBox_Setup_1.3.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.3/DeskBox_Setup_1.3.3_x64.exe)
-- [DeskBox_Setup_1.3.3_arm64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.3/DeskBox_Setup_1.3.3_arm64.exe) (Surface, Snapdragon, and other ARM64 PCs)
+The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
-The x64 installer checks for .NET 10 Runtime x64 and Windows App Runtime 2.2 x64; the ARM64 installer checks for the ARM64 variants. If a dependency is missing, the setup flow can download and install it for you.
-
-## What's New In 1.3.3
-
-- **Drag & drop (WeChat + browser)**: Drag files and images directly from WeChat chat windows into grid items. Browser URL drops (images, file links) are automatically downloaded and imported. Files dropped onto folder items transfer into the folder.
-- **Stack group management**: Rename stack groups, reorder them (move up/down), and disable/restore stacking per group — all from the right-click context menu.
-- **Weather data source**: Added MSN Weather (same source as the Windows weather widget) as the default data source, with automatic fallback to Open-Meteo. Selectable in Settings → Weather.
-- **F7 Z-order reliability fix**: Fixed silent restore (state changed but visual didn't) and unreliable cross-process click detection that caused widgets to stay on top or flicker without collapsing.
-- **Search widget refinements**: Added clear-history button; widget now shows only user-opened results (no auto-generated Start Menu shortcuts); live-syncs with search popup.
-- **UI polish**: Fixed swapped tray icon labels (Black/White); hidden collapsed-preview chevron; simplified search placeholder.
-- **Localization**: New strings for all features across zh-CN, en-US, ja-JP, de-DE, pt-BR.
-
-See the full [changelog](CHANGELOG.md).
-
-## Why DeskBox Exists
-
-The Windows desktop has been one of the most-used places on the PC for decades, but for many people it also becomes the easiest place to make a mess. DeskBox exists to keep that familiar desktop useful without turning it into something else. Your desktop stays the Windows desktop, and your files stay normal files; DeskBox simply gives you small, tidy places to collect, map, search, edit, and bring things forward.
-
-The project is intentionally built around native Windows behavior. I like the texture and restraint of WinUI, so DeskBox will keep following native Windows patterns wherever practical: WinUI 3 controls, Windows App SDK, DWM corners, acrylic-style surfaces, tray-first behavior, and conservative dependencies. The installer stays framework-dependent: it checks .NET and Windows App Runtime on the target PC and downloads only a missing dependency.
+> Internet access is needed only when setup must download a missing runtime. Windows may request administrator permission for that dependency installation; DeskBox itself installs for the current user by default.
 
 ## Features
 
-- **Managed desktop widgets**: create file collection widgets backed by a real folder.
-- **Folder mapping**: display an existing folder as a desktop widget without moving its contents.
-- **Todo widget**: keep desktop tasks with due dates, reminders, recurrence, color markers, multiple attachments, configurable views and batch actions.
-- **Quick Capture**: keep reusable text, links, images and files with pinning, paper styles, multiple attachments and focused detail editing.
-- **Music widget**: control playback, switch playback mode, adjust system volume, and use responsive album-art layouts with optional album-color ambience.
-- **Capsule mode**: collapse widgets into compact smart summaries, place them independently or combine them into an ordered desktop bar.
-- **Automatic file stacks**: group related file-widget items by type, date or prioritized custom extension rules without moving the actual files.
-- **Copy into managed storage**: dropped files are copied into the managed widget's real storage folder by default; move remains available in Settings.
-- **Tray controls**: create widgets, map folders, show or hide all widgets, temporarily raise widgets, open managed storage, open Settings, toggle startup launch, and exit.
-- **Global hotkey**: enable a keyboard shortcut for quickly showing, hiding, or raising widgets.
-- **Native file operations**: drag in, drag out, paste, cut, rename, delete, open, reveal in Explorer, use keyboard shortcuts, and preview through a running QuickLook instance with Space.
-- **Appearance controls**: tune native material, intensity, opacity, border color/style, DWM corners, display density, icon/text size, title style and cover ambience.
-- **Data and storage maintenance**: export or restore backups, inspect automatic snapshots and attachment health, change the managed storage root, pin it to Quick Access, and recover orphan folders.
+### File organizer and folder widgets
 
-## Screenshots
+- Create managed file widgets backed by ordinary folders, or map an existing folder without moving it.
+- Use icon or list layouts, title styles, sorting, auto stacks, adjustable icon sizes, and compact display density.
+- Drag files in or out, copy, cut, paste, rename, delete, reveal in Explorer, and open shortcuts through the Windows shell.
+- Drop content from Explorer, WeChat, or a browser; remote image and file URLs can be downloaded and imported.
+- Preview supported files through a running [QuickLook](https://github.com/QL-Win/QuickLook) instance by pressing Space.
 
-DeskBox includes both English and Chinese localization. The screenshots below highlight the Windows 11-style desktop widgets, feature widgets, and Settings.
+### Todo and Quick Capture
 
-### Desktop Overview
+- Track tasks with due dates, reminders, recurrence, color markers, attachments, filters, and batch actions.
+- Save reusable text, links, images, and files in Quick Capture with pinning, paper styles, attachments, and focused editing.
+- Keep attachment files linked to their original location or copy them into DeskBox-managed storage.
 
-| Light theme | Dark theme |
-| --- | --- |
-| ![DeskBox light desktop overview](docs/images/screenshots/en-us/desktop-light.png) | ![DeskBox dark desktop overview](docs/images/screenshots/en-us/desktop-dark.png) |
+### Desktop search
 
-### Core Widgets
+- Search files, folders, applications, settings, and DeskBox content from one popup or search widget.
+- Combine the Windows index with an optional local USN-based file index.
+- Use configurable filters, result limits, history, favorites, and a global search hotkey.
+- The popup shell is warmed during idle time so a widget click can show and focus it first, while recommendations, icons, and an idle-unloaded local index recover in the background.
+- The resident local index can unload after search has been idle while lightweight file watchers continue tracking changes; disabling Search releases the complete search runtime.
 
-| File widget | Todo widget |
-| --- | --- |
-| ![DeskBox file widget](docs/images/screenshots/en-us/file-widget.png) | ![DeskBox todo widget](docs/images/screenshots/en-us/todo-widget.png) |
-| Quick Capture widget | Music widget |
-| ![DeskBox Quick Capture widget](docs/images/screenshots/en-us/quick-capture-widget.png) | ![DeskBox music widget](docs/images/screenshots/en-us/music-widget.png) |
+### Weather and music
+
+- View current conditions plus hourly and multi-day forecasts with MSN Weather and automatic Open-Meteo fallback.
+- Choose a theme-aware Standard weather skin or the richer condition-based skin, with responsive Day and Week views across widget sizes.
+- Control the active Windows media session, playback mode, progress, and system volume from the music widget.
+- Use responsive cover, controls, record, and compact layouts with optional album-color ambience.
+
+### Capsule mode and native Windows behavior
+
+- Collapse widgets into smart capsules with click-to-toggle or hover-to-expand behavior.
+- Show key information, a short summary, or only an icon and title; hide sensitive Todo and Quick Capture text while collapsed.
+- Arrange capsules independently or combine them into a movable, ordered bar.
+- Raise or hide all widgets from the tray or a configurable global hotkey.
+- Customize Mica/acrylic materials, opacity, borders, DWM corners, animation, title bars, icon size, and text size.
+
+## What is new in 1.3.4
+
+- **More predictable resource use:** disabled feature widgets and closed Settings release their visual trees, music and capsule timers detach correctly, caches are bounded, and guarded idle maintenance can reclaim memory even while visible widgets remain on the desktop.
+- **Search opens first:** the popup shell is prewarmed, repeated widget clicks only open or focus it, and the native window paints before recommendations, icons, or an idle-unloaded index reload. Search results also keep a visible fallback icon.
+- **Search releases its resident index:** after five minutes without Search, the large custom index can leave memory while its lightweight watchers continue recording changes; invoking the popup starts restoring it immediately, before the first query.
+- **Weather redesign:** responsive Day/Week layouts, refined Standard and Rich skins, condition-aware contrast, a compact sunrise arc, and clearer forecast hierarchy replace the previous crowded layout. Rich is the new-user and reset default, and continuous decorative weather effects have been removed.
+- **Music stability and efficiency:** track changes wait for complete metadata to avoid title/artist flicker, cover decoding is deduplicated and bounded, marquee/vinyl work stops while hidden or collapsed, and playback versus secondary control sizing is more consistent.
+- **Safer capsule interaction:** expanded layouts prewarm during idle time, first hover works after startup or wake without a click, overlapping capsules no longer react through the active widget, and click-to-toggle widgets collapse immediately from the title bar.
+- **Correct window layering:** hover expansion no longer lets a capsule overtake the current foreground application after a temporary tray/F7 raise.
+- **Sharper icons:** large file and shortcut icons use higher-resolution shell sources, small icons use improved downsampling, and stacked icons follow the configured size.
+- **Stability and menu fixes:** shortcuts launch through a Shell-compatible path; Todo and Quick Capture blank areas expose their title-bar menu; file and mapped-folder content menus add title style, expansion mode, and Close widget with confirmation; Paste appears only when usable.
+- **Hotkey reliability:** low-level keyboard hooks were removed, RDP modifier-key recovery was improved, and the search hotkey follows the search feature switch.
+- **Release packaging:** application and installer versions are aligned to 1.3.4; framework-dependent x64 and ARM64 installers detect and download only missing architecture-matched runtimes. The legacy image-gallery widget has also been removed.
+
+Read the full [changelog](CHANGELOG.md) or the [1.3.4 release notes](docs/releases/v1.3.4.md).
+
+## Current interface
+
+These screenshots come from the 1.3.4 build.
+
+### Desktop widgets and materials
+
+#### Mica
+
+![DeskBox 1.3.4 desktop widgets with Mica material in English](docs/images/screenshots/en-us/云母材质.png)
+
+#### Acrylic
+
+![DeskBox 1.3.4 desktop widgets with Acrylic material in English](docs/images/screenshots/en-us/亚克力材质.png)
 
 ### Settings
 
 | General | Appearance |
 | --- | --- |
-| ![DeskBox general settings](docs/images/screenshots/en-us/settings-general-1-2.png) | ![DeskBox appearance settings](docs/images/screenshots/en-us/settings-appearance-1-2.png) |
-| File widgets | Feature widgets |
-| ![DeskBox file widget settings](docs/images/screenshots/en-us/settings-file-widgets-1-2.png) | ![DeskBox feature widget settings](docs/images/screenshots/en-us/settings-feature-widgets-1-2.png) |
+| ![DeskBox 1.3.4 General settings in English](docs/images/screenshots/en-us/常规.png) | ![DeskBox 1.3.4 Appearance settings in English](docs/images/screenshots/en-us/外观.png) |
 
-### Logo Motion
+| Capsule mode | File widgets |
+| --- | --- |
+| ![DeskBox 1.3.4 Capsule mode settings in English](docs/images/screenshots/en-us/胶囊模式.png) | ![DeskBox 1.3.4 File widget settings in English](docs/images/screenshots/en-us/文件格子.png) |
 
-<p align="center">
-  <img src="docs/motion/deskbox-motion-01-layer-assemble.svg" width="120" alt="DeskBox logo layer assembly animation" />
-</p>
+| Feature widgets | Shortcuts & interaction |
+| --- | --- |
+| ![DeskBox 1.3.4 Feature widget settings in English](docs/images/screenshots/en-us/功能格子.png) | ![DeskBox 1.3.4 Shortcuts and interaction settings in English](docs/images/screenshots/en-us/快捷与交互.png) |
 
-## Requirements
+## Local-first data and privacy
 
-- Windows 11.
-- .NET 10 Runtime x64.
-- Windows App Runtime 2.2 x64.
+DeskBox does not require an account or cloud synchronization. Widget configuration, todos, quick notes, search history, layouts, and managed files are stored locally.
 
-DeskBox is currently tested on Windows 11. Windows 10 may work in some environments, but it is not a validated target.
+Some actions intentionally use the network:
 
-For development, install the .NET 10 SDK. Visual Studio with Windows App SDK workload is recommended.
+- Weather requests use MSN Weather or Open-Meteo.
+- Update checks contact the DeskBox update endpoint or GitHub Releases.
+- Setup downloads .NET or Windows App Runtime only when the selected architecture is missing.
+- A remote URL dragged from a browser is downloaded only when you import it.
 
-## Install And Uninstall
+Capsule privacy mode hides selected text in the collapsed presentation; it is a presentation control, not file encryption.
 
-The installer is built with Inno Setup. It installs DeskBox for the current user by default, lets you change the install folder, and preserves existing app settings, widget configuration, and managed storage content during overwrite installs. Older administrator installs under Program Files are migrated automatically so Explorer drag/drop can keep working normally.
+## System requirements
 
-Startup launch is handled silently through the tray. If DeskBox is already running and Windows starts it again at login, the second startup instance exits without opening Settings.
+- Windows 11 version 22H2 or later.
+- x64 or ARM64 processor matching the installer.
+- .NET 10 Runtime and Windows App Runtime 2.2; setup can install either dependency when missing.
 
-During uninstall, DeskBox stops the running app first and lets you choose whether to remove app-local data under `%LocalAppData%\DeskBox`. Managed storage content is not deleted silently; when cleanup may affect user files, the installer asks before removing anything.
+Windows 10 may work in some environments, but it is not a validated target.
 
-## Build
+## Installation, updates, and removal
 
-Restore and build:
+DeskBox uses an Inno Setup installer and installs for the current user by default. Overwrite installation preserves app settings, widget configuration, and managed storage. Older administrator-level installations under Program Files are migrated to avoid elevated-process drag-and-drop restrictions.
+
+Startup launch is tray-first and silent. If DeskBox is already running, a second startup instance exits instead of opening another settings window.
+
+During uninstall, you can choose whether to remove app-local data under `%LocalAppData%\DeskBox`. DeskBox does not silently delete managed user files; setup asks before any cleanup that could affect them.
+
+## FAQ
+
+### Is DeskBox a Windows desktop replacement?
+
+No. Explorer remains the desktop shell, and files remain normal files and folders. DeskBox adds independently managed widgets above the existing desktop.
+
+### Where does DeskBox store data?
+
+- App settings and widget data: `%LocalAppData%\DeskBox\data`
+- Default managed file storage: `%UserProfile%\DeskBox`
+
+Both locations can be backed up from DeskBox settings.
+
+### Which installer should I choose?
+
+Choose x64 for almost all Intel and AMD Windows PCs. Choose ARM64 for native Windows on ARM devices such as Snapdragon PCs. Check **Settings → System → About → System type** if unsure.
+
+### Why can the installer need the internet?
+
+Release installers do not contain the .NET 10 or Windows App Runtime 2.2 payload. Setup first checks the PC and downloads only a missing architecture-specific dependency.
+
+### Does disabling a feature widget remove its data?
+
+No. Disabling a feature closes its UI and releases runtime resources, while its saved configuration remains available for the next time you enable it.
+
+## Build from source
+
+Development requires the .NET 10 SDK and a Windows 11 environment. Visual Studio with the Windows App SDK workload is recommended.
+
+Restore, test, and build the x64 Debug version:
 
 ```powershell
 dotnet restore .\DeskBox.sln -p:Platform=x64
+dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -v:minimal
 dotnet build .\src\DeskBox\DeskBox.csproj --configuration Debug --no-restore -p:Platform=x64 -v:minimal
 ```
 
-Run tests:
-
-```powershell
-dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -v:minimal
-```
-
-Launch the Debug app:
-
-```powershell
-.\scripts\start-debug.ps1
-```
-
-Create a Release x64 publish output and installer:
+Create framework-dependent Release outputs:
 
 ```powershell
 dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\x64 -v:minimal
-& 'C:\Program Files\Inno Setup 7\ISCC.exe' .\installer\DeskBox.iss
+dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\arm64 -v:minimal
 ```
 
-Installer output:
+With Inno Setup 6 or newer installed, compile both installers:
+
+```powershell
+ISCC.exe .\installer\DeskBox.iss
+ISCC.exe .\installer\DeskBox.arm64.iss
+```
+
+Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.3.3_x64.exe
+Output\DeskBox_Setup_1.3.4_x64.exe
+Output\DeskBox_Setup_1.3.4_arm64.exe
 ```
 
-## Project Structure
+## Project layout
 
 ```text
-src\DeskBox                 WinUI 3 app source
-tests\DeskBox.Tests         core service tests
-installer                   Inno Setup scripts
-docs\images                 README and release images
-docs\motion                 logo motion concepts and SVG assets
-docs\releases               GitHub Releases copy
+src\DeskBox                 WinUI 3 application
+src\DeskBox.Updater         direct-release updater helper
+tests\DeskBox.Tests         service and policy tests
+installer                   x64/ARM64 Inno Setup scripts
+docs\user-guide             product documentation
+docs\images                 README and release imagery
+docs\releases               release copy and test checklists
 ```
 
-## Data Locations
+## Feedback and localization
 
-- Settings are stored under `%LocalAppData%\DeskBox\data`.
-- The default managed storage root is `%UserProfile%\DeskBox`.
-- Generated folders such as `bin`, `obj`, `Output`, `artifacts`, and `TestResults` are ignored by Git.
+DeskBox is currently developed and maintained by a solo developer. External pull requests are not being accepted at this stage so the project can keep a consistent architecture and clear copyright boundaries, but bug reports, feature requests, translations, and UI/UX feedback are welcome through [GitHub Issues](https://github.com/Tianyu199509/DeskBox/issues).
 
-## Contributing
+Special thanks to [@magisph](https://github.com/magisph) for the Brazilian Portuguese localization.
 
-DeskBox is currently developed and maintained entirely by a solo developer. To ensure architectural consistency and maintain clear copyright for future project paths, I am not accepting external Pull Requests (PRs) at this time.
+You can also visit [deskbox.fun](https://deskbox.fun) or use the contact information in the app's About page.
 
-However, community feedback is crucial to the project's growth! If you encounter any bugs, have feature requests, or want to share UI/UX feedback, please feel free to open an [Issue](https://github.com/Tianyu199509/DeskBox/issues). Thank you for your support and understanding!
-
-💕Special thanks to @https://github.com/magisph for providing Brazilian Portuguese localization support.💕
-
-## Feedback
-
-DeskBox is still an early public release. If file drag/drop fails on Windows 10/11, try Settings -> Drag-and-drop diagnostics -> Repair first. If the issue remains, please open an [issue](https://github.com/Tianyu199509/DeskBox/issues) with reproduction details, or follow the WeChat public account shown in the app's About page and leave a message there.
-
-## Author
+## Author and license
 
 - Developer: Tianyu Zhu
 - Repository: <https://github.com/Tianyu199509/DeskBox>
+- License: [GPL-3.0-only](LICENSE)
 
-## License
-
-DeskBox is licensed under [GPL-3.0-only](LICENSE).
-
-Earlier DeskBox versions that were already published under the MIT License
-remain available under the MIT License. This license change is not retroactive;
-see [LICENSE_CHANGE.md](LICENSE_CHANGE.md) for details.
+Earlier DeskBox versions already published under the MIT License remain available under that license. The change is not retroactive; see [LICENSE_CHANGE.md](LICENSE_CHANGE.md).

@@ -67,7 +67,6 @@ public sealed partial class SettingsWindow : Window
     private readonly PointerEventHandler _settingsRootPointerReleasedHandler;
     private bool _isSubclassInstalled;
     private bool _isClosed;
-    private bool _allowClose;
     private bool _isAppearanceSliderDragging;
     private bool _isRecordingHotkey;
     private bool _isRefreshingFeatureWidgetList;
@@ -158,7 +157,6 @@ public sealed partial class SettingsWindow : Window
         _hWnd = WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hWnd);
         _appWindow = AppWindow.GetFromWindowId(windowId);
-        _appWindow.Closing += AppWindow_Closing;
         AppBranding.ApplyWindowIcon(_appWindow);
         InstallMinimumSizeHook();
         ApplyInitialWindowBounds(windowId);
@@ -205,20 +203,7 @@ public sealed partial class SettingsWindow : Window
 
     public void CloseForShutdown()
     {
-        _allowClose = true;
         Close();
-    }
-
-    private void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
-    {
-        if (_allowClose || _isClosed)
-        {
-            return;
-        }
-
-        args.Cancel = true;
-        Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
-        App.ScheduleLightMemoryCleanup();
     }
 
     private void SettingsRoot_Loaded(object sender, RoutedEventArgs e)
@@ -249,7 +234,6 @@ public sealed partial class SettingsWindow : Window
         }
 
         _isClosed = true;
-        _appWindow.Closing -= AppWindow_Closing;
         Closed -= SettingsWindow_Closed;
         SizeChanged -= SettingsWindow_SizeChanged;
         SettingsRoot.Loaded -= SettingsRoot_Loaded;

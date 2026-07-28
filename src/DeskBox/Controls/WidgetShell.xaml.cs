@@ -23,6 +23,8 @@ public sealed partial class WidgetShell : UserControl
     private const double CompactMarqueeOverflowTolerance = 4;
     private const double CompactActionTrailingPadding = 2;
     private const double CompactReorderHandleWidth = 18;
+    private const double CompactParticleCanvasWidth = 400;
+    private const double CompactParticleCanvasHeight = 40;
 
     /// <summary>
     /// Content hosted below the title area. Future widget kinds should provide their body through this slot.
@@ -121,15 +123,15 @@ public sealed partial class WidgetShell : UserControl
     private Storyboard? _compactLiveStoryboard;
     private Storyboard? _compactReorderHandleStoryboard;
     private DispatcherQueueTimer? _compactMarqueeDelayTimer;
-    private DispatcherQueueTimer? _compactMarqueeFrameTimer;
+    private Storyboard? _compactMarqueeStoryboard;
+    private TranslateTransform? _compactMarqueeTransform;
     private TranslateTransform? _rightButtonsTransform;
     private TextBlock? _compactMarqueePrimary;
     private TextBlock? _compactMarqueeClone;
     private Canvas? _compactMarqueeCanvas;
     private FrameworkElement? _compactMarqueeViewport;
-    private double _compactMarqueeDistance;
-    private DateTimeOffset _compactMarqueeStartedAt;
     private WidgetCompactPresentation? _compactPresentation;
+    private IWidgetContent? _hostedContent;
     private IWidgetResponsiveLayoutContent? _responsiveLayoutContent;
     private bool _isResponsiveLayoutTransitionActive;
     private double _responsiveTargetContentWidth;
@@ -227,11 +229,15 @@ public sealed partial class WidgetShell : UserControl
             ApplyCompactAdaptiveLayout();
             ApplyFullBleedOverlayTheme();
             QueueCompactMarquee();
+            RestartCompactVisualTimers();
         };
         ActualThemeChanged += (_, _) => ApplyFullBleedOverlayTheme();
         Unloaded += (_, _) =>
         {
             StopCompactMarquee();
+            ReleaseCompactMarqueeDelayTimer();
+            StopCompactVisualTimers();
+            StopCompactVinylRotation();
             _compactLiveStoryboard?.Stop();
         };
     }
@@ -368,8 +374,17 @@ public sealed partial class WidgetShell : UserControl
 
     public void SetContent(IWidgetContent content)
     {
+        _hostedContent = content;
         _responsiveLayoutContent = content as IWidgetResponsiveLayoutContent;
         ShellContent = content.View;
+        content.OnCompactStateChanged(_isCollapsed);
+    }
+
+    public void ClearContent()
+    {
+        _hostedContent = null;
+        _responsiveLayoutContent = null;
+        ShellContent = null;
     }
 
     public void BeginResponsiveLayoutTransition(
@@ -426,6 +441,7 @@ public sealed partial class WidgetShell : UserControl
         ResetCompactTransitionVisuals();
         bool stateChanged = _isCollapsed != collapsed;
         _isCollapsed = collapsed;
+        _hostedContent?.OnCompactStateChanged(collapsed);
         if (stateChanged)
         {
             ResetCompactInteractionRegions();
@@ -447,14 +463,87 @@ public sealed partial class WidgetShell : UserControl
         if (collapsed)
         {
             QueueCompactMarquee();
+            RestartCompactVisualTimers();
         }
         else
         {
             StopCompactMarquee();
-            StopParticles();
-            StopBottomGlow();
-            StopBreathBorder();
-            StopEdgeGlowPulse();
+            StopCompactVisualTimers();
+            StopCompactVinylRotation();
+        }
+    }
+
+    public bool WarmCompactExpansionLayout(
+        double targetWindowWidth,
+        double targetWindowHeight,
+        double expandedOuterRadius,
+        double compactOuterRadius,
+        double compactInnerRadius,
+        double compactMediaRadius,
+        string contentMode)
+    {
+        if (!_isCollapsed ||
+            _isCompactTransitionActive ||
+            ShellContent is null ||
+            !double.IsFinite(targetWindowWidth) ||
+            !double.IsFinite(targetWindowHeight) ||
+            targetWindowWidth <= 0 ||
+            targetWindowHeight <= 0)
+        {
+            return false;
+        }
+
+        bool prepared = false;
+        try
+        {
+            BeginResponsiveLayoutTransition(
+                isCollapsing: false,
+                targetWindowWidth,
+                targetWindowHeight);
+            prepared = PrepareCompactTransition(
+                collapsed: false,
+                expandedOuterRadius,
+                compactOuterRadius,
+                compactInnerRadius,
+                compactMediaRadius);
+            if (!prepared)
+            {
+                return false;
+            }
+
+            // The compact layer remains fully opaque while the expanded title and
+            // body are measured at their real target size behind it. This realizes
+            // templates and performs the first expensive XAML layout without moving
+            // or resizing the native window.
+            double titleHeight = IsOverlayChromeMode
+                ? 0
+                : _titleBarRowHeight.GridUnitType == GridUnitType.Pixel
+                    ? Math.Max(0, _titleBarRowHeight.Value)
+                    : Math.Max(0, TitleBarGrid.ActualHeight);
+            double contentHeight = Math.Max(1, targetWindowHeight - titleHeight);
+            var titleSize = new Windows.Foundation.Size(targetWindowWidth, titleHeight);
+            var contentSize = new Windows.Foundation.Size(targetWindowWidth, contentHeight);
+
+            if (titleHeight > 0 && TitleBarGrid.Visibility == Visibility.Visible)
+            {
+                TitleBarGrid.Measure(titleSize);
+                TitleBarGrid.Arrange(new Windows.Foundation.Rect(0, 0, titleSize.Width, titleSize.Height));
+            }
+
+            ShellContentPresenter.Measure(contentSize);
+            ShellContentPresenter.Arrange(
+                new Windows.Foundation.Rect(0, 0, contentSize.Width, contentSize.Height));
+
+            return ShellContentPresenter.ActualWidth > 0 &&
+                ShellContentPresenter.ActualHeight > 0;
+        }
+        finally
+        {
+            CompleteResponsiveLayoutTransition();
+            if (prepared || _isCompactTransitionActive || !_isCollapsed)
+            {
+                CompleteCompactTransition(collapsed: true, contentMode);
+            }
         }
     }
 
@@ -595,9 +684,59 @@ public sealed partial class WidgetShell : UserControl
     public void SetCompactPresentation(WidgetCompactPresentation presentation)
     {
         WidgetCompactPresentation? previous = _compactPresentation;
-        bool textChanged = previous is not null &&
-            (!string.Equals(previous.Title, presentation.Title, StringComparison.Ordinal) ||
-             !string.Equals(previous.Summary, presentation.Summary, StringComparison.Ordinal));
+        if (previous == presentation)
+        {
+            return;
+        }
+
+        if (previous is not null)
+        {
+            WidgetCompactPresentation previousWithCurrentProgress = previous with
+            {
+                Progress = presentation.Progress,
+                IsProgressIndeterminate = presentation.IsProgressIndeterminate,
+                MusicProgress = presentation.MusicProgress
+            };
+            if (previousWithCurrentProgress == presentation)
+            {
+                bool liveProgressChanged =
+                    previous.Progress != presentation.Progress ||
+                    previous.IsProgressIndeterminate != presentation.IsProgressIndeterminate;
+                bool musicProgressChanged = previous.MusicProgress != presentation.MusicProgress;
+
+                _compactPresentation = presentation;
+                if (liveProgressChanged)
+                {
+                    ApplyCompactLiveState();
+                }
+
+                if (musicProgressChanged)
+                {
+                    // The music ViewModel advances every 500 ms. Once the bar has
+                    // been initialized, a progress-only update needs one transform
+                    // write instead of rebuilding text, brushes, icons and effects.
+                    if (previous.MusicProgress.HasValue &&
+                        presentation.MusicProgress is { } musicProgress)
+                    {
+                        CompactMusicProgressTransform.ScaleX =
+                            Math.Clamp(musicProgress, 0, 1);
+                    }
+                    else
+                    {
+                        ApplyCompactMusicProgress();
+                    }
+                }
+
+                return;
+            }
+        }
+
+        bool textChanged = previous is null ||
+            !string.Equals(previous.Title, presentation.Title, StringComparison.Ordinal) ||
+            !string.Equals(previous.Summary, presentation.Summary, StringComparison.Ordinal);
+        bool musicPlaybackChanged = previous is not null &&
+            presentation.ShowVinyl &&
+            previous.IsPlaying != presentation.IsPlaying;
         bool liveStateChanged = previous is not null &&
             !string.IsNullOrWhiteSpace(presentation.LiveStateKey) &&
             !string.Equals(previous.LiveStateKey, presentation.LiveStateKey, StringComparison.Ordinal);
@@ -608,6 +747,14 @@ public sealed partial class WidgetShell : UserControl
             previous.UseFullBleedBackground != presentation.UseFullBleedBackground ||
             !string.IsNullOrWhiteSpace(previous.EmojiIcon) != !string.IsNullOrWhiteSpace(presentation.EmojiIcon) ||
             string.IsNullOrWhiteSpace(previous.Summary) != string.IsNullOrWhiteSpace(presentation.Summary);
+
+        // Tear down the previous moving canvas before replacing either text.
+        // Otherwise one frame can render the new string with the old string's
+        // width/translation, which is visible as a flash and small position jump.
+        if (textChanged || musicPlaybackChanged && !presentation.IsPlaying)
+        {
+            StopCompactMarquee();
+        }
 
         _compactPresentation = presentation;
         CompactTitleText.Text = presentation.Title;
@@ -697,6 +844,7 @@ public sealed partial class WidgetShell : UserControl
         CompactPlayPauseIcon.Glyph = presentation.IsPlaying ? "\uE769" : "\uE102";
         ApplyCompactActionLabels(presentation.IsPlaying);
         UpdateCompactVinylRotation(showVinyl && presentation.IsPlaying);
+        ApplyCompactForegroundTheme(presentation);
 
         // Badge
         bool hasBadge = !string.IsNullOrWhiteSpace(presentation.BadgeText);
@@ -725,9 +873,8 @@ public sealed partial class WidgetShell : UserControl
             ApplyCompactAdaptiveLayout();
         }
 
-        if (textChanged)
+        if (textChanged || musicPlaybackChanged)
         {
-            StopCompactMarquee();
             QueueCompactMarquee();
         }
 
@@ -1184,15 +1331,18 @@ public sealed partial class WidgetShell : UserControl
 
     private void StartCompactLiveIndeterminate(bool isFullBleed)
     {
-        StopCompactLiveIndeterminate();
-
         _compactLiveIndeterminatePhase = 0;
-        double segment = isFullBleed ? 0.22 : 0.30;
+        _compactLiveIndeterminateSegment = isFullBleed ? 0.22 : 0.30;
 
         // Show the segment right away so the bar is visible from the very first
         // frame, even before the timer fires its first tick.
-        CompactLiveProgressTransform.ScaleX = segment;
+        CompactLiveProgressTransform.ScaleX = _compactLiveIndeterminateSegment;
         CompactLiveProgressTransform.TranslateX = 0;
+
+        if (_compactLiveIndeterminateTimer is not null)
+        {
+            return;
+        }
 
         // Drive the sweep directly with a DispatcherQueue timer. This is not a
         // XAML Storyboard, so it is not affected by the OS "Show animations"
@@ -1202,64 +1352,93 @@ public sealed partial class WidgetShell : UserControl
         // for the entire Duration-unknown window (e.g. music first ~40 s).
         _compactLiveIndeterminateTimer = DispatcherQueue.CreateTimer();
         _compactLiveIndeterminateTimer.Interval = TimeSpan.FromMilliseconds(40);
-        _compactLiveIndeterminateTimer.Tick += (_, _) =>
-        {
-            _compactLiveIndeterminatePhase += 0.035;
-            if (_compactLiveIndeterminatePhase > 1)
-            {
-                _compactLiveIndeterminatePhase -= 1;
-            }
-
-            double trackWidth = CompactLiveTrack.ActualWidth;
-            double maxTranslate = Math.Max(0, trackWidth * (1 - segment));
-            CompactLiveProgressTransform.ScaleX = segment;
-            CompactLiveProgressTransform.TranslateX = _compactLiveIndeterminatePhase * maxTranslate;
-
-            // Opacity pulse guarantees visible "live" motion even if the track has
-            // not been laid out yet (ActualWidth == 0 → TranslateX stays 0). The
-            // pulse is layout-independent, so the bar never looks frozen during the
-            // Duration-unknown window.
-            CompactLiveProgress.Opacity = 0.4 + 0.4 * (0.5 + 0.5 * Math.Sin(_compactLiveIndeterminatePhase * Math.PI * 2));
-        };
+        _compactLiveIndeterminateTimer.Tick += CompactLiveIndeterminateTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
         _compactLiveIndeterminateTimer.Start();
     }
 
     private void StopCompactLiveIndeterminate()
     {
-        if (_compactLiveIndeterminateTimer is not null)
+        if (_compactLiveIndeterminateTimer is not { } timer)
         {
-            _compactLiveIndeterminateTimer.Stop();
-            _compactLiveIndeterminateTimer = null;
+            return;
         }
+
+        _compactLiveIndeterminateTimer = null;
+        timer.Stop();
+        timer.Tick -= CompactLiveIndeterminateTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
+    }
+
+    private void CompactLiveIndeterminateTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        _compactLiveIndeterminatePhase += 0.035;
+        if (_compactLiveIndeterminatePhase > 1)
+        {
+            _compactLiveIndeterminatePhase -= 1;
+        }
+
+        double trackWidth = CompactLiveTrack.ActualWidth;
+        double maxTranslate = Math.Max(
+            0,
+            trackWidth * (1 - _compactLiveIndeterminateSegment));
+        CompactLiveProgressTransform.ScaleX = _compactLiveIndeterminateSegment;
+        CompactLiveProgressTransform.TranslateX =
+            _compactLiveIndeterminatePhase * maxTranslate;
+
+        // Opacity pulse guarantees visible "live" motion even if the track has
+        // not been laid out yet (ActualWidth == 0 → TranslateX stays 0).
+        CompactLiveProgress.Opacity =
+            0.4 +
+            0.4 *
+            (0.5 + 0.5 * Math.Sin(_compactLiveIndeterminatePhase * Math.PI * 2));
     }
 
     private DispatcherQueueTimer? _compactLiveBreathingTimer;
     private DispatcherQueueTimer? _compactLiveIndeterminateTimer;
     private double _compactLiveIndeterminatePhase;
+    private double _compactLiveIndeterminateSegment;
+    private double _compactLiveBreathingPhase;
 
     private void StartCompactLiveBreathing()
     {
-        StopCompactLiveBreathing();
         if (!SystemAnimationsEnabled())
+        {
+            StopCompactLiveBreathing();
+            return;
+        }
+
+        if (_compactLiveBreathingTimer is not null)
         {
             return;
         }
 
+        _compactLiveBreathingPhase = 0;
         _compactLiveBreathingTimer = DispatcherQueue.CreateTimer();
         _compactLiveBreathingTimer.Interval = TimeSpan.FromMilliseconds(50);
-        double phase = 0;
-        _compactLiveBreathingTimer.Tick += (_, _) =>
-        {
-            phase += 0.06;
-            CompactLiveProgress.Opacity = 0.6 + 0.2 * Math.Sin(phase);
-        };
+        _compactLiveBreathingTimer.Tick += CompactLiveBreathingTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
         _compactLiveBreathingTimer.Start();
     }
 
     private void StopCompactLiveBreathing()
     {
-        _compactLiveBreathingTimer?.Stop();
+        if (_compactLiveBreathingTimer is not { } timer)
+        {
+            return;
+        }
+
         _compactLiveBreathingTimer = null;
+        timer.Stop();
+        timer.Tick -= CompactLiveBreathingTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
+    }
+
+    private void CompactLiveBreathingTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        _compactLiveBreathingPhase += 0.06;
+        CompactLiveProgress.Opacity =
+            0.6 + 0.2 * Math.Sin(_compactLiveBreathingPhase);
     }
 
     private void ApplyFullBleedVisibility(bool visible)
@@ -1342,6 +1521,16 @@ public sealed partial class WidgetShell : UserControl
         }
     }
 
+    private void ApplyCompactForegroundTheme(WidgetCompactPresentation presentation)
+    {
+        CollapsedChromeLayer.RequestedTheme = presentation.UseLightForeground switch
+        {
+            true => ElementTheme.Dark,
+            false => ElementTheme.Light,
+            null => ElementTheme.Default
+        };
+    }
+
     private void ApplyEdgeGlow(WidgetCompactPresentation p)
     {
         if (p.EdgeGlowColor is not null)
@@ -1359,26 +1548,47 @@ public sealed partial class WidgetShell : UserControl
     }
 
     private DispatcherQueueTimer? _edgeGlowPulseTimer;
+    private double _edgeGlowPulsePhase;
 
     private void StartEdgeGlowPulse()
     {
-        StopEdgeGlowPulse();
-        if (!SystemAnimationsEnabled()) return;
+        if (!SystemAnimationsEnabled())
+        {
+            StopEdgeGlowPulse();
+            return;
+        }
+
+        if (_edgeGlowPulseTimer is not null)
+        {
+            return;
+        }
+
+        _edgeGlowPulsePhase = 0;
         _edgeGlowPulseTimer = DispatcherQueue.CreateTimer();
         _edgeGlowPulseTimer.Interval = TimeSpan.FromMilliseconds(50);
-        double phase = 0;
-        _edgeGlowPulseTimer.Tick += (_, _) =>
-        {
-            phase += 0.04;
-            CompactEdgeGlow.Opacity = 0.5 + 0.25 * Math.Sin(phase);
-        };
+        _edgeGlowPulseTimer.Tick += EdgeGlowPulseTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
         _edgeGlowPulseTimer.Start();
     }
 
     private void StopEdgeGlowPulse()
     {
-        _edgeGlowPulseTimer?.Stop();
+        if (_edgeGlowPulseTimer is not { } timer)
+        {
+            return;
+        }
+
         _edgeGlowPulseTimer = null;
+        timer.Stop();
+        timer.Tick -= EdgeGlowPulseTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
+    }
+
+    private void EdgeGlowPulseTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        _edgeGlowPulsePhase += 0.04;
+        CompactEdgeGlow.Opacity =
+            0.5 + 0.25 * Math.Sin(_edgeGlowPulsePhase);
     }
 
     // ── Particles (rain / snow) ────────────────────────────────
@@ -1401,7 +1611,6 @@ public sealed partial class WidgetShell : UserControl
             return;
         }
 
-        double canvasW = 400, canvasH = 40;
         var rng = new Random();
 
         if (p.ParticleKind == CompactParticleKind.Rain)
@@ -1414,8 +1623,8 @@ public sealed partial class WidgetShell : UserControl
                     Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(0x44, 0xFF, 0xFF, 0xFF)),
                     StrokeThickness = 1
                 };
-                Canvas.SetLeft(line, rng.NextDouble() * canvasW);
-                Canvas.SetTop(line, rng.NextDouble() * canvasH);
+                Canvas.SetLeft(line, rng.NextDouble() * CompactParticleCanvasWidth);
+                Canvas.SetTop(line, rng.NextDouble() * CompactParticleCanvasHeight);
                 CompactParticleCanvas.Children.Add(line);
                 _particles.Add((line, 0.5 + rng.NextDouble() * 0.4, -0.2));
             }
@@ -1429,8 +1638,8 @@ public sealed partial class WidgetShell : UserControl
                     Width = 2, Height = 2,
                     Fill = new SolidColorBrush(Windows.UI.Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF))
                 };
-                Canvas.SetLeft(dot, rng.NextDouble() * canvasW);
-                Canvas.SetTop(dot, rng.NextDouble() * canvasH);
+                Canvas.SetLeft(dot, rng.NextDouble() * CompactParticleCanvasWidth);
+                Canvas.SetTop(dot, rng.NextDouble() * CompactParticleCanvasHeight);
                 CompactParticleCanvas.Children.Add(dot);
                 _particles.Add((dot, 0.15 + rng.NextDouble() * 0.15, 0.08 + rng.NextDouble() * 0.06));
             }
@@ -1438,38 +1647,54 @@ public sealed partial class WidgetShell : UserControl
 
         _particleTimer = DispatcherQueue.CreateTimer();
         _particleTimer.Interval = TimeSpan.FromMilliseconds(50);
-        _particleTimer.Tick += (_, _) =>
-        {
-            foreach (var (shape, speed, drift) in _particles)
-            {
-                double top = Canvas.GetTop(shape) + speed;
-                double left = Canvas.GetLeft(shape) + drift;
-                if (top > canvasH + 10)
-                {
-                    top = -10;
-                    left = new Random().NextDouble() * canvasW;
-                }
-                if (left < -10) left = canvasW + 5;
-                if (left > canvasW + 10) left = -5;
-                Canvas.SetTop(shape, top);
-                Canvas.SetLeft(shape, left);
-            }
-        };
+        _particleTimer.Tick += ParticleTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
         _particleTimer.Start();
     }
 
     private void StopParticles()
     {
-        _particleTimer?.Stop();
-        _particleTimer = null;
+        if (_particleTimer is { } timer)
+        {
+            _particleTimer = null;
+            timer.Stop();
+            timer.Tick -= ParticleTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerReleased();
+        }
+
         CompactParticleCanvas.Children.Clear();
         _particles.Clear();
         _activeParticleKind = CompactParticleKind.None;
     }
 
+    private void ParticleTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        foreach (var (shape, speed, drift) in _particles)
+        {
+            double top = Canvas.GetTop(shape) + speed;
+            double left = Canvas.GetLeft(shape) + drift;
+            if (top > CompactParticleCanvasHeight + 10)
+            {
+                top = -10;
+                left = Random.Shared.NextDouble() * CompactParticleCanvasWidth;
+            }
+            if (left < -10)
+            {
+                left = CompactParticleCanvasWidth + 5;
+            }
+            if (left > CompactParticleCanvasWidth + 10)
+            {
+                left = -5;
+            }
+            Canvas.SetTop(shape, top);
+            Canvas.SetLeft(shape, left);
+        }
+    }
+
     // ── Bottom glow (music playback) ─────────────────────────
 
     private DispatcherQueueTimer? _bottomGlowTimer;
+    private double _bottomGlowPhase;
 
     private void ApplySpectrum(WidgetCompactPresentation p)
     {
@@ -1480,28 +1705,50 @@ public sealed partial class WidgetShell : UserControl
 
     private void StartBottomGlow()
     {
-        StopBottomGlow();
-        if (!SystemAnimationsEnabled()) { CompactBottomGlow.Opacity = 0.6; return; }
+        if (!SystemAnimationsEnabled())
+        {
+            StopBottomGlow();
+            CompactBottomGlow.Opacity = 0.6;
+            return;
+        }
+
+        if (_bottomGlowTimer is not null)
+        {
+            return;
+        }
+
+        _bottomGlowPhase = 0;
         _bottomGlowTimer = DispatcherQueue.CreateTimer();
         _bottomGlowTimer.Interval = TimeSpan.FromMilliseconds(50);
-        double phase = 0;
-        _bottomGlowTimer.Tick += (_, _) =>
-        {
-            phase += 0.035;
-            CompactBottomGlow.Opacity = 0.35 + 0.3 * Math.Sin(phase);
-        };
+        _bottomGlowTimer.Tick += BottomGlowTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
         _bottomGlowTimer.Start();
     }
 
     private void StopBottomGlow()
     {
-        _bottomGlowTimer?.Stop();
+        if (_bottomGlowTimer is not { } timer)
+        {
+            return;
+        }
+
         _bottomGlowTimer = null;
+        timer.Stop();
+        timer.Tick -= BottomGlowTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
+    }
+
+    private void BottomGlowTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        _bottomGlowPhase += 0.035;
+        CompactBottomGlow.Opacity =
+            0.35 + 0.3 * Math.Sin(_bottomGlowPhase);
     }
 
     // ── Breathing border (search) ──────────────────────────────
 
     private DispatcherQueueTimer? _breathBorderTimer;
+    private double _breathBorderPhase;
 
     private void ApplyShimmer(WidgetCompactPresentation p)
     {
@@ -1511,23 +1758,44 @@ public sealed partial class WidgetShell : UserControl
 
     private void StartBreathBorder()
     {
-        StopBreathBorder();
-        if (!SystemAnimationsEnabled()) { CompactEdgeGlow.Opacity = 0.35; return; }
+        if (!SystemAnimationsEnabled())
+        {
+            StopBreathBorder();
+            CompactEdgeGlow.Opacity = 0.35;
+            return;
+        }
+
+        if (_breathBorderTimer is not null)
+        {
+            return;
+        }
+
+        _breathBorderPhase = 0;
         _breathBorderTimer = DispatcherQueue.CreateTimer();
         _breathBorderTimer.Interval = TimeSpan.FromMilliseconds(50);
-        double phase = 0;
-        _breathBorderTimer.Tick += (_, _) =>
-        {
-            phase += 0.03;
-            CompactEdgeGlow.Opacity = 0.35 + 0.15 * Math.Sin(phase);
-        };
+        _breathBorderTimer.Tick += BreathBorderTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
         _breathBorderTimer.Start();
     }
 
     private void StopBreathBorder()
     {
-        _breathBorderTimer?.Stop();
+        if (_breathBorderTimer is not { } timer)
+        {
+            return;
+        }
+
         _breathBorderTimer = null;
+        timer.Stop();
+        timer.Tick -= BreathBorderTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
+    }
+
+    private void BreathBorderTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        _breathBorderPhase += 0.03;
+        CompactEdgeGlow.Opacity =
+            0.35 + 0.15 * Math.Sin(_breathBorderPhase);
     }
 
     // ── Conditional animations (todo flash, capture bounce) ────
@@ -1682,6 +1950,7 @@ public sealed partial class WidgetShell : UserControl
         _compactMarqueeDelayTimer?.Stop();
         if (!_isCollapsed ||
             _compactPresentation?.EnableMarquee != true ||
+            ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
             !SystemAnimationsEnabled())
         {
@@ -1692,28 +1961,20 @@ public sealed partial class WidgetShell : UserControl
         {
             _compactMarqueeDelayTimer = DispatcherQueue.CreateTimer();
             _compactMarqueeDelayTimer.IsRepeating = false;
-            _compactMarqueeDelayTimer.Tick += (_, _) =>
-            {
-                _compactMarqueeDelayTimer?.Stop();
-                StartCompactMarqueeIfNeeded();
-            };
+            _compactMarqueeDelayTimer.Tick += CompactMarqueeDelayTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
         }
 
         _compactMarqueeDelayTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(100, delayMs));
         _compactMarqueeDelayTimer.Start();
     }
 
-    private void EnsureCompactMarqueeFrameTimer()
+    private void CompactMarqueeDelayTimer_Tick(
+        DispatcherQueueTimer sender,
+        object args)
     {
-        if (_compactMarqueeFrameTimer is not null)
-        {
-            return;
-        }
-
-        _compactMarqueeFrameTimer = DispatcherQueue.CreateTimer();
-        _compactMarqueeFrameTimer.Interval = TimeSpan.FromMilliseconds(16);
-        _compactMarqueeFrameTimer.IsRepeating = true;
-        _compactMarqueeFrameTimer.Tick += CompactMarqueeFrameTimer_Tick;
+        sender.Stop();
+        StartCompactMarqueeIfNeeded();
     }
 
     private void StartCompactMarqueeIfNeeded()
@@ -1721,6 +1982,7 @@ public sealed partial class WidgetShell : UserControl
         StopCompactMarquee(resetDelayTimer: false);
         if (!_isCollapsed ||
             _compactPresentation?.EnableMarquee != true ||
+            ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
             !SystemAnimationsEnabled())
         {
@@ -1740,41 +2002,53 @@ public sealed partial class WidgetShell : UserControl
         marquee.Clone.Visibility = Visibility.Visible;
         Canvas.SetLeft(marquee.Primary, 0);
         Canvas.SetLeft(marquee.Clone, marquee.NaturalWidth + CompactMarqueeGap);
-        marquee.Canvas.Translation = Vector3.Zero;
+
+        var transform = new TranslateTransform();
+        marquee.Canvas.RenderTransform = transform;
+        double distance = marquee.NaturalWidth + CompactMarqueeGap;
+        TimeSpan startDelay = TimeSpan.FromMilliseconds(CompactMarqueeStartDelayMs);
+        TimeSpan travelDuration = TimeSpan.FromSeconds(
+            distance / CompactMarqueeSpeedPixelsPerSecond);
+        TimeSpan cycleDuration = startDelay + travelDuration;
+        var translation = new DoubleAnimationUsingKeyFrames
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        translation.KeyFrames.Add(new DiscreteDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero),
+            Value = 0
+        });
+        translation.KeyFrames.Add(new DiscreteDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(startDelay),
+            Value = 0
+        });
+        translation.KeyFrames.Add(new LinearDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(cycleDuration),
+            Value = -distance
+        });
+        Storyboard.SetTarget(translation, transform);
+        Storyboard.SetTargetProperty(translation, "X");
+
+        var storyboard = new Storyboard
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        storyboard.Children.Add(translation);
 
         _compactMarqueePrimary = marquee.Primary;
         _compactMarqueeClone = marquee.Clone;
         _compactMarqueeCanvas = marquee.Canvas;
         _compactMarqueeViewport = marquee.Viewport;
-        _compactMarqueeDistance = marquee.NaturalWidth + CompactMarqueeGap;
-        _compactMarqueeStartedAt = DateTimeOffset.UtcNow;
-        EnsureCompactMarqueeFrameTimer();
-        _compactMarqueeFrameTimer?.Start();
+        _compactMarqueeTransform = transform;
+        _compactMarqueeStoryboard = storyboard;
+        storyboard.Begin();
     }
 
-    private void CompactMarqueeFrameTimer_Tick(DispatcherQueueTimer sender, object args)
-    {
-        if (!_isCollapsed ||
-            _isPointerOverCompactActions ||
-            _compactMarqueeCanvas is null ||
-            _compactMarqueeViewport is null ||
-            _compactMarqueeDistance <= 0)
-        {
-            StopCompactMarquee();
-            return;
-        }
-
-        double elapsedMs = (DateTimeOffset.UtcNow - _compactMarqueeStartedAt).TotalMilliseconds;
-        double movingMs = Math.Max(0, elapsedMs - CompactMarqueeStartDelayMs);
-        double offset = movingMs * CompactMarqueeSpeedPixelsPerSecond / 1000;
-        if (offset >= _compactMarqueeDistance)
-        {
-            _compactMarqueeStartedAt = DateTimeOffset.UtcNow;
-            offset = 0;
-        }
-
-        _compactMarqueeCanvas.Translation = new Vector3((float)-offset, 0, 0);
-    }
+    private bool ShouldSuspendCompactMarquee() =>
+        _compactPresentation is { ShowVinyl: true, IsPlaying: false };
 
     private (TextBlock Primary, TextBlock Clone, Canvas Canvas, FrameworkElement Viewport, double NaturalWidth)?
         ResolveCompactMarqueeElements()
@@ -1832,16 +2106,68 @@ public sealed partial class WidgetShell : UserControl
         {
             _compactMarqueeDelayTimer?.Stop();
         }
-        _compactMarqueeFrameTimer?.Stop();
-        _compactMarqueeDistance = 0;
+        _compactMarqueeStoryboard?.Stop();
+        _compactMarqueeStoryboard = null;
         ResetCompactMarqueeTarget();
+    }
+
+    private void ReleaseCompactMarqueeDelayTimer()
+    {
+        if (_compactMarqueeDelayTimer is not { } timer)
+        {
+            return;
+        }
+
+        _compactMarqueeDelayTimer = null;
+        timer.Stop();
+        timer.Tick -= CompactMarqueeDelayTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
+    }
+
+    private void RestartCompactVisualTimers()
+    {
+        if (!IsLoaded || !_isCollapsed || _compactPresentation is not { } presentation)
+        {
+            return;
+        }
+
+        ApplyEdgeGlow(presentation);
+        ApplyParticles(presentation);
+        ApplyCompactLiveState();
+        bool showVinyl = presentation.ShowVinyl && presentation.Thumbnail is not null;
+        UpdateCompactVinylRotation(showVinyl && presentation.IsPlaying);
+    }
+
+    private void StopCompactVisualTimers()
+    {
+        StopCompactLiveIndeterminate();
+        StopCompactLiveBreathing();
+        StopParticles();
+        StopBottomGlow();
+        StopBreathBorder();
+        StopEdgeGlowPulse();
+    }
+
+    private void StopCompactVinylRotation()
+    {
+        if (!_isCompactVinylRotating && _compactVinylRotationStoryboard is null)
+        {
+            return;
+        }
+
+        _isCompactVinylRotating = false;
+        _compactVinylRotationStoryboard?.Stop();
     }
 
     private void ResetCompactMarqueeTarget()
     {
+        if (_compactMarqueeTransform is not null)
+        {
+            _compactMarqueeTransform.X = 0;
+        }
         if (_compactMarqueeCanvas is not null)
         {
-            _compactMarqueeCanvas.Translation = Vector3.Zero;
+            _compactMarqueeCanvas.RenderTransform = null;
         }
         if (_compactMarqueePrimary is not null && _compactMarqueeViewport is not null)
         {
@@ -1858,6 +2184,7 @@ public sealed partial class WidgetShell : UserControl
         _compactMarqueeClone = null;
         _compactMarqueeCanvas = null;
         _compactMarqueeViewport = null;
+        _compactMarqueeTransform = null;
     }
 
     private void CollapsedChromeLayer_SizeChanged(object sender, SizeChangedEventArgs e)

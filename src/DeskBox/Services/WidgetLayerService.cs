@@ -136,6 +136,73 @@ public static class WidgetLayerService
         Win32Helper.BringWindowTemporarilyToFront(windowHandle);
     }
 
+    /// <summary>
+    /// Moves a dynamically layered widget above its DeskBox peers without
+    /// overtaking the current foreground application. This is used when a
+    /// compact widget expands from hover after a tray-raised session has
+    /// already returned control to another application.
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> when a foreign foreground window was found and
+    /// the widget was positioned behind it; otherwise <see langword="false"/>.
+    /// </returns>
+    public static bool TryBringAbovePeerWidgetsBehindForeground(IntPtr windowHandle)
+    {
+        if (UsesDesktopPinnedMode() ||
+            windowHandle == IntPtr.Zero ||
+            !Win32Helper.IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        IntPtr foreground = Win32Helper.GetForegroundWindow();
+        IntPtr foregroundRoot = Win32Helper.GetAncestor(
+            foreground,
+            Win32Helper.GA_ROOTOWNER);
+        if (foregroundRoot == IntPtr.Zero)
+        {
+            foregroundRoot = foreground;
+        }
+
+        if (foregroundRoot == IntPtr.Zero ||
+            foregroundRoot == windowHandle ||
+            !Win32Helper.IsWindow(foregroundRoot) ||
+            App.Current.IsDeskBoxWindow(foregroundRoot) ||
+            IsDesktopShellWindow(foregroundRoot))
+        {
+            return false;
+        }
+
+        DetachFromDesktopIconLayerIfNeeded(windowHandle);
+        if (Win32Helper.IsWindowTopMost(windowHandle))
+        {
+            Win32Helper.ClearWindowTopMost(windowHandle);
+        }
+
+        // A topmost foreground window already owns the higher Z-order band, so
+        // HWND_TOP safely places this non-topmost widget at the head of the
+        // normal band. For a normal foreground window, inserting immediately
+        // after it keeps that application visibly above the expanding widget.
+        IntPtr insertAfter = Win32Helper.IsWindowTopMost(foregroundRoot)
+            ? Win32Helper.HWND_TOP
+            : foregroundRoot;
+        bool moved = Win32Helper.SetWindowPos(
+            windowHandle,
+            insertAfter,
+            0,
+            0,
+            0,
+            0,
+            Win32Helper.SWP_NOMOVE |
+                Win32Helper.SWP_NOSIZE |
+                Win32Helper.SWP_NOACTIVATE |
+                Win32Helper.SWP_SHOWWINDOW);
+        App.LogVerbose(
+            $"[ZOrder] Peer raise behind foreground widget=0x{windowHandle.ToInt64():X} " +
+            $"foreground=0x{foregroundRoot.ToInt64():X} moved={moved}");
+        return moved;
+    }
+
     public static void BringGroupTemporarilyToFront(
         IReadOnlyList<IntPtr> windowHandles,
         IntPtr activeWindowHandle)
@@ -377,6 +444,30 @@ public static class WidgetLayerService
     private static IntPtr FindDesktopIconViewChild(IntPtr windowHandle)
     {
         return Win32Helper.FindWindowEx(windowHandle, IntPtr.Zero, "SHELLDLL_DefView", null);
+    }
+
+    private static bool IsDesktopShellWindow(IntPtr windowHandle)
+    {
+        IntPtr current = windowHandle;
+        while (current != IntPtr.Zero)
+        {
+            var className = new System.Text.StringBuilder(256);
+            int length = Win32Helper.GetClassName(
+                current,
+                className,
+                className.Capacity);
+            if (length > 0 &&
+                (string.Equals(className.ToString(), "Progman", StringComparison.Ordinal) ||
+                 string.Equals(className.ToString(), "WorkerW", StringComparison.Ordinal) ||
+                 string.Equals(className.ToString(), "SHELLDLL_DefView", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+
+            current = Win32Helper.GetParent(current);
+        }
+
+        return false;
     }
 
     private sealed record DesktopLayerAttachment(IntPtr OriginalOwner);

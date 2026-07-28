@@ -66,29 +66,46 @@ public abstract partial class WidgetWindowBase
             TopMostSafetyTimer = DispatcherQueue.CreateTimer();
             TopMostSafetyTimer.IsRepeating = false;
             TopMostSafetyTimer.Interval = TimeSpan.FromSeconds(2);
-            TopMostSafetyTimer.Tick += (_, _) =>
-            {
-                TopMostSafetyTimer?.Stop();
-                if (!IsAtDesktopLayer &&
-                    App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
-                {
-                    if (ShouldDeferDesktopLayerRestore())
-                    {
-                        App.LogVerbose($"[ZOrder] {LogPrefix} safety timer: defer restore hwnd=0x{HWnd.ToInt64():X}");
-                        TopMostSafetyTimer?.Start();
-                        return;
-                    }
-
-                    App.Log($"[ZOrder] {LogPrefix} safety timer: force restore hwnd=0x{HWnd.ToInt64():X}");
-                    RestoreDesktopLayer(force: true);
-                }
-            };
+            TopMostSafetyTimer.Tick += TopMostSafetyTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
         }
         else
         {
             TopMostSafetyTimer.Stop();
         }
         TopMostSafetyTimer.Start();
+    }
+
+    private void TopMostSafetyTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (!IsAtDesktopLayer &&
+            App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
+        {
+            if (ShouldDeferDesktopLayerRestore())
+            {
+                App.LogVerbose($"[ZOrder] {LogPrefix} safety timer: defer restore hwnd=0x{HWnd.ToInt64():X}");
+                sender.Start();
+                return;
+            }
+
+            App.Log($"[ZOrder] {LogPrefix} safety timer: force restore hwnd=0x{HWnd.ToInt64():X}");
+            RestoreDesktopLayer(force: true);
+        }
+    }
+
+    protected void ReleaseTopMostSafetyTimer()
+    {
+        DispatcherQueueTimer? timer = TopMostSafetyTimer;
+        if (timer is null)
+        {
+            return;
+        }
+
+        TopMostSafetyTimer = null;
+        timer.Stop();
+        timer.Tick -= TopMostSafetyTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
     }
 
     protected bool ShouldDeferDesktopLayerRestore()
@@ -129,7 +146,6 @@ public abstract partial class WidgetWindowBase
         }
 
         TopMostSafetyTimer?.Stop();
-        TopMostSafetyTimer = null;
         KeepRaisedUntilDeactivate = false;
         RestoreDesktopLayerWhenIdle = false;
         ClearTopMostOnly();

@@ -125,6 +125,11 @@ public sealed class SearchResultItem
     public string? Subtitle { get; init; }
     public string? DetailPath { get; init; }
     public string? Glyph { get; init; }
+    public string DisplayGlyph => !string.IsNullOrWhiteSpace(Glyph)
+        ? Glyph
+        : Kind == SearchResultKind.Folder
+            ? "\uE8B7"
+            : "\uE8A5";
     public DateTimeOffset? ModifiedAt { get; set; }
     public double RelevanceScore { get; set; }
 
@@ -218,6 +223,15 @@ public sealed class SearchRecommendationItem
     /// For History/Favorite recommendations: the query text to re-run when activated.
     /// </summary>
     public string? HistoryQuery { get; init; }
+}
+
+/// <summary>
+/// Display model for one manageable query in the desktop search widget.
+/// </summary>
+public sealed class SearchHistoryEntry
+{
+    public required string Query { get; init; }
+    public required string DeleteLabel { get; init; }
 }
 
 /// <summary>

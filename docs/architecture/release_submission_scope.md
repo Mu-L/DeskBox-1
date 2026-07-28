@@ -40,7 +40,7 @@
 | 范围 | 默认处理 | 何时可以提交 |
 | --- | --- | --- |
 | `deskbox-site/` | 不跟应用提交混在一起 | 官网内容确实要同步发布时，单独做网站提交 |
-| `docs/wechat/` | 默认不提交 | 只有明确要把某个公开素材纳入仓库时才提交 |
+| 临时宣传文案与排版草稿 | 默认不提交 | 只有明确要把公开素材纳入仓库时，才整理到正式文档或图片目录 |
 | `store-assets-html/` | 默认不提交 | 仅作为本地 Microsoft Store 截图/图标 HTML 画布；导出的 PNG 可手动上传 Partner Center，但源目录不进应用提交 |
 | 宣传封面、产品长图、公众号配图 | 默认不提交 | README 或官网实际引用时才提交到合适目录 |
 | 新截图 | 单独确认 | README/官网引用则提交；临时测试截图不提交 |
@@ -62,7 +62,7 @@
 | `*.pfx` / `*.cer` | 证书和签名材料 |
 | `*.msix` / `*.msixbundle` / `*.msixupload` | 打包产物 |
 | `*.log` | 日志 |
-| `docs/wechat/*.md` / `docs/wechat/*_wechat.html` | 本地公众号草稿 |
+| 临时公众号文案与导出 HTML | 本地宣传草稿 |
 | `store-assets-html/` | 本地 Store 截图/图标生成画布，不应进入 Git、Direct 安装包或 Store MSIX |
 | 临时截图、剪贴板图片 | 本地验证材料 |
 | 微信/支付宝收款码测试副本 | Store 政策敏感且不应误进 Store 包或公开提交 |
@@ -159,7 +159,7 @@ git commit -m "Prepare .NET 10 and Store distribution channel"
 2. Direct 安装器、Store MSIX、更新服务或开机自启方案变化。
 3. 新增发版脚本、证书目录、打包输出目录。
 4. 官网是否跟随应用仓库一起提交的策略变化。
-5. README、CHANGELOG、公众号文档、官网截图的存放目录变化。
+5. README、CHANGELOG、宣传文案、官网截图的存放目录变化。
 6. Store 政策相关资源处理方式变化，例如捐赠入口、外部下载入口、支付入口。
 7. `.gitignore` 中新增或删除与发版相关的忽略规则。
 

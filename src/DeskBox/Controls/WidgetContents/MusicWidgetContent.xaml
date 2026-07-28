@@ -86,6 +86,25 @@
             </Setter>
         </Style>
 
+        <Style x:Key="MusicSecondaryVectorIconStyle" TargetType="Viewbox">
+            <Setter Property="Width" Value="17" />
+            <Setter Property="Height" Value="17" />
+        </Style>
+
+        <Style x:Key="MusicSecondaryFontIconStyle" TargetType="FontIcon">
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+
+        <Style x:Key="MusicPlayIconHostStyle" TargetType="Grid">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+        </Style>
+
+        <Style x:Key="MusicPlayVectorIconStyle" TargetType="Viewbox">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+        </Style>
+
         <Style x:Key="MusicPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
             <Setter Property="Width" Value="42" />
             <Setter Property="Height" Value="42" />
@@ -619,7 +638,9 @@
                     Opacity="{Binding PlaybackModeOpacity}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding PlaybackModeTooltip}">
-                    <FontIcon FontSize="14" Glyph="{Binding PlaybackModeGlyph}" />
+                    <FontIcon
+                        Glyph="{Binding PlaybackModeGlyph}"
+                        Style="{StaticResource MusicSecondaryFontIconStyle}" />
                 </Button>
 
                 <Button
@@ -628,7 +649,7 @@
                     IsEnabled="{Binding CanGoPrevious}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding PreviousTooltip}">
-                    <Viewbox Width="20" Height="20">
+                    <Viewbox Style="{StaticResource MusicSecondaryVectorIconStyle}">
                         <Canvas Width="20" Height="20">
                             <Border Canvas.Left="1.4" Canvas.Top="2.5" Width="2.4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="1.2" />
                             <Path Data="M 16.5,2.8 C 17.05,2.46 17.45,2.84 17.45,3.52 L 17.45,16.48 C 17.45,17.16 17.05,17.54 16.5,17.2 L 6.8,10.7 C 6.1,10.28 6.1,9.72 6.8,9.3 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -642,13 +663,17 @@
                     IsEnabled="{Binding CanPlayPause}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding PlayPauseTooltip}">
-                    <Grid Width="20" Height="20">
-                        <Viewbox Width="20" Height="20" Visibility="{Binding PlayIconVisibility}">
+                    <Grid Style="{StaticResource MusicPlayIconHostStyle}">
+                        <Viewbox
+                            Style="{StaticResource MusicPlayVectorIconStyle}"
+                            Visibility="{Binding PlayIconVisibility}">
                             <Canvas Width="20" Height="20">
                                 <Path Data="M 4,2.5 C 3.4,2.13 2.9,2.55 2.9,3.3 L 2.9,16.7 C 2.9,17.45 3.4,17.87 4,17.5 L 17,10.75 C 17.75,10.32 17.75,9.68 17,9.25 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
                             </Canvas>
                         </Viewbox>
-                        <Viewbox Width="20" Height="20" Visibility="{Binding PauseIconVisibility}">
+                        <Viewbox
+                            Style="{StaticResource MusicPlayVectorIconStyle}"
+                            Visibility="{Binding PauseIconVisibility}">
                             <Canvas Width="20" Height="20">
                                 <Border Canvas.Left="3.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
                                 <Border Canvas.Left="12.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
@@ -663,7 +688,7 @@
                     IsEnabled="{Binding CanGoNext}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding NextTooltip}">
-                    <Viewbox Width="20" Height="20">
+                    <Viewbox Style="{StaticResource MusicSecondaryVectorIconStyle}">
                         <Canvas Width="20" Height="20">
                             <Path Data="M 3.5,2.8 C 2.95,2.46 2.55,2.84 2.55,3.52 L 2.55,16.48 C 2.55,17.16 2.95,17.54 3.5,17.2 L 13.2,10.7 C 13.9,10.28 13.9,9.72 13.2,9.3 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
                             <Border Canvas.Left="16.2" Canvas.Top="2.5" Width="2.4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="1.2" />
@@ -676,7 +701,9 @@
                     Click="VolumeButton_Click"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding VolumeTooltip}">
-                    <FontIcon FontSize="15" Glyph="&#xE767;" />
+                    <FontIcon
+                        Glyph="&#xE767;"
+                        Style="{StaticResource MusicSecondaryFontIconStyle}" />
                 </Button>
             </StackPanel>
         </Grid>
@@ -934,7 +961,9 @@
                     Opacity="{Binding PlaybackModeOpacity}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding PlaybackModeTooltip}">
-                    <FontIcon FontSize="14" Glyph="{Binding PlaybackModeGlyph}" />
+                    <FontIcon
+                        Glyph="{Binding PlaybackModeGlyph}"
+                        Style="{StaticResource MusicSecondaryFontIconStyle}" />
                 </Button>
                 <Button
                     x:Name="RecordPreviousButton"
@@ -942,7 +971,7 @@
                     IsEnabled="{Binding CanGoPrevious}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding PreviousTooltip}">
-                    <Viewbox Width="20" Height="20">
+                    <Viewbox Style="{StaticResource MusicSecondaryVectorIconStyle}">
                         <Canvas Width="20" Height="20">
                             <Border Canvas.Left="1.4" Canvas.Top="2.5" Width="2.4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="1.2" />
                             <Path Data="M 16.5,2.8 C 17.05,2.46 17.45,2.84 17.45,3.52 L 17.45,16.48 C 17.45,17.16 17.05,17.54 16.5,17.2 L 6.8,10.7 C 6.1,10.28 6.1,9.72 6.8,9.3 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -955,13 +984,17 @@
                     IsEnabled="{Binding CanPlayPause}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding PlayPauseTooltip}">
-                    <Grid Width="20" Height="20">
-                        <Viewbox Width="20" Height="20" Visibility="{Binding PlayIconVisibility}">
+                    <Grid Style="{StaticResource MusicPlayIconHostStyle}">
+                        <Viewbox
+                            Style="{StaticResource MusicPlayVectorIconStyle}"
+                            Visibility="{Binding PlayIconVisibility}">
                             <Canvas Width="20" Height="20">
                                 <Path Data="M 4,2.5 C 3.4,2.13 2.9,2.55 2.9,3.3 L 2.9,16.7 C 2.9,17.45 3.4,17.87 4,17.5 L 17,10.75 C 17.75,10.32 17.75,9.68 17,9.25 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
                             </Canvas>
                         </Viewbox>
-                        <Viewbox Width="20" Height="20" Visibility="{Binding PauseIconVisibility}">
+                        <Viewbox
+                            Style="{StaticResource MusicPlayVectorIconStyle}"
+                            Visibility="{Binding PauseIconVisibility}">
                             <Canvas Width="20" Height="20">
                                 <Border Canvas.Left="3.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
                                 <Border Canvas.Left="12.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
@@ -975,7 +1008,7 @@
                     IsEnabled="{Binding CanGoNext}"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding NextTooltip}">
-                    <Viewbox Width="20" Height="20">
+                    <Viewbox Style="{StaticResource MusicSecondaryVectorIconStyle}">
                         <Canvas Width="20" Height="20">
                             <Path Data="M 3.5,2.8 C 2.95,2.46 2.55,2.84 2.55,3.52 L 2.55,16.48 C 2.55,17.16 2.95,17.54 3.5,17.2 L 13.2,10.7 C 13.9,10.28 13.9,9.72 13.2,9.3 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
                             <Border Canvas.Left="16.2" Canvas.Top="2.5" Width="2.4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="1.2" />
@@ -987,7 +1020,9 @@
                     Click="VolumeButton_Click"
                     Style="{StaticResource MusicIconButtonStyle}"
                     ToolTipService.ToolTip="{Binding VolumeTooltip}">
-                    <FontIcon FontSize="15" Glyph="&#xE767;" />
+                    <FontIcon
+                        Glyph="&#xE767;"
+                        Style="{StaticResource MusicSecondaryFontIconStyle}" />
                 </Button>
             </StackPanel>
         </Grid>
@@ -1133,7 +1168,9 @@
                         Opacity="{Binding PlaybackModeOpacity}"
                         Style="{StaticResource MusicIconButtonStyle}"
                         ToolTipService.ToolTip="{Binding PlaybackModeTooltip}">
-                        <FontIcon FontSize="14" Glyph="{Binding PlaybackModeGlyph}" />
+                        <FontIcon
+                            Glyph="{Binding PlaybackModeGlyph}"
+                            Style="{StaticResource MusicSecondaryFontIconStyle}" />
                     </Button>
                     <Button
                         x:Name="RecordHorizontalPreviousButton"
@@ -1141,7 +1178,7 @@
                         IsEnabled="{Binding CanGoPrevious}"
                         Style="{StaticResource MusicIconButtonStyle}"
                         ToolTipService.ToolTip="{Binding PreviousTooltip}">
-                        <Viewbox Width="20" Height="20">
+                        <Viewbox Style="{StaticResource MusicSecondaryVectorIconStyle}">
                             <Canvas Width="20" Height="20">
                                 <Border Canvas.Left="1.4" Canvas.Top="2.5" Width="2.4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="1.2" />
                                 <Path Data="M 16.5,2.8 C 17.05,2.46 17.45,2.84 17.45,3.52 L 17.45,16.48 C 17.45,17.16 17.05,17.54 16.5,17.2 L 6.8,10.7 C 6.1,10.28 6.1,9.72 6.8,9.3 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -1154,13 +1191,17 @@
                         IsEnabled="{Binding CanPlayPause}"
                         Style="{StaticResource MusicIconButtonStyle}"
                         ToolTipService.ToolTip="{Binding PlayPauseTooltip}">
-                        <Grid Width="20" Height="20">
-                            <Viewbox Width="20" Height="20" Visibility="{Binding PlayIconVisibility}">
+                        <Grid Style="{StaticResource MusicPlayIconHostStyle}">
+                            <Viewbox
+                                Style="{StaticResource MusicPlayVectorIconStyle}"
+                                Visibility="{Binding PlayIconVisibility}">
                                 <Canvas Width="20" Height="20">
                                     <Path Data="M 4,2.5 C 3.4,2.13 2.9,2.55 2.9,3.3 L 2.9,16.7 C 2.9,17.45 3.4,17.87 4,17.5 L 17,10.75 C 17.75,10.32 17.75,9.68 17,9.25 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
                                 </Canvas>
                             </Viewbox>
-                            <Viewbox Width="20" Height="20" Visibility="{Binding PauseIconVisibility}">
+                            <Viewbox
+                                Style="{StaticResource MusicPlayVectorIconStyle}"
+                                Visibility="{Binding PauseIconVisibility}">
                                 <Canvas Width="20" Height="20">
                                     <Border Canvas.Left="3.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
                                     <Border Canvas.Left="12.5" Canvas.Top="2.5" Width="4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="0.75" />
@@ -1174,7 +1215,7 @@
                         IsEnabled="{Binding CanGoNext}"
                         Style="{StaticResource MusicIconButtonStyle}"
                         ToolTipService.ToolTip="{Binding NextTooltip}">
-                        <Viewbox Width="20" Height="20">
+                        <Viewbox Style="{StaticResource MusicSecondaryVectorIconStyle}">
                             <Canvas Width="20" Height="20">
                                 <Path Data="M 3.5,2.8 C 2.95,2.46 2.55,2.84 2.55,3.52 L 2.55,16.48 C 2.55,17.16 2.95,17.54 3.5,17.2 L 13.2,10.7 C 13.9,10.28 13.9,9.72 13.2,9.3 Z" Fill="{ThemeResource TextFillColorPrimaryBrush}" />
                                 <Border Canvas.Left="16.2" Canvas.Top="2.5" Width="2.4" Height="15" Background="{ThemeResource TextFillColorPrimaryBrush}" CornerRadius="1.2" />
@@ -1186,7 +1227,9 @@
                         Click="VolumeButton_Click"
                         Style="{StaticResource MusicIconButtonStyle}"
                         ToolTipService.ToolTip="{Binding VolumeTooltip}">
-                        <FontIcon FontSize="15" Glyph="&#xE767;" />
+                        <FontIcon
+                            Glyph="&#xE767;"
+                            Style="{StaticResource MusicSecondaryFontIconStyle}" />
                     </Button>
                 </StackPanel>
             </Grid>
