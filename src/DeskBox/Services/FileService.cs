@@ -368,9 +368,14 @@ public sealed class FileService
     public Task<BitmapImage?> GetIconAsync(
         string path,
         bool hideShortcutArrowOverlay = false,
-        bool showImageFilesAsIcons = false)
+        bool showImageFilesAsIcons = false,
+        int decodePixelWidth = 0)
     {
-        return IconHelper.GetIconAsync(path, hideShortcutArrowOverlay, showImageFilesAsIcons);
+        return IconHelper.GetIconAsync(
+            path,
+            hideShortcutArrowOverlay,
+            showImageFilesAsIcons,
+            decodePixelWidth);
     }
 
     public void ClearIconCache(
@@ -1257,27 +1262,35 @@ public sealed class FileService
     /// </summary>
     public static OpenItemResult OpenItem(WidgetItem item, IntPtr ownerHwnd = default)
     {
-        if (ShortcutHelper.IsShellLinkPath(item.Path) && IsBrokenShortcut(item))
+        try
         {
-            var resolution = ShortcutHelper.ResolveBrokenShortcutWithShellUi(item.Path, ownerHwnd);
-            return resolution == BrokenShortcutResolution.ShortcutDeleted
-                ? OpenItemResult.ShortcutDeleted
-                : OpenItemResult.OpenedOrHandled;
-        }
+            if (ShortcutHelper.IsShellLinkPath(item.Path) && IsBrokenShortcut(item))
+            {
+                var resolution = ShortcutHelper.ResolveBrokenShortcutWithShellUi(item.Path, ownerHwnd);
+                return resolution == BrokenShortcutResolution.ShortcutDeleted
+                    ? OpenItemResult.ShortcutDeleted
+                    : OpenItemResult.OpenedOrHandled;
+            }
 
-        var pathToOpen = item.IsShortcut ? item.Path : item.TargetPath;
-        if (string.IsNullOrEmpty(pathToOpen))
+            var pathToOpen = item.IsShortcut ? item.Path : item.TargetPath;
+            if (string.IsNullOrEmpty(pathToOpen))
+            {
+                return OpenItemResult.Failed;
+            }
+
+            // Forward the real owner hwnd so any system UI (Open With / UAC) is parented to
+            // the widget instead of IntPtr.Zero, which previously left dialogs hidden behind
+            // the topmost widget. Returns Failed instead of swallowing the result so the
+            // caller can surface the failure to the user.
+            return Win32Helper.OpenFile(ownerHwnd, pathToOpen)
+                ? OpenItemResult.OpenedOrHandled
+                : OpenItemResult.Failed;
+        }
+        catch (Exception ex)
         {
+            App.Log($"[OpenItem] Unexpected failure path='{item.Path}' target='{item.TargetPath}': {ex}");
             return OpenItemResult.Failed;
         }
-
-        // Forward the real owner hwnd so any system UI (Open With / UAC) is parented to
-        // the widget instead of IntPtr.Zero, which previously left dialogs hidden behind
-        // the topmost widget. Returns Failed instead of swallowing the result so the
-        // caller can surface the failure to the user.
-        return Win32Helper.OpenFile(ownerHwnd, pathToOpen)
-            ? OpenItemResult.OpenedOrHandled
-            : OpenItemResult.Failed;
     }
 
     private static bool IsBrokenShortcut(WidgetItem item)
@@ -1289,10 +1302,20 @@ public sealed class FileService
 
         if (string.IsNullOrWhiteSpace(item.TargetPath))
         {
-            return true;
+            // Advertised MSI shortcuts and shell-namespace links may not expose a
+            // filesystem target through IShellLink.GetPath. ShellExecute can still
+            // open them, so an empty target is not enough evidence that the link is
+            // broken.
+            return false;
         }
 
-        return !File.Exists(item.TargetPath) && !Directory.Exists(item.TargetPath);
+        string expandedTarget = Environment.ExpandEnvironmentVariables(item.TargetPath);
+        if (!Path.IsPathFullyQualified(expandedTarget))
+        {
+            return false;
+        }
+
+        return !File.Exists(expandedTarget) && !Directory.Exists(expandedTarget);
     }
 
     /// <summary>

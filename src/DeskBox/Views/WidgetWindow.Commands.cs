@@ -76,6 +76,7 @@ public sealed partial class WidgetWindow
 
     private void TitleText_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        CancelPendingTitleBarClickCollapse();
         if (!CanStartRenameFromTitleArea(e.OriginalSource))
         {
             return;
@@ -106,6 +107,7 @@ public sealed partial class WidgetWindow
 
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        CancelPendingTitleBarClickCollapse();
         if (_isMigrationBusy)
         {
             e.Handled = true;
@@ -131,6 +133,7 @@ public sealed partial class WidgetWindow
             return;
         }
 
+        BeginTitleBarClickCollapse(e, ShouldStartTitleDrag(e.OriginalSource));
         App.Current.WidgetManager?.ActivateAllVisibleWidgetsFromTitle(_hWnd);
         if (ViewModel.IsPositionLocked)
         {
@@ -257,6 +260,7 @@ public sealed partial class WidgetWindow
 
     private void TitleBarGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        CompleteTitleBarClickCollapse(e, _hasMovedTitleBarDrag);
         EndWindowDrag(e);
     }
 

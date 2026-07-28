@@ -132,7 +132,8 @@ public static class IconHelper
     public static async Task<BitmapImage?> GetIconAsync(
         string path,
         bool hideShortcutArrowOverlay = false,
-        bool showImageFilesAsIcons = false)
+        bool showImageFilesAsIcons = false,
+        int decodePixelWidth = 0)
     {
         using var perfScope = PerformanceLogger.Measure("IconHelper.GetIcon", $"path={path}");
         var dispatcher = App.UiDispatcherQueue;
@@ -153,9 +154,16 @@ public static class IconHelper
         }
 
         string cacheKey = BuildCacheKey(path, iconSource);
+        int normalizedDecodePixelWidth = Math.Clamp(decodePixelWidth, 0, 256);
+        string bitmapCacheKey = $"{cacheKey}:decode={normalizedDecodePixelWidth}";
         return await s_bitmapImageCache.GetOrAdd(
-            cacheKey,
-            _ => LoadBitmapImageAsync(dispatcher, iconSource, cacheKey));
+            bitmapCacheKey,
+            _ => LoadBitmapImageAsync(
+                dispatcher,
+                iconSource,
+                cacheKey,
+                bitmapCacheKey,
+                normalizedDecodePixelWidth));
     }
 
     public static bool IsImageFile(string path)
@@ -444,7 +452,12 @@ public static class IconHelper
         }
 
         string cacheKey = BuildCacheKey(path, iconSource);
-        s_bitmapImageCache.TryRemove(cacheKey, out _);
+        string bitmapCachePrefix = $"{cacheKey}:decode=";
+        foreach (string bitmapKey in s_bitmapImageCache.Keys.Where(
+                     key => key.StartsWith(bitmapCachePrefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            s_bitmapImageCache.TryRemove(bitmapKey, out _);
+        }
         s_iconBytesCache.TryRemove(cacheKey, out _);
         PerformanceLogger.IconCacheCount = s_iconBytesCache.Count;
 
@@ -495,7 +508,9 @@ public static class IconHelper
     private static async Task<BitmapImage?> LoadBitmapImageAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
         IconSource iconSource,
-        string iconBytesCacheKey)
+        string iconBytesCacheKey,
+        string bitmapCacheKey,
+        int decodePixelWidth)
     {
         if (!s_iconBytesCache.TryGetValue(iconBytesCacheKey, out var bytes))
         {
@@ -518,10 +533,13 @@ public static class IconHelper
             }
         }
 
-        var image = await CreateBitmapImageAsync(dispatcher, bytes, decodePixelWidth: 48);
+        // Decode near the intended display size. This keeps large icons sharp while
+        // allowing WIC to perform a high-quality downsample for compact icon layouts
+        // instead of asking the compositor to shrink a 256 px bitmap to ~24 px.
+        var image = await CreateBitmapImageAsync(dispatcher, bytes, decodePixelWidth);
         if (image is null)
         {
-            s_bitmapImageCache.TryRemove(iconBytesCacheKey, out _);
+            s_bitmapImageCache.TryRemove(bitmapCacheKey, out _);
             s_iconBytesCache.TryRemove(iconBytesCacheKey, out _);
         }
 
@@ -539,6 +557,23 @@ public static class IconHelper
                 if (indexedBytes is not null)
                 {
                     return indexedBytes;
+                }
+            }
+
+            // Shell's Jumbo image list can contain a 32/48 px icon that has already
+            // been enlarged to 256 px. Explorer can still render the same executable
+            // crisply because it extracts the best resource frame directly. Do that
+            // first for executable-backed items (including resolved shortcuts), then
+            // retain the image-list path as a compatibility fallback.
+            if (Path.GetExtension(iconSource.Path).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                byte[]? executableBytes = TryExtractHighResIndexedIcon(
+                    iconSource.Path,
+                    iconSource.IconIndex,
+                    256);
+                if (executableBytes is not null)
+                {
+                    return executableBytes;
                 }
             }
 
@@ -1104,7 +1139,14 @@ public static class IconHelper
             foreach (var key in keysToRemove)
             {
                 s_iconBytesCache.TryRemove(key, out _);
-                s_bitmapImageCache.TryRemove(key, out _);
+                string bitmapCachePrefix = $"{key}:decode=";
+                foreach (string bitmapKey in s_bitmapImageCache.Keys.Where(
+                             candidate => candidate.StartsWith(
+                                 bitmapCachePrefix,
+                                 StringComparison.OrdinalIgnoreCase)))
+                {
+                    s_bitmapImageCache.TryRemove(bitmapKey, out _);
+                }
             }
         }
 

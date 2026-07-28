@@ -103,6 +103,7 @@ public partial class WidgetViewModel
         IconContentSpacing = Lerp(1, 7, verticalT);
         IconImageSize = iconSize;
         IconLabelFontSize = textSize;
+        _iconDecodePixelWidth = ResolveIconDecodePixelWidth(iconSize);
 
         double listScale = Lerp(0.68, 0.90, densityT);
         double listItemMarginY = Lerp(0, 2, verticalT);
@@ -126,6 +127,17 @@ public partial class WidgetViewModel
         return Math.Abs(max - min) < 0.0001
             ? 0
             : (value - min) / (max - min);
+    }
+
+    private static int ResolveIconDecodePixelWidth(double iconSize)
+    {
+        return iconSize switch
+        {
+            <= 28 => 48,
+            <= 34 => 64,
+            <= 42 => 80,
+            _ => 128
+        };
     }
 
     private string GetMappedFolderDisplayName()
@@ -175,6 +187,7 @@ public partial class WidgetViewModel
 
     private async Task ApplySettingsChangesAsync()
     {
+        int previousIconDecodePixelWidth = _iconDecodePixelWidth;
         WidgetOpacity = Math.Clamp(
             _settingsService.Settings.WidgetOpacity,
             SettingsService.MinWidgetOpacity,
@@ -198,7 +211,9 @@ public partial class WidgetViewModel
 
         bool hideShortcutArrowOverlay = _settingsService.Settings.HideShortcutArrowOverlay;
         bool showImageFilesAsIcons = _settingsService.Settings.ShowImageFilesAsIcons;
-        bool shouldRefreshAllIcons = _showImageFilesAsIcons != showImageFilesAsIcons;
+        bool shouldRefreshAllIcons =
+            _showImageFilesAsIcons != showImageFilesAsIcons ||
+            previousIconDecodePixelWidth != _iconDecodePixelWidth;
         bool shouldRefreshShortcutIcons = _hideShortcutArrowOverlay != hideShortcutArrowOverlay;
 
         if (!shouldRefreshAllIcons && !shouldRefreshShortcutIcons)
@@ -220,11 +235,17 @@ public partial class WidgetViewModel
 
     public void ApplyAppearancePreview()
     {
+        int previousIconDecodePixelWidth = _iconDecodePixelWidth;
         WidgetOpacity = Math.Clamp(
             _settingsService.Settings.WidgetOpacity,
             SettingsService.MinWidgetOpacity,
             SettingsService.MaxWidgetOpacity);
         ApplyLayoutSettings();
+        RefreshStackLayoutMetrics();
+        if (previousIconDecodePixelWidth != _iconDecodePixelWidth)
+        {
+            RefreshAllIcons();
+        }
     }
 
     /// <summary>

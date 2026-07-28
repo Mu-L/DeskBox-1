@@ -40,7 +40,7 @@ public partial class App
             Width = TrayMenuItemWidth,
             Icon = new SymbolIcon(Symbol.Setting)
         };
-        settingsItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, OpenSettingsFromTray);
+        settingsItem.Click += async (_, _) => await RunTraySettingsActionAsync(contextMenu, OpenSettingsFromTray);
 
         var openManagedStorageItem = new MenuFlyoutItem
         {
@@ -57,7 +57,7 @@ public partial class App
             Icon = new SymbolIcon(Symbol.Download),
             Visibility = Visibility.Collapsed
         };
-        updateItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, OpenAboutSettingsFromTray);
+        updateItem.Click += async (_, _) => await RunTraySettingsActionAsync(contextMenu, OpenAboutSettingsFromTray);
 
         var exitItem = new MenuFlyoutItem
         {
@@ -645,6 +645,23 @@ public partial class App
         contextMenu.Hide();
         await Task.Yield();
         await action();
+    }
+
+    private async Task RunTraySettingsActionAsync(MenuFlyout contextMenu, Action action)
+    {
+        var widgetManager = WidgetManager;
+        widgetManager?.BeginWidgetInteraction("tray-settings-opening");
+        try
+        {
+            await RunTrayMenuActionAsync(contextMenu, action);
+            // The tray flyout is hosted by a helper window. Keep the raised-widget
+            // session stable while that window closes and Settings takes foreground.
+            await Task.Delay(300);
+        }
+        finally
+        {
+            widgetManager?.EndWidgetInteraction("tray-settings-opened");
+        }
     }
 
     private async Task CreateFolderWidgetFromPickerAsync()

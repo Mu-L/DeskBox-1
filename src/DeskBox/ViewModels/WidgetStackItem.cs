@@ -95,6 +95,35 @@ public sealed class WidgetStackItem : WidgetItem
         _automationState = automationState;
         _collapseText = collapseText;
         _isExpanded = isExpanded;
+        UpdateLayoutMetrics(
+            tileWidth,
+            tileHeight,
+            tileMargin,
+            tilePadding,
+            previewSize,
+            previewItemSize,
+            labelMaxWidth,
+            labelFontSize,
+            listMargin,
+            listPadding,
+            listIconSize);
+
+        RefreshPresentationState();
+    }
+
+    public void UpdateLayoutMetrics(
+        double tileWidth,
+        double tileHeight,
+        Thickness tileMargin,
+        Thickness tilePadding,
+        double previewSize,
+        double previewItemSize,
+        double labelMaxWidth,
+        double labelFontSize,
+        Thickness listMargin,
+        Thickness listPadding,
+        double listIconSize)
+    {
         TileWidth = tileWidth;
         TileHeight = tileHeight;
         TileMargin = tileMargin;
@@ -107,7 +136,6 @@ public sealed class WidgetStackItem : WidgetItem
         ListPadding = listPadding;
         ListIconSize = listIconSize;
 
-        RefreshPresentationState();
         OnPropertyChanged(nameof(TileWidth));
         OnPropertyChanged(nameof(TileHeight));
         OnPropertyChanged(nameof(TileMargin));

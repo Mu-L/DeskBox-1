@@ -433,6 +433,25 @@ public partial class WidgetViewModel
         return stack;
     }
 
+    private void RefreshStackLayoutMetrics()
+    {
+        foreach (WidgetStackItem stack in _stackItems.Values)
+        {
+            stack.UpdateLayoutMetrics(
+                IconTileWidth,
+                IconTileHeight,
+                IconTileMargin,
+                IconTilePadding,
+                IconImageSize,
+                Math.Clamp(Math.Round(IconImageSize * 0.76), 14, IconImageSize),
+                IconLabelMaxWidth,
+                IconLabelFontSize,
+                ListItemMargin,
+                ListItemPadding,
+                ListIconSize);
+        }
+    }
+
     private void ReconcileStackDisplayItems(IReadOnlyList<WidgetItem> desired)
     {
         for (int targetIndex = 0; targetIndex < desired.Count; targetIndex++)

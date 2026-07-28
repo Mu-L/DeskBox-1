@@ -261,7 +261,11 @@ public partial class WidgetViewModel
                 _fileService.ClearIconCache(path, _hideShortcutArrowOverlay, _showImageFilesAsIcons);
             }
 
-            var icon = await _fileService.GetIconAsync(path, _hideShortcutArrowOverlay, _showImageFilesAsIcons);
+            var icon = await _fileService.GetIconAsync(
+                path,
+                _hideShortcutArrowOverlay,
+                _showImageFilesAsIcons,
+                _iconDecodePixelWidth);
             return (item, icon);
         }
         catch (Exception ex)
@@ -438,7 +442,11 @@ public partial class WidgetViewModel
 
         foreach (var item in Items.Where(item => item.IsShortcut))
         {
-            item.Icon = await _fileService.GetIconAsync(item.Path, _hideShortcutArrowOverlay, _showImageFilesAsIcons);
+            item.Icon = await _fileService.GetIconAsync(
+                item.Path,
+                _hideShortcutArrowOverlay,
+                _showImageFilesAsIcons,
+                _iconDecodePixelWidth);
         }
     }
 

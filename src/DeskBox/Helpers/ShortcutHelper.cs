@@ -174,14 +174,16 @@ public static class ShortcutHelper
             link.Resolve(
                 ownerHwnd,
                 SLR_FLAGS.SLR_UPDATE |
+                SLR_FLAGS.SLR_NOSEARCH |
                 SLR_FLAGS.SLR_OFFER_DELETE_WITHOUT_FILE);
 
             return File.Exists(lnkPath)
                 ? BrokenShortcutResolution.ResolvedOrKept
                 : BrokenShortcutResolution.ShortcutDeleted;
         }
-        catch (COMException)
+        catch (Exception ex)
         {
+            App.Log($"[Shortcut] Native broken-link resolution failed for '{lnkPath}': {ex}");
             return File.Exists(lnkPath)
                 ? BrokenShortcutResolution.ResolvedOrKept
                 : BrokenShortcutResolution.ShortcutDeleted;
