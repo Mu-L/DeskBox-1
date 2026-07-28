@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Globalization;
 using System.Text.Json;
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -47,7 +48,10 @@ public sealed class WeatherService : IDisposable
     /// Search for a city by name and return matching results.
     /// Always uses Open-Meteo geocoding (MSN has no geocoding endpoint).
     /// </summary>
-    public async Task<List<WeatherGeocodingItem>> SearchCityAsync(string query, string language = "zh")
+    public async Task<List<WeatherGeocodingItem>> SearchCityAsync(
+        string query,
+        string language = "zh",
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -57,9 +61,13 @@ public sealed class WeatherService : IDisposable
         try
         {
             string url = $"{GeocodingBaseUrl}?name={Uri.EscapeDataString(query)}&count=10&language={language}&format=json";
-            string json = await s_httpClient.GetStringAsync(url);
+            string json = await s_httpClient.GetStringAsync(url, cancellationToken);
             var result = JsonSerializer.Deserialize<WeatherGeocodingResult>(json, s_jsonOptions);
             return result?.Results ?? [];
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -81,7 +89,7 @@ public sealed class WeatherService : IDisposable
         TimeSpan? cacheDuration = null,
         string? dataSource = null)
     {
-        string cacheKey = $"{latitude:F4},{longitude:F4}";
+        string cacheKey = FormattableString.Invariant($"{latitude:F4},{longitude:F4}");
         string sourceKey = dataSource ?? GetCurrentDataSource();
         TimeSpan effectiveCacheDuration = cacheDuration.GetValueOrDefault(DefaultCacheDuration);
         if (effectiveCacheDuration < TimeSpan.Zero)
@@ -190,8 +198,8 @@ public sealed class WeatherService : IDisposable
     private static string BuildOpenMeteoForecastUrl(double lat, double lon)
     {
         return $"{OpenMeteoForecastUrl}" +
-               $"?latitude={lat:F4}" +
-               $"&longitude={lon:F4}" +
+               $"?latitude={lat.ToString("F4", CultureInfo.InvariantCulture)}" +
+               $"&longitude={lon.ToString("F4", CultureInfo.InvariantCulture)}" +
                "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl,is_day" +
                "&hourly=temperature_2m,precipitation_probability,weather_code" +
                "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max" +
@@ -206,7 +214,9 @@ public sealed class WeatherService : IDisposable
 
     private static async Task<WeatherData?> FetchMsnWeatherAsync(double lat, double lon)
     {
-        string url = $"{MsnWeatherUrl}?apikey={MsnApiKey}&lat={lat:F4}&lon={lon:F4}&units=C";
+        string url = $"{MsnWeatherUrl}?apikey={MsnApiKey}" +
+                     $"&lat={lat.ToString("F4", CultureInfo.InvariantCulture)}" +
+                     $"&lon={lon.ToString("F4", CultureInfo.InvariantCulture)}&units=C";
         string json = await s_httpClient.GetStringAsync(url);
         var msnResponse = JsonSerializer.Deserialize<MsnWeatherResponse>(json, s_jsonOptions);
 
@@ -224,7 +234,7 @@ public sealed class WeatherService : IDisposable
     /// Converts MSN Weather API response to the unified WeatherData model
     /// used by the rest of the application.
     /// </summary>
-    private static WeatherData ConvertMsnToWeatherData(MsnWeatherBody msn, double lat, double lon)
+    internal static WeatherData ConvertMsnToWeatherData(MsnWeatherBody msn, double lat, double lon)
     {
         var current = msn.Current;
         int currentWmo = current is not null
@@ -305,12 +315,23 @@ public sealed class WeatherService : IDisposable
             }
         }
 
-        // Convert hourly forecast (take first day's hours)
-        var firstDay = forecastDays?.FirstOrDefault();
-        if (firstDay?.Hourly is { Count: > 0 })
+        // MSN may omit the current day's hourly rows late in the day while still
+        // returning complete rows for following days. Merge all available days
+        // so the Today view never becomes empty around midnight.
+        var forecastHours = forecastDays?
+            .Where(day => day.Hourly is { Count: > 0 })
+            .SelectMany(day => day.Hourly!)
+            .GroupBy(hour => hour.Valid, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderBy(hour =>
+                DateTimeOffset.TryParse(hour.Valid, out var parsed)
+                    ? parsed
+                    : DateTimeOffset.MaxValue)
+            .ToList();
+        if (forecastHours is { Count: > 0 })
         {
             var hourly = new WeatherHourly();
-            foreach (var h in firstDay.Hourly)
+            foreach (var h in forecastHours)
             {
                 // Parse time from "valid" field
                 if (DateTimeOffset.TryParse(h.Valid, out var ht))

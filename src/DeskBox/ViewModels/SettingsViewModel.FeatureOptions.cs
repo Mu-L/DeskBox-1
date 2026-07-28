@@ -655,7 +655,7 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     SelectedWeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
                     SelectedWeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
                     SelectedWeatherDefaultView = SettingsService.WeatherDefaultViewToday;
-                    SelectedWeatherSkin = SettingsService.WeatherSkinStandard;
+                    SelectedWeatherSkin = SettingsService.WeatherSkinRich;
                     WeatherShowForecast = true;
                     WeatherShowSunrise = true;
                     WeatherShowUvIndex = true;
@@ -672,7 +672,7 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     _settingsService.Settings.WeatherTemperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
                     _settingsService.Settings.WeatherWindSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
                     _settingsService.Settings.WeatherDefaultView = SettingsService.WeatherDefaultViewToday;
-                    _settingsService.Settings.WeatherSkin = SettingsService.WeatherSkinStandard;
+                    _settingsService.Settings.WeatherSkin = SettingsService.WeatherSkinRich;
                     _settingsService.Settings.WeatherShowForecast = true;
                     _settingsService.Settings.WeatherShowSunrise = true;
                     _settingsService.Settings.WeatherShowUvIndex = true;

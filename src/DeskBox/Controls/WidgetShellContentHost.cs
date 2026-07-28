@@ -9,6 +9,7 @@ namespace DeskBox.Controls;
 public sealed class WidgetShellContentHost
 {
     private readonly Action<IWidgetContent> _setContent;
+    private readonly Action _clearContent;
     private IWidgetContent? _pendingContent;
     private int _contentVersion;
     private bool _isDisposed;
@@ -18,11 +19,13 @@ public sealed class WidgetShellContentHost
     {
         ArgumentNullException.ThrowIfNull(shell);
         _setContent = shell.SetContent;
+        _clearContent = shell.ClearContent;
     }
 
-    internal WidgetShellContentHost(Action<IWidgetContent> setContent)
+    internal WidgetShellContentHost(Action<IWidgetContent> setContent, Action? clearContent = null)
     {
         _setContent = setContent ?? throw new ArgumentNullException(nameof(setContent));
+        _clearContent = clearContent ?? (() => { });
     }
 
     public IWidgetContent? CurrentContent { get; private set; }
@@ -119,9 +122,11 @@ public sealed class WidgetShellContentHost
             _pendingContent = null;
         }
 
-        CurrentContent?.OnWindowVisibilityChanged(false);
-        CurrentContent?.OnDeactivated();
-        (CurrentContent as IDisposable)?.Dispose();
+        var currentContent = CurrentContent;
         CurrentContent = null;
+        currentContent?.OnWindowVisibilityChanged(false);
+        currentContent?.OnDeactivated();
+        _clearContent();
+        (currentContent as IDisposable)?.Dispose();
     }
 }

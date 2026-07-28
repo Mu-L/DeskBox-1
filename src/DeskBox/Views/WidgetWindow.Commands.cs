@@ -42,7 +42,9 @@ public sealed partial class WidgetWindow
             return;
         }
 
-        ShowFlyoutWithElevation(CreateContentAreaFlyout(), RootGrid, e.GetPosition(RootGrid));
+        var position = e.GetPosition(RootGrid);
+        TrackMoreFlyoutAnchor(RootGrid, position);
+        ShowFlyoutWithElevation(CreateContentAreaFlyout(), RootGrid, position);
         e.Handled = true;
     }
 

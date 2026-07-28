@@ -100,6 +100,8 @@ public sealed partial class SearchResultRowControl : UserControl
         FileIcon.Source = item?.Icon;
         FileIcon.Visibility = hasIcon ? Visibility.Visible : Visibility.Collapsed;
         GlyphBlock.Visibility = hasIcon ? Visibility.Collapsed : Visibility.Visible;
+        SizeText.Text = item?.SizeDisplay;
+        DateText.Text = item?.DateDisplay;
     }
 
     public void SetFileColumnsVisible(bool visible)

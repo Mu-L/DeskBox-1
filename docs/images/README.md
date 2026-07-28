@@ -1,4 +1,4 @@
-# Image Naming
+# README and Release Images
 
 This folder keeps public README and release images. Use lowercase ASCII names so links work reliably across GitHub, Windows, and scripts.
 
@@ -8,28 +8,36 @@ This folder keeps public README and release images. Use lowercase ASCII names so
 brand/                       Brand and product-level images
 screenshots/zh-cn/           Chinese UI screenshots
 screenshots/en-us/           English UI screenshots
-archive/                     Older screenshots kept for reference
 ```
 
 ## Naming Rules
 
-- Use lowercase kebab-case: `settings-general-1-2.png`, `todo-widget.png`.
-- Avoid spaces, dates, temporary capture names, and non-ASCII characters in file or folder names.
 - Put localized screenshots under `screenshots/zh-cn/` or `screenshots/en-us/`.
 - Keep product-wide assets under `brand/`.
-- Move replaced but still useful images to `archive/`; remove throwaway captures before release.
+- Descriptive localized filenames are allowed when they match the corresponding settings section.
+- Remove replaced and throwaway captures once the current README assets are verified.
 
-## Current Examples
+## Current 1.3.4 Assets
 
 ```text
-brand/product-cover-zh-cn-1280x720.png
-brand/product-cover-en-us-1280x720.png
+brand/readme-hero-1-3-4-option-c-mica.png
 brand/logo-200.png
-screenshots/zh-cn/desktop-light.png
-screenshots/zh-cn/todo-widget.png
-screenshots/zh-cn/music-widget.png
-screenshots/zh-cn/settings-general-1-2.png
-screenshots/en-us/desktop-light.png
-screenshots/en-us/file-widget.png
-screenshots/en-us/settings-feature-widgets-1-2.png
+screenshots/zh-cn/云母材质.png
+screenshots/zh-cn/亚克力材质.png
+screenshots/zh-cn/常规.png
+screenshots/zh-cn/外观.png
+screenshots/zh-cn/胶囊模式.png
+screenshots/zh-cn/文件格子.png
+screenshots/zh-cn/功能格子.png
+screenshots/zh-cn/快捷与交互.png
+screenshots/en-us/云母材质.png
+screenshots/en-us/亚克力材质.png
+screenshots/en-us/常规.png
+screenshots/en-us/外观.png
+screenshots/en-us/胶囊模式.png
+screenshots/en-us/文件格子.png
+screenshots/en-us/功能格子.png
+screenshots/en-us/快捷与交互.png
 ```
+
+The selected `option-c-mica` banner is an AI-generated brand illustration and is not presented as a literal UI screenshot. Files under `screenshots/` are captures from the running DeskBox 1.3.4 build in both supported README languages.

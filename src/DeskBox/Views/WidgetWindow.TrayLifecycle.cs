@@ -472,23 +472,47 @@ public sealed partial class WidgetWindow
 
         if (!autoRestore)
         {
+            _autoRestoreTimer?.Stop();
             return;
         }
 
-        _autoRestoreTimer?.Stop();
-        _autoRestoreTimer = DispatcherQueue.CreateTimer();
-        _autoRestoreTimer.IsRepeating = false;
-        _autoRestoreTimer.Interval = TimeSpan.FromMilliseconds(1200);
-        _autoRestoreTimer.Tick += (_, _) =>
+        if (_autoRestoreTimer is null)
         {
-            _autoRestoreTimer?.Stop();
-            _autoRestoreTimer = null;
-            if (!_isDragging && !_isResizing)
-            {
-                RestoreDesktopLayer(force: true);
-            }
-        };
+            _autoRestoreTimer = DispatcherQueue.CreateTimer();
+            _autoRestoreTimer.IsRepeating = false;
+            _autoRestoreTimer.Tick += AutoRestoreTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
+        }
+        else
+        {
+            _autoRestoreTimer.Stop();
+        }
+
+        _autoRestoreTimer.Interval = TimeSpan.FromMilliseconds(1200);
         _autoRestoreTimer.Start();
+    }
+
+    private void AutoRestoreTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (!_isDragging && !_isResizing)
+        {
+            RestoreDesktopLayer(force: true);
+        }
+    }
+
+    private void ReleaseAutoRestoreTimer()
+    {
+        DispatcherQueueTimer? timer = _autoRestoreTimer;
+        if (timer is null)
+        {
+            return;
+        }
+
+        _autoRestoreTimer = null;
+        timer.Stop();
+        timer.Tick -= AutoRestoreTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
     }
 
     public void HideWindow()

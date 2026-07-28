@@ -87,6 +87,15 @@ public sealed class MusicWidgetContentAdapter : IWidgetContent, IWidgetResponsiv
         }
     }
 
+    public void OnCompactStateChanged(bool collapsed)
+    {
+        ViewModel.OnCompactStateChanged(collapsed);
+        if (_view is MusicWidgetContent content)
+        {
+            content.OnCompactStateChanged(collapsed);
+        }
+    }
+
     public void BeginResponsiveLayoutTransition(
         double targetContentWidth,
         double targetContentHeight,

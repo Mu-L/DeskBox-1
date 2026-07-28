@@ -679,108 +679,44 @@ public sealed partial class SettingsWindow
         }
 
         double flyoutWidth = Math.Max(220, Math.Max(button.ActualWidth, button.MinWidth));
-        var panel = new StackPanel
+        var flyout = new MenuFlyout
         {
-            Width = flyoutWidth,
-            Padding = new Thickness(6),
-            Spacing = 2
+            ShouldConstrainToRootBounds = false
         };
 
         foreach (string action in ViewModel.AvailableWidgetHoverButtonActions)
         {
-            panel.Children.Add(CreateHoverButtonActionFlyoutRow(action, flyoutWidth));
+            var item = new ToggleMenuFlyoutItem
+            {
+                Tag = action,
+                Text = ViewModel.GetHoverButtonActionDisplayName(action),
+                IsChecked = ViewModel.IsHoverButtonActionSelected(action),
+                IsEnabled = ViewModel.CanToggleHoverButtonAction(action),
+                MinWidth = flyoutWidth
+            };
+            item.Click += (_, _) =>
+            {
+                ViewModel.ToggleHoverButtonAction(action);
+                item.IsChecked = ViewModel.IsHoverButtonActionSelected(action);
+                RefreshHoverButtonActionsMenu(flyout);
+            };
+            flyout.Items.Add(item);
         }
 
-        var flyout = new Flyout
-        {
-            Content = panel,
-            Placement = FlyoutPlacementMode.BottomEdgeAlignedRight,
-            ShouldConstrainToRootBounds = false,
-            FlyoutPresenterStyle = new Style(typeof(FlyoutPresenter))
-            {
-                Setters =
-                {
-                    new Setter(Control.PaddingProperty, new Thickness(0)),
-                    new Setter(FrameworkElement.MinWidthProperty, flyoutWidth)
-                }
-            }
-        };
         flyout.ShowAt(button);
     }
 
-    private Button CreateHoverButtonActionFlyoutRow(string action, double flyoutWidth)
+    private void RefreshHoverButtonActionsMenu(MenuFlyout flyout)
     {
-        var checkIcon = new FontIcon
+        foreach (var item in flyout.Items.OfType<ToggleMenuFlyoutItem>())
         {
-            Width = 18,
-            FontSize = 13,
-            Glyph = "\uE73E",
-            VerticalAlignment = VerticalAlignment.Center,
-            Visibility = ViewModel.IsHoverButtonActionSelected(action)
-                ? Visibility.Visible
-                : Visibility.Collapsed
-        };
-        var textBlock = new TextBlock
-        {
-            Text = ViewModel.GetHoverButtonActionDisplayName(action),
-            FontSize = 13,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        var rowContent = new Grid
-        {
-            ColumnSpacing = 8
-        };
-        rowContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
-        rowContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        Grid.SetColumn(checkIcon, 0);
-        Grid.SetColumn(textBlock, 1);
-        rowContent.Children.Add(checkIcon);
-        rowContent.Children.Add(textBlock);
-
-        var rowButton = new Button
-        {
-            Tag = action,
-            Content = rowContent,
-            Width = flyoutWidth - 12,
-            MinHeight = 34,
-            Padding = new Thickness(10, 0, 10, 0),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Center,
-            Style = (Style)Application.Current.Resources["SubtleButtonStyle"],
-            Opacity = ViewModel.CanToggleHoverButtonAction(action) ? 1.0 : 0.48
-        };
-        rowButton.Click += (_, _) =>
-        {
-            if (!ViewModel.CanToggleHoverButtonAction(action))
-            {
-                return;
-            }
-
-            ViewModel.ToggleHoverButtonAction(action);
-            RefreshHoverButtonActionsFlyout((StackPanel)rowButton.Parent);
-        };
-        return rowButton;
-    }
-
-    private void RefreshHoverButtonActionsFlyout(StackPanel panel)
-    {
-        foreach (var child in panel.Children.OfType<Button>())
-        {
-            if (child.Tag is not string action)
+            if (item.Tag is not string action)
             {
                 continue;
             }
 
-            child.Opacity = ViewModel.CanToggleHoverButtonAction(action) ? 1.0 : 0.48;
-            if (child.Content is Grid rowContent &&
-                rowContent.Children.OfType<FontIcon>().FirstOrDefault() is FontIcon checkIcon)
-            {
-                checkIcon.Visibility = ViewModel.IsHoverButtonActionSelected(action)
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-            }
+            item.IsChecked = ViewModel.IsHoverButtonActionSelected(action);
+            item.IsEnabled = ViewModel.CanToggleHoverButtonAction(action);
         }
     }
 }

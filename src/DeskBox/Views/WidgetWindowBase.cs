@@ -180,6 +180,12 @@ public abstract partial class WidgetWindowBase : Window
     /// <summary>Whether to queue backdrop refresh after loading.</summary>
     protected virtual bool SupportsBackdropRefresh => true;
 
+    /// <summary>
+    /// Reports whether the window's expanded content has completed its initial
+    /// data load and can be measured safely for compact expansion warm-up.
+    /// </summary>
+    protected virtual bool IsCompactExpansionWarmupContentReady => true;
+
     protected Windows.Foundation.Rect GetCurrentAnimationBounds()
     {
         RectInt32 bounds = GetActualWindowBounds();
@@ -225,14 +231,8 @@ public abstract partial class WidgetWindowBase : Window
     {
         CleanupWidgetCollapse();
         StopBackdropRefreshTimer();
-        if (_inactiveBackdropCleanupTimer is not null)
-        {
-            _inactiveBackdropCleanupTimer.Stop();
-            _inactiveBackdropCleanupTimer.Tick -= InactiveBackdropCleanupTimer_Tick;
-            _inactiveBackdropCleanupTimer = null;
-        }
-        TopMostSafetyTimer?.Stop();
-        TopMostSafetyTimer = null;
+        StopInactiveBackdropCleanupTimer();
+        ReleaseTopMostSafetyTimer();
         DisplayChangeWatcher?.Dispose();
         DisplayChangeWatcher = null;
         DisposeAcrylicController();

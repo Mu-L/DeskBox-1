@@ -3,13 +3,13 @@
 ; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\x64 -v:minimal
 
 #define MyAppName "DeskBox"
-#define MyAppVersion "1.3.3"
-#define MyAppVersionInfo "1.3.3.0"
+#define MyAppVersion "1.3.4"
+#define MyAppVersionInfo "1.3.4.0"
 #define MyAppPublisher "朱天雨"
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
 #ifndef MyAppReleaseDir
-#define MyAppReleaseDir "..\\Output\\perf-final-v085"
+#define MyAppReleaseDir "..\artifacts\publish\DeskBox\x64"
 #endif
 
 [Setup]
@@ -72,6 +72,7 @@ chinesesimplified.DownloadingDotNet=正在下载 .NET 10 Runtime x64...
 chinesesimplified.DownloadingWinAppRuntime=正在下载 Windows App Runtime 2.2 x64...
 chinesesimplified.InstallingDependency=正在安装 %1...%n这可能需要几分钟，请勿关闭此窗口。
 chinesesimplified.NeedsRestart=运行时依赖已安装，但 Windows 需要重启。请重启电脑后重新运行 DeskBox 安装程序。
+chinesesimplified.DependencyVerificationFailed=依赖安装完成后，系统仍未识别到所需运行环境。DeskBox 尚未安装。请先安装稳定版 .NET 10 Runtime 和 Windows App Runtime 2.2，然后重新运行安装程序。
 english.ConfirmStorageTitle=DeskBox storage folder still contains files
 english.ConfirmStorageBody=It currently has %1 folder(s) and %2 file(s).
 english.ConfirmStorageFooter=Uninstalling DeskBox will not delete this folder or any user files inside it.%nPlease confirm you know where these files are. Continue uninstalling?
@@ -87,6 +88,7 @@ english.DownloadingDotNet=Downloading .NET 10 Runtime x64...
 english.DownloadingWinAppRuntime=Downloading Windows App Runtime 2.2 x64...
 english.InstallingDependency=Installing %1...%nThis may take a few minutes. Please do not close this window.
 english.NeedsRestart=Runtime dependencies were installed, but Windows needs to restart. Restart your PC, then run DeskBox setup again.
+english.DependencyVerificationFailed=The required runtime was still not detected after dependency installation. DeskBox has not been installed. Install the stable .NET 10 Runtime and Windows App Runtime 2.2, then run setup again.
 
 japanese.ConfirmStorageTitle=DeskBox の保存フォルダにまだファイルがあります
 japanese.ConfirmStorageBody=現在、フォルダ %1 個とファイル %2 個が含まれています。
@@ -103,6 +105,7 @@ japanese.DownloadingDotNet=.NET 10 Runtime x64 をダウンロードしていま
 japanese.DownloadingWinAppRuntime=Windows App Runtime 2.2 x64 をダウンロードしています...
 japanese.InstallingDependency=%1 をインストールしています...%n数分かかる場合があります。このウィンドウを閉じないでください。
 japanese.NeedsRestart=ランタイム依存関係はインストールされましたが、Windows の再起動が必要です。PC を再起動してから DeskBox セットアップを再度実行してください。
+japanese.DependencyVerificationFailed=依存関係のインストール後も、必要なランタイムを確認できませんでした。DeskBox はまだインストールされていません。安定版の .NET 10 Runtime と Windows App Runtime 2.2 をインストールしてから、セットアップを再実行してください。
 
 german.ConfirmStorageTitle=Der DeskBox-Speicherordner enthält noch Dateien
 german.ConfirmStorageBody=Er enthält derzeit %1 Ordner und %2 Datei(en).
@@ -119,6 +122,7 @@ german.DownloadingDotNet=.NET 10 Runtime x64 wird heruntergeladen...
 german.DownloadingWinAppRuntime=Windows App Runtime 2.2 x64 wird heruntergeladen...
 german.InstallingDependency=%1 wird installiert...%nDies kann einige Minuten dauern. Bitte schließen Sie dieses Fenster nicht.
 german.NeedsRestart=Die Laufzeitabhängigkeiten wurden installiert, aber Windows muss neu gestartet werden. Starten Sie den PC neu und führen Sie das DeskBox-Setup erneut aus.
+german.DependencyVerificationFailed=Die erforderliche Laufzeit wurde nach der Installation der Abhängigkeiten weiterhin nicht erkannt. DeskBox wurde noch nicht installiert. Installieren Sie die stabile .NET 10 Runtime und Windows App Runtime 2.2, und starten Sie Setup erneut.
 
 brazilianportuguese.ConfirmStorageTitle=A pasta de armazenamento do DeskBox ainda contém arquivos
 brazilianportuguese.ConfirmStorageBody=Ela contém atualmente %1 pasta(s) e %2 arquivo(s).
@@ -135,6 +139,7 @@ brazilianportuguese.DownloadingDotNet=Baixando o .NET 10 Runtime x64...
 brazilianportuguese.DownloadingWinAppRuntime=Baixando o Windows App Runtime 2.2 x64...
 brazilianportuguese.InstallingDependency=Instalando %1...%nIsso pode levar alguns minutos. Não feche esta janela.
 brazilianportuguese.NeedsRestart=As dependências de runtime foram instaladas, mas o Windows precisa reiniciar. Reinicie o PC e execute o instalador do DeskBox novamente.
+brazilianportuguese.DependencyVerificationFailed=O ambiente de execução necessário ainda não foi detectado após a instalação das dependências. O DeskBox ainda não foi instalado. Instale o .NET 10 Runtime estável e o Windows App Runtime 2.2 e execute o instalador novamente.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

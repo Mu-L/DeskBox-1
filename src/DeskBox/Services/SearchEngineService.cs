@@ -44,12 +44,14 @@ public sealed class SearchEngineService : IDisposable
         : _indexService.EntryCount;
 
     public bool IsCustomIndexing => _indexService.IsScanning ||
+                                    _indexService.IsLoading ||
                                     _usnIndexService is { IsScanning: true };
 
     public bool IsIndexPaused => _indexService.IsPaused ||
                                  _usnIndexService is { IsPaused: true };
 
     public DateTime? LastScanTime => _indexService.LastScanTime;
+    public bool IsCustomIndexResident => _indexService.IsIndexResident;
 
     public event Action? IndexUpdated;
 
@@ -68,8 +70,7 @@ public sealed class SearchEngineService : IDisposable
     {
         if (enabled)
         {
-            _indexService.StartIndexing();
-            _usnIndexService?.StartIndexing();
+            _ = StartCustomIndexingAsync();
         }
         else
         {
@@ -77,6 +78,43 @@ public sealed class SearchEngineService : IDisposable
             _usnIndexService?.StopIndexing();
         }
     }
+
+    /// <summary>
+    /// Restores the persisted custom index away from the UI thread, then starts its
+    /// reconciliation/watchers. Safe to call concurrently with popup preloading.
+    /// </summary>
+    public async Task StartCustomIndexingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_isDisposed ||
+            !_settingsService.Settings.SearchCustomIndexerEnabled)
+        {
+            return;
+        }
+
+        await _indexService.EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _indexService.StartIndexing();
+        _usnIndexService?.StartIndexing();
+    }
+
+    /// <summary>
+    /// Begins restoring an idle-unloaded index as soon as the popup is invoked.
+    /// Search itself also awaits this task, so an unusually fast first keystroke
+    /// cannot observe an empty custom index.
+    /// </summary>
+    public Task<bool> PrepareForPopupAsync(
+        CancellationToken cancellationToken = default) =>
+        _indexService.EnsureLoadedAsync(cancellationToken);
+
+    public Task<bool> TryUnloadCustomIndexForIdleAsync(
+        CancellationToken cancellationToken = default) =>
+        _indexService.TryUnloadForIdleAsync(cancellationToken);
 
     /// <summary>Pauses all in-progress indexing.</summary>
     public void PauseIndexing()
@@ -139,8 +177,10 @@ public sealed class SearchEngineService : IDisposable
         if (settings.SearchCustomIndexerEnabled)
         {
             providerTasks.Add(_usnIndexService is { IsAvailable: true }
-                ? Task.Run(() => _usnIndexService.Search(query, maxResults), cancellationToken)
-                : Task.Run(() => _indexService.Search(query, maxResults), cancellationToken));
+                ? Task.Run(
+                    () => _usnIndexService.Search(query, maxResults, cancellationToken),
+                    cancellationToken)
+                : SearchCustomIndexAsync(query, maxResults, cancellationToken));
         }
 
         IReadOnlyList<SearchResultItem>[] providerResults = await Task.WhenAll(providerTasks);
@@ -162,6 +202,24 @@ public sealed class SearchEngineService : IDisposable
             Elapsed = stopwatch.Elapsed,
             IsComplete = true
         };
+    }
+
+    private async Task<IReadOnlyList<SearchResultItem>> SearchCustomIndexAsync(
+        string query,
+        int maxResults,
+        CancellationToken cancellationToken)
+    {
+        bool loaded = await _indexService
+            .EnsureLoadedAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!loaded)
+        {
+            return [];
+        }
+
+        return await Task.Run(
+            () => _indexService.Search(query, maxResults, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -650,10 +708,13 @@ public sealed class SearchEngineService : IDisposable
 
         _isDisposed = true;
         _indexService.IndexUpdated -= OnIndexUpdated;
+        _indexService.ProgressChanged -= OnIndexProgressChanged;
         if (_usnIndexService is not null)
         {
             _usnIndexService.IndexUpdated -= OnIndexUpdated;
+            _usnIndexService.ProgressChanged -= OnIndexProgressChanged;
         }
         _indexService.Dispose();
+        _usnIndexService?.Dispose();
     }
 }

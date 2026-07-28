@@ -93,6 +93,7 @@ public sealed partial class UsnJournalIndexService : IDisposable
     private int _isPaused;
     private volatile bool _isAvailable;
     private bool _isDisposed;
+    private int _indexingEnabled;
 
     /// <summary>True once at least one volume was indexed via the USN journal.</summary>
     public bool IsAvailable => _isAvailable;
@@ -138,7 +139,9 @@ public sealed partial class UsnJournalIndexService : IDisposable
             return;
         }
 
+        Volatile.Write(ref _indexingEnabled, 1);
         _scanCts?.Cancel();
+        _scanCts?.Dispose();
         _scanCts = new CancellationTokenSource();
         var token = _scanCts.Token;
         _scanTask = Task.Run(() => EnumerateAllVolumes(token), token);
@@ -146,11 +149,20 @@ public sealed partial class UsnJournalIndexService : IDisposable
 
     public void StopIndexing()
     {
+        Volatile.Write(ref _indexingEnabled, 0);
         _scanCts?.Cancel();
+        _index.Clear();
+        _isAvailable = false;
+        Volatile.Write(ref _isPaused, 0);
+        _pauseGate.Set();
+        IndexUpdated?.Invoke();
     }
 
     /// <summary>Searches the full-disk index by file name.</summary>
-    public IReadOnlyList<SearchResultItem> Search(string query, int maxResults)
+    public IReadOnlyList<SearchResultItem> Search(
+        string query,
+        int maxResults,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query) || _index.IsEmpty)
         {
@@ -163,29 +175,19 @@ public sealed partial class UsnJournalIndexService : IDisposable
             return [];
         }
 
-        var topResults = new PriorityQueue<SearchResultItem, (double Score, long ModifiedTicks)>();
+        var topResults = new PriorityQueue<SearchCandidate, (double Score, long ModifiedTicks)>();
 
         foreach (var (_, entry) in _index)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             double score = SearchIndexService.ComputeRelevance(entry.FileName, normalizedQuery);
             if (score <= 0)
             {
                 continue;
             }
 
-            var result = new SearchResultItem
-            {
-                Kind = entry.IsDirectory ? SearchResultKind.Folder : SearchResultKind.File,
-                Title = entry.FileName,
-                Subtitle = entry.DirectoryPath,
-                DetailPath = entry.FullPath,
-                ModifiedAt = entry.LastModified,
-                RelevanceScore = score,
-                Glyph = entry.IsDirectory ? "\uE8B7" : null
-            };
-
             long modifiedTicks = entry.LastModified.ToUniversalTime().Ticks;
-            topResults.Enqueue(result, (score, modifiedTicks));
+            topResults.Enqueue(new SearchCandidate(entry, score), (score, modifiedTicks));
             if (topResults.Count > maxResults)
             {
                 topResults.Dequeue();
@@ -194,15 +196,26 @@ public sealed partial class UsnJournalIndexService : IDisposable
 
         return topResults.UnorderedItems
             .Select(item => item.Element)
-            .OrderByDescending(r => r.RelevanceScore)
-            .ThenByDescending(r => r.ModifiedAt)
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenByDescending(candidate => candidate.Entry.LastModified)
             .Take(maxResults)
+            .Select(candidate => new SearchResultItem
+            {
+                Kind = candidate.Entry.IsDirectory ? SearchResultKind.Folder : SearchResultKind.File,
+                Title = candidate.Entry.FileName,
+                Subtitle = candidate.Entry.DirectoryPath,
+                DetailPath = candidate.Entry.FullPath,
+                ModifiedAt = candidate.Entry.LastModified,
+                RelevanceScore = candidate.Score,
+                Glyph = candidate.Entry.IsDirectory ? "\uE8B7" : null
+            })
             .ToList();
     }
 
     private void EnumerateAllVolumes(CancellationToken token)
     {
-        if (Interlocked.CompareExchange(ref _isScanning, 1, 0) != 0)
+        if (Volatile.Read(ref _indexingEnabled) == 0 ||
+            Interlocked.CompareExchange(ref _isScanning, 1, 0) != 0)
         {
             return;
         }
@@ -476,6 +489,11 @@ public sealed partial class UsnJournalIndexService : IDisposable
                 continue;
             }
 
+            if (Volatile.Read(ref _indexingEnabled) == 0)
+            {
+                break;
+            }
+
             _index[fullPath] = new UsnEntry(
                 record.Name,
                 parentPath,
@@ -528,9 +546,24 @@ public sealed partial class UsnJournalIndexService : IDisposable
         }
 
         _isDisposed = true;
-        _scanCts?.Cancel();
+        StopIndexing();
         _scanCts?.Dispose();
-        _pauseGate.Dispose();
+        if (_scanTask is { IsCompleted: false } scanTask)
+        {
+            _ = scanTask.ContinueWith(
+                _ => _pauseGate.Dispose(),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+        else
+        {
+            _pauseGate.Dispose();
+        }
         _index.Clear();
     }
+
+    private readonly record struct SearchCandidate(
+        UsnEntry Entry,
+        double Score);
 }

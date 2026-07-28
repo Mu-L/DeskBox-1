@@ -34,11 +34,7 @@ public sealed partial class MusicWidgetViewModel
             return;
         }
 
-        if (_isWindowVisible)
-        {
-            _progressTimer?.Start();
-            UpdateMusicTimerDiagnostics();
-        }
+        UpdateProgressTimerState();
         _ = RefreshAsync();
     }
 
@@ -61,13 +57,27 @@ public sealed partial class MusicWidgetViewModel
         _isWindowVisible = visible;
         if (visible)
         {
-            _progressTimer?.Start();
             _ = RefreshAsync();
         }
-        else
+        UpdateProgressTimerState();
+    }
+
+    /// <summary>
+    /// Keeps capsule progress live at a lower cadence while avoiding the
+    /// expanded surface's 500 ms refresh cost when it is fully covered.
+    /// </summary>
+    public void OnCompactStateChanged(bool collapsed)
+    {
+        if (_isDisposed || _isCompactCollapsed == collapsed)
         {
-            _progressTimer?.Stop();
+            return;
         }
-        UpdateMusicTimerDiagnostics();
+
+        _isCompactCollapsed = collapsed;
+        UpdateProgressTimerState();
+        if (!collapsed && _isWindowVisible)
+        {
+            _ = RefreshTimelineAsync();
+        }
     }
 }

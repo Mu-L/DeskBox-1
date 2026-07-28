@@ -28,14 +28,10 @@ public sealed partial class MusicWidgetViewModel
             return;
         }
 
-        if (_isWindowVisible)
-        {
-            _progressTimer?.Start();
-        }
-        UpdateMusicTimerDiagnostics();
+        UpdateProgressTimerState();
     }
 
-    public async Task RefreshAsync()
+    public async Task RefreshAsync(int? mediaPropertiesGeneration = null)
     {
         if (_isDisposed)
         {
@@ -45,6 +41,7 @@ public sealed partial class MusicWidgetViewModel
         if (_isRefreshing)
         {
             _fullRefreshPending = true;
+            _pendingFullRefreshMediaGeneration = mediaPropertiesGeneration;
             return;
         }
 
@@ -54,6 +51,7 @@ public sealed partial class MusicWidgetViewModel
             do
             {
                 _fullRefreshPending = false;
+                int? refreshGeneration = mediaPropertiesGeneration;
                 try
                 {
                     await _musicSessionService.InitializeAsync();
@@ -69,7 +67,12 @@ public sealed partial class MusicWidgetViewModel
                         return;
                     }
 
-                    await ApplyInfoAsync(info);
+                    bool isStaleMediaRefresh = refreshGeneration is { } expectedGeneration &&
+                        expectedGeneration != Volatile.Read(ref _mediaPropertiesPendingGeneration);
+                    if (!isStaleMediaRefresh)
+                    {
+                        await ApplyInfoAsync(info, refreshGeneration);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -80,6 +83,12 @@ public sealed partial class MusicWidgetViewModel
 
                     App.Log($"[MusicWidget] Refresh failed: {ex}");
                     await ApplyInfoAsync(null);
+                }
+
+                if (_fullRefreshPending)
+                {
+                    mediaPropertiesGeneration = _pendingFullRefreshMediaGeneration;
+                    _pendingFullRefreshMediaGeneration = null;
                 }
             }
             while (_fullRefreshPending && !_isDisposed);
@@ -137,7 +146,7 @@ public sealed partial class MusicWidgetViewModel
         }
 
         await _musicSessionService.TryPreviousAsync(_preferredSessionId);
-        await RefreshAsync();
+        ScheduleDebouncedMediaRefresh();
     }
 
     public async Task NextAsync()
@@ -148,7 +157,7 @@ public sealed partial class MusicWidgetViewModel
         }
 
         await _musicSessionService.TryNextAsync(_preferredSessionId);
-        await RefreshAsync();
+        ScheduleDebouncedMediaRefresh();
     }
 
     public async Task CyclePlaybackModeAsync()

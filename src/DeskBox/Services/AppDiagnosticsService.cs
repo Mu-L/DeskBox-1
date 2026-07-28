@@ -3,14 +3,12 @@ using Microsoft.UI.Dispatching;
 namespace DeskBox.Services;
 
 /// <summary>
-/// Owns background diagnostics: periodic memory sampling, forced GC cleanup,
-/// and the UI-thread responsiveness watchdog.
+/// Owns opt-in memory diagnostics and the UI-thread responsiveness watchdog.
 /// Extracted from App.xaml.cs to reduce God Class complexity.
 /// </summary>
 public sealed class AppDiagnosticsService : IDisposable
 {
     private DispatcherQueueTimer? _memoryDiagnosticTimer;
-    private CancellationTokenSource? _periodicGcCts;
     private System.Threading.Timer? _uiWatchdogTimer;
     private volatile bool _uiHeartbeatReceived;
     private int _watchdogMissCount;
@@ -28,7 +26,6 @@ public sealed class AppDiagnosticsService : IDisposable
     public void StartAll()
     {
         ScheduleMemoryDiagnostics();
-        SchedulePeriodicMemoryCleanup();
         StartUiThreadWatchdog();
     }
 
@@ -46,51 +43,15 @@ public sealed class AppDiagnosticsService : IDisposable
         _memoryDiagnosticTimer = _dispatcherQueue.CreateTimer();
         _memoryDiagnosticTimer.Interval = TimeSpan.FromSeconds(30);
         _memoryDiagnosticTimer.IsRepeating = true;
-        _memoryDiagnosticTimer.Tick += (_, _) => PerformanceLogger.SampleMemory();
+        _memoryDiagnosticTimer.Tick += MemoryDiagnosticTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
         _memoryDiagnosticTimer.Start();
         App.Log("[Perf] Memory diagnostics timer started (30s interval)");
     }
 
-    /// <summary>
-    /// Starts a background loop that periodically triggers GC to release
-    /// native Composition/COM resources that the WinUI framework holds via
-    /// finalizable wrappers.
-    /// </summary>
-    private void SchedulePeriodicMemoryCleanup()
+    private static void MemoryDiagnosticTimer_Tick(DispatcherQueueTimer sender, object args)
     {
-        _periodicGcCts = new CancellationTokenSource();
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromMinutes(1), _periodicGcCts.Token);
-
-                while (!_periodicGcCts.Token.IsCancellationRequested)
-                {
-                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
-                    GC.WaitForPendingFinalizers();
-                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
-                    Helpers.Win32Helper.TrimCurrentProcessWorkingSet();
-
-                    if (PerformanceLogger.IsEnabled)
-                    {
-                        PerformanceLogger.SampleMemory();
-                        App.Log("[Perf] Periodic GC cleanup completed");
-                    }
-
-                    await Task.Delay(TimeSpan.FromMinutes(2), _periodicGcCts.Token);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected during shutdown.
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[Perf] Periodic GC cleanup error: {ex}");
-            }
-        });
-        App.Log("[Perf] Periodic memory cleanup scheduled (2 min interval)");
+        PerformanceLogger.SampleMemory();
     }
 
     /// <summary>
@@ -124,10 +85,11 @@ public sealed class AppDiagnosticsService : IDisposable
 
                     if (missCount == 5)
                     {
-                        App.Log("[Watchdog] 5 consecutive misses — forcing GC.Collect");
-                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
-                        GC.WaitForPendingFinalizers();
-                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+                        // A blocked UI thread cannot be repaired by forcing a collection.
+                        // In particular, waiting for WinUI/COM finalizers while the UI STA is
+                        // unresponsive can make the original stall harder to recover from.
+                        // Keep the watchdog diagnostic-only and let the runtime manage GC.
+                        App.Log("[Watchdog] 5 consecutive misses — diagnostics only; forced GC suppressed");
                     }
                 }
                 else
@@ -158,11 +120,13 @@ public sealed class AppDiagnosticsService : IDisposable
         }
 
         _isDisposed = true;
-        _memoryDiagnosticTimer?.Stop();
-        _memoryDiagnosticTimer = null;
-        _periodicGcCts?.Cancel();
-        _periodicGcCts?.Dispose();
-        _periodicGcCts = null;
+        if (_memoryDiagnosticTimer is not null)
+        {
+            _memoryDiagnosticTimer.Stop();
+            _memoryDiagnosticTimer.Tick -= MemoryDiagnosticTimer_Tick;
+            _memoryDiagnosticTimer = null;
+            PerformanceLogger.RecordTransientUiTimerReleased();
+        }
         _uiWatchdogTimer?.Dispose();
         _uiWatchdogTimer = null;
     }

@@ -20,6 +20,7 @@ public partial class WidgetViewModel
             MappedFolderPath = Config.MappedFolderPath;
 await LoadFolderContentsAsync(MappedFolderPath!);
 await ConfigureFolderWatchersAsync(MappedFolderPath);
+            IsInitialized = true;
         }
         finally
         {

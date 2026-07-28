@@ -696,8 +696,10 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(SettingsService.WidgetAnimationEffectSlideFade, newUserDefaults.WidgetAnimationEffect);
         Assert.Equal(newUserDefaults.WidgetAnimationEffect, restoredDefaults.WidgetAnimationEffect);
-        Assert.True(newUserDefaults.WidgetCapsuleModeEnabled);
+        Assert.False(newUserDefaults.WidgetCapsuleModeEnabled);
         Assert.Equal(newUserDefaults.WidgetCapsuleModeEnabled, restoredDefaults.WidgetCapsuleModeEnabled);
+        Assert.False(newUserDefaults.SearchHotkeyEnabled);
+        Assert.Equal(newUserDefaults.SearchHotkeyEnabled, restoredDefaults.SearchHotkeyEnabled);
         Assert.Equal(SettingsService.WidgetCompactWidthModeAligned, newUserDefaults.WidgetCompactWidthMode);
         Assert.Equal(newUserDefaults.WidgetCompactWidthMode, restoredDefaults.WidgetCompactWidthMode);
         Assert.Equal(SettingsService.WidgetCompactAnimationSlow, newUserDefaults.WidgetCompactAnimationEffect);
@@ -756,6 +758,8 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.ShowFileItemPathTooltips, restoredDefaults.ShowFileItemPathTooltips);
         Assert.Equal(SettingsService.DefaultWidgetHoverButtonActions, newUserDefaults.WidgetHoverButtonActions);
         Assert.Equal(newUserDefaults.WidgetHoverButtonActions, restoredDefaults.WidgetHoverButtonActions);
+        Assert.Equal(SettingsService.WeatherSkinRich, newUserDefaults.WeatherSkin);
+        Assert.Equal(newUserDefaults.WeatherSkin, restoredDefaults.WeatherSkin);
     }
 
     [Fact]

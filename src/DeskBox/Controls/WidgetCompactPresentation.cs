@@ -44,4 +44,7 @@ public sealed record WidgetCompactPresentation(
     // ── Music capsule body progress bar (below the artist name) ──
     // Determinate fill ratio in [0,1]. Null means "no bar" (e.g. no
     // seekable timeline yet). Driven by SeekValue/SeekMaximum.
-    double? MusicProgress = null);
+    double? MusicProgress = null,
+    // Null inherits the app theme. Weather Rich uses an explicit foreground
+    // theme so its text remains readable over condition-aware gradients.
+    bool? UseLightForeground = null);

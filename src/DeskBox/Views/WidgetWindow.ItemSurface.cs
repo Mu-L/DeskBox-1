@@ -201,7 +201,7 @@ public sealed partial class WidgetWindow
                     : ColorHelper.FromArgb(0xFF, 0xF1, 0xF6, 0xFC),
                 accentMix: isDark ? 0.30 : 0.18,
                 overlayMix: isDark ? 0.08 : 0.04),
-            isDark ? (byte)0x62 : (byte)0x72);
+            isDark ? (byte)0xA8 : (byte)0xA0);
 
         var hoverBackground = WithAlpha(
             BuildAccentSurfaceColor(
@@ -234,7 +234,7 @@ public sealed partial class WidgetWindow
                     : ColorHelper.FromArgb(0xFF, 0xEC, 0xF4, 0xFC),
                 accentMix: isDark ? 0.34 : 0.21,
                 overlayMix: isDark ? 0.08 : 0.05),
-            isDark ? (byte)0x78 : (byte)0x88);
+            isDark ? (byte)0xC0 : (byte)0xB8);
 
         var dropTargetBackground = WithAlpha(
             BuildAccentSurfaceColor(

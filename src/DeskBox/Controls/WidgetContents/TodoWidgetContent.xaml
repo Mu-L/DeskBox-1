@@ -298,13 +298,13 @@
                                     Visibility="{Binding CopySelectionVisibility}" />
 
                                 <Button Grid.Column="0" AutomationProperties.Name="{Binding CompletionToggleText}" Click="ItemCompletionButton_Click" Style="{StaticResource TodoCardIconButtonStyle}" ToolTipService.ToolTip="{Binding CompletionToggleText}">
-                                    <Grid Width="{Binding ElementName=TodoListView, Path=DataContext.CompletionIndicatorSize}" Height="{Binding ElementName=TodoListView, Path=DataContext.CompletionIndicatorSize}">
+                                    <Grid Width="{Binding ElementName=TodoListView, Path=DataContext.CompletionIndicatorSize}" Height="18">
                                         <Border
                                             x:Name="TodoCompletionBox"
                                             Background="Transparent"
                                             BorderBrush="{ThemeResource TextFillColorSecondaryBrush}"
                                             BorderThickness="{Binding CompletionBorderThickness}"
-                                            CornerRadius="11" />
+                                            CornerRadius="5" />
                                         <FontIcon
                                             FontSize="{Binding ElementName=TodoListView, Path=DataContext.SmallIconSize}"
                                             Foreground="White"

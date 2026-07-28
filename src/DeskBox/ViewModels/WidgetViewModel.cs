@@ -107,6 +107,8 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool IsInitialized { get; private set; }
+
     public string? MappedFolderPath
     {
         get => _mappedFolderPath;

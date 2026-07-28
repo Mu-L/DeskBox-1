@@ -525,8 +525,13 @@ public void RefreshWeatherCityPopularCities()
 
 public void SelectWeatherCity(WeatherCitySearchResult result)
 {
-    if (result is null)
+    if (result is null ||
+        !double.IsFinite(result.Latitude) ||
+        !double.IsFinite(result.Longitude) ||
+        result.Latitude is < -90 or > 90 ||
+        result.Longitude is < -180 or > 180)
     {
+        App.Log("[SettingsViewModel] Ignored city selection with invalid coordinates");
         return;
     }
 

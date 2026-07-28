@@ -12,13 +12,22 @@ namespace DeskBox.Helpers;
 public static class IconHelper
 {
     private const int MaxIconCacheEntries = 200;
+    private const long MaxIconCacheBytes = 32L * 1024 * 1024;
+    private const int MaxDecodedBitmapCacheEntries = 160;
+    private const long MaxDecodedBitmapCacheBytes = 48L * 1024 * 1024;
     private const int MaxThumbnailCacheEntries = 128;
+    private const string SharedCacheScope = "shared";
 
     // Icon bytes cache: path → PNG bytes (for shell icons, not image thumbnails)
     private static readonly ConcurrentDictionary<string, byte[]?> s_iconBytesCache = new(StringComparer.OrdinalIgnoreCase);
 
     // Bitmap cache for shell icons (not image thumbnails)
     private static readonly ConcurrentDictionary<string, Task<BitmapImage?>> s_bitmapImageCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object s_bitmapCacheLock = new();
+    private static readonly LinkedList<string> s_bitmapLru = new();
+    private static readonly Dictionary<string, LinkedListNode<string>> s_bitmapLruNodes = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, long> s_bitmapEstimatedBytes = new(StringComparer.OrdinalIgnoreCase);
+    private static long s_totalBitmapEstimatedBytes;
 
     // ── Image thumbnail LRU cache (separate from icon cache) ──────
     // Uses a linked list + dictionary for simple LRU eviction.
@@ -133,7 +142,8 @@ public static class IconHelper
         string path,
         bool hideShortcutArrowOverlay = false,
         bool showImageFilesAsIcons = false,
-        int decodePixelWidth = 0)
+        int decodePixelWidth = 0,
+        string cacheScope = SharedCacheScope)
     {
         using var perfScope = PerformanceLogger.Measure("IconHelper.GetIcon", $"path={path}");
         var dispatcher = App.UiDispatcherQueue;
@@ -142,9 +152,17 @@ public static class IconHelper
             return null;
         }
 
+        string normalizedCacheScope = string.IsNullOrWhiteSpace(cacheScope)
+            ? SharedCacheScope
+            : cacheScope.Trim();
+
         if (!showImageFilesAsIcons && IsImageFile(path))
         {
-            return await LoadImageThumbnailAsync(dispatcher, path);
+            return await LoadImageThumbnailAsync(
+                dispatcher,
+                path,
+                decodePixelWidth,
+                normalizedCacheScope);
         }
 
         IconSource iconSource = ResolveIconSource(path, hideShortcutArrowOverlay);
@@ -155,8 +173,8 @@ public static class IconHelper
 
         string cacheKey = BuildCacheKey(path, iconSource);
         int normalizedDecodePixelWidth = Math.Clamp(decodePixelWidth, 0, 256);
-        string bitmapCacheKey = $"{cacheKey}:decode={normalizedDecodePixelWidth}";
-        return await s_bitmapImageCache.GetOrAdd(
+        string bitmapCacheKey = $"{normalizedCacheScope}|{cacheKey}:decode={normalizedDecodePixelWidth}";
+        Task<BitmapImage?> bitmapTask = s_bitmapImageCache.GetOrAdd(
             bitmapCacheKey,
             _ => LoadBitmapImageAsync(
                 dispatcher,
@@ -164,6 +182,10 @@ public static class IconHelper
                 cacheKey,
                 bitmapCacheKey,
                 normalizedDecodePixelWidth));
+        TrackDecodedBitmap(
+            bitmapCacheKey,
+            EstimateDecodedBitmapBytes(normalizedDecodePixelWidth));
+        return await bitmapTask;
     }
 
     public static bool IsImageFile(string path)
@@ -176,9 +198,14 @@ public static class IconHelper
 
     private static async Task<BitmapImage?> LoadImageThumbnailAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
-        string path)
+        string path,
+        int decodePixelWidth,
+        string cacheScope)
     {
-        string cacheKey = $"thumb:{path}:{GetFileIconVersion(path)}";
+        int normalizedDecodePixelWidth = decodePixelWidth <= 0
+            ? 96
+            : Math.Clamp(decodePixelWidth, 24, 256);
+        string cacheKey = $"thumb:{cacheScope}|{path}:{GetFileIconVersion(path)}:decode={normalizedDecodePixelWidth}";
 
         Task<BitmapImage?>? cachedTask = null;
         lock (s_thumbLock)
@@ -201,14 +228,18 @@ public static class IconHelper
         }
 
         // Remove stale entry for the same path but different version
-        RemoveStaleThumbnailEntries(path, cacheKey);
+        RemoveStaleThumbnailEntries(cacheScope, path, cacheKey);
 
         Task<BitmapImage?> task;
         lock (s_thumbLock)
         {
             if (!s_thumbCache.TryGetValue(cacheKey, out task!))
             {
-                task = CreateImageThumbnailAsync(dispatcher, path, cacheKey);
+                task = CreateImageThumbnailAsync(
+                    dispatcher,
+                    path,
+                    cacheKey,
+                    normalizedDecodePixelWidth);
                 s_thumbCache[cacheKey] = task;
                 s_thumbLru.AddFirst(cacheKey);
                 EvictThumbnailCacheIfNeeded();
@@ -236,9 +267,12 @@ public static class IconHelper
     /// modification-time version, preventing stale thumbnails from
     /// accumulating when files are edited.
     /// </summary>
-    private static void RemoveStaleThumbnailEntries(string path, string currentKey)
+    private static void RemoveStaleThumbnailEntries(
+        string cacheScope,
+        string path,
+        string currentKey)
     {
-        string pathPrefix = $"thumb:{path}:";
+        string pathPrefix = $"thumb:{cacheScope}|{path}:";
 
         lock (s_thumbLock)
         {
@@ -282,27 +316,28 @@ public static class IconHelper
     private static async Task<BitmapImage?> CreateImageThumbnailAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
         string path,
-        string cacheKey)
+        string cacheKey,
+        int decodePixelWidth)
     {
         await s_thumbLoadSemaphore.WaitAsync();
         try
         {
             // Try Windows native thumbnail first — leverages the system
             // thumbnail cache and avoids reading the full image into memory.
-            var image = await TryLoadNativeThumbnailAsync(dispatcher, path);
+            var image = await TryLoadNativeThumbnailAsync(dispatcher, path, decodePixelWidth);
             if (image is not null)
             {
                 return image;
             }
 
-            // Fallback: read file bytes and decode at 80px
+            // Fallback: decode to the requested display size.
             byte[] bytes = await File.ReadAllBytesAsync(path);
             if (bytes.Length == 0)
             {
                 return null;
             }
 
-            image = await CreateBitmapImageAsync(dispatcher, bytes, decodePixelWidth: 80);
+            image = await CreateBitmapImageAsync(dispatcher, bytes, decodePixelWidth);
 
             return image;
         }
@@ -350,7 +385,8 @@ public static class IconHelper
     /// </summary>
     private static async Task<BitmapImage?> TryLoadNativeThumbnailAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
-        string path)
+        string path,
+        int decodePixelWidth)
     {
         try
         {
@@ -362,7 +398,7 @@ public static class IconHelper
             var storageFile = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
             using var thumbnail = await storageFile.GetThumbnailAsync(
                 Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
-                96,
+                (uint)decodePixelWidth,
                 Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale);
 
             if (thumbnail is null || thumbnail.Size == 0)
@@ -372,7 +408,7 @@ public static class IconHelper
 
             if (dispatcher.HasThreadAccess)
             {
-                return await CreateBitmapFromStreamOnUiThread(thumbnail);
+                return await CreateBitmapFromStreamOnUiThread(thumbnail, decodePixelWidth);
             }
 
             var tcs = new TaskCompletionSource<BitmapImage?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -380,7 +416,7 @@ public static class IconHelper
             {
                 try
                 {
-                    tcs.SetResult(await CreateBitmapFromStreamOnUiThread(thumbnail));
+                    tcs.SetResult(await CreateBitmapFromStreamOnUiThread(thumbnail, decodePixelWidth));
                 }
                 catch (Exception ex)
                 {
@@ -404,10 +440,11 @@ public static class IconHelper
     }
 
     private static async Task<BitmapImage?> CreateBitmapFromStreamOnUiThread(
-        Windows.Storage.Streams.IRandomAccessStream stream)
+        Windows.Storage.Streams.IRandomAccessStream stream,
+        int decodePixelWidth)
     {
         var bmp = new BitmapImage();
-        bmp.DecodePixelWidth = 96;
+        bmp.DecodePixelWidth = decodePixelWidth;
         await bmp.SetSourceAsync(stream);
         return bmp;
     }
@@ -425,11 +462,13 @@ public static class IconHelper
         if (IsImageFile(path))
         {
             // Remove all thumbnail entries for this path (any version)
-            string pathPrefix = $"thumb:{path}:";
+            string pathMarker = $"|{path}:";
             lock (s_thumbLock)
             {
                 var keysToRemove = s_thumbCache.Keys
-                    .Where(k => k.StartsWith(pathPrefix, StringComparison.OrdinalIgnoreCase))
+                    .Where(k =>
+                        k.StartsWith("thumb:", StringComparison.OrdinalIgnoreCase) &&
+                        k.Contains(pathMarker, StringComparison.OrdinalIgnoreCase))
                     .ToList();
                 foreach (var key in keysToRemove)
                 {
@@ -452,11 +491,11 @@ public static class IconHelper
         }
 
         string cacheKey = BuildCacheKey(path, iconSource);
-        string bitmapCachePrefix = $"{cacheKey}:decode=";
+        string bitmapCacheMarker = $"|{cacheKey}:decode=";
         foreach (string bitmapKey in s_bitmapImageCache.Keys.Where(
-                     key => key.StartsWith(bitmapCachePrefix, StringComparison.OrdinalIgnoreCase)))
+                     key => key.Contains(bitmapCacheMarker, StringComparison.OrdinalIgnoreCase)))
         {
-            s_bitmapImageCache.TryRemove(bitmapKey, out _);
+            RemoveDecodedBitmap(bitmapKey);
         }
         s_iconBytesCache.TryRemove(cacheKey, out _);
         PerformanceLogger.IconCacheCount = s_iconBytesCache.Count;
@@ -505,6 +544,39 @@ public static class IconHelper
         }
     }
 
+    /// <summary>
+    /// Clears decoded icons and thumbnails owned by a transient caller while
+    /// preserving the shared file-widget cache.
+    /// </summary>
+    public static void ClearCacheScope(string cacheScope)
+    {
+        if (string.IsNullOrWhiteSpace(cacheScope))
+        {
+            return;
+        }
+
+        string normalizedScope = cacheScope.Trim();
+        string bitmapPrefix = normalizedScope + "|";
+        foreach (string key in s_bitmapImageCache.Keys.Where(
+                     key => key.StartsWith(bitmapPrefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            RemoveDecodedBitmap(key);
+        }
+
+        string thumbnailPrefix = $"thumb:{normalizedScope}|";
+        lock (s_thumbLock)
+        {
+            foreach (string key in s_thumbCache.Keys.Where(
+                         key => key.StartsWith(thumbnailPrefix, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                s_thumbCache.Remove(key);
+                RemoveThumbnailLruKey(key);
+            }
+
+            PerformanceLogger.ThumbnailCacheCount = s_thumbCache.Count;
+        }
+    }
+
     private static async Task<BitmapImage?> LoadBitmapImageAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
         IconSource iconSource,
@@ -539,7 +611,7 @@ public static class IconHelper
         var image = await CreateBitmapImageAsync(dispatcher, bytes, decodePixelWidth);
         if (image is null)
         {
-            s_bitmapImageCache.TryRemove(bitmapCacheKey, out _);
+            RemoveDecodedBitmap(bitmapCacheKey);
             s_iconBytesCache.TryRemove(iconBytesCacheKey, out _);
         }
 
@@ -1129,23 +1201,101 @@ public static class IconHelper
         }
     }
 
+    private static long EstimateDecodedBitmapBytes(int decodePixelWidth)
+    {
+        int width = decodePixelWidth <= 0 ? 256 : decodePixelWidth;
+        return (long)width * width * 4;
+    }
+
+    private static void TrackDecodedBitmap(string cacheKey, long estimatedBytes)
+    {
+        lock (s_bitmapCacheLock)
+        {
+            if (s_bitmapLruNodes.TryGetValue(cacheKey, out var existingNode))
+            {
+                s_bitmapLru.Remove(existingNode);
+                s_bitmapLru.AddFirst(existingNode);
+            }
+            else
+            {
+                var node = s_bitmapLru.AddFirst(cacheKey);
+                s_bitmapLruNodes[cacheKey] = node;
+                s_bitmapEstimatedBytes[cacheKey] = estimatedBytes;
+                s_totalBitmapEstimatedBytes += estimatedBytes;
+            }
+
+            while ((s_bitmapImageCache.Count > MaxDecodedBitmapCacheEntries ||
+                    s_totalBitmapEstimatedBytes > MaxDecodedBitmapCacheBytes) &&
+                   s_bitmapLru.Last is { } oldestNode)
+            {
+                string oldestKey = oldestNode.Value;
+                s_bitmapLru.RemoveLast();
+                s_bitmapLruNodes.Remove(oldestKey);
+                if (s_bitmapEstimatedBytes.Remove(oldestKey, out long removedBytes))
+                {
+                    s_totalBitmapEstimatedBytes -= removedBytes;
+                }
+
+                s_bitmapImageCache.TryRemove(oldestKey, out _);
+            }
+
+            UpdateDecodedBitmapDiagnostics();
+        }
+    }
+
+    private static void RemoveDecodedBitmap(string cacheKey)
+    {
+        lock (s_bitmapCacheLock)
+        {
+            s_bitmapImageCache.TryRemove(cacheKey, out _);
+            if (s_bitmapLruNodes.Remove(cacheKey, out var node))
+            {
+                s_bitmapLru.Remove(node);
+            }
+
+            if (s_bitmapEstimatedBytes.Remove(cacheKey, out long removedBytes))
+            {
+                s_totalBitmapEstimatedBytes -= removedBytes;
+            }
+
+            UpdateDecodedBitmapDiagnostics();
+        }
+    }
+
+    private static void UpdateDecodedBitmapDiagnostics()
+    {
+        PerformanceLogger.DecodedBitmapCacheCount = s_bitmapImageCache.Count;
+        PerformanceLogger.DecodedBitmapEstimatedBytes = Math.Max(0, s_totalBitmapEstimatedBytes);
+    }
+
     private static void EvictIconCachesIfNeeded()
     {
-        if (s_iconBytesCache.Count > MaxIconCacheEntries)
+        long cachedBytes = s_iconBytesCache.Values.Sum(bytes => bytes?.LongLength ?? 0);
+        if (s_iconBytesCache.Count > MaxIconCacheEntries ||
+            cachedBytes > MaxIconCacheBytes)
         {
-            var keysToRemove = s_iconBytesCache.Keys
-                .Take(s_iconBytesCache.Count - MaxIconCacheEntries / 2)
-                .ToList();
-            foreach (var key in keysToRemove)
+            int targetCount = MaxIconCacheEntries / 2;
+            long targetBytes = MaxIconCacheBytes / 2;
+            foreach (var (key, bytes) in s_iconBytesCache)
             {
-                s_iconBytesCache.TryRemove(key, out _);
-                string bitmapCachePrefix = $"{key}:decode=";
-                foreach (string bitmapKey in s_bitmapImageCache.Keys.Where(
-                             candidate => candidate.StartsWith(
-                                 bitmapCachePrefix,
-                                 StringComparison.OrdinalIgnoreCase)))
+                if (s_iconBytesCache.Count <= targetCount &&
+                    cachedBytes <= targetBytes)
                 {
-                    s_bitmapImageCache.TryRemove(bitmapKey, out _);
+                    break;
+                }
+
+                if (s_iconBytesCache.TryRemove(key, out _))
+                {
+                    cachedBytes -= bytes?.LongLength ?? 0;
+                }
+
+                string bitmapCacheMarker = $"|{key}:decode=";
+                foreach (string bitmapKey in s_bitmapImageCache.Keys.Where(
+                             candidate => candidate.Contains(
+                                  bitmapCacheMarker,
+                                  StringComparison.OrdinalIgnoreCase)))
+                {
+                    RemoveDecodedBitmap(bitmapKey);
                 }
             }
         }

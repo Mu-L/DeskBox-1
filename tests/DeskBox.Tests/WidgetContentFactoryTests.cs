@@ -93,6 +93,19 @@ public sealed class WidgetContentFactoryTests
     }
 
     [Fact]
+    public void NewSearchWidget_UsesOverlayChromeWithoutChangingOtherFeatureDefaults()
+    {
+        var search = new WidgetConfig();
+        var weather = new WidgetConfig();
+
+        WidgetManager.ApplyDefaultFeatureWidgetChromeMode(search, WidgetKind.Search);
+        WidgetManager.ApplyDefaultFeatureWidgetChromeMode(weather, WidgetKind.Weather);
+
+        Assert.Equal(WidgetChromeMode.Overlay, WidgetChromeModeNames.GetOverrideMode(search));
+        Assert.Equal(WidgetChromeMode.System, WidgetChromeModeNames.GetOverrideMode(weather));
+    }
+
+    [Fact]
     public void GetFeatureWidgetEntryDescriptors_OnlyReturnsAvailableImplementedWidgets()
     {
         var factory = TestServices.CreateWidgetContentFactory();

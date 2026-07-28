@@ -37,21 +37,11 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     private bool _isHidePrepared;
     private bool _isCommittingTitleRename;
     private bool _isCancellingTitleRename;
+    private bool _compactPresentationRefreshQueued;
     private INotifyPropertyChanged? _compactPresentationSource;
 
     private bool _isVisibleOnDesktop;
-    private bool _searchHistorySubscribed;
-
-    // Safety-net timer that re-evaluates the music compact presentation every
-    // 500 ms while the music widget is active. The music ViewModel only raises
-    // PropertyChanged when Position / Duration / IsPlaying actually change, so
-    // if a player keeps Position at 0 for tens of seconds (very common at
-    // song-start) and never reports a Duration change, the capsule can stay
-    // stuck on a stale Progress=0 / ScaleX=0 render and look completely empty.
-    // A forced refresh on a timer guarantees IsProgressIndeterminate is
-    // re-evaluated continuously so the sweeping+pulsing bar keeps showing
-    // during that window.
-    private DispatcherTimer? _musicProgressRefreshTimer;
+    private SearchHistoryService? _subscribedSearchHistoryService;
 
     public ContentWidgetWindow(
         WidgetConfig config,
@@ -108,6 +98,8 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     protected override string LogPrefix => "Content";
     protected override bool IsSizeLocked => _config.IsSizeLocked;
     protected override bool IsPositionLocked => _config.IsPositionLocked;
+    protected override bool IsCompactExpansionWarmupContentReady =>
+        _contentHost.CurrentContent is not null;
 
     protected override WidgetCompactPresentation CreateCompactPresentation()
     {
@@ -238,38 +230,15 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         WeatherWidgetContentAdapter weather,
         string contentMode)
     {
-        var condition = weather.ViewModel.CurrentCondition;
         bool isDay = weather.ViewModel.IsDay;
         bool isAttention = IsCompactWeatherAttentionRequired(weather);
-
-        // Color field based on weather condition
-        var (colorStart, colorEnd) = condition switch
-        {
-            Helpers.WeatherCodeMapper.WeatherCondition.Clear => isDay
-                ? (Windows.UI.Color.FromArgb(0xFF, 0xF5, 0x9E, 0x0B), Windows.UI.Color.FromArgb(0xFF, 0xF9, 0x73, 0x16))
-                : (Windows.UI.Color.FromArgb(0xFF, 0x1E, 0x3A, 0x5F), Windows.UI.Color.FromArgb(0xFF, 0x0F, 0x17, 0x2A)),
-            Helpers.WeatherCodeMapper.WeatherCondition.Cloudy or
-            Helpers.WeatherCodeMapper.WeatherCondition.Fog =>
-                (Windows.UI.Color.FromArgb(0xFF, 0x64, 0x74, 0x8B), Windows.UI.Color.FromArgb(0xFF, 0x47, 0x55, 0x69)),
-            Helpers.WeatherCodeMapper.WeatherCondition.Rain or
-            Helpers.WeatherCodeMapper.WeatherCondition.Drizzle =>
-                (Windows.UI.Color.FromArgb(0xFF, 0x1E, 0x40, 0xAF), Windows.UI.Color.FromArgb(0xFF, 0x1E, 0x3A, 0x5F)),
-            Helpers.WeatherCodeMapper.WeatherCondition.Snow =>
-                (Windows.UI.Color.FromArgb(0xFF, 0x93, 0xC5, 0xFD), Windows.UI.Color.FromArgb(0xFF, 0xBF, 0xDB, 0xFE)),
-            Helpers.WeatherCodeMapper.WeatherCondition.Thunderstorm =>
-                (Windows.UI.Color.FromArgb(0xFF, 0x4C, 0x1D, 0x95), Windows.UI.Color.FromArgb(0xFF, 0x1E, 0x1B, 0x4B)),
-            _ => ((Windows.UI.Color?)null, (Windows.UI.Color?)null)
-        };
-
-        // Particles based on condition
-        var particleKind = condition switch
-        {
-            Helpers.WeatherCodeMapper.WeatherCondition.Rain or
-            Helpers.WeatherCodeMapper.WeatherCondition.Drizzle or
-            Helpers.WeatherCodeMapper.WeatherCondition.Thunderstorm => CompactParticleKind.Rain,
-            Helpers.WeatherCodeMapper.WeatherCondition.Snow => CompactParticleKind.Snow,
-            _ => CompactParticleKind.None
-        };
+        bool usesRichSkin = weather.ViewModel.UsesRichSkin;
+        Windows.UI.Color? colorStart = usesRichSkin
+            ? weather.ViewModel.RichBackdropTopColor
+            : null;
+        Windows.UI.Color? colorEnd = usesRichSkin
+            ? weather.ViewModel.RichBackdropBottomColor
+            : null;
 
         return new WidgetCompactPresentation(
             string.IsNullOrWhiteSpace(weather.ViewModel.CurrentTemperatureText)
@@ -286,12 +255,19 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
                 weather.ViewModel.CurrentWeatherCode, isDay),
             BackgroundColorStart: colorStart,
             BackgroundColorEnd: colorEnd,
-            ParticleKind: particleKind,
+            // Avoid the former 50 ms UI-thread particle timer (20 Canvas writes
+            // per tick). The condition-aware color field and emoji retain the
+            // weather identity without a permanent rendering tax.
+            ParticleKind: CompactParticleKind.None,
             LiveStateKey: string.Join(
                 "|",
+                usesRichSkin,
                 weather.ViewModel.CurrentTemperatureText,
                 weather.ViewModel.CurrentDescription,
-                weather.ViewModel.PrecipitationText));
+                weather.ViewModel.PrecipitationText),
+            UseLightForeground: usesRichSkin
+                ? weather.ViewModel.RichSkinUsesLightText
+                : null);
     }
 
     private WidgetCompactPresentation CreateTodoCompactPresentation(
@@ -814,78 +790,105 @@ IsHideAnimationRunning = true;
             _compactPresentationSource.PropertyChanged += CompactPresentationSource_PropertyChanged;
         }
 
-        // Start (or restart) the music progress refresh timer whenever a music
-        // widget becomes the active compact source. It ticks at 500 ms and just
-        // calls RefreshCompactPresentation, which is a no-op cost-wise if the
-        // presentation is already up to date but guarantees the indeterminate
-        // branch is re-evaluated every tick during the song-start window.
-        if (content is MusicWidgetContentAdapter)
-        {
-            _musicProgressRefreshTimer ??= new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(500)
-            };
-            _musicProgressRefreshTimer.Tick -= OnMusicProgressRefreshTick;
-            _musicProgressRefreshTimer.Tick += OnMusicProgressRefreshTick;
-            _musicProgressRefreshTimer.Start();
-        }
-        else
-        {
-            StopMusicProgressRefreshTimer();
-        }
-
         // The search capsule's dynamic subtitle ("最近：xxx") tracks the recent-query
         // list, which has no INotifyPropertyChanged surface, so subscribe to the
         // history service's change event to refresh the compact presentation live.
-        if (content is SearchWidgetContentAdapter &&
-            !_searchHistorySubscribed &&
-            App.Current.SearchHistoryService is { } historyService)
+        if (content is not SearchWidgetContentAdapter &&
+            _subscribedSearchHistoryService is { } previousHistoryService)
         {
+            previousHistoryService.RecentQueriesChanged -= OnRecentQueriesChanged;
+            _subscribedSearchHistoryService = null;
+        }
+
+        if (content is SearchWidgetContentAdapter &&
+            App.Current.SearchHistoryService is { } historyService &&
+            !ReferenceEquals(_subscribedSearchHistoryService, historyService))
+        {
+            if (_subscribedSearchHistoryService is { } previousService)
+            {
+                previousService.RecentQueriesChanged -= OnRecentQueriesChanged;
+            }
+
             historyService.RecentQueriesChanged += OnRecentQueriesChanged;
-            _searchHistorySubscribed = true;
+            _subscribedSearchHistoryService = historyService;
         }
     }
 
     private void OnRecentQueriesChanged()
     {
-        if (!DispatcherQueue.HasThreadAccess)
-        {
-            DispatcherQueue.TryEnqueue(RefreshCompactPresentation);
-            return;
-        }
-
-        RefreshCompactPresentation();
-    }
-
-    private void OnMusicProgressRefreshTick(object? sender, object e)
-    {
-        if (!DispatcherQueue.HasThreadAccess)
-        {
-            DispatcherQueue.TryEnqueue(RefreshCompactPresentation);
-            return;
-        }
-
-        RefreshCompactPresentation();
-    }
-
-    private void StopMusicProgressRefreshTimer()
-    {
-        if (_musicProgressRefreshTimer is not null)
-        {
-            _musicProgressRefreshTimer.Stop();
-            _musicProgressRefreshTimer.Tick -= OnMusicProgressRefreshTick;
-        }
+        QueueCompactPresentationRefresh();
     }
 
     private void CompactPresentationSource_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!DispatcherQueue.HasThreadAccess)
+        if (!IsCompactPresentationPropertyRelevant(Config.WidgetKind, e.PropertyName))
         {
-            DispatcherQueue.TryEnqueue(RefreshCompactPresentation);
             return;
         }
 
-        RefreshCompactPresentation();
+        QueueCompactPresentationRefresh();
+    }
+
+    private void QueueCompactPresentationRefresh()
+    {
+        // The compact surface is refreshed synchronously when a collapse begins,
+        // so expanded widgets do not need to keep rewriting their hidden capsule.
+        if (IsClosing || !IsWidgetCollapsed || _compactPresentationRefreshQueued)
+        {
+            return;
+        }
+
+        _compactPresentationRefreshQueued = true;
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            _compactPresentationRefreshQueued = false;
+            if (!IsClosing && IsWidgetCollapsed)
+            {
+                RefreshCompactPresentation();
+            }
+        }))
+        {
+            _compactPresentationRefreshQueued = false;
+        }
+    }
+
+    internal static bool IsCompactPresentationPropertyRelevant(
+        WidgetKind widgetKind,
+        string? propertyName)
+    {
+        if (string.IsNullOrEmpty(propertyName))
+        {
+            return true;
+        }
+
+        return widgetKind switch
+        {
+            WidgetKind.Weather => propertyName is
+                nameof(WeatherWidgetViewModel.CurrentCondition) or
+                nameof(WeatherWidgetViewModel.IsDay) or
+                nameof(WeatherWidgetViewModel.UsesRichSkin) or
+                nameof(WeatherWidgetViewModel.RichSkinUsesLightText) or
+                nameof(WeatherWidgetViewModel.RichBackdropTopColor) or
+                nameof(WeatherWidgetViewModel.RichBackdropBottomColor) or
+                nameof(WeatherWidgetViewModel.CurrentWeatherCode) or
+                nameof(WeatherWidgetViewModel.CurrentTemperatureText) or
+                nameof(WeatherWidgetViewModel.CurrentDescription) or
+                nameof(WeatherWidgetViewModel.PrecipitationText),
+            WidgetKind.Music => propertyName is
+                nameof(MusicWidgetViewModel.Title) or
+                nameof(MusicWidgetViewModel.Artist) or
+                nameof(MusicWidgetViewModel.StatusText) or
+                nameof(MusicWidgetViewModel.ThumbnailImage) or
+                nameof(MusicWidgetViewModel.HasSession) or
+                nameof(MusicWidgetViewModel.IsPlaying) or
+                nameof(MusicWidgetViewModel.CanGoPrevious) or
+                nameof(MusicWidgetViewModel.CanGoNext) or
+                nameof(MusicWidgetViewModel.PlaybackState) or
+                nameof(MusicWidgetViewModel.Duration) or
+                nameof(MusicWidgetViewModel.SeekMaximum) or
+                nameof(MusicWidgetViewModel.SeekValue),
+            _ => true
+        };
     }
 
     private void ApplyLocalizedTitleActionTooltips()
@@ -933,12 +936,11 @@ IsHideAnimationRunning = true;
                 _compactPresentationSource.PropertyChanged -= CompactPresentationSource_PropertyChanged;
                 _compactPresentationSource = null;
             }
-            if (_searchHistorySubscribed && App.Current.SearchHistoryService is { } historyService)
+            if (_subscribedSearchHistoryService is { } historyService)
             {
                 historyService.RecentQueriesChanged -= OnRecentQueriesChanged;
-                _searchHistorySubscribed = false;
+                _subscribedSearchHistoryService = null;
             }
-            StopMusicProgressRefreshTimer();
             try { TrayAnimation.RevealWindowForTrayShow(); } catch { }
             try { CleanupBase(); } catch (Exception ex) { App.Log($"[ContentWidget] CleanupBase failed during close: {ex.Message}"); }
             try { _contentHost.DisposeContent(); } catch (Exception ex) { App.Log($"[ContentWidget] DisposeContent failed during close: {ex.Message}"); }

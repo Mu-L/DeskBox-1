@@ -130,6 +130,34 @@ public sealed class SearchHistoryService
     }
 
     /// <summary>
+    /// Removes one query from recent history while preserving pinned favorites and
+    /// recently-opened result cards.
+    /// </summary>
+    public bool RemoveRecentQuery(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return false;
+        }
+
+        bool changed;
+        lock (_gate)
+        {
+            changed = _data.Recent.RemoveAll(
+                existing => string.Equals(existing, query.Trim(), StringComparison.OrdinalIgnoreCase)) > 0;
+        }
+
+        if (!changed)
+        {
+            return false;
+        }
+
+        Save();
+        RecentQueriesChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>
     /// Toggles a query in favorites. Returns true if the query is now a favorite.
     /// </summary>
     public bool ToggleFavorite(string? query)

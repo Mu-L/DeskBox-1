@@ -208,11 +208,26 @@ public abstract partial class WidgetWindowBase
             _inactiveBackdropCleanupTimer = DispatcherQueue.CreateTimer();
             _inactiveBackdropCleanupTimer.IsRepeating = false;
             _inactiveBackdropCleanupTimer.Tick += InactiveBackdropCleanupTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
         }
 
         _inactiveBackdropCleanupTimer.Stop();
         _inactiveBackdropCleanupTimer.Interval = InactiveBackdropControllerRetention;
         _inactiveBackdropCleanupTimer.Start();
+    }
+
+    protected void StopInactiveBackdropCleanupTimer()
+    {
+        DispatcherQueueTimer? timer = _inactiveBackdropCleanupTimer;
+        if (timer is null)
+        {
+            return;
+        }
+
+        _inactiveBackdropCleanupTimer = null;
+        timer.Stop();
+        timer.Tick -= InactiveBackdropCleanupTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
     }
 
     private void InactiveBackdropCleanupTimer_Tick(DispatcherQueueTimer sender, object args)
@@ -540,7 +555,8 @@ public abstract partial class WidgetWindowBase
         if (_backdropRefreshTimer is null)
         {
             _backdropRefreshTimer = DispatcherQueue.CreateTimer();
-            _backdropRefreshTimer.Tick += (_, _) => OnBackdropRefreshTick(BackdropRefreshGeneration);
+            _backdropRefreshTimer.Tick += BackdropRefreshTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
         }
         else
         {
@@ -549,6 +565,11 @@ public abstract partial class WidgetWindowBase
 
         _backdropRefreshTimer.Interval = TimeSpan.FromMilliseconds(BackdropRefreshDelays[0]);
         _backdropRefreshTimer.Start();
+    }
+
+    private void BackdropRefreshTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        OnBackdropRefreshTick(BackdropRefreshGeneration);
     }
 
     private void OnBackdropRefreshTick(long generation)
@@ -598,8 +619,16 @@ public abstract partial class WidgetWindowBase
 
     protected void StopBackdropRefreshTimer()
     {
-        _backdropRefreshTimer?.Stop();
+        DispatcherQueueTimer? timer = _backdropRefreshTimer;
+        if (timer is null)
+        {
+            return;
+        }
+
         _backdropRefreshTimer = null;
+        timer.Stop();
+        timer.Tick -= BackdropRefreshTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
     }
 
     // ── Layer / Z-order management ─────────────────────────────

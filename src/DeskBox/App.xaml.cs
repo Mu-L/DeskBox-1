@@ -30,6 +30,14 @@ public partial class App : Application
     private const double TrayMenuItemWidth = 176;
     private const int TrayContextMenuFallbackOffsetPixels = 24;
     private const int TrayContextMenuEstimatedWidth = (int)TrayMenuItemWidth + 16;
+    private const int BackgroundMemoryCleanupDelaySeconds = 30;
+    private const int VisibleIdleMemoryMaintenanceInitialDelaySeconds = 90;
+    private const int VisibleIdleMemoryMaintenanceIntervalSeconds = 180;
+    private const int SearchIndexIdleUnloadDelaySeconds = 5 * 60;
+    private const int SearchIndexIdleUnloadRetrySeconds = 2 * 60;
+    private const int SearchPopupShellWarmupDelayMilliseconds = 900;
+    private const int SearchPopupIdleCacheReleaseDelaySeconds = 45;
+    private const long SearchPopupShellReleasePrivateBytes = 512L * 1024 * 1024;
     private const int MaxQueuedLogLines = 4096;
     private const long MaxLogFileSizeBytes = 5 * 1024 * 1024; // 5 MB before rotation
     private const string TodoReminderNotificationSource = "source=todoReminder";
@@ -89,6 +97,15 @@ public partial class App : Application
     private FileMetaService? _fileMetaService;
     private SearchHotkeyService? _searchHotkeyService;
     private SearchPopupWindow? _searchPopupWindow;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _searchPopupIdleTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _searchIndexIdleUnloadTimer;
+    private CancellationTokenSource? _searchIndexLifecycleCts;
+    private Task<bool>? _searchIndexPreloadTask;
+    private int _searchPopupWarmupGeneration;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _visibleIdleMemoryMaintenanceTimer;
+    private long _lastVisibleIdleCollectionAllocatedBytes;
+    private bool _hasCompletedVisibleIdleCollection;
+    private int _visibleIdleMemoryMaintenanceRunning;
     private SearchHistoryService? _searchHistoryService;
     private SearchResultActionService? _searchActionService;
     private bool _widgetsRaisedFromTray;
@@ -118,7 +135,11 @@ public partial class App : Application
     public SearchHotkeyService? SearchHotkeyService => _searchHotkeyService;
     public SearchEngineService? SearchEngineService => _searchEngineService;
     internal SearchHistoryService? SearchHistoryService => _searchHistoryService;
-        public SearchResultActionService? SearchActionService => _searchActionService;
+    public SearchResultActionService? SearchActionService => _searchActionService;
+    internal bool IsSearchPopupCreated => _searchPopupWindow is not null;
+    internal bool IsSearchPopupVisible => _searchPopupWindow?.IsPopupVisible == true;
+    internal bool IsSearchIndexResident => _searchEngineService?.IsCustomIndexResident == true;
+    internal int SearchMetaCacheCount => _fileMetaService?.CachedIconCount ?? 0;
     public WidgetManager? WidgetManager { get; private set; }
     public ResizeGuideOverlayService ResizeGuideOverlay { get; private set; } = null!;
     public NativeAppNotificationService? NativeNotificationService => _nativeNotificationService;
@@ -477,6 +498,8 @@ public partial class App : Application
     private const int SecurityMandatoryHighRid = 0x3000;
     private const int SecurityMandatorySystemRid = 0x4000;
     private const int SecurityMandatoryProtectedProcessRid = 0x5000;
+    private const int HeapOptimizeResources = 3;
+    private const uint HeapOptimizeResourcesCurrentVersion = 1;
 
     private enum TokenInformationClass
     {
@@ -501,6 +524,13 @@ public partial class App : Application
     {
         public IntPtr Sid;
         public int Attributes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HeapOptimizeResourcesInformation
+    {
+        public uint Version;
+        public uint Flags;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -531,6 +561,14 @@ public partial class App : Application
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HeapSetInformation(
+        IntPtr heapHandle,
+        int heapInformationClass,
+        ref HeapOptimizeResourcesInformation heapInformation,
+        nuint heapInformationLength);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -870,8 +908,14 @@ public partial class App : Application
             _displayAreaWatcher.DisplaysChanged += OnDisplaysChanged;
             _displayAreaWatcher.Start();
 
-            // Initialize search services
-            InitializeSearchServices();
+            if (FeatureWidgetSettings.IsEnabled(SettingsService.Settings, WidgetKind.Search))
+            {
+                EnsureSearchServices();
+            }
+            else
+            {
+                Log("[Search] Feature disabled; heavy search services were not initialized");
+            }
 
             // Configure taskbar Jump List with quick actions
             _ = JumpListService.ConfigureAsync(LocalizationService);
@@ -883,6 +927,7 @@ public partial class App : Application
                 _ = JumpListService.HandleActivationAsync(firstLaunchJumpArg);
             }
 
+            StartVisibleIdleMemoryMaintenance();
             Log("OnLaunched completed successfully");
         }
         catch (Exception ex)
@@ -1628,6 +1673,7 @@ public partial class App : Application
 
     private void OpenSettings()
     {
+        CancelBackgroundMemoryCleanup();
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
         settingsWindow.ShowWindow();
     }
@@ -1638,7 +1684,7 @@ public partial class App : Application
         _settingsWindow.Closed += (_, _) =>
         {
             _settingsWindow = null;
-            ScheduleLightMemoryCleanup();
+            ScheduleLightMemoryCleanup(completedHeavyOperation: true);
         };
         return _settingsWindow;
     }
@@ -1661,6 +1707,7 @@ public partial class App : Application
 
     public void ShowSettings(string sectionTag)
     {
+        CancelBackgroundMemoryCleanup();
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
         settingsWindow.ShowWindow();
         settingsWindow.ShowSection(sectionTag);
@@ -1668,6 +1715,7 @@ public partial class App : Application
 
     public void ShowOnboarding()
     {
+        CancelBackgroundMemoryCleanup();
         bool shouldRestartIntro = _onboardingWindow is not null;
         if (_onboardingWindow is null)
         {
@@ -1688,9 +1736,241 @@ public partial class App : Application
     }
 
     private static int s_lightMemoryCleanupGeneration;
+    private static int s_pendingHeavyMemoryCleanup;
+    private static int s_activeHeavyMemoryCleanupCount;
+    private static int s_backgroundMemoryCleanupGeneration;
 
-    internal static void ScheduleLightMemoryCleanup()
+    private void StartVisibleIdleMemoryMaintenance()
     {
+        if (_visibleIdleMemoryMaintenanceTimer is null)
+        {
+            _visibleIdleMemoryMaintenanceTimer = UiDispatcherQueue.CreateTimer();
+            _visibleIdleMemoryMaintenanceTimer.IsRepeating = false;
+            _visibleIdleMemoryMaintenanceTimer.Tick += VisibleIdleMemoryMaintenanceTimer_Tick;
+        }
+
+        ScheduleVisibleIdleMemoryMaintenance(
+            TimeSpan.FromSeconds(VisibleIdleMemoryMaintenanceInitialDelaySeconds));
+    }
+
+    private void ScheduleVisibleIdleMemoryMaintenance(TimeSpan delay)
+    {
+        if (_visibleIdleMemoryMaintenanceTimer is null)
+        {
+            return;
+        }
+
+        _visibleIdleMemoryMaintenanceTimer.Stop();
+        _visibleIdleMemoryMaintenanceTimer.Interval = delay;
+        _visibleIdleMemoryMaintenanceTimer.Start();
+    }
+
+    private async void VisibleIdleMemoryMaintenanceTimer_Tick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        sender.Stop();
+        if (Interlocked.Exchange(ref _visibleIdleMemoryMaintenanceRunning, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (Volatile.Read(ref s_pendingHeavyMemoryCleanup) != 0 ||
+                Volatile.Read(ref s_activeHeavyMemoryCleanupCount) != 0)
+            {
+                return;
+            }
+
+            var activity = CaptureMemoryCleanupActivity();
+            bool isSearchIndexing = _searchEngineService?.IsCustomIndexing == true;
+            bool isSearchIndexResident = _searchEngineService?.IsCustomIndexResident == true;
+            long totalAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
+            long allocatedSinceLastCollection = _hasCompletedVisibleIdleCollection
+                ? Math.Max(0, totalAllocatedBytes - _lastVisibleIdleCollectionAllocatedBytes)
+                : totalAllocatedBytes;
+            long managedHeapBytes = GC.GetGCMemoryInfo().HeapSizeBytes;
+            using var process = Process.GetCurrentProcess();
+            process.Refresh();
+
+            bool shouldCollectManagedMemory =
+                MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
+                    activity,
+                    isSearchIndexing,
+                    managedHeapBytes,
+                    process.WorkingSet64,
+                    process.PrivateMemorySize64,
+                    allocatedSinceLastCollection,
+                    _hasCompletedVisibleIdleCollection);
+            bool shouldTrimWorkingSet =
+                MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
+                    activity,
+                    isSearchIndexing,
+                    isSearchIndexResident,
+                    process.WorkingSet64);
+            if (!shouldCollectManagedMemory && !shouldTrimWorkingSet)
+            {
+                return;
+            }
+
+            Localized.PruneDeadTargets();
+            if (shouldCollectManagedMemory)
+            {
+                PerformanceLogger.Mark(
+                    "VisibleIdleMemoryCollectionTriggered",
+                    $"managedMB={managedHeapBytes / (1024.0 * 1024):F1} " +
+                    $"workingSetMB={process.WorkingSet64 / (1024.0 * 1024):F1} " +
+                    $"privateMB={process.PrivateMemorySize64 / (1024.0 * 1024):F1} " +
+                    $"allocatedSinceMB={allocatedSinceLastCollection / (1024.0 * 1024):F1}");
+                PerformanceLogger.SampleMemory("visible-idle-collection-before");
+
+                await Task.Run(static () =>
+                {
+                    // Visible widgets keep their XAML trees and data intact. This
+                    // collection only reclaims unreachable managed objects/finalizers.
+                    GC.Collect(
+                        GC.MaxGeneration,
+                        GCCollectionMode.Forced,
+                        blocking: true,
+                        compacting: false);
+                    GC.WaitForPendingFinalizers();
+                });
+
+                _lastVisibleIdleCollectionAllocatedBytes = totalAllocatedBytes;
+                _hasCompletedVisibleIdleCollection = true;
+                PerformanceLogger.SampleMemory("visible-idle-collection-after");
+            }
+
+            process.Refresh();
+            if (MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
+                    CaptureMemoryCleanupActivity(),
+                    _searchEngineService?.IsCustomIndexing == true,
+                    _searchEngineService?.IsCustomIndexResident == true,
+                    process.WorkingSet64))
+            {
+                PerformanceLogger.Mark(
+                    "VisibleIdleWorkingSetTrimTriggered",
+                    $"workingSetMB={process.WorkingSet64 / (1024.0 * 1024):F1}");
+                PerformanceLogger.SampleMemory("visible-idle-trim-before");
+                await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet);
+                PerformanceLogger.SampleMemory("visible-idle-trim-after");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Memory] Visible idle maintenance failed: {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _visibleIdleMemoryMaintenanceRunning, 0);
+            if (_visibleIdleMemoryMaintenanceTimer is not null)
+            {
+                ScheduleVisibleIdleMemoryMaintenance(
+                    TimeSpan.FromSeconds(VisibleIdleMemoryMaintenanceIntervalSeconds));
+            }
+        }
+    }
+
+    private void StopVisibleIdleMemoryMaintenance()
+    {
+        if (_visibleIdleMemoryMaintenanceTimer is null)
+        {
+            return;
+        }
+
+        _visibleIdleMemoryMaintenanceTimer.Stop();
+        _visibleIdleMemoryMaintenanceTimer.Tick -= VisibleIdleMemoryMaintenanceTimer_Tick;
+        _visibleIdleMemoryMaintenanceTimer = null;
+    }
+
+    private void MarkVisibleIdleMemoryCollectionBaseline()
+    {
+        _lastVisibleIdleCollectionAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
+        _hasCompletedVisibleIdleCollection = true;
+    }
+
+    private MemoryCleanupActivitySnapshot CaptureMemoryCleanupActivity()
+    {
+        var widgetManager = WidgetManager;
+        bool isDeskBoxForeground = IsDeskBoxWindow(Win32Helper.GetForegroundWindow());
+        bool isPointerOverDeskBox =
+            Win32Helper.GetCursorPos(out var cursor) &&
+            IsDeskBoxWindow(Win32Helper.WindowFromPoint(cursor));
+        return new MemoryCleanupActivitySnapshot(
+            HasVisibleWidgets: widgetManager?.HasVisibleWidgets == true,
+            IsWidgetInteractionActive: widgetManager?.IsWidgetInteractionActive == true,
+            IsSettingsOpen: _settingsWindow is not null,
+            IsOnboardingOpen: _onboardingWindow is not null,
+            IsSearchPopupVisible: _searchPopupWindow?.IsPopupVisible == true,
+            IsDeskBoxForeground: isDeskBoxForeground,
+            IsPointerOverDeskBox: isPointerOverDeskBox);
+    }
+
+    internal static void CancelBackgroundMemoryCleanup()
+    {
+        Interlocked.Increment(ref s_backgroundMemoryCleanupGeneration);
+    }
+
+    internal bool CanRunCompactExpansionWarmup =>
+        _settingsWindow is null &&
+        _onboardingWindow is null &&
+        _searchPopupWindow?.IsPopupVisible != true &&
+        _searchEngineService?.IsCustomIndexing != true &&
+        WidgetManager?.IsWidgetInteractionActive != true &&
+        Volatile.Read(ref s_pendingHeavyMemoryCleanup) == 0 &&
+        Volatile.Read(ref s_activeHeavyMemoryCleanupCount) == 0;
+
+    internal static void ScheduleBackgroundMemoryCleanup()
+    {
+        int generation = Interlocked.Increment(ref s_backgroundMemoryCleanupGeneration);
+        PerformanceLogger.Mark(
+            "BackgroundMemoryCleanupScheduled",
+            $"delaySeconds={BackgroundMemoryCleanupDelaySeconds}");
+
+        UiDispatcherQueue?.TryEnqueue(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(BackgroundMemoryCleanupDelaySeconds));
+            if (generation != Volatile.Read(ref s_backgroundMemoryCleanupGeneration))
+            {
+                return;
+            }
+
+            var app = Current;
+            if (app._searchEngineService?.IsCustomIndexing == true)
+            {
+                PerformanceLogger.Mark("BackgroundMemoryCleanupDeferred", "reason=search-indexing");
+                ScheduleBackgroundMemoryCleanup();
+                return;
+            }
+
+            bool canClean =
+                app.WidgetManager is
+                {
+                    HasVisibleWidgets: false,
+                    IsWidgetInteractionActive: false
+                } &&
+                app._settingsWindow is null &&
+                app._onboardingWindow is null &&
+                app._searchPopupWindow?.IsPopupVisible != true;
+            if (!canClean)
+            {
+                PerformanceLogger.Mark("BackgroundMemoryCleanupSkipped", "reason=foreground-active");
+                return;
+            }
+
+            PerformanceLogger.Mark("BackgroundMemoryCleanupTriggered");
+            ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+        });
+    }
+
+    internal static void ScheduleLightMemoryCleanup(bool completedHeavyOperation = false)
+    {
+        if (completedHeavyOperation)
+        {
+            Interlocked.Exchange(ref s_pendingHeavyMemoryCleanup, 1);
+        }
+
         int generation = Interlocked.Increment(ref s_lightMemoryCleanupGeneration);
         App.UiDispatcherQueue?.TryEnqueue(async () =>
         {
@@ -1700,10 +1980,124 @@ public partial class App : Application
                 return;
             }
 
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
             Localized.PruneDeadTargets();
-            Win32Helper.TrimCurrentProcessWorkingSet();
+
+            var memoryInfo = GC.GetGCMemoryInfo();
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            process.Refresh();
+            bool heavyCleanupRequested =
+                Interlocked.Exchange(ref s_pendingHeavyMemoryCleanup, 0) != 0;
+            bool underMemoryPressure =
+                memoryInfo.HeapSizeBytes >= 256L * 1024 * 1024 ||
+                process.PrivateMemorySize64 >= 512L * 1024 * 1024;
+            if (heavyCleanupRequested || underMemoryPressure)
+            {
+                Interlocked.Increment(ref s_activeHeavyMemoryCleanupCount);
+                try
+                {
+                    await Task.Run(() =>
+                    {
+                        System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
+                            System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+
+                        // WinUI windows own reference-tracked COM objects whose native
+                        // resources are often released by managed finalizers. A single
+                        // non-blocking/optimized collection can leave both the wrappers
+                        // and their native allocations behind, so complete the standard
+                        // collect-finalize-collect sequence after a heavy UI teardown.
+                        GC.Collect(
+                            GC.MaxGeneration,
+                            GCCollectionMode.Forced,
+                            blocking: true,
+                            compacting: true);
+                        GC.WaitForPendingFinalizers();
+                        System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
+                            System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                        GC.Collect(
+                            GC.MaxGeneration,
+                            GCCollectionMode.Forced,
+                            blocking: true,
+                            compacting: true);
+
+                        // The Windows LFH retains empty segments after a burst of WinUI
+                        // window creation and teardown. Ask every process heap to release
+                        // those caches only on this delayed heavy-cleanup path.
+                        OptimizeNativeHeapResources();
+                    });
+                    Current.MarkVisibleIdleMemoryCollectionBaseline();
+
+                    // EmptyWorkingSet used to run after every light cleanup. Removing
+                    // it made Task Manager's private working set remain at the native
+                    // WinUI/CLR high-water mark even after the corresponding windows
+                    // and managed objects had been released. Trim only after a heavy
+                    // teardown and only while transient UI is inactive, so the idle
+                    // process returns resident pages without paging out an interface
+                    // the user is currently operating.
+                    process.Refresh();
+                    var activity = Current.CaptureMemoryCleanupActivity();
+                    bool canTrimWorkingSet =
+                        MemoryCleanupPolicy.CanTrimWorkingSet(activity) ||
+                        MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
+                            activity,
+                            Current._searchEngineService?.IsCustomIndexing == true,
+                            Current._searchEngineService?.IsCustomIndexResident == true,
+                            process.WorkingSet64);
+                    if (canTrimWorkingSet)
+                    {
+                        await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet);
+                        PerformanceLogger.SampleMemory("heavy-cleanup-working-set-trimmed");
+                    }
+                    else
+                    {
+                        PerformanceLogger.Mark(
+                            "WorkingSetTrimSkipped",
+                            "reason=foreground-active");
+                        PerformanceLogger.SampleMemory("heavy-cleanup-completed");
+                    }
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref s_activeHeavyMemoryCleanupCount);
+                }
+            }
         });
+    }
+
+    private static void OptimizeNativeHeapResources()
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            process.Refresh();
+            long privateBytesBefore = process.PrivateMemorySize64;
+            var information = new HeapOptimizeResourcesInformation
+            {
+                Version = HeapOptimizeResourcesCurrentVersion
+            };
+            bool succeeded = HeapSetInformation(
+                IntPtr.Zero,
+                HeapOptimizeResources,
+                ref information,
+                (nuint)Marshal.SizeOf<HeapOptimizeResourcesInformation>());
+            int error = succeeded ? 0 : Marshal.GetLastWin32Error();
+            process.Refresh();
+            long privateBytesAfter = process.PrivateMemorySize64;
+
+            if (PerformanceLogger.IsEnabled)
+            {
+                Log(
+                    $"[Perf] NativeHeapOptimize success={succeeded} error={error} " +
+                    $"privateBeforeMB={privateBytesBefore / (1024.0 * 1024):F1} " +
+                    $"privateAfterMB={privateBytesAfter / (1024.0 * 1024):F1}");
+            }
+        }
+        catch (Exception ex)
+        {
+            if (PerformanceLogger.IsEnabled)
+            {
+                Log($"[Perf] NativeHeapOptimize failed: {ex.Message}");
+            }
+        }
     }
 
     public async Task ShutdownForUpdateAsync()
@@ -1726,6 +2120,8 @@ public partial class App : Application
 
     private async Task ShutdownApplicationAsync()
     {
+        StopVisibleIdleMemoryMaintenance();
+
         // Stop the display area watcher FIRST, before closing any widgets,
         // so that no DisplaysChanged callback can fire during teardown
         // and access half-closed window objects.
@@ -1739,16 +2135,12 @@ public partial class App : Application
         _nativeNotificationService = null;
         _todoReminderService?.Dispose();
         _todoReminderService = null;
-        _usnIndexService?.Dispose();
-        _usnIndexService = null;
-
         // Dispose hotkey services FIRST so their WH_KEYBOARD_LL hooks are
         // removed before the tray window is destroyed.  If the hooks remain
         // installed while the owning window is torn down, the OS may briefly
         // keep the gesture key in a "pressed" state, leaving keys like 'D'
         // appearing stuck even after the app exits.
-        _searchHotkeyService?.Dispose();
-        _searchHotkeyService = null;
+        DisposeSearchServices();
         GlobalHotkeyService?.Dispose();
         GlobalHotkeyService = null;
 
@@ -1787,32 +2179,34 @@ public partial class App : Application
 
     // ─── Search Services ─────────────────────────────────────────────
 
-    private void InitializeSearchServices()
+    private void EnsureSearchServices()
     {
+        if (_searchEngineService is not null)
+        {
+            return;
+        }
+
         try
         {
             _searchIndexService = new SearchIndexService(SettingsService);
             var windowsIndexService = new WindowsIndexSearchService(SettingsService);
             _usnIndexService = new UsnJournalIndexService();
             _searchEngineService = new SearchEngineService(SettingsService, LocalizationService, _searchIndexService, windowsIndexService, _usnIndexService);
+            _searchEngineService.IndexUpdated += OnSearchIndexUpdated;
             _searchHistoryService = new SearchHistoryService();
             _searchActionService = new SearchResultActionService(SettingsService);
-
-            // Load the persisted index so search returns results immediately,
-            // before the first background scan completes.
-            _searchIndexService.TryLoadPersistedIndex();
 
             // Start background indexing if enabled
             if (SettingsService.Settings.SearchCustomIndexerEnabled)
             {
-                _searchIndexService.StartIndexing();
-                Log("[Search] File indexer started");
-
-                // USN journal full-disk index (Everything-style). Requires admin;
-                // when unavailable it self-degrades (IsAvailable stays false) and the
-                // search engine falls back to the directory-scan index above.
-                _usnIndexService.StartIndexing();
-                Log("[Search] USN journal indexer started");
+                _searchIndexLifecycleCts?.Cancel();
+                _searchIndexLifecycleCts?.Dispose();
+                _searchIndexLifecycleCts = new CancellationTokenSource();
+                _ = StartSearchIndexingAsync(
+                    _searchEngineService,
+                    _searchIndexLifecycleCts.Token);
+                ScheduleSearchIndexIdleUnload();
+                Log("[Search] Background index warmup scheduled");
             }
 
             // Create search hotkey service
@@ -1828,11 +2222,134 @@ public partial class App : Application
             }
 
             Log("[Search] Services initialized");
+            ScheduleSearchPopupShellWarmup();
         }
         catch (Exception ex)
         {
             Log($"[Search] Initialization failed: {ex}");
+            DisposeSearchServices();
         }
+    }
+
+    private static async Task StartSearchIndexingAsync(
+        SearchEngineService engine,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await engine
+                .StartCustomIndexingAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                Log("[Search] Background index warmup completed");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Search feature was disabled or the application is shutting down.
+        }
+        catch (Exception ex)
+        {
+            Log($"[Search] Background index warmup failed: {ex.Message}");
+        }
+    }
+
+    internal void SetSearchFeatureEnabled(bool enabled)
+    {
+        if (!UiDispatcherQueue.HasThreadAccess)
+        {
+            UiDispatcherQueue.TryEnqueue(() => SetSearchFeatureEnabled(enabled));
+            return;
+        }
+
+        if (enabled)
+        {
+            EnsureSearchServices();
+            PerformanceLogger.SampleMemory("search-enabled");
+            return;
+        }
+
+        DisposeSearchServices();
+        PerformanceLogger.SampleMemory("search-disabled");
+    }
+
+    internal void SetSearchCustomIndexingEnabled(bool enabled)
+    {
+        if (!UiDispatcherQueue.HasThreadAccess)
+        {
+            UiDispatcherQueue.TryEnqueue(() => SetSearchCustomIndexingEnabled(enabled));
+            return;
+        }
+
+        _searchEngineService?.SetCustomIndexingEnabled(enabled);
+        if (enabled)
+        {
+            if (_searchPopupWindow?.IsPopupVisible == true)
+            {
+                StopSearchIndexIdleUnloadTimer();
+                BeginSearchIndexPreload();
+            }
+            else
+            {
+                ScheduleSearchIndexIdleUnload();
+            }
+        }
+        else
+        {
+            StopSearchIndexIdleUnloadTimer();
+        }
+    }
+
+    private void DisposeSearchServices()
+    {
+        Interlocked.Increment(ref _searchPopupWarmupGeneration);
+        StopSearchPopupIdleTimer();
+        StopSearchIndexIdleUnloadTimer();
+        _searchIndexLifecycleCts?.Cancel();
+        _searchIndexLifecycleCts?.Dispose();
+        _searchIndexLifecycleCts = null;
+        _searchIndexPreloadTask = null;
+
+        var popup = _searchPopupWindow;
+        _searchPopupWindow = null;
+        if (popup is not null)
+        {
+            try
+            {
+                popup.Close();
+            }
+            catch (Exception ex)
+            {
+                Log($"[Search] Popup close failed during cleanup: {ex.Message}");
+            }
+        }
+
+        _fileMetaService?.Dispose();
+        _fileMetaService = null;
+        _searchHotkeyService?.Dispose();
+        _searchHotkeyService = null;
+        if (_searchEngineService is not null)
+        {
+            _searchEngineService.IndexUpdated -= OnSearchIndexUpdated;
+            _searchEngineService.Dispose();
+        }
+        _searchEngineService = null;
+        _searchIndexService = null;
+        _usnIndexService = null;
+        _searchHistoryService = null;
+        _searchActionService = null;
+        Log("[Search] Services disposed");
+        ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+    }
+
+    private void OnSearchIndexUpdated()
+    {
+        UiDispatcherQueue.TryEnqueue(() =>
+        {
+            PerformanceLogger.SampleMemory("search-index-updated");
+            ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+        });
     }
 
     private Task ToggleSearchPopupAsync()
@@ -1851,37 +2368,31 @@ public partial class App : Application
             return Task.CompletedTask;
         }
 
-        if (_searchEngineService is null)
+        if (_searchPopupWindow?.IsPopupVisible == true)
         {
-            Log("[Search] Engine not initialized");
+            _searchPopupWindow.HidePopup();
             return Task.CompletedTask;
         }
 
-        if (_searchPopupWindow is null)
-        {
-            _fileMetaService ??= new FileMetaService();
-            var viewModel = new ViewModels.SearchPopupViewModel(
-                _searchEngineService, SettingsService, LocalizationService, _searchHistoryService!, _fileMetaService);
-            _searchPopupWindow = new SearchPopupWindow(viewModel, SettingsService, LocalizationService);
-            _searchPopupWindow.ActionRequested += OnSearchActionRequested;
-            _searchPopupWindow.ContentRequested += OnSearchContentRequested;
-            _searchPopupWindow.Closed += (_, _) =>
-            {
-                _searchPopupWindow = null;
-            };
-            // Set callback to hide popup when item is opened.
-            viewModel.HidePopupCallback = () => _searchPopupWindow?.HidePopup();
-            Log("[Search] Popup window created");
-        }
-
-        _searchPopupWindow.TogglePopup();
+        OpenSearchPopupCore(initialQuery: null);
         return Task.CompletedTask;
     }
 
     /// <summary>
-    /// Public entry point used by the search widget (and other callers) to open the popup.
+    /// Public entry point used by the search widget (and other direct UI callers).
+    /// Unlike the global hotkey, this is intentionally idempotent: queued repeat clicks
+    /// can only focus the popup and can never hide the window that the first click opened.
     /// </summary>
-    public void OpenSearchPopup() => _ = ToggleSearchPopupAsync();
+    public void OpenSearchPopup()
+    {
+        if (!UiDispatcherQueue.HasThreadAccess)
+        {
+            UiDispatcherQueue.TryEnqueue(OpenSearchPopup);
+            return;
+        }
+
+        OpenSearchPopupCore(initialQuery: null);
+    }
 
     /// <summary>
     /// Opens the search popup with a pre-filled query and immediately executes the search.
@@ -1895,27 +2406,319 @@ public partial class App : Application
             return;
         }
 
+        OpenSearchPopupCore(query);
+    }
+
+    private void OpenSearchPopupCore(string? initialQuery)
+    {
+        if (!FeatureWidgetSettings.IsEnabled(SettingsService.Settings, WidgetKind.Search))
+        {
+            return;
+        }
+
+        EnsureSearchServices();
         if (_searchEngineService is null)
         {
             return;
         }
 
+        StopSearchIndexIdleUnloadTimer();
+        CancelBackgroundMemoryCleanup();
+        StopSearchPopupIdleTimer();
+
         if (_searchPopupWindow is null)
         {
-            _fileMetaService ??= new FileMetaService();
-            var viewModel = new ViewModels.SearchPopupViewModel(
-                _searchEngineService, SettingsService, LocalizationService, _searchHistoryService!, _fileMetaService);
-            _searchPopupWindow = new SearchPopupWindow(viewModel, SettingsService, LocalizationService);
-            _searchPopupWindow.ActionRequested += OnSearchActionRequested;
-            _searchPopupWindow.ContentRequested += OnSearchContentRequested;
-            _searchPopupWindow.Closed += (_, _) =>
-            {
-                _searchPopupWindow = null;
-            };
-            viewModel.HidePopupCallback = () => _searchPopupWindow?.HidePopup();
+            CreateSearchPopupWindow();
         }
 
-        _searchPopupWindow.ShowPopupWithQuery(query);
+        if (_searchPopupWindow is not { } popup)
+        {
+            return;
+        }
+
+        PerformanceLogger.Mark(
+            "SearchPopupOpenRequested",
+            $"shellReady=true visible={popup.IsPopupVisible} " +
+            $"indexResident={_searchEngineService.IsCustomIndexResident}");
+
+        if (string.IsNullOrWhiteSpace(initialQuery))
+        {
+            popup.ShowPopup();
+        }
+        else
+        {
+            popup.ShowPopupWithQuery(initialQuery);
+        }
+
+        // The native window is already visible at this point. Restore an idle-unloaded
+        // index at low dispatcher priority so XAML can render its first frame first.
+        ScheduleSearchIndexPreloadAfterPopupShown();
+    }
+
+    private void ScheduleSearchPopupShellWarmup()
+    {
+        int generation = Interlocked.Increment(ref _searchPopupWarmupGeneration);
+        _ = WarmSearchPopupShellAsync(generation);
+    }
+
+    private async Task WarmSearchPopupShellAsync(int generation)
+    {
+        try
+        {
+            await Task.Delay(SearchPopupShellWarmupDelayMilliseconds).ConfigureAwait(false);
+            UiDispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () =>
+                {
+                    if (generation != Volatile.Read(ref _searchPopupWarmupGeneration) ||
+                        _searchPopupWindow is not null ||
+                        _searchEngineService is null ||
+                        !FeatureWidgetSettings.IsEnabled(
+                            SettingsService.Settings,
+                            WidgetKind.Search))
+                    {
+                        return;
+                    }
+
+                    CreateSearchPopupWindow();
+                    if (_searchPopupWindow is not null)
+                    {
+                        Log("[Search] Popup shell warmed while UI was idle");
+                    }
+                });
+        }
+        catch (Exception ex)
+        {
+            Log($"[Search] Popup shell warmup failed: {ex.Message}");
+        }
+    }
+
+    private void CreateSearchPopupWindow()
+    {
+        if (_searchEngineService is null || _searchHistoryService is null)
+        {
+            return;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        _fileMetaService?.Dispose();
+        _fileMetaService = new FileMetaService();
+        var viewModel = new ViewModels.SearchPopupViewModel(
+            _searchEngineService,
+            SettingsService,
+            LocalizationService,
+            _searchHistoryService,
+            _fileMetaService);
+        var popup = new SearchPopupWindow(viewModel, SettingsService, LocalizationService);
+        _searchPopupWindow = popup;
+        popup.ActionRequested += OnSearchActionRequested;
+        popup.ContentRequested += OnSearchContentRequested;
+        popup.PopupShown += (_, _) =>
+        {
+            CancelBackgroundMemoryCleanup();
+            StopSearchPopupIdleTimer();
+            StopSearchIndexIdleUnloadTimer();
+        };
+        popup.PopupHidden += (_, _) =>
+        {
+            ScheduleSearchPopupIdleCleanup();
+            ScheduleSearchIndexIdleUnload();
+            ScheduleBackgroundMemoryCleanup();
+        };
+        popup.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_searchPopupWindow, popup))
+            {
+                _searchPopupWindow = null;
+            }
+
+            StopSearchPopupIdleTimer();
+            _fileMetaService?.Dispose();
+            _fileMetaService = null;
+            PerformanceLogger.SampleMemory("search-popup-closed");
+            ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+            ScheduleBackgroundMemoryCleanup();
+        };
+        viewModel.HidePopupCallback = () => popup.HidePopup();
+        stopwatch.Stop();
+        Log($"[Search] Popup shell created in {stopwatch.ElapsedMilliseconds} ms");
+        PerformanceLogger.SampleMemory("search-popup-created");
+    }
+
+    private void ScheduleSearchPopupIdleCleanup()
+    {
+        StopSearchPopupIdleTimer();
+        _searchPopupIdleTimer = UiDispatcherQueue.CreateTimer();
+        _searchPopupIdleTimer.Interval =
+            TimeSpan.FromSeconds(SearchPopupIdleCacheReleaseDelaySeconds);
+        _searchPopupIdleTimer.IsRepeating = false;
+        _searchPopupIdleTimer.Tick += OnSearchPopupIdleTimerTick;
+        _searchPopupIdleTimer.Start();
+    }
+
+    private void OnSearchPopupIdleTimerTick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        StopSearchPopupIdleTimer();
+        if (_searchPopupWindow is { IsPopupVisible: false } popup)
+        {
+            // Results and their row references are cleared immediately on hide. Release
+            // decoded search icons after a short reuse window, but retain the empty XAML
+            // shell so the next desktop-widget click can paint without reconstructing it.
+            _fileMetaService?.Clear();
+            PerformanceLogger.SampleMemory("search-popup-idle-cache-released");
+
+            using var process = Process.GetCurrentProcess();
+            process.Refresh();
+            if (process.PrivateMemorySize64 >= SearchPopupShellReleasePrivateBytes)
+            {
+                Log(
+                    $"[Search] Releasing hidden popup shell under memory pressure " +
+                    $"(private={process.PrivateMemorySize64 / (1024.0 * 1024):F1} MB)");
+                popup.Close();
+            }
+        }
+    }
+
+    private void StopSearchPopupIdleTimer()
+    {
+        if (_searchPopupIdleTimer is null)
+        {
+            return;
+        }
+
+        _searchPopupIdleTimer.Stop();
+        _searchPopupIdleTimer.Tick -= OnSearchPopupIdleTimerTick;
+        _searchPopupIdleTimer = null;
+    }
+
+    private void BeginSearchIndexPreload()
+    {
+        if (_searchEngineService is not { } engine ||
+            !SettingsService.Settings.SearchCustomIndexerEnabled ||
+            _searchIndexPreloadTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        CancellationToken cancellationToken =
+            _searchIndexLifecycleCts?.Token ?? CancellationToken.None;
+        _searchIndexPreloadTask = PreloadSearchIndexAsync(engine, cancellationToken);
+    }
+
+    private void ScheduleSearchIndexPreloadAfterPopupShown()
+    {
+        UiDispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (_searchPopupWindow?.IsPopupVisible == true)
+                {
+                    BeginSearchIndexPreload();
+                }
+            });
+    }
+
+    private static async Task<bool> PreloadSearchIndexAsync(
+        SearchEngineService engine,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            bool loaded = await engine
+                .PrepareForPopupAsync(cancellationToken)
+                .ConfigureAwait(false);
+            stopwatch.Stop();
+            if (loaded && stopwatch.ElapsedMilliseconds >= 25)
+            {
+                Log(
+                    $"[SearchIndex] Popup preload completed in " +
+                    $"{stopwatch.ElapsedMilliseconds} ms.");
+            }
+
+            return loaded;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Log($"[SearchIndex] Popup preload failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void ScheduleSearchIndexIdleUnload(
+        int delaySeconds = SearchIndexIdleUnloadDelaySeconds)
+    {
+        StopSearchIndexIdleUnloadTimer();
+        if (_searchEngineService is null ||
+            !SettingsService.Settings.SearchCustomIndexerEnabled)
+        {
+            return;
+        }
+
+        _searchIndexIdleUnloadTimer = UiDispatcherQueue.CreateTimer();
+        _searchIndexIdleUnloadTimer.Interval = TimeSpan.FromSeconds(delaySeconds);
+        _searchIndexIdleUnloadTimer.IsRepeating = false;
+        _searchIndexIdleUnloadTimer.Tick += OnSearchIndexIdleUnloadTimerTick;
+        _searchIndexIdleUnloadTimer.Start();
+    }
+
+    private async void OnSearchIndexIdleUnloadTimerTick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        StopSearchIndexIdleUnloadTimer();
+        if (_searchPopupWindow?.IsPopupVisible == true ||
+            _searchEngineService is not { } engine)
+        {
+            return;
+        }
+
+        if (engine.IsCustomIndexing)
+        {
+            ScheduleSearchIndexIdleUnload(SearchIndexIdleUnloadRetrySeconds);
+            return;
+        }
+
+        try
+        {
+            PerformanceLogger.SampleMemory("search-index-idle-unload-before");
+            bool unloaded = await engine.TryUnloadCustomIndexForIdleAsync();
+            if (unloaded)
+            {
+                PerformanceLogger.SampleMemory("search-index-idle-unload-after");
+                ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+            }
+            else if (engine.IsCustomIndexResident)
+            {
+                ScheduleSearchIndexIdleUnload(SearchIndexIdleUnloadRetrySeconds);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[SearchIndex] Idle unload scheduling failed: {ex.Message}");
+            if (ReferenceEquals(_searchEngineService, engine))
+            {
+                ScheduleSearchIndexIdleUnload(SearchIndexIdleUnloadRetrySeconds);
+            }
+        }
+    }
+
+    private void StopSearchIndexIdleUnloadTimer()
+    {
+        if (_searchIndexIdleUnloadTimer is null)
+        {
+            return;
+        }
+
+        _searchIndexIdleUnloadTimer.Stop();
+        _searchIndexIdleUnloadTimer.Tick -= OnSearchIndexIdleUnloadTimerTick;
+        _searchIndexIdleUnloadTimer = null;
     }
 
     private void OnSearchActionRequested(object? sender, string actionId)

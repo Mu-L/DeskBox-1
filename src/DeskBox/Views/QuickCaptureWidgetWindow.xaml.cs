@@ -170,6 +170,8 @@ public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDeskto
     protected override string LogPrefix => "Quick";
     protected override bool IsSizeLocked => ViewModel.Config.IsSizeLocked;
     protected override bool IsPositionLocked => ViewModel.Config.IsPositionLocked;
+    protected override bool IsCompactExpansionWarmupContentReady =>
+        ViewModel.IsInitialized;
     protected override WidgetCompactPresentation CreateCompactPresentation()
     {
         string contentMode = ResolveEffectiveCompactContentMode();
@@ -490,23 +492,47 @@ _isHideAnimationRunning = true;
 
         if (!autoRestore)
         {
+            _autoRestoreTimer?.Stop();
             return;
         }
 
-        _autoRestoreTimer?.Stop();
-        _autoRestoreTimer = DispatcherQueue.CreateTimer();
-        _autoRestoreTimer.IsRepeating = false;
-        _autoRestoreTimer.Interval = TimeSpan.FromMilliseconds(1200);
-        _autoRestoreTimer.Tick += (_, _) =>
+        if (_autoRestoreTimer is null)
         {
-            _autoRestoreTimer?.Stop();
-            _autoRestoreTimer = null;
-            if (!_isDragging && !_isResizing && !ShouldDeferDesktopLayerRestore())
-            {
-                RestoreDesktopLayer(force: true);
-            }
-        };
+            _autoRestoreTimer = DispatcherQueue.CreateTimer();
+            _autoRestoreTimer.IsRepeating = false;
+            _autoRestoreTimer.Tick += AutoRestoreTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
+        }
+        else
+        {
+            _autoRestoreTimer.Stop();
+        }
+
+        _autoRestoreTimer.Interval = TimeSpan.FromMilliseconds(1200);
         _autoRestoreTimer.Start();
+    }
+
+    private void AutoRestoreTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (!_isDragging && !_isResizing && !ShouldDeferDesktopLayerRestore())
+        {
+            RestoreDesktopLayer(force: true);
+        }
+    }
+
+    private void ReleaseAutoRestoreTimer()
+    {
+        Microsoft.UI.Dispatching.DispatcherQueueTimer? timer = _autoRestoreTimer;
+        if (timer is null)
+        {
+            return;
+        }
+
+        _autoRestoreTimer = null;
+        timer.Stop();
+        timer.Tick -= AutoRestoreTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
     }
 
     public void HideWindow()
@@ -545,10 +571,8 @@ _isHideAnimationRunning = true;
         Activated -= QuickCaptureWidgetWindow_Activated;
         _appWindow.Changed -= OnAppWindowChanged;
 
-        _autoRestoreTimer?.Stop();
-        _autoRestoreTimer = null;
-        _topMostSafetyTimer?.Stop();
-        _topMostSafetyTimer = null;
+        ReleaseAutoRestoreTimer();
+        ReleaseTopMostSafetyTimer();
         StopBackdropRefreshTimer();
         _trayAnimation.Stop();
         _trayAnimation.RevealWindowForTrayShow();
@@ -623,8 +647,7 @@ _isHideAnimationRunning = true;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
             Activated -= QuickCaptureWidgetWindow_Activated;
             _appWindow.Changed -= OnAppWindowChanged;
-            _autoRestoreTimer?.Stop();
-            _autoRestoreTimer = null;
+            ReleaseAutoRestoreTimer();
 
             // TrayAnimation.Stop() was already called in CloseWindow().
             // Call again only as a fallback; Stop() is safe to call twice.

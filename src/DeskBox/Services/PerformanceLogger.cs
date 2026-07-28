@@ -28,6 +28,12 @@ public static class PerformanceLogger
     /// <summary>Managed heap size (bytes) at the last sample.</summary>
     public static long LastManagedHeap { get; private set; }
 
+    public static long LastGcHeapSize { get; private set; }
+
+    public static long LastGcFragmentedBytes { get; private set; }
+
+    public static long LastGcMemoryLoad { get; private set; }
+
     /// <summary>Handle count at the last sample.</summary>
     public static int LastHandleCount { get; private set; }
 
@@ -37,17 +43,48 @@ public static class PerformanceLogger
     /// <summary>Icon cache entry count, updated by IconHelper.</summary>
     public static int IconCacheCount { get; set; }
 
+    public static int DecodedBitmapCacheCount { get; set; }
+
+    public static long DecodedBitmapEstimatedBytes { get; set; }
+
     /// <summary>Music cover decode count since launch.</summary>
     public static int MusicCoverDecodeCount => Volatile.Read(ref s_musicCoverDecodeCount);
 
     /// <summary>Active music progress timer count.</summary>
     public static int ActiveMusicTimerCount { get; set; }
 
+    /// <summary>Transient WinUI timers created since launch.</summary>
+    public static int TransientUiTimerCreatedCount =>
+        Volatile.Read(ref s_transientUiTimerCreatedCount);
+
+    /// <summary>Transient WinUI timers fully stopped and detached since launch.</summary>
+    public static int TransientUiTimerReleasedCount =>
+        Volatile.Read(ref s_transientUiTimerReleasedCount);
+
+    /// <summary>Transient WinUI timers that still own a Tick subscription.</summary>
+    public static int ActiveTransientUiTimerCount =>
+        Math.Max(0, TransientUiTimerCreatedCount - TransientUiTimerReleasedCount);
+
+    /// <summary>Current music progress timer interval.</summary>
+    public static int MusicProgressTimerIntervalMs { get; set; }
+
     private static int s_musicCoverDecodeCount;
+    private static int s_transientUiTimerCreatedCount;
+    private static int s_transientUiTimerReleasedCount;
 
     public static void RecordMusicCoverDecode()
     {
         Interlocked.Increment(ref s_musicCoverDecodeCount);
+    }
+
+    public static void RecordTransientUiTimerCreated()
+    {
+        Interlocked.Increment(ref s_transientUiTimerCreatedCount);
+    }
+
+    public static void RecordTransientUiTimerReleased()
+    {
+        Interlocked.Increment(ref s_transientUiTimerReleasedCount);
     }
 
     private static readonly ConcurrentDictionary<string, int> s_windowCounts = new();
@@ -82,7 +119,7 @@ public static class PerformanceLogger
     /// Samples the current process memory and handle usage and logs a
     /// diagnostic line.  Only runs when perf logging is enabled.
     /// </summary>
-    public static void SampleMemory()
+    public static void SampleMemory(string? reason = null)
     {
         if (!IsEnabled)
         {
@@ -97,6 +134,19 @@ public static class PerformanceLogger
             LastPrivateMemory = proc.PrivateMemorySize64;
             LastHandleCount = proc.HandleCount;
             LastManagedHeap = GC.GetTotalMemory(forceFullCollection: false);
+            GCMemoryInfo gcInfo = GC.GetGCMemoryInfo();
+            LastGcHeapSize = gcInfo.HeapSizeBytes;
+            LastGcFragmentedBytes = gcInfo.FragmentedBytes;
+            LastGcMemoryLoad = gcInfo.MemoryLoadBytes;
+
+            var app = App.Current;
+            int searchIndexCount = app.SearchEngineService?.IndexedItemCount ?? 0;
+            bool searchIndexing = app.SearchEngineService?.IsCustomIndexing == true;
+            bool searchEnabled = FeatureWidgetSettings.IsEnabled(
+                app.SettingsService.Settings,
+                DeskBox.Models.WidgetKind.Search);
+            int loadedWidgetCount = app.WidgetManager?.LoadedWidgetCount ?? 0;
+            int visibleWidgetCount = app.WidgetManager?.VisibleWidgetCount ?? 0;
 
             int windowCount = 0;
             foreach (var kv in s_windowCounts)
@@ -109,12 +159,31 @@ public static class PerformanceLogger
                 $"workingSetMB={LastWorkingSet / (1024.0 * 1024):F1} " +
                 $"privateMB={LastPrivateMemory / (1024.0 * 1024):F1} " +
                 $"managedHeapMB={LastManagedHeap / (1024.0 * 1024):F1} " +
+                $"gcHeapMB={LastGcHeapSize / (1024.0 * 1024):F1} " +
+                $"gcFragmentedMB={LastGcFragmentedBytes / (1024.0 * 1024):F1} " +
+                $"gcMemoryLoadMB={LastGcMemoryLoad / (1024.0 * 1024):F1} " +
                 $"handles={LastHandleCount} " +
                 $"thumbCache={ThumbnailCacheCount} " +
                 $"iconCache={IconCacheCount} " +
-                $"musicCoverDecodes={MusicCoverDecodeCount} " +
-                $"musicTimers={ActiveMusicTimerCount} " +
-                $"windows={windowCount}");
+                $"decodedBitmapCache={DecodedBitmapCacheCount} " +
+                $"decodedBitmapMB={DecodedBitmapEstimatedBytes / (1024.0 * 1024):F1} " +
+                 $"musicCoverDecodes={MusicCoverDecodeCount} " +
+                 $"musicTimers={ActiveMusicTimerCount} " +
+                 $"musicTimerIntervalMs={MusicProgressTimerIntervalMs} " +
+                 $"transientUiTimers={ActiveTransientUiTimerCount} " +
+                 $"transientUiTimersCreated={TransientUiTimerCreatedCount} " +
+                 $"transientUiTimersReleased={TransientUiTimerReleasedCount} " +
+                 $"windows={windowCount} " +
+                $"loadedWidgets={loadedWidgetCount} " +
+                $"visibleWidgets={visibleWidgetCount} " +
+                 $"searchEnabled={searchEnabled} " +
+                 $"searchIndexing={searchIndexing} " +
+                 $"searchIndex={searchIndexCount} " +
+                 $"searchIndexResident={app.IsSearchIndexResident} " +
+                 $"searchPopupCreated={app.IsSearchPopupCreated} " +
+                $"searchPopupVisible={app.IsSearchPopupVisible} " +
+                $"searchMetaCache={app.SearchMetaCacheCount}" +
+                (string.IsNullOrWhiteSpace(reason) ? string.Empty : $" reason={reason}"));
         }
         catch
         {

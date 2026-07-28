@@ -26,6 +26,13 @@ public interface IWidgetContent
     /// independent of activation state.
     /// </summary>
     void OnWindowVisibilityChanged(bool visible) { }
+
+    /// <summary>
+    /// Called when the host switches between its expanded content and capsule
+    /// presentation. Content that owns purely visual animations can suspend them
+    /// while the expanded surface is covered without suspending its live data.
+    /// </summary>
+    void OnCompactStateChanged(bool collapsed) { }
 }
 
 /// <summary>

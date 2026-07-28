@@ -680,12 +680,14 @@ public partial class App
 
     private void OpenSettingsFromTray()
     {
+        CancelBackgroundMemoryCleanup();
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
         settingsWindow.ShowWindow();
     }
 
     private void OpenAboutSettingsFromTray()
     {
+        CancelBackgroundMemoryCleanup();
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
         settingsWindow.ShowWindow();
         settingsWindow.ShowSection("About");

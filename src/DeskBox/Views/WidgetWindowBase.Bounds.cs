@@ -258,6 +258,11 @@ public abstract partial class WidgetWindowBase
 
     protected void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (args.DidVisibilityChange)
+        {
+            NotifyCompactHostVisibilityChanged(sender.IsVisible);
+        }
+
         if (IsApplyingBounds || TrayAnimation.IsApplyingBounds || (!IsDragging && !IsResizing))
         {
             return;

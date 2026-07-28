@@ -107,6 +107,8 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
     protected override string LogPrefix => "Widget";
     protected override bool IsSizeLocked => ViewModel.IsSizeLocked;
     protected override bool IsPositionLocked => ViewModel.IsPositionLocked;
+    protected override bool IsCompactExpansionWarmupContentReady =>
+        ViewModel.IsInitialized;
     protected override DeskBox.Controls.WidgetCompactPresentation CreateCompactPresentation()
     {
         string contentMode = ResolveEffectiveCompactContentMode();
@@ -333,11 +335,10 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             _appWindow.Changed -= AppWindow_Changed;
             _displayChangeWatcher?.Dispose();
             _displayChangeWatcher = null;
-            _autoRestoreTimer?.Stop();
-            _autoRestoreTimer = null;
+            ReleaseAutoRestoreTimer();
             StopBackdropRefreshTimer();
-            _topMostSafetyTimer?.Stop();
-            _topMostSafetyTimer = null;
+            StopInactiveBackdropCleanupTimer();
+            ReleaseWidgetTopMostSafetyTimer();
             try { RemoveFileDropSubclass(); } catch (Exception ex) { App.Log($"[WidgetWindow] RemoveFileDropSubclass failed during close: {ex.Message}"); }
             try { _trayAnimation.Stop(); } catch { }
             try { _trayAnimation.RevealWindowForTrayShow(); } catch { }
@@ -436,6 +437,11 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (args.DidVisibilityChange)
+        {
+            NotifyCompactHostVisibilityChanged(sender.IsVisible);
+        }
+
         if (_isApplyingBounds || _trayAnimation.IsApplyingBounds || (!_isDragging && !_isResizing))
         {
             return;
@@ -578,29 +584,49 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             _topMostSafetyTimer = DispatcherQueue.CreateTimer();
             _topMostSafetyTimer.IsRepeating = false;
             _topMostSafetyTimer.Interval = TimeSpan.FromSeconds(2);
-            _topMostSafetyTimer.Tick += (_, _) =>
-            {
-                _topMostSafetyTimer?.Stop();
-                if (!_isAtDesktopLayer &&
-                    App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
-                {
-                    if (ShouldDeferDesktopLayerRestore())
-                    {
-                        App.LogVerbose($"[ZOrder] Widget safety timer: defer restore hwnd=0x{_hWnd.ToInt64():X}");
-                        _topMostSafetyTimer?.Start();
-                        return;
-                    }
-
-                    App.Log($"[ZOrder] Widget safety timer: force restore hwnd=0x{_hWnd.ToInt64():X}");
-                    RestoreDesktopLayer(force: true);
-                }
-            };
+            _topMostSafetyTimer.Tick += WidgetTopMostSafetyTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
         }
         else
         {
             _topMostSafetyTimer.Stop();
         }
         _topMostSafetyTimer.Start();
+    }
+
+    private void WidgetTopMostSafetyTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (!_isAtDesktopLayer &&
+            App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
+        {
+            if (ShouldDeferDesktopLayerRestore())
+            {
+                App.LogVerbose($"[ZOrder] Widget safety timer: defer restore hwnd=0x{_hWnd.ToInt64():X}");
+                sender.Start();
+                return;
+            }
+
+            App.Log($"[ZOrder] Widget safety timer: force restore hwnd=0x{_hWnd.ToInt64():X}");
+            RestoreDesktopLayer(force: true);
+        }
+    }
+
+    private void ReleaseWidgetTopMostSafetyTimer()
+    {
+        DispatcherQueueTimer? timer = _topMostSafetyTimer;
+        if (timer is null)
+        {
+            return;
+        }
+
+        timer.Stop();
+        timer.Tick -= WidgetTopMostSafetyTimer_Tick;
+        // WidgetWindow still shares the base timer field while its legacy
+        // interaction methods are being consolidated. The timer may therefore
+        // have been created by either handler; release both subscriptions through
+        // the base owner before dropping the shared field.
+        ReleaseTopMostSafetyTimer();
     }
 
     private void WidgetWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -709,7 +735,6 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         }
 
         _topMostSafetyTimer?.Stop();
-        _topMostSafetyTimer = null;
         _keepRaisedUntilDeactivate = false;
         _restoreDesktopLayerWhenIdle = false;
         ClearTopMostOnly();

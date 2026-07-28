@@ -115,4 +115,41 @@ public sealed class SearchResultRankerTests
             }
         }
     }
+
+    [Fact]
+    public void History_RemovesOneRecentQueryWithoutClearingOtherActivity()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "DeskBox.Tests", Guid.NewGuid().ToString("N"));
+        string storePath = Path.Combine(root, "search-history.json");
+
+        try
+        {
+            var history = new SearchHistoryService(storePath);
+            history.RecordQuery("weather");
+            history.RecordQuery("DeskBox");
+            history.ToggleFavorite("weather");
+            history.RecordResult(new SearchResultItem
+            {
+                Kind = SearchResultKind.File,
+                Title = "sample.txt",
+                DetailPath = Path.Combine(root, "sample.txt"),
+                RelevanceScore = 80
+            });
+
+            Assert.True(history.RemoveRecentQuery("deskbox"));
+            Assert.False(history.RemoveRecentQuery("missing"));
+
+            var reloaded = new SearchHistoryService(storePath);
+            Assert.Equal(new[] { "weather" }, reloaded.RecentQueries);
+            Assert.Equal(new[] { "weather" }, reloaded.FavoriteQueries);
+            Assert.Single(reloaded.RecentResults);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
 }

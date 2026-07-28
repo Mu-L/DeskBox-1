@@ -22,6 +22,7 @@ using Windows.Graphics;
 using Windows.Storage;
 using WinRT.Interop;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using WinRT;
 
 namespace DeskBox.Views;
@@ -145,6 +146,10 @@ public sealed partial class SearchPopupWindow : Window
 
     public event EventHandler<SearchResultItem>? ContentRequested;
 
+    public event EventHandler? PopupShown;
+
+    public event EventHandler? PopupHidden;
+
     /// <summary>
     /// Shows the popup at the correct position and focuses the search box.
     /// </summary>
@@ -163,6 +168,21 @@ public sealed partial class SearchPopupWindow : Window
 
     private async Task ShowPopupCoreAsync(string? initialQuery)
     {
+        if (IsPopupVisible)
+        {
+            ActivateSearchInput();
+            if (!string.IsNullOrWhiteSpace(initialQuery))
+            {
+                SearchTextBox.Text = initialQuery;
+                _viewModel.Query = initialQuery;
+                UpdatePanelVisibility();
+            }
+
+            return;
+        }
+
+        var showStopwatch = Stopwatch.StartNew();
+
         // Cancel any in-flight exit animation (and its pending window hide) so a fast
         // Alt+D re-toggle interrupts the dismissal instead of racing with it.
         PopupHideStoryboard.Stop();
@@ -183,6 +203,7 @@ public sealed partial class SearchPopupWindow : Window
         PopupTranslateTransform.Y = 6;
         _appWindow?.Show();
         IsPopupVisible = true;
+        PopupShown?.Invoke(this, EventArgs.Empty);
 
         // Bring the popup above all windows (including desktop-level widgets) at the
         // moment it is invoked, but do NOT keep it always-on-top. After this, normal
@@ -202,6 +223,19 @@ public sealed partial class SearchPopupWindow : Window
         // freshly shown window feel inert.
         SearchTextBox.Text = initialQuery ?? string.Empty;
         SearchTextBox.Focus(FocusState.Programmatic);
+
+        // Yield before recommendations, icons, or an idle-unloaded index do any work.
+        // The native window can paint and accept input while those tasks continue.
+        await Task.Yield();
+        if (!IsPopupVisible)
+        {
+            return;
+        }
+
+        showStopwatch.Stop();
+        PerformanceLogger.Mark(
+            "SearchPopupFirstFrameYield",
+            $"elapsedMs={showStopwatch.ElapsedMilliseconds}");
 
         if (!string.IsNullOrWhiteSpace(initialQuery))
         {
@@ -226,6 +260,12 @@ public sealed partial class SearchPopupWindow : Window
             // animation on an empty data set (which would hide containers prematurely).
             await _viewModel.OnPopupOpenedAsync();
 
+            if (!IsPopupVisible)
+            {
+                HideAppsSkeleton();
+                return;
+            }
+
             if (showSkeleton)
             {
                 HideAppsSkeleton();
@@ -247,6 +287,21 @@ public sealed partial class SearchPopupWindow : Window
     }
 
     /// <summary>
+    /// Focuses an already-visible popup without replaying its open pipeline or
+    /// clearing the current query. This makes repeated desktop-widget clicks safe.
+    /// </summary>
+    public void ActivateSearchInput()
+    {
+        PopupHideStoryboard.Stop();
+        PopupHideStoryboard.Completed -= OnPopupHideCompleted;
+        _appWindow?.Show();
+        Win32Helper.BringWindowTemporarilyToFront(_hwnd);
+        Activate();
+        Win32Helper.SetForegroundWindow(_hwnd);
+        SearchTextBox.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
     /// Hides the popup without destroying it.
     /// </summary>
     public void HidePopup()
@@ -257,7 +312,12 @@ public sealed partial class SearchPopupWindow : Window
         }
 
         IsPopupVisible = false;
-        _viewModel.ClearSearch();
+        _viewModel.OnPopupHidden();
+        _searchDebounceTimer?.Stop();
+        _statusHideTimer?.Stop();
+        _skeletonBreathTimer?.Stop();
+        _entranceGuardTimer?.Stop();
+        PopupHidden?.Invoke(this, EventArgs.Empty);
 
         // Fluent exit: fast shrink + fade, then remove the window from view once the
         // animation completes. The window stays interactive-looking for ~150ms, which
@@ -277,6 +337,11 @@ public sealed partial class SearchPopupWindow : Window
         if (!IsPopupVisible)
         {
             _appWindow?.Hide();
+            // Retain the initialized XAML shell for fast reopening, while releasing
+            // native backdrop/compositor resources during the hidden interval.
+            DisposeAcrylicController();
+            DisposeMicaController();
+            Win32Helper.DisableAccentPolicy(_hwnd);
         }
     }
 
@@ -339,9 +404,6 @@ public sealed partial class SearchPopupWindow : Window
         // Apply corner preference from settings (Default/Square/Small/Round).
         ApplyWindowCornerPreference();
 
-        // Native material per the widget appearance settings (Mica/Acrylic/Solid).
-        ApplyMaterialFromSettings();
-
     }
 
     private void OnAppearanceSettingsChanged()
@@ -349,7 +411,10 @@ public sealed partial class SearchPopupWindow : Window
         void ApplyAppearance()
         {
             ApplyWindowCornerPreference();
-            ApplyMaterialFromSettings();
+            if (IsPopupVisible)
+            {
+                ApplyMaterialFromSettings();
+            }
             UpdateHotkeyHint();
         }
 
@@ -386,8 +451,12 @@ public sealed partial class SearchPopupWindow : Window
 
         RootGrid.RequestedTheme = theme;
 
-        // Re-apply material since it reads ActualTheme
-        ApplyMaterialFromSettings();
+        // A pre-warmed hidden shell intentionally owns no backdrop controller.
+        // The current material is applied immediately before the next native show.
+        if (IsPopupVisible)
+        {
+            ApplyMaterialFromSettings();
+        }
     }
 
     private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
@@ -2381,6 +2450,10 @@ public sealed partial class SearchPopupWindow : Window
         // so this must run on every prepare.
         row.RefreshIconVisuals();
         row.SetFileColumnsVisible(_viewModel.SelectedTab?.SupportsFileSort == true);
+        if (row.Item is { IconResolved: false } item)
+        {
+            _ = EnrichPreparedResultRowAsync(row, item);
+        }
 
         bool isSelectedRow = _viewModel.SelectedItem is { } selected &&
                              ReferenceEquals(row.DataContext, selected);
@@ -2400,6 +2473,30 @@ public sealed partial class SearchPopupWindow : Window
             // A recycled element may still carry stale selection visuals.
             row.IsSelected = false;
             row.IsTabStop = false;
+        }
+    }
+
+    private async Task EnrichPreparedResultRowAsync(
+        SearchResultRowControl row,
+        SearchResultItem item)
+    {
+        await _viewModel.EnsureResultMetadataAsync(item);
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => RefreshPreparedResultRow(row, item));
+            return;
+        }
+
+        RefreshPreparedResultRow(row, item);
+    }
+
+    private static void RefreshPreparedResultRow(
+        SearchResultRowControl row,
+        SearchResultItem item)
+    {
+        if (ReferenceEquals(row.Item, item))
+        {
+            row.RefreshIconVisuals();
         }
     }
 
@@ -3000,12 +3097,24 @@ public sealed partial class SearchPopupWindow : Window
         _viewModel.QueryApplied -= OnViewModelQueryApplied;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         ResultsRepeater.ElementPrepared -= OnResultsElementPrepared;
+        RecommendedAppsRepeater.ElementPrepared -= OnRecommendedAppsElementPrepared;
         _settingsService.SettingsChanged -= OnAppearanceSettingsChanged;
         _settingsService.AppearancePreviewChanged -= OnAppearanceSettingsChanged;
         _localizationService.LanguageChanged -= OnLanguageChanged;
         if (_themeService is not null)
             _themeService.AppearanceChanged -= OnThemeServiceAppearanceChanged;
         Activated -= OnWindowActivated;
+        PopupHideStoryboard.Stop();
+        PopupHideStoryboard.Completed -= OnPopupHideCompleted;
+        _searchDebounceTimer?.Stop();
+        _statusHideTimer?.Stop();
+        _skeletonBreathTimer?.Stop();
+        _entranceGuardTimer?.Stop();
+        ResultsRepeater.ItemsSource = null;
+        RecommendedAppsRepeater.ItemsSource = null;
+        FavoritesRepeater.ItemsSource = null;
+        RecentSearchesRepeater.ItemsSource = null;
+        TabsList.ItemsSource = null;
         DisposeAcrylicController();
         DisposeMicaController();
         _viewModel.Dispose();

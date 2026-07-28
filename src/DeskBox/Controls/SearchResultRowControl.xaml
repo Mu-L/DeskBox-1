@@ -33,7 +33,7 @@
             <Border x:Name="GlyphBlock" Width="28" Height="28" CornerRadius="7"
                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
-                <FontIcon Glyph="{Binding Glyph}" FontSize="13"
+                <FontIcon Glyph="{Binding DisplayGlyph}" FontSize="13"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>

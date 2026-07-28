@@ -8,10 +8,11 @@ namespace DeskBox.Controls.WidgetContents;
 /// <summary>
 /// Adapts SearchWidgetContent to the IWidgetContent contract.
 /// </summary>
-public sealed class SearchWidgetContentAdapter : IWidgetContent
+public sealed class SearchWidgetContentAdapter : IWidgetContent, IDisposable
 {
     private readonly Func<FrameworkElement> _viewFactory;
     private FrameworkElement? _view;
+    private bool _isDisposed;
 
     public SearchWidgetContentAdapter(
         WidgetConfig config,
@@ -38,6 +39,7 @@ public sealed class SearchWidgetContentAdapter : IWidgetContent
     {
         get
         {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
             _view ??= _viewFactory();
             return _view;
         }
@@ -93,5 +95,17 @@ public sealed class SearchWidgetContentAdapter : IWidgetContent
 
     public void OnDeactivated()
     {
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        (_view as IDisposable)?.Dispose();
+        _view = null;
     }
 }

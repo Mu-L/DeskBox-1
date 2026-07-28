@@ -1,179 +1,234 @@
 # DeskBox
 
+**本地优先的 Windows 11 桌面整理工具：用格子管理文件、文件夹、待办、随记、搜索、天气和音乐。**
+
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![最新版本](https://img.shields.io/badge/release-1.3.4-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.4)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](#构建)
+[![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-DeskBox 是一个基于 WinUI 3 的 Windows 11 桌面整理工具。它用轻量桌面格子帮你收纳文件、映射文件夹、记录待办、随手记点东西，也可以在桌面上控制音乐。DeskBox 不会替换 Windows 桌面，只是在原生桌面之上补一层更好整理、更好访问、更容易临时唤起的能力。
+![DeskBox Windows 11 桌面整理工具，包含文件、待办、搜索、天气和音乐格子](docs/images/brand/readme-hero-1-3-4-option-c-mica.png)
 
-![DeskBox 产品封面](docs/images/brand/product-cover-zh-cn-1280x720.png)
+DeskBox 基于 C#、WinUI 3 和 Windows App SDK 构建，在原生 Windows 桌面上增加一层轻量格子，但不会替换资源管理器，也不会改变文件原本的使用方式。你可以创建真实文件夹支撑的文件格子、映射已有文件夹、记录待办与随记、搜索电脑内容、查看天气或控制当前音乐。格子既能保持展开，也能收起成胶囊，并可通过托盘或全局快捷键临时唤起。
+
+## DeskBox 概览
+
+| | |
+| --- | --- |
+| **支持平台** | Windows 11，x64 与 ARM64 |
+| **技术栈** | C#、WinUI 3、.NET 10、Windows App SDK 2.2 |
+| **数据方式** | 本地优先；文件、随记、待办、设置与布局保存在电脑上 |
+| **界面语言** | 简体中文、English、日本語、Deutsch、Português do Brasil |
+| **开源协议** | GPL-3.0-only |
 
 ## 下载
 
-可以在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases) 下载最新版安装包。
+在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.4) 下载 DeskBox 1.3.4：
 
-当前版本：1.3.3
+- [DeskBox 1.3.4 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.4/DeskBox_Setup_1.3.4_x64.exe)——适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.3.4 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.4/DeskBox_Setup_1.3.4_arm64.exe)——适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
-- [DeskBox_Setup_1.3.3_x64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.3/DeskBox_Setup_1.3.3_x64.exe)
-- [DeskBox_Setup_1.3.3_arm64.exe](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.3/DeskBox_Setup_1.3.3_arm64.exe)（Surface、骁龙及其他 ARM64 设备）
+安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
-x64 安装器检测 .NET 10 Runtime x64 与 Windows App Runtime 2.2 x64；ARM64 安装器检测对应的 ARM64 版本。若目标电脑缺少运行时依赖，安装流程可以联网下载并安装。
+> 只有缺少运行时依赖时，安装阶段才需要联网下载。Windows 可能为依赖安装弹出管理员权限确认；DeskBox 本体默认安装到当前用户目录。
 
-## 最新更新
+## 核心功能
 
-- **拖拽（微信 + 浏览器）**：可直接从微信聊天窗口拖拽文件和图片到格子内；浏览器拖拽的图片和文件链接自动下载并导入；拖拽文件到文件夹项目上可直接传入文件夹。
-- **叠放组管理**：右键叠放组可重命名、上移/下移排序、取消折叠/恢复折叠。
-- **天气数据源**：新增 MSN 天气（与 Windows 天气小组件同源）作为默认数据源，主源失败自动切换 Open-Meteo。可在设置 → 天气中手动选择。
-- **F7 层级可靠性修复**：修复静默回落（状态变了但画面没变）和跨进程点击检测不可靠导致格子不回落/闪烁不收起的问题。
-- **搜索格子改进**：新增清空历史按钮；格子主体只显示用户打开过的结果（不再自动生成开始菜单快捷方式）；与搜索弹窗实时同步。
-- **界面打磨**：修复托盘图标标签颠倒（黑色/白色）；隐藏折叠预览箭头；简化搜索占位符。
-- **本地化**：全部五种语言新增天气数据源、叠放组管理、搜索清空等翻译字符串。
+### 文件整理与文件夹格子
 
-完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+- 创建由普通文件夹支撑的收纳格子，或把已有文件夹直接映射到桌面，不改变原文件位置。
+- 支持图标/列表布局、标题样式、排序、自动叠放、图标大小和显示密度设置。
+- 支持拖入、拖出、复制、剪切、粘贴、重命名、删除、打开、在资源管理器中显示，以及通过 Windows Shell 打开快捷方式。
+- 可从资源管理器、微信或浏览器拖入内容；浏览器中的远程图片与文件链接可以下载后导入。
+- 已运行 [QuickLook](https://github.com/QL-Win/QuickLook) 时，可在格子中按空格预览支持的文件。
 
-## 为什么做这个产品
+### 待办与随记
 
-Windows 桌面已经陪大家用了很多年，也是很多人每天最常用的地方。但它也很容易变乱：临时文件、截图、下载内容、待处理事项，最后都堆在一起。DeskBox 想做的是帮桌面多一层克制的整理能力，而不是把桌面变成另一个复杂系统。Windows 桌面仍然是 Windows 桌面，文件仍然是普通文件，格子只是帮你把它们收纳、映射、查看和临时唤起。
+- 待办支持截止日期、提醒、重复、颜色标记、多附件、筛选与批量操作。
+- 随记支持文本、链接、图片和文件，提供固定、纸张样式、多附件与专注编辑。
+- 附件可以关联原文件，也可以复制到 DeskBox 管理的数据目录。
 
-我也很喜欢 WinUI 的原生质感，所以 DeskBox 后续会一直尽量按 Windows 原生设计和交互规范做下去：WinUI 3 控件、Windows App SDK、DWM 圆角、亚克力质感、托盘优先的工作流。能用原生能力时会优先用原生能力，不会为了一个很小的效果随便引入很重的第三方库。安装包采用框架依赖方式，会检查目标电脑上的 .NET 与 Windows App Runtime，只在缺失时下载对应依赖。
+### 桌面搜索
 
-## 功能
+- 在一个搜索弹窗或搜索格子中查找文件、文件夹、应用、设置与 DeskBox 内容。
+- 可组合使用 Windows 索引与可选的本地 USN 文件索引。
+- 支持结果筛选、数量设置、历史、收藏和独立全局快捷键。
+- 空闲时预热搜索弹窗外壳，点击搜索格子后优先显示并聚焦窗口，推荐内容、图标与已卸载的本地索引在后台恢复。
+- 搜索空闲后可卸载常驻的本地索引，同时保留轻量文件监听记录变化；关闭搜索功能则会释放完整搜索运行资源。
 
-- **收纳格子**：创建真实文件夹支撑的桌面格子，用于整理文件。
-- **文件夹映射**：把已有文件夹展示为桌面格子，不改变原文件位置。
-- **待办格子**：支持截止日期、提醒、重复、颜色标记、多附件、可配置视图和批量操作。
-- **随记**：保存常用文本、链接、图片和文件，支持固定、纸张样式、多附件和专注详情编辑。
-- **音乐格子**：支持播放控制、播放模式切换、系统音量调整和自适应封面布局，可跟随封面氛围取色。
-- **胶囊模式**：把格子收起为智能摘要，可独立摆放，也可组合成能够排序和整体移动的桌面栏。
-- **文件自动叠放**：按类型、日期或自定义扩展名规则整理文件格子，不移动真实文件。
-- **拖入后收纳**：拖入收纳格子的文件默认复制到对应的真实收纳文件夹，也可在设置中改为移动。
-- **托盘管理**：新建格子、映射文件夹、显示或隐藏全部格子、临时置顶、打开收纳目录、打开设置、开机自启和退出。
-- **全局快捷键**：可用快捷键快速显示、隐藏或唤起格子。
-- **原生文件操作**：拖入、拖出、粘贴、剪切、重命名、删除、打开、在资源管理器中显示、键盘快捷键，并可通过已运行的 QuickLook 按空格预览。
-- **外观调节**：支持原生材质、材质浓度、透明度、边框颜色与样式、DWM 圆角、显示密度、图标/文字大小、标题样式和封面氛围背景。
-- **数据与收纳维护**：导出或恢复备份、管理自动快照、检查附件健康、调整默认收纳路径、固定到快速访问并恢复孤立收纳文件夹。
+### 天气与音乐
 
-## 截图
+- 天气格子可展示实时天气、逐小时和多日预报，默认使用 MSN 天气，失败时自动回退到 Open-Meteo。
+- 天气提供跟随明暗模式的标准皮肤和按天气变化的高级皮肤，日/周视图会随格子尺寸响应式调整。
+- 音乐格子通过 Windows 媒体会话控制当前播放器，支持播放模式、进度和系统音量。
+- 音乐提供封面、控制、唱片与紧凑布局，并可选择跟随专辑封面的氛围色。
 
-### 桌面总览
+### 胶囊模式与原生交互
 
-| 浅色主题 | 深色主题 |
-| --- | --- |
-| ![DeskBox 浅色桌面总览](docs/images/screenshots/zh-cn/desktop-light.png) | ![DeskBox 深色桌面总览](docs/images/screenshots/zh-cn/desktop-dark.png) |
+- 格子可收起为智能胶囊，支持点击切换或鼠标悬停自动展开。
+- 收起后可显示关键信息、简要摘要或仅图标与标题；待办和随记可隐藏敏感正文。
+- 胶囊可以独立摆放，也可以组合成可整体移动、可排序的胶囊栏。
+- 可通过托盘和自定义全局快捷键显示、隐藏或临时唤起全部格子。
+- 支持云母/亚克力材质、透明度、边框、DWM 圆角、动画、标题栏、图标与文字大小。
 
-### 核心格子
+## 1.3.4 更新亮点
 
-| 文件格子 | 待办格子 |
-| --- | --- |
-| ![DeskBox 文件格子列表视图](docs/images/screenshots/zh-cn/file-widget-list.png) | ![DeskBox 待办格子](docs/images/screenshots/zh-cn/todo-widget.png) |
-| 随记格子 | 音乐格子 |
-| ![DeskBox 随记格子](docs/images/screenshots/zh-cn/quick-capture-widget.png) | ![DeskBox 音乐格子](docs/images/screenshots/zh-cn/music-widget.png) |
+- **资源占用更可控**：关闭功能格子和设置窗口后释放视觉树；音乐与胶囊定时器会正确解绑；缓存增加明确上限；即使格子仍显示在桌面上，满足安全条件时也可执行空闲内存整理。
+- **搜索窗口优先出现**：空闲时预热弹窗外壳；连续点击搜索格子只会打开或聚焦，不再反向关闭；窗口先完成显示，推荐内容、图标和已卸载索引随后恢复；缺少真实图标的结果也会保留可识别的占位图标。
+- **搜索索引空闲卸载**：搜索连续五分钟未使用时，可从内存卸载体积较大的自定义索引，同时保留轻量监听记录文件变化；唤起弹窗时立即开始恢复，无需等到输入文字。
+- **天气视觉重构**：重新设计响应式日/周布局、标准/高级皮肤、不同天气下的文字对比度、日出日落圆弧和预报信息层级；新用户与重置默认使用高级皮肤，并移除持续运行的装饰性天气动效。
+- **音乐稳定性与效率**：切歌时等待完整媒体信息，减少歌曲名和歌手名闪烁；封面解码去重并限制资源；隐藏或收起时停止跑马灯和唱片旋转；播放键与辅助控制尺寸更加统一。
+- **胶囊交互更可靠**：空闲时预热展开布局；首次启动或唤醒后无需点击即可悬停展开；相邻胶囊不会隔着当前展开格子误触并抢占层级；点击切换模式下点击标题栏立即收起。
+- **修复窗口层级**：托盘/F7 临时唤起结束后，鼠标悬停展开胶囊不会再越过当前前台应用并持续置顶。
+- **图标更清晰**：大图标使用更高分辨率的系统图标源，小图标改进缩小采样，叠放图标同步跟随尺寸设置。
+- **稳定性与菜单补全**：快捷方式改用 Shell 兼容路径启动；待办/随记空白区域显示标题栏菜单；文件与映射文件夹内容菜单增加标题样式、展开方式和带二级确认的“关闭格子”；仅在可用时显示“粘贴”。
+- **热键可靠性**：移除低级键盘钩子，改进远程桌面修饰键恢复，搜索快捷键与搜索功能开关联动。
+- **发布打包**：应用与安装器版本统一为 1.3.4；x64 和 ARM64 均采用框架依赖安装包，只检测并下载当前架构缺少的运行时；同时移除旧图片画廊格子。
 
-### 设置页
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.4 发布说明](docs/releases/v1.3.4.md)。
+
+## 当前界面
+
+以下图片来自 1.3.4 当前构建。
+
+### 桌面格子与材质
+
+#### 云母材质
+
+![DeskBox 1.3.4 中文界面的 Windows 11 云母材质桌面格子](docs/images/screenshots/zh-cn/云母材质.png)
+
+#### 亚克力材质
+
+![DeskBox 1.3.4 中文界面的 Windows 11 亚克力材质桌面格子](docs/images/screenshots/zh-cn/亚克力材质.png)
+
+### 设置
 
 | 常规 | 外观 |
 | --- | --- |
-| ![DeskBox 常规设置](docs/images/screenshots/zh-cn/settings-general-1-2.png) | ![DeskBox 外观设置](docs/images/screenshots/zh-cn/settings-appearance-1-2.png) |
-| 文件格子 | 功能格子 |
-| ![DeskBox 文件格子设置](docs/images/screenshots/zh-cn/settings-file-widgets-1-2.png) | ![DeskBox 功能格子设置](docs/images/screenshots/zh-cn/settings-feature-widgets-1-2.png) |
+| ![DeskBox 1.3.4 中文常规设置](docs/images/screenshots/zh-cn/常规.png) | ![DeskBox 1.3.4 中文外观设置](docs/images/screenshots/zh-cn/外观.png) |
 
-### 品牌动效
+| 胶囊模式 | 文件格子 |
+| --- | --- |
+| ![DeskBox 1.3.4 中文胶囊模式设置](docs/images/screenshots/zh-cn/胶囊模式.png) | ![DeskBox 1.3.4 中文文件格子设置](docs/images/screenshots/zh-cn/文件格子.png) |
 
-<p align="center">
-  <img src="docs/motion/deskbox-motion-01-layer-assemble.svg" width="120" alt="DeskBox logo layer assembly animation" />
-</p>
+| 功能格子 | 快捷与交互 |
+| --- | --- |
+| ![DeskBox 1.3.4 中文功能格子设置](docs/images/screenshots/zh-cn/功能格子.png) | ![DeskBox 1.3.4 中文快捷与交互设置](docs/images/screenshots/zh-cn/快捷与交互.png) |
+
+## 本地数据与隐私
+
+DeskBox 不要求注册账号，也不依赖云同步。格子配置、待办、随记、搜索历史、窗口布局和收纳文件都保存在本机。
+
+以下功能会按使用意图联网：
+
+- 天气数据来自 MSN 天气或 Open-Meteo。
+- 更新检查访问 DeskBox 更新服务或 GitHub Releases。
+- 安装器只在缺少依赖时下载 .NET 或 Windows App Runtime。
+- 从浏览器拖入远程链接时，只有确认导入的内容会被下载。
+
+胶囊隐私选项只是在收起状态下隐藏部分文字，属于展示控制，并不等同于文件加密。
 
 ## 环境要求
 
-- Windows 11。
-- .NET 10 Runtime x64。
-- Windows App Runtime 2.2 x64。
+- Windows 11 22H2 或更高版本。
+- 与安装包匹配的 x64 或 ARM64 处理器。
+- .NET 10 Runtime 与 Windows App Runtime 2.2；缺少时可由安装程序自动安装。
 
-当前项目主要在 Windows 11 下测试。Windows 10 或其他系统版本尚未完整验证。
+Windows 10 在部分环境中可能可以运行，但不是当前验证目标。
 
-开发环境需要 .NET 10 SDK。推荐使用安装了 Windows App SDK 工作负载的 Visual Studio。
+## 安装、更新与卸载
 
-## 安装和卸载
+DeskBox 使用 Inno Setup 安装器，默认安装到当前用户目录。覆盖安装会保留应用设置、格子配置和收纳目录。旧版如果安装在 Program Files，安装器会进行迁移，以避免管理员权限进程影响资源管理器拖拽。
 
-安装器基于 Inno Setup 构建，默认安装到当前用户目录。覆盖安装会保留现有应用设置、格子配置和收纳目录内容；旧版如果安装在 Program Files，安装器会自动迁移，避免 DeskBox 以管理员权限运行后影响资源管理器拖拽。
+开机自启会静默启动到托盘。DeskBox 已运行时，再启动一个实例会直接退出，不会重复打开设置窗口。
 
-开机自启会静默启动到托盘。如果 DeskBox 已经运行，登录时再次启动的实例会直接退出，不会弹出设置页面。
+卸载时可以选择是否删除 `%LocalAppData%\DeskBox` 下的应用数据。DeskBox 不会静默删除收纳目录中的用户文件；任何可能影响用户文件的清理都会先提示。
 
-卸载时安装器会先停止正在运行的 DeskBox，并让你选择是否删除 `%LocalAppData%\DeskBox` 下的本地应用数据。收纳目录中的用户文件不会被静默删除；当清理可能影响用户文件时，会先提示确认。
+## 常见问题
 
-## 构建
+### DeskBox 会替换 Windows 桌面吗？
 
-还原并构建：
+不会。Windows 资源管理器仍是桌面外壳，文件也仍是普通文件和文件夹。DeskBox 只是在现有桌面上增加独立管理的格子。
+
+### DeskBox 把数据保存在哪里？
+
+- 应用设置和格子数据：`%LocalAppData%\DeskBox\data`
+- 默认收纳目录：`%UserProfile%\DeskBox`
+
+两类数据都可以通过 DeskBox 设置中的备份功能进行备份。
+
+### 应该下载 x64 还是 ARM64？
+
+绝大多数 Intel、AMD 电脑选择 x64；骁龙等原生 Windows on ARM 设备选择 ARM64。不确定时可在“Windows 设置 → 系统 → 系统信息 → 系统类型”中查看。
+
+### 为什么安装时可能需要联网？
+
+正式安装包不内置 .NET 10 和 Windows App Runtime 2.2。安装器会先检查电脑，只下载当前架构缺少的依赖。
+
+### 关闭功能格子会删除内容吗？
+
+不会。关闭功能会关闭对应界面并释放运行资源，但保存的数据和配置仍会保留，下次开启后继续使用。
+
+## 从源码构建
+
+开发需要 .NET 10 SDK 和 Windows 11 环境，推荐安装带 Windows App SDK 工作负载的 Visual Studio。
+
+还原、测试并构建 x64 Debug 版本：
 
 ```powershell
 dotnet restore .\DeskBox.sln -p:Platform=x64
+dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -v:minimal
 dotnet build .\src\DeskBox\DeskBox.csproj --configuration Debug --no-restore -p:Platform=x64 -v:minimal
 ```
 
-运行测试：
-
-```powershell
-dotnet test .\DeskBox.sln --configuration Debug --no-restore -p:Platform=x64 -v:minimal
-```
-
-启动 Debug 应用：
-
-```powershell
-.\scripts\start-debug.ps1
-```
-
-生成 Release x64 输出和安装包：
+生成不内置运行时的 Release 输出：
 
 ```powershell
 dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\x64 -v:minimal
-& 'C:\Program Files\Inno Setup 7\ISCC.exe' .\installer\DeskBox.iss
+dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\arm64 -v:minimal
 ```
 
-安装包输出：
+安装 Inno Setup 6 或更高版本后，编译两个安装包：
+
+```powershell
+ISCC.exe .\installer\DeskBox.iss
+ISCC.exe .\installer\DeskBox.arm64.iss
+```
+
+预期输出：
 
 ```text
-Output\DeskBox_Setup_1.3.3_x64.exe
+Output\DeskBox_Setup_1.3.4_x64.exe
+Output\DeskBox_Setup_1.3.4_arm64.exe
 ```
 
 ## 项目结构
 
 ```text
 src\DeskBox                 WinUI 3 应用源码
-tests\DeskBox.Tests         核心服务测试
-installer                   Inno Setup 安装脚本
-docs\images                 README 和发布截图资源
-docs\motion                 品牌动效方案与 SVG 资源
-docs\releases               GitHub Releases 发布文案
+src\DeskBox.Updater         直发版更新辅助程序
+tests\DeskBox.Tests         服务与策略测试
+installer                   x64/ARM64 Inno Setup 脚本
+docs\user-guide             产品使用说明
+docs\images                 README 与发布图片
+docs\releases               版本发布文案和测试清单
 ```
 
-## 数据位置
+## 反馈与本地化
 
-- 应用设置保存在 `%LocalAppData%\DeskBox\data`。
-- 默认收纳路径为 `%UserProfile%\DeskBox`。
-- `bin`、`obj`、`Output`、`artifacts` 和 `TestResults` 等生成目录已被 Git 忽略。
+DeskBox 目前由个人独立开发和维护。为了保持架构一致性与后续版权边界，现阶段暂不接受外部 Pull Request；欢迎通过 [GitHub Issues](https://github.com/Tianyu199509/DeskBox/issues) 提交问题、功能建议、翻译和 UI/UX 反馈。
 
-## 贡献与反馈
+特别感谢 [@magisph](https://github.com/magisph) 提供巴西葡萄牙语本地化支持。
 
-本项目目前由个人开发者独立维护，并作为长期的个人产品进行演进。为了保证代码架构的绝对一致性以及后续版权的清晰度，本项目当前暂不接受外部的代码合并（Pull Request）。
+也可以访问 [deskbox.fun](https://deskbox.fun)，或通过应用“关于”页面中的联系方式反馈。
 
-尽管如此，DeskBox 的成长离不开社区的反馈！如果您在使用中遇到了 Bug，或者对新功能有绝佳的想法，非常欢迎您通过提交 [Issue](https://github.com/Tianyu199509/DeskBox/issues) 的方式与我交流。感谢您的理解与支持！
+## 作者与协议
 
-💕特别感谢@https://github.com/magisph 提供的巴西巴西葡萄牙语本地化支持。💕
+- 开发者：朱天雨
+- 项目地址：<https://github.com/Tianyu199509/DeskBox>
+- 开源协议：[GPL-3.0-only](LICENSE)
 
-## 反馈
-
-DeskBox 仍处于早期公开版本。如果 Win10/Win11 遇到文件拖不进格子的问题，请先尝试"设置 -> 拖拽异常诊断 -> 一键修复"。如果仍有问题，可以扫码关注应用"关于"页里的公众号留言，或在 GitHub 提交 [Issue](https://github.com/Tianyu199509/DeskBox/issues)。
-
-## 作者
-
-- 开发者：Tianyu Zhu
-- 开源仓库：<https://github.com/Tianyu199509/DeskBox>
-
-## 开源协议
-
-DeskBox 现在使用 [GPL-3.0-only](LICENSE) 授权。
-
-此前已经以 MIT License 发布的 DeskBox 旧版本，仍然按 MIT License 授权。本次协议变更不追溯旧版本；详情见 [LICENSE_CHANGE.md](LICENSE_CHANGE.md)。
+早期已按 MIT 协议发布的 DeskBox 版本继续保持原许可，协议变更不追溯历史版本；详情见 [LICENSE_CHANGE.md](LICENSE_CHANGE.md)。

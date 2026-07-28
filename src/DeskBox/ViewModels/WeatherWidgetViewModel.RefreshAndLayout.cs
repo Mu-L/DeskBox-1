@@ -29,8 +29,17 @@ public sealed partial class WeatherWidgetViewModel
 
     public async Task RefreshAsync(bool userTriggered = false, bool forceRefresh = false)
     {
-        if (_isDisposed || _isRefreshing)
+        if (_isDisposed)
         {
+            return;
+        }
+
+        int requestVersion = Interlocked.Increment(ref _refreshRequestVersion);
+        if (_isRefreshing)
+        {
+            _refreshPending = true;
+            _pendingForceRefresh |= forceRefresh || userTriggered;
+            _pendingUserTriggeredRefresh |= userTriggered;
             return;
         }
 
@@ -41,7 +50,7 @@ public sealed partial class WeatherWidgetViewModel
         try
         {
             await EnsureLocationAsync();
-            if (_isDisposed)
+            if (_isDisposed || requestVersion != Volatile.Read(ref _refreshRequestVersion))
             {
                 return;
             }
@@ -59,7 +68,7 @@ public sealed partial class WeatherWidgetViewModel
                 _locationName,
                 forceRefresh: userTriggered || forceRefresh,
                 cacheDuration: cacheDuration);
-            if (_isDisposed)
+            if (_isDisposed || requestVersion != Volatile.Read(ref _refreshRequestVersion))
             {
                 return;
             }
@@ -87,9 +96,22 @@ public sealed partial class WeatherWidgetViewModel
             IsRefreshing = false;
 
             // Only show the toast for user-triggered refreshes (not auto-timer)
-            if (_refreshWasUserTriggered && HasData)
+            if (_refreshWasUserTriggered &&
+                HasData &&
+                requestVersion == Volatile.Read(ref _refreshRequestVersion))
             {
                 ShowRefreshStatusToast(refreshSucceeded);
+            }
+
+            _refreshWasUserTriggered = false;
+            if (_refreshPending && !_isDisposed)
+            {
+                bool pendingUserTriggered = _pendingUserTriggeredRefresh;
+                bool pendingForceRefresh = _pendingForceRefresh;
+                _refreshPending = false;
+                _pendingUserTriggeredRefresh = false;
+                _pendingForceRefresh = false;
+                _ = RefreshAsync(pendingUserTriggered, pendingForceRefresh);
             }
         }
     }
@@ -151,8 +173,11 @@ public sealed partial class WeatherWidgetViewModel
     public void ToggleViewMode()
     {
         IsWeekView = !IsWeekView;
-        OnPropertyChanged(nameof(ForecastVisibility));
-        OnPropertyChanged(nameof(WeekForecastVisibility));
+    }
+
+    public void SetViewMode(bool useWeekView)
+    {
+        IsWeekView = useWeekView;
     }
 
     /// <summary>
@@ -165,6 +190,7 @@ public sealed partial class WeatherWidgetViewModel
             return;
         }
 
+        WeatherLayoutPresentationState previousState = CaptureLayoutPresentationState();
         _lastAvailableWidth = width;
         _lastAvailableHeight = height;
 
@@ -173,7 +199,7 @@ public sealed partial class WeatherWidgetViewModel
             return;
         }
 
-        ApplyLayoutModeForSize(width, height);
+        ApplyLayoutModeForSize(width, height, previousState);
     }
 
     internal void BeginResponsiveLayoutTransition(
@@ -186,12 +212,13 @@ public sealed partial class WeatherWidgetViewModel
             return;
         }
 
+        WeatherLayoutPresentationState previousState = CaptureLayoutPresentationState();
         _isResponsiveLayoutTransitionActive = true;
         _lastAvailableWidth = targetWidth;
         _lastAvailableHeight = targetHeight;
         if (!isCollapsing)
         {
-            ApplyLayoutModeForSize(targetWidth, targetHeight);
+            ApplyLayoutModeForSize(targetWidth, targetHeight, previousState);
         }
     }
 
@@ -203,13 +230,19 @@ public sealed partial class WeatherWidgetViewModel
 
     internal void CancelResponsiveLayoutTransition()
     {
+        WeatherLayoutPresentationState previousState = CaptureLayoutPresentationState();
         _isResponsiveLayoutTransitionActive = false;
-        ApplyLayoutModeForSize(_lastAvailableWidth, _lastAvailableHeight);
+        ApplyLayoutModeForSize(
+            _lastAvailableWidth,
+            _lastAvailableHeight,
+            previousState);
     }
 
-    private void ApplyLayoutModeForSize(double width, double height)
+    private void ApplyLayoutModeForSize(
+        double width,
+        double height,
+        WeatherLayoutPresentationState previousState)
     {
-
         string newLayout = DetermineLayoutMode(width, height, _layoutMode);
         if (!string.Equals(newLayout, _layoutMode, StringComparison.Ordinal))
         {
@@ -228,11 +261,46 @@ public sealed partial class WeatherWidgetViewModel
             OnPropertyChanged(nameof(SunriseVisibility));
         }
 
-        // Notify flexible visibility properties that depend on available height
-        OnPropertyChanged(nameof(ExpandedSunriseVisibility));
-        OnPropertyChanged(nameof(ExpandedHourlyPrecipVisibility));
-        OnPropertyChanged(nameof(ExpandedHourlyCardHeight));
+        // SizeChanged can be raised repeatedly while XAML is arranging the same
+        // visual tree. Re-notifying unchanged height-derived properties creates a
+        // layout feedback loop and needlessly rewrites the compact presentation.
+        WeatherLayoutPresentationState currentState = CaptureLayoutPresentationState();
+        if (previousState.ExpandedSunriseVisibility != currentState.ExpandedSunriseVisibility)
+        {
+            OnPropertyChanged(nameof(ExpandedSunriseVisibility));
+        }
+
+        if (previousState.ExpandedHourlyPrecipVisibility != currentState.ExpandedHourlyPrecipVisibility)
+        {
+            OnPropertyChanged(nameof(ExpandedHourlyPrecipVisibility));
+        }
+
+        if (previousState.ExpandedHourlyCardHeight != currentState.ExpandedHourlyCardHeight)
+        {
+            OnPropertyChanged(nameof(ExpandedHourlyCardHeight));
+        }
+
+        if (previousState.ExpandedSecondaryMetricsVisibility != currentState.ExpandedSecondaryMetricsVisibility)
+        {
+            OnPropertyChanged(nameof(ExpandedSecondaryMetricsVisibility));
+        }
+
     }
+
+    private WeatherLayoutPresentationState CaptureLayoutPresentationState()
+    {
+        return new WeatherLayoutPresentationState(
+            ExpandedSunriseVisibility,
+            ExpandedHourlyPrecipVisibility,
+            ExpandedHourlyCardHeight,
+            ExpandedSecondaryMetricsVisibility);
+    }
+
+    private readonly record struct WeatherLayoutPresentationState(
+        Visibility ExpandedSunriseVisibility,
+        Visibility ExpandedHourlyPrecipVisibility,
+        double ExpandedHourlyCardHeight,
+        Visibility ExpandedSecondaryMetricsVisibility);
 
     /// <summary>
     /// Determines layout mode using hysteresis: once in a higher layout, the

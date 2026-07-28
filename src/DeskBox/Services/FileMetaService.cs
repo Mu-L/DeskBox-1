@@ -18,8 +18,10 @@ namespace DeskBox.Services;
 /// purely from the file name/attributes, so stale index entries (deleted files)
 /// still render a correct icon without touching the disk.
 /// </summary>
-public sealed class FileMetaService
+public sealed class FileMetaService : IDisposable
 {
+    private const int MaxIconCacheEntries = 64;
+    private const string SearchIconCacheScope = "search";
     private const uint SHGFI_ICON = 0x100;
     private const uint SHGFI_LARGEICON = 0x0;
     private const uint SHGFI_USEFILEATTRIBUTES = 0x10;
@@ -32,6 +34,9 @@ public sealed class FileMetaService
     // Extension → icon task. A single icon instance is shared by every result with
     // the same extension, so a list of 200 .pdf files costs exactly one extraction.
     private readonly ConcurrentDictionary<string, Task<ImageSource?>> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private bool _isDisposed;
+
+    public int CachedIconCount => _iconCache.Count;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct SHFILEINFO
@@ -69,6 +74,8 @@ public sealed class FileMetaService
         CancellationToken token = default,
         bool hideShortcutArrowOverlay = false)
     {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+
         var targets = items
             .Where(i => (i.Kind == SearchResultKind.File || i.Kind == SearchResultKind.Folder)
                         && !string.IsNullOrWhiteSpace(i.DetailPath))
@@ -149,7 +156,9 @@ public sealed class FileMetaService
             return await IconHelper.GetIconAsync(
                 item.DetailPath!,
                 hideShortcutArrowOverlay,
-                showImageFilesAsIcons: true);
+                showImageFilesAsIcons: true,
+                decodePixelWidth: 48,
+                cacheScope: SearchIconCacheScope);
         }
 
         if (IconHelper.IsImageFile(item.DetailPath!))
@@ -157,7 +166,9 @@ public sealed class FileMetaService
             return await IconHelper.GetIconAsync(
                 item.DetailPath!,
                 hideShortcutArrowOverlay,
-                showImageFilesAsIcons: false);
+                showImageFilesAsIcons: false,
+                decodePixelWidth: 48,
+                cacheScope: SearchIconCacheScope);
         }
 
         // Fallback: use extension-cached SHGetFileInfo path.
@@ -171,7 +182,22 @@ public sealed class FileMetaService
             key = string.IsNullOrEmpty(extension) ? NoExtensionCacheKey : extension;
         }
 
+        TrimIconCacheIfNeeded(key);
         return await _iconCache.GetOrAdd(key, k => LoadIconAsync(k));
+    }
+
+    private void TrimIconCacheIfNeeded(string incomingKey)
+    {
+        if (_iconCache.Count < MaxIconCacheEntries || _iconCache.ContainsKey(incomingKey))
+        {
+            return;
+        }
+
+        int removeCount = Math.Max(1, _iconCache.Count - (MaxIconCacheEntries / 2));
+        foreach (string key in _iconCache.Keys.Take(removeCount))
+        {
+            _iconCache.TryRemove(key, out _);
+        }
     }
 
     private async Task<ImageSource?> LoadIconAsync(string cacheKey)
@@ -303,6 +329,23 @@ public sealed class FileMetaService
         {
             App.Log($"[FileMeta] Failed to read stats for '{item.DetailPath}': {ex.Message}");
         }
+    }
+
+    public void Clear()
+    {
+        _iconCache.Clear();
+        IconHelper.ClearCacheScope(SearchIconCacheScope);
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        Clear();
     }
 
     /// <summary>Formats a byte count as a compact, culture-aware size string.</summary>
