@@ -1,4 +1,5 @@
 using DeskBox.Models;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
 namespace DeskBox.Services;
@@ -9,9 +10,14 @@ internal static class WidgetChromeMenuBuilder
         WidgetConfig config,
         WidgetContentDescriptor descriptor,
         LocalizationService localizationService,
+        WidgetManager? widgetManager,
         Action<WidgetChromeMode> applyMode)
     {
-        var selectedMode = WidgetChromeModeNames.GetOverrideMode(config);
+        bool grouped = widgetManager?.IsWidgetGrouped(config.Id) == true;
+        WidgetChromeMode selectedMode = grouped
+            ? widgetManager!.GetWidgetGroupChromeMode(config.Id) ??
+              WidgetChromeMode.Standard
+            : WidgetChromeModeNames.GetOverrideMode(config);
         var subItem = new MenuFlyoutSubItem
         {
             Text = localizationService.T("Widget.ChromeMode.Title"),
@@ -27,21 +33,41 @@ internal static class WidgetChromeMenuBuilder
                      WidgetChromeMode.Hidden
                  })
         {
-            if (mode == WidgetChromeMode.Hidden && !descriptor.CanHideChrome)
+            if (!grouped &&
+                mode == WidgetChromeMode.Hidden &&
+                !descriptor.CanHideChrome)
             {
                 continue;
             }
 
-            if (mode == WidgetChromeMode.Overlay && !descriptor.CanUseOverlayChrome)
+            if (!grouped &&
+                mode == WidgetChromeMode.Overlay &&
+                !descriptor.CanUseOverlayChrome)
             {
                 continue;
+            }
+
+            bool isEnabled =
+                !grouped ||
+                WidgetGroupChromePolicy.IsSupportedGroupMode(mode);
+            string text = localizationService.T(GetTextKey(mode));
+            if (!isEnabled)
+            {
+                text += $" · {localizationService.T("Widget.Group.ChromeLocked")}";
             }
 
             var item = new ToggleMenuFlyoutItem
             {
-                Text = localizationService.T(GetTextKey(mode)),
-                IsChecked = selectedMode == mode
+                Text = text,
+                IsChecked = selectedMode == mode,
+                IsEnabled = isEnabled
             };
+            if (!isEnabled)
+            {
+                ToolTipService.SetToolTip(
+                    item,
+                    localizationService.T("Widget.Group.ChromeLocked"));
+            }
             item.Click += (_, _) => applyMode(mode);
             subItem.Items.Add(item);
         }

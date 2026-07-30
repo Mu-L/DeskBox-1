@@ -80,17 +80,29 @@
                         Visibility="Collapsed" />
                 </StackPanel>
 
+                <controls:WidgetGroupTitleSwitcher
+                    x:Name="GroupTitleSwitcher"
+                    Grid.Column="0"
+                    MinWidth="0"
+                    Margin="-6,0,6,0"
+                    HorizontalAlignment="Stretch"
+                    IconSize="{Binding TitleIconSize}"
+                    TitleIconAccentColor="{x:Bind TitleIconAccentColor, Mode=OneWay}"
+                    TitleIconMode="{x:Bind TitleIconMode, Mode=OneWay}"
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed" />
+
                 <StackPanel
                     x:Name="RightActionButtons"
                     Grid.Column="1"
                     Orientation="Horizontal"
-                    Spacing="4"
+                    Spacing="2"
                     Opacity="0"
                     VerticalAlignment="Center">
                     <StackPanel
                         x:Name="HoverActionButtons"
                         Orientation="Horizontal"
-                        Spacing="4">
+                        Spacing="2">
                         <Button
                             x:Name="PositionLockButton"
                             Click="PositionLockButton_Click"
@@ -144,12 +156,29 @@
             Grid.Row="0"
             Height="1"
             Margin="12,0"
+            Opacity="0.62"
             VerticalAlignment="Bottom" />
 
-        <ContentPresenter
-            x:Name="ShellContentPresenter"
+        <Grid
+            x:Name="ContentTransitionViewport"
             Grid.Row="1"
-            Content="{x:Bind ShellContent, Mode=OneWay}" />
+            SizeChanged="ContentTransitionViewport_SizeChanged">
+            <ContentPresenter
+                x:Name="ShellContentPresenter"
+                Content="{x:Bind ShellContent, Mode=OneWay}" />
+
+            <ContentPresenter
+                x:Name="OutgoingContentPresenter"
+                IsHitTestVisible="False"
+                Visibility="Collapsed" />
+        </Grid>
+
+        <controls:WidgetFeedbackPresenter
+            x:Name="FeedbackPresenter"
+            Grid.RowSpan="2"
+            Margin="12,0,12,12"
+            Canvas.ZIndex="90"
+            IsHitTestVisible="True" />
 
         <Grid
             x:Name="CollapsedChromeLayer"
@@ -276,8 +305,15 @@
                 Height="28"
                 VerticalAlignment="Center"
                 Background="Transparent"
+                RenderTransformOrigin="0.5,0.5"
                 PointerEntered="CompactIdentityHost_PointerEntered"
                 PointerExited="CompactIdentityHost_PointerExited">
+                <Grid.RenderTransform>
+                    <ScaleTransform
+                        x:Name="CompactIdentityPulseTransform"
+                        ScaleX="1"
+                        ScaleY="1" />
+                </Grid.RenderTransform>
                 <controls:WidgetTitleIcon
                     x:Name="CompactTitleIcon"
                     HorizontalAlignment="Center"
@@ -349,6 +385,26 @@
                     CornerRadius="14,6,6,14"
                     IsHitTestVisible="False"
                     Opacity="0" />
+                <Border
+                    x:Name="CompactGroupBadge"
+                    MinWidth="14"
+                    Height="14"
+                    Padding="3,0"
+                    Margin="0,-2,-2,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    CornerRadius="7"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        x:Name="CompactGroupBadgeText"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="8"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                </Border>
             </Grid>
 
             <!-- Drag grip dots (outside IdentityHost so full-bleed opacity doesn't hide them) -->
@@ -580,7 +636,7 @@
                 Spacing="2"
                 IsHitTestVisible="False">
                 <StackPanel.RenderTransform>
-                    <TranslateTransform x:Name="CompactActionHostTransform" X="16" />
+                    <TranslateTransform x:Name="CompactActionHostTransform" X="4" />
                 </StackPanel.RenderTransform>
                 <Button
                     x:Name="CompactPrimaryActionButton"
@@ -709,35 +765,92 @@
                 PointerPressed="OverlayDragHandle_PointerPressed"
                 PointerReleased="OverlayDragHandle_PointerReleased">
                 <Grid
-                    Width="48"
-                    Height="10"
+                    x:Name="OverlayDragGrip"
+                    Width="34"
+                    Height="9"
                     Margin="0,2,0,0"
                     HorizontalAlignment="Center"
-                    VerticalAlignment="Top">
+                    VerticalAlignment="Top"
+                    Opacity="0.76">
+                    <Ellipse
+                        Width="3"
+                        Height="3"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Fill="{ThemeResource TextFillColorSecondaryBrush}" />
                     <Border
-                        x:Name="OverlayDragGrip"
-                        Width="42"
-                        Height="4"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Top"
+                        Width="17"
+                        Height="3"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
                         Background="{ThemeResource TextFillColorSecondaryBrush}"
-                        CornerRadius="2"
-                        Opacity="0.76" />
-                    <Path
-                        x:Name="OverlayCollapseChevron"
-                        Width="26"
-                        Height="11"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Top"
-                        Data="M2,8 L13,3 L24,8"
-                        Opacity="0"
-                        Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                        StrokeEndLineCap="Round"
-                        StrokeLineJoin="Round"
-                        StrokeStartLineCap="Round"
-                        StrokeThickness="4" />
+                        CornerRadius="1.5"
+                        RenderTransformOrigin="1,0.5">
+                        <Border.RenderTransform>
+                            <RotateTransform x:Name="OverlayDragGripLeftRotation" />
+                        </Border.RenderTransform>
+                    </Border>
+                    <Border
+                        Width="17"
+                        Height="3"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource TextFillColorSecondaryBrush}"
+                        CornerRadius="1.5"
+                        RenderTransformOrigin="0,0.5">
+                        <Border.RenderTransform>
+                            <RotateTransform x:Name="OverlayDragGripRightRotation" />
+                        </Border.RenderTransform>
+                    </Border>
                 </Grid>
             </Border>
         </Grid>
+
+        <Border
+            x:Name="ContentDropHighlightBorder"
+            Grid.RowSpan="2"
+            Margin="1"
+            Canvas.ZIndex="90"
+            Background="Transparent"
+            BorderBrush="Transparent"
+            BorderThickness="2"
+            CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
+            IsHitTestVisible="False"
+            Visibility="Collapsed" />
+
+        <Border
+            x:Name="GroupDropPreview"
+            Grid.RowSpan="2"
+            Margin="4"
+            Padding="16"
+            Canvas.ZIndex="100"
+            Background="{ThemeResource WidgetAccentWashBrush}"
+            BorderBrush="Transparent"
+            BorderThickness="0"
+            CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
+            IsHitTestVisible="False"
+            Opacity="0"
+            RenderTransformOrigin="0.5,0.5"
+            Visibility="Collapsed">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="GroupDropPreviewTransform" />
+            </Border.RenderTransform>
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8">
+                <FontIcon
+                    x:Name="GroupDropPreviewIcon"
+                    HorizontalAlignment="Center"
+                    FontSize="24"
+                    Glyph="&#xE8F1;" />
+                <TextBlock
+                    x:Name="GroupDropPreviewText"
+                    HorizontalAlignment="Center"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    TextAlignment="Center" />
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

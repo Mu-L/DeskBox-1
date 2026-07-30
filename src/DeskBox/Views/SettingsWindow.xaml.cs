@@ -84,18 +84,17 @@ public sealed partial class SettingsWindow : Window
             ["General"] = new("General", "Settings.Section.General", null, "General"),
             ["Appearance"] = new("Appearance", "Settings.Section.Appearance", null, "Appearance"),
             ["CapsuleMode"] = new("CapsuleMode", "Settings.Section.CapsuleMode", null, "CapsuleMode"),
+            ["WidgetGroups"] = new("WidgetGroups", "Settings.Section.WidgetGroups", null, "WidgetGroups"),
             ["AppearanceDetail"] = new("AppearanceDetail", "Settings.Appearance.DetailTitle", null, "AppearanceDetail"),
             ["FeatureWidgets"] = new("FeatureWidgets", "Settings.Section.FeatureWidgets", null, "FeatureWidgets"),
             ["Interaction"] = new("Interaction", "Settings.Section.Interaction", null, "Interaction"),
             ["InteractionHotkeySettings"] = new("InteractionHotkeySettings", "Settings.Interaction.Hotkeys.Title", "Interaction", "Interaction"),
             ["InteractionHoverSettings"] = new("InteractionHoverSettings", "Settings.Interaction.Hover.Title", "Interaction", "Interaction"),
-            ["InteractionWindowSettings"] = new("InteractionWindowSettings", "Settings.Interaction.Window.Title", "Interaction", "Interaction"),
             ["Advanced"] = new("Advanced", "Settings.Section.Advanced", null, "Interaction"),
             ["Maintenance"] = new("Maintenance", "Settings.Section.Maintenance", null, "Maintenance"),
             ["About"] = new("About", "Settings.Nav.About", null, "About"),
             ["FileDisplaySettings"] = new("FileDisplaySettings", "Settings.Group.FileLayout.Title", "AppearanceDetail", "AppearanceDetail"),
-            ["FileStorageSettings"] = new("FileStorageSettings", "Settings.Group.FileStorage.Title", "AppearanceDetail", "AppearanceDetail"),
-            ["ManagedStorage"] = new("ManagedStorage", "Settings.ManagedStorage.PageTitle", "FileStorageSettings", "AppearanceDetail"),
+            ["ManagedStorage"] = new("ManagedStorage", "Settings.ManagedStorage.PageTitle", "AppearanceDetail", "AppearanceDetail"),
             ["FileStackSettings"] = new("FileStackSettings", "Settings.FileStacks.PageTitle", "AppearanceDetail", "AppearanceDetail"),
             ["QuickCaptureSettings"] = new("QuickCaptureSettings", "Settings.QuickCapture.Title", "FeatureWidgets", "FeatureWidgets"),
             ["TodoSettings"] = new("TodoSettings", "Settings.Todo.Title", "FeatureWidgets", "FeatureWidgets"),
@@ -112,8 +111,7 @@ public sealed partial class SettingsWindow : Window
             ["CapsuleOverridesSettings"] = new("CapsuleOverridesSettings", "Settings.Capsule.Overrides.Title", "CapsuleMode", "CapsuleMode"),
             ["BackupRestoreSettings"] = new("BackupRestoreSettings", "Settings.DataBackup.Title", "Maintenance", "Maintenance"),
             ["DataHealthSettings"] = new("DataHealthSettings", "Settings.AttachmentHealth.Title", "Maintenance", "Maintenance"),
-            ["CompatibilityDiagnosticsSettings"] = new("CompatibilityDiagnosticsSettings", "Settings.DragDropPermission.Title", "Maintenance", "Maintenance"),
-            ["ResetSettings"] = new("ResetSettings", "Settings.Restore.Title", "Maintenance", "Maintenance")
+            ["CompatibilityDiagnosticsSettings"] = new("CompatibilityDiagnosticsSettings", "Settings.DragDropPermission.Title", "Maintenance", "Maintenance")
         };
 
     public SettingsViewModel ViewModel { get; }

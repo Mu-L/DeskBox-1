@@ -55,6 +55,14 @@ public sealed partial class WidgetWindow
             $"mapped='{ViewModel.MappedFolderPath}' dropResult={dropResult} hasStorageItems={hasStorageItems} " +
             $"cursorOnDesktop={cursorOnDesktop} cursorOverWindow={cursorOverWindow} paths={draggedPaths.Length}");
 
+        // A content widget accepted the payload as a copy/link. It has created an
+        // attachment reference (or its own managed copy), so the source item must
+        // stay exactly where it was.
+        if (dropResult is DataPackageOperation.Copy or DataPackageOperation.Link)
+        {
+            return;
+        }
+
         if (ViewModel.FollowsDefaultStoragePath &&
             cursorOnDesktop &&
             !cursorOverWindow)
@@ -188,7 +196,10 @@ public sealed partial class WidgetWindow
             return false;
         }
 
-        dataPackage.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
+        dataPackage.RequestedOperation =
+            DataPackageOperation.Copy |
+            DataPackageOperation.Move |
+            DataPackageOperation.Link;
 
         var storageItems = App.Current.FileService.GetStorageItems(sourcePaths);
         if (storageItems.Count > 0)
@@ -241,7 +252,13 @@ public sealed partial class WidgetWindow
                    TryGetPackageString(properties, "DeskBoxInternalDragToken"),
                    DeskBoxInternalDragToken,
                    StringComparison.Ordinal) &&
-               TryGetPackageStringArray(properties, "DeskBoxSourcePaths").Count > 0;
+               (TryGetPackageStringArray(
+                        properties,
+                        "DeskBoxSourcePaths").Count > 0 ||
+                !string.IsNullOrWhiteSpace(
+                    TryGetPackageString(
+                        properties,
+                        DeskBoxDragData.StackReorderKeyProperty)));
     }
 
     private static bool HasPathDropData(DataPackageView dataView)

@@ -399,7 +399,10 @@ public sealed partial class WidgetWindow
             return;
         }
 
-        args.AllowedOperations = DataPackageOperation.Copy | DataPackageOperation.Move;
+        args.AllowedOperations =
+            DataPackageOperation.Copy |
+            DataPackageOperation.Move |
+            DataPackageOperation.Link;
     }
 
     private async void WidgetItemSurface_DropCompleted(UIElement sender, DropCompletedEventArgs args)

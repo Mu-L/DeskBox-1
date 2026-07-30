@@ -179,6 +179,7 @@ public sealed partial class WidgetWindow
             }
 
             ApplySelectionState(listView);
+            UpdateSelectionCommandBar();
             _lastSelectionAnchorIndex = GetPrimarySelectedItem() is { } item
                 ? ViewModel.Items.IndexOf(item)
                 : -1;

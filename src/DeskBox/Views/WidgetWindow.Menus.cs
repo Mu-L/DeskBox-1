@@ -35,16 +35,10 @@ public sealed partial class WidgetWindow
             return;
         }
 
-        StatusToastText.Text = message;
-        StatusToast.Visibility = Visibility.Visible;
-        StatusToast.Opacity = 1;
-
-        _statusToastTimer ??= DispatcherQueue.CreateTimer();
-        _statusToastTimer.Stop();
-        _statusToastTimer.Interval = TimeSpan.FromSeconds(2.2);
-        _statusToastTimer.Tick -= StatusToastTimer_Tick;
-        _statusToastTimer.Tick += StatusToastTimer_Tick;
-        _statusToastTimer.Start();
+        FileWidgetShell.ShowFeedback(new WidgetFeedbackRequest(
+            message,
+            WidgetFeedbackSeverity.Info,
+            "file-status"));
     }
 
     private void StatusToastTimer_Tick(DispatcherQueueTimer sender, object args)
@@ -207,6 +201,22 @@ public sealed partial class WidgetWindow
     {
         var flyout = new MenuFlyout();
 
+        if (ViewModel.FileStacksEnabled)
+        {
+            var startStackItem = CreateFileContextCommand(
+                "Widget.Stack.Start",
+                "\uE8B7");
+            startStackItem.Click += (_, _) =>
+            {
+                flyout.Hide();
+                ViewModel.CreateManualStack(
+                    GetSelectedItems());
+                ClearItemSelection();
+            };
+            flyout.Items.Add(startStackItem);
+            flyout.Items.Add(new MenuFlyoutSeparator());
+        }
+
         var cutItem = CreateFileContextCommand("Common.Cut", "\uE8C6");
         cutItem.Click += async (_, _) =>
         {
@@ -317,13 +327,18 @@ public sealed partial class WidgetWindow
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
+        var viewAndSort = new MenuFlyoutSubItem
+        {
+            Text = _localizationService.T("Widget.ViewAndSort"),
+            Icon = new FontIcon { Glyph = "\uE8CB" }
+        };
         var iconView = new ToggleMenuFlyoutItem
         {
             Text = _localizationService.T("Widget.IconView"),
             IsChecked = ViewModel.IsIconMode
         };
         iconView.Click += SetIconView_Click;
-        flyout.Items.Add(iconView);
+        viewAndSort.Items.Add(iconView);
 
         var listView = new ToggleMenuFlyoutItem
         {
@@ -331,27 +346,8 @@ public sealed partial class WidgetWindow
             IsChecked = ViewModel.IsListMode
         };
         listView.Click += SetListView_Click;
-        flyout.Items.Add(listView);
-
-        flyout.Items.Add(CreateStackSettingsMenu());
-
-        flyout.Items.Add(new MenuFlyoutSeparator());
-        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
-            ViewModel.Config,
-            _chromeDescriptor,
-            _localizationService,
-            SetChromeModeOverride));
-        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
-            ViewModel.Config,
-            _localizationService,
-            SetCollapseBehaviorOverride,
-            ResetCompactWidthOverride));
-
-        var sortSubItem = new MenuFlyoutSubItem
-        {
-            Text = _localizationService.T("Widget.SortBy"),
-            Icon = new FontIcon { Glyph = "\uE8CB" }
-        };
+        viewAndSort.Items.Add(listView);
+        viewAndSort.Items.Add(new MenuFlyoutSeparator());
 
         var sortName = new ToggleMenuFlyoutItem { Text = _localizationService.T("Widget.Sort.Name") };
         var sortSize = new ToggleMenuFlyoutItem { Text = _localizationService.T("Widget.Sort.Size") };
@@ -370,10 +366,30 @@ public sealed partial class WidgetWindow
             // (triggered by dragging), none of the auto-sort items are checked.
             item.IsChecked = i == currentSortIndex;
             item.Click += (_, _) => ViewModel.SetSortMode(mode);
-            sortSubItem.Items.Add(item);
+            viewAndSort.Items.Add(item);
         }
 
-        flyout.Items.Add(sortSubItem);
+        flyout.Items.Add(viewAndSort);
+        flyout.Items.Add(CreateStackSettingsMenu());
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
+            ViewModel.Config,
+            _chromeDescriptor,
+            _localizationService,
+            App.Current.WidgetManager,
+            SetChromeModeOverride));
+        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
+            ViewModel.Config,
+            _localizationService,
+            SetCollapseBehaviorOverride,
+            ResetCompactWidthOverride));
+
+        WidgetGroupMenuBuilder.Append(
+            flyout,
+            ViewModel.Config,
+            App.Current.WidgetManager,
+            _localizationService);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(CreateDeleteWidgetMenuItem());
@@ -421,39 +437,6 @@ public sealed partial class WidgetWindow
     {
         var flyout = new MenuFlyout();
 
-        var positionLock = new ToggleMenuFlyoutItem
-        {
-            Text = _localizationService.T("Widget.LockPosition"),
-            Icon = new FontIcon { Glyph = "\uE72E" },
-            IsChecked = ViewModel.IsPositionLocked
-        };
-        positionLock.Click += TogglePositionLock_Click;
-        flyout.Items.Add(positionLock);
-
-        var sizeLock = new ToggleMenuFlyoutItem
-        {
-            Text = _localizationService.T("Widget.LockSize"),
-            Icon = new FontIcon { Glyph = "\uE9CE" },
-            IsChecked = ViewModel.IsSizeLocked
-        };
-        sizeLock.Click += ToggleSizeLock_Click;
-        flyout.Items.Add(sizeLock);
-
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
-        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
-            ViewModel.Config,
-            _chromeDescriptor,
-            _localizationService,
-            SetChromeModeOverride));
-        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
-            ViewModel.Config,
-            _localizationService,
-            SetCollapseBehaviorOverride,
-            ResetCompactWidthOverride));
-
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
         var rename = new MenuFlyoutItem
         {
             Text = _localizationService.T("Common.Rename"),
@@ -470,6 +453,40 @@ public sealed partial class WidgetWindow
         };
         flyout.Items.Add(rename);
 
+        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
+            ViewModel.Config,
+            _chromeDescriptor,
+            _localizationService,
+            App.Current.WidgetManager,
+            SetChromeModeOverride));
+        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
+            ViewModel.Config,
+            _localizationService,
+            SetCollapseBehaviorOverride,
+            ResetCompactWidthOverride));
+        flyout.Items.Add(WidgetLockMenuBuilder.Create(
+            _localizationService,
+            ViewModel.IsPositionLocked,
+            ViewModel.IsSizeLocked,
+            value =>
+            {
+                ViewModel.SetPositionLocked(value);
+                SynchronizeWidgetGroupLayout();
+                ApplyLockActionIconState();
+            },
+            value =>
+            {
+                ViewModel.SetSizeLocked(value);
+                SynchronizeWidgetGroupLayout();
+                ApplyLockActionIconState();
+            }));
+
+        WidgetGroupMenuBuilder.Append(
+            flyout,
+            ViewModel.Config,
+            App.Current.WidgetManager,
+            _localizationService);
+
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(CreateDeleteWidgetMenuItem());
 
@@ -480,11 +497,10 @@ public sealed partial class WidgetWindow
     {
         var item = new MenuFlyoutItem
         {
-            Text = _localizationService.T("Widget.Tooltip.DeleteWidget"),
+            Text = _localizationService.T("Widget.FeatureWidget.Disable"),
             Icon = new FontIcon
             {
-                Glyph = "\uE74D",
-                Foreground = new SolidColorBrush(Colors.Red)
+                Glyph = "\uE711"
             }
         };
         item.Click += DeleteWidget_Click;

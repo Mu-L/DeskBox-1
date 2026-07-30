@@ -1,0 +1,589 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="DeskBox.Controls.WidgetContents.FileSurfaceContent"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DeskBox.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Style x:Key="SurfaceGridViewItemStyle" TargetType="GridViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridViewItem">
+                        <ContentPresenter
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SurfaceListViewItemStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <ContentPresenter
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="SurfaceFileIconTemplate">
+            <Grid
+                Tag="ItemSlot"
+                Width="{Binding DataContext.IconTileWidth, ElementName=ItemsGrid}"
+                Height="{Binding DataContext.IconTileHeight, ElementName=ItemsGrid}"
+                Margin="{Binding DataContext.IconTileMargin, ElementName=ItemsGrid}"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top">
+                <Border
+                    Tag="InteractiveSurface"
+                    MaxWidth="{Binding DataContext.IconTileWidth, ElementName=ItemsGrid}"
+                    Padding="{Binding DataContext.IconTilePadding, ElementName=ItemsGrid}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    CornerRadius="8"
+                    Loaded="ItemSurface_Loaded"
+                    Unloaded="ItemSurface_Unloaded"
+                    PointerEntered="ItemSurface_PointerEntered"
+                    PointerExited="ItemSurface_PointerExited"
+                    PointerPressed="ItemSurface_PointerPressed"
+                    PointerReleased="ItemSurface_PointerReleased"
+                    ToolTipService.ToolTip="{Binding FullPath}">
+                    <StackPanel
+                        HorizontalAlignment="Center"
+                        Spacing="{Binding DataContext.IconContentSpacing, ElementName=ItemsGrid}">
+                        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Image
+                                Width="{Binding DataContext.IconImageSize, ElementName=ItemsGrid}"
+                                Height="{Binding DataContext.IconImageSize, ElementName=ItemsGrid}"
+                                Source="{Binding Icon}"
+                                Stretch="Uniform"
+                                Visibility="{Binding IconVisibility}" />
+                            <FontIcon
+                                Width="{Binding DataContext.IconImageSize, ElementName=ItemsGrid}"
+                                Height="{Binding DataContext.IconImageSize, ElementName=ItemsGrid}"
+                                FontSize="{Binding DataContext.IconImageSize, ElementName=ItemsGrid}"
+                                Glyph="{Binding FallbackGlyph}"
+                                Visibility="{Binding FallbackIconVisibility}" />
+                        </Grid>
+                        <TextBlock
+                            x:Name="IconItemNameText"
+                            MaxWidth="{Binding DataContext.IconLabelMaxWidth, ElementName=ItemsGrid}"
+                            Margin="2,0"
+                            HorizontalAlignment="Center"
+                            FontSize="{Binding DataContext.IconLabelFontSize, ElementName=ItemsGrid}"
+                            MaxLines="2"
+                            Text="{Binding Name}"
+                            TextAlignment="Center"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SurfaceFileStackIconTemplate">
+            <Border
+                Tag="StackSurface"
+                Width="{Binding TileWidth}"
+                Height="{Binding TileHeight}"
+                Margin="{Binding TileMargin}"
+                Padding="{Binding TilePadding}"
+                CornerRadius="8"
+                AllowDrop="True"
+                Loaded="StackSurface_Loaded"
+                DragLeave="StackSurface_DragLeave"
+                DragOver="StackSurface_DragOver"
+                Drop="StackSurface_Drop"
+                PointerEntered="StackSurface_PointerEntered"
+                PointerExited="StackSurface_PointerExited"
+                PointerPressed="StackSurface_PointerPressed"
+                PointerReleased="StackSurface_PointerReleased">
+                <StackPanel HorizontalAlignment="Center" Spacing="4">
+                    <Grid Width="{Binding PreviewSize}" Height="{Binding PreviewSize}">
+                        <Grid Visibility="{Binding CollapsedPreviewVisibility}">
+                            <Grid
+                                Width="{Binding PreviewItemSize}"
+                                Height="{Binding PreviewItemSize}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Opacity="0.72"
+                                RenderTransformOrigin="0.5,0.82"
+                                Visibility="{Binding ThirdPreviewVisibility}">
+                                <Grid.RenderTransform>
+                                    <CompositeTransform Rotation="-7" ScaleX="0.70" ScaleY="0.70" TranslateX="-5" TranslateY="3" />
+                                </Grid.RenderTransform>
+                                <Image Source="{Binding PreviewThree.Icon}" Stretch="Uniform" Visibility="{Binding PreviewThree.IconVisibility}" />
+                                <FontIcon FontSize="{Binding PreviewItemSize}" Glyph="{Binding PreviewThree.FallbackGlyph}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
+                            </Grid>
+                            <Grid
+                                Width="{Binding PreviewItemSize}"
+                                Height="{Binding PreviewItemSize}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Opacity="0.88"
+                                RenderTransformOrigin="0.5,0.82">
+                                <Grid.RenderTransform>
+                                    <CompositeTransform Rotation="6" ScaleX="0.80" ScaleY="0.80" TranslateX="5" TranslateY="2" />
+                                </Grid.RenderTransform>
+                                <Image Source="{Binding PreviewTwo.Icon}" Stretch="Uniform" Visibility="{Binding PreviewTwo.IconVisibility}" />
+                                <FontIcon FontSize="{Binding PreviewItemSize}" Glyph="{Binding PreviewTwo.FallbackGlyph}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
+                            </Grid>
+                            <Grid
+                                Width="{Binding PreviewItemSize}"
+                                Height="{Binding PreviewItemSize}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RenderTransformOrigin="0.5,0.82">
+                                <Grid.RenderTransform>
+                                    <CompositeTransform ScaleX="0.90" ScaleY="0.90" TranslateY="-2" />
+                                </Grid.RenderTransform>
+                                <Image Source="{Binding PreviewOne.Icon}" Stretch="Uniform" Visibility="{Binding PreviewOne.IconVisibility}" />
+                                <FontIcon FontSize="{Binding PreviewItemSize}" Glyph="{Binding PreviewOne.FallbackGlyph}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
+                            </Grid>
+                            <Border
+                                MinWidth="16"
+                                Height="16"
+                                Padding="3,0"
+                                Margin="0,0,1,1"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="8">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="9"
+                                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                    Text="{Binding CountText}" />
+                            </Border>
+                        </Grid>
+                        <Button
+                            Width="{Binding PreviewItemSize}"
+                            Height="{Binding PreviewItemSize}"
+                            Padding="0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            BorderThickness="0"
+                            Click="StackCollapseButton_Click"
+                            CornerRadius="6"
+                            IsTabStop="False"
+                            Visibility="{Binding ExpandedAnchorVisibility}">
+                            <FontIcon FontSize="12" Glyph="&#xE70E;" />
+                        </Button>
+                    </Grid>
+                    <TextBlock
+                        MaxWidth="{Binding LabelMaxWidth}"
+                        Margin="2,0"
+                        HorizontalAlignment="Center"
+                        FontSize="{Binding LabelFontSize}"
+                        MaxLines="2"
+                        Text="{Binding Name}"
+                        TextAlignment="Center"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SurfaceFileListTemplate">
+            <Border
+                Tag="InteractiveSurface"
+                MinHeight="42"
+                Padding="{Binding DataContext.ListItemPadding, ElementName=ItemsList}"
+                HorizontalAlignment="Left"
+                CornerRadius="8"
+                Loaded="ItemSurface_Loaded"
+                Unloaded="ItemSurface_Unloaded"
+                PointerEntered="ItemSurface_PointerEntered"
+                PointerExited="ItemSurface_PointerExited"
+                PointerPressed="ItemSurface_PointerPressed"
+                PointerReleased="ItemSurface_PointerReleased"
+                ToolTipService.ToolTip="{Binding FullPath}">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid Width="{Binding DataContext.ListIconSize, ElementName=ItemsList}">
+                        <Image
+                            Width="{Binding DataContext.ListIconSize, ElementName=ItemsList}"
+                            Height="{Binding DataContext.ListIconSize, ElementName=ItemsList}"
+                            Source="{Binding Icon}"
+                            Stretch="Uniform"
+                            Visibility="{Binding IconVisibility}" />
+                        <FontIcon
+                            FontSize="{Binding DataContext.ListIconSize, ElementName=ItemsList}"
+                            Glyph="{Binding FallbackGlyph}"
+                            Visibility="{Binding FallbackIconVisibility}" />
+                    </Grid>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock
+                            x:Name="ListItemNameText"
+                            FontSize="{Binding DataContext.ListLabelFontSize, ElementName=ItemsList}"
+                            Text="{Binding Name}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            FontSize="10"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="{Binding SecondaryInfo}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SurfaceFileStackListTemplate">
+            <Border
+                Tag="StackSurface"
+                Margin="{Binding ListMargin}"
+                Padding="{Binding ListPadding}"
+                CornerRadius="8"
+                AllowDrop="True"
+                Loaded="StackSurface_Loaded"
+                DragLeave="StackSurface_DragLeave"
+                DragOver="StackSurface_DragOver"
+                Drop="StackSurface_Drop"
+                PointerEntered="StackSurface_PointerEntered"
+                PointerExited="StackSurface_PointerExited"
+                PointerPressed="StackSurface_PointerPressed"
+                PointerReleased="StackSurface_PointerReleased">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid Width="{Binding ListIconSize}" Height="{Binding ListIconSize}">
+                        <Grid Visibility="{Binding CollapsedPreviewVisibility}">
+                            <Grid Opacity="0.55" Visibility="{Binding ThirdPreviewVisibility}">
+                                <Image Source="{Binding PreviewThree.Icon}" Stretch="Uniform" Visibility="{Binding PreviewThree.IconVisibility}" />
+                                <FontIcon FontSize="{Binding ListIconSize}" Glyph="{Binding PreviewThree.FallbackGlyph}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
+                            </Grid>
+                            <Grid Margin="4,2,0,0" Opacity="0.76">
+                                <Image Source="{Binding PreviewTwo.Icon}" Stretch="Uniform" Visibility="{Binding PreviewTwo.IconVisibility}" />
+                                <FontIcon FontSize="{Binding ListIconSize}" Glyph="{Binding PreviewTwo.FallbackGlyph}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
+                            </Grid>
+                            <Grid Margin="0,0,4,3">
+                                <Image Source="{Binding PreviewOne.Icon}" Stretch="Uniform" Visibility="{Binding PreviewOne.IconVisibility}" />
+                                <FontIcon FontSize="{Binding ListIconSize}" Glyph="{Binding PreviewOne.FallbackGlyph}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
+                            </Grid>
+                            <Border
+                                MinWidth="14"
+                                Height="14"
+                                Padding="2,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="7">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="8"
+                                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                    Text="{Binding CountText}" />
+                            </Border>
+                        </Grid>
+                        <Button
+                            Width="{Binding ListIconSize}"
+                            Height="{Binding ListIconSize}"
+                            Padding="0"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            BorderThickness="0"
+                            Click="StackCollapseButton_Click"
+                            IsTabStop="False"
+                            Visibility="{Binding ExpandedAnchorVisibility}">
+                            <FontIcon FontSize="11" Glyph="&#xE70E;" />
+                        </Button>
+                    </Grid>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock FontSize="{Binding LabelFontSize}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <FontIcon Grid.Column="2" FontSize="10" Glyph="{Binding ChevronGlyph}" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <controls:WidgetItemTemplateSelector
+            x:Key="SurfaceIconTemplateSelector"
+            ItemTemplate="{StaticResource SurfaceFileIconTemplate}"
+            StackTemplate="{StaticResource SurfaceFileStackIconTemplate}" />
+        <controls:WidgetItemTemplateSelector
+            x:Key="SurfaceListTemplateSelector"
+            ItemTemplate="{StaticResource SurfaceFileListTemplate}"
+            StackTemplate="{StaticResource SurfaceFileStackListTemplate}" />
+    </UserControl.Resources>
+
+    <Grid
+        x:Name="Root"
+        Padding="10,4,8,8"
+        AllowDrop="True"
+        DragEnter="Root_DragEnter"
+        DragOver="Root_DragOver"
+        DragLeave="Root_DragLeave"
+        Drop="Root_Drop"
+        KeyDown="Root_KeyDown">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <ProgressRing
+                Width="24"
+                Height="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                IsActive="{Binding IsLoading}"
+                Visibility="{Binding LoadingVisibility}" />
+
+            <GridView
+                x:Name="ItemsGrid"
+                Background="Transparent"
+                IsItemClickEnabled="True"
+                ItemClick="Items_ItemClick"
+                ItemsSource="{Binding VisibleItems}"
+                CanDragItems="True"
+                DragItemsCompleted="Items_DragItemsCompleted"
+                DragItemsStarting="Items_DragItemsStarting"
+                DoubleTapped="Items_DoubleTapped"
+                KeyDown="Root_KeyDown"
+                PointerPressed="Items_PointerPressed"
+                PointerMoved="Items_PointerMoved"
+                PointerReleased="Items_PointerReleased"
+                PointerCaptureLost="Items_PointerCaptureLost"
+                RightTapped="Items_RightTapped"
+                SelectionChanged="Items_SelectionChanged"
+                IsMultiSelectCheckBoxEnabled="False"
+                ItemContainerStyle="{StaticResource SurfaceGridViewItemStyle}"
+                ItemTemplateSelector="{StaticResource SurfaceIconTemplateSelector}"
+                SelectionMode="Extended"
+                Visibility="{Binding IconViewVisibility}">
+                <GridView.ItemContainerTransitions>
+                    <TransitionCollection>
+                        <AddDeleteThemeTransition />
+                        <RepositionThemeTransition />
+                    </TransitionCollection>
+                </GridView.ItemContainerTransitions>
+            </GridView>
+
+            <ListView
+                x:Name="ItemsList"
+                Background="Transparent"
+                IsItemClickEnabled="True"
+                ItemClick="Items_ItemClick"
+                ItemsSource="{Binding VisibleItems}"
+                CanDragItems="True"
+                DragItemsCompleted="Items_DragItemsCompleted"
+                DragItemsStarting="Items_DragItemsStarting"
+                DoubleTapped="Items_DoubleTapped"
+                KeyDown="Root_KeyDown"
+                PointerPressed="Items_PointerPressed"
+                PointerMoved="Items_PointerMoved"
+                PointerReleased="Items_PointerReleased"
+                PointerCaptureLost="Items_PointerCaptureLost"
+                RightTapped="Items_RightTapped"
+                SelectionChanged="Items_SelectionChanged"
+                IsMultiSelectCheckBoxEnabled="False"
+                ItemContainerStyle="{StaticResource SurfaceListViewItemStyle}"
+                ItemTemplateSelector="{StaticResource SurfaceListTemplateSelector}"
+                SelectionMode="Extended"
+                Visibility="{Binding ListViewVisibility}">
+                <ListView.ItemContainerTransitions>
+                    <TransitionCollection>
+                        <AddDeleteThemeTransition />
+                        <RepositionThemeTransition />
+                    </TransitionCollection>
+                </ListView.ItemContainerTransitions>
+            </ListView>
+
+            <Canvas
+                x:Name="SelectionOverlay"
+                Canvas.ZIndex="20"
+                Background="Transparent"
+                IsHitTestVisible="False">
+                <Border
+                    x:Name="SelectionRectangle"
+                    Width="0"
+                    Height="0"
+                    BorderThickness="1"
+                    CornerRadius="0"
+                    Visibility="Collapsed" />
+            </Canvas>
+
+            <TextBox
+                x:Name="ItemRenameTextBox"
+                Canvas.ZIndex="30"
+                Width="220"
+                MaxWidth="280"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Style="{StaticResource WidgetInlineRenameTextBoxStyle}"
+                Visibility="Collapsed"
+                KeyDown="ItemRenameTextBox_KeyDown"
+                LostFocus="ItemRenameTextBox_LostFocus" />
+
+            <StackPanel
+                Margin="16"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8"
+                Visibility="Collapsed"
+                x:Name="EmptyState">
+                <FontIcon
+                    HorizontalAlignment="Center"
+                    FontSize="24"
+                    Glyph="{Binding EmptyStateGlyph}" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="14"
+                    Text="{Binding EmptyStateTitle}" />
+                <TextBlock
+                    MaxWidth="260"
+                    HorizontalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{Binding EmptyStateText}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <Button
+                    x:Name="EmptyAddButton"
+                    HorizontalAlignment="Center"
+                    Click="AddButton_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <FontIcon FontSize="12" Glyph="&#xE710;" />
+                        <TextBlock x:Name="EmptyAddButtonText" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <Border
+                x:Name="DropOverlay"
+                Margin="3"
+                Padding="18"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
+                IsHitTestVisible="False"
+                Opacity="0"
+                Visibility="Collapsed">
+                <StackPanel
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="8">
+                    <FontIcon
+                        x:Name="DropOverlayIcon"
+                        HorizontalAlignment="Center"
+                        FontSize="24"
+                        Glyph="&#xE898;" />
+                    <TextBlock
+                        x:Name="DropOverlayText"
+                        MaxWidth="260"
+                        FontWeight="SemiBold"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Grid
+                x:Name="ImportOverlay"
+                Canvas.ZIndex="50"
+                Background="#66000000"
+                IsHitTestVisible="True"
+                Visibility="Collapsed">
+                <Border
+                    MaxWidth="260"
+                    Padding="18,16"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="10">
+                        <ProgressRing
+                            x:Name="ImportProgressRing"
+                            Width="28"
+                            Height="28"
+                            HorizontalAlignment="Center"
+                            IsActive="False" />
+                        <TextBlock
+                            x:Name="ImportTitleText"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            x:Name="ImportDescriptionText"
+                            FontSize="12"
+                            Opacity="0.78"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <CommandBar
+            x:Name="SelectionCommandBar"
+            Grid.Row="1"
+            Margin="0,6,0,0"
+            Padding="2,0"
+            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            DefaultLabelPosition="Collapsed"
+            IsDynamicOverflowEnabled="True"
+            Visibility="Collapsed">
+            <AppBarButton x:Name="OpenSelectionButton" Click="OpenSelectionButton_Click">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE8E5;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Name="CopySelectionButton" Click="CopySelectionButton_Click">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE8C8;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Name="CutSelectionButton" Click="CutSelectionButton_Click">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE8C6;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Name="DeleteSelectionButton" Click="DeleteSelectionButton_Click">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE74D;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <CommandBar.SecondaryCommands>
+                <AppBarButton x:Name="RenameSelectionButton" Click="RenameSelectionButton_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8AC;" /></AppBarButton.Icon>
+                </AppBarButton>
+            </CommandBar.SecondaryCommands>
+        </CommandBar>
+    </Grid>
+</UserControl>

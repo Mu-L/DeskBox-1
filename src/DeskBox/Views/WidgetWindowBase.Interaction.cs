@@ -221,6 +221,12 @@ public abstract partial class WidgetWindowBase
                 snappedBounds.Width,
                 snappedBounds.Height,
                 persist: false);
+            if (!IsCompactBoundsStateActive)
+            {
+                App.Current?.WidgetManager?.UpdateWidgetGroupDragPreview(
+                    Config.Id,
+                    snappedBounds);
+            }
         }
         e.Handled = true;
     }
@@ -246,6 +252,14 @@ public abstract partial class WidgetWindowBase
         UpdateConfigBoundsFromPhysical(finalBounds.X, finalBounds.Y, finalBounds.Width, finalBounds.Height, persist: true);
         EndWidgetBoundsInteraction();
         OnDragEnd(hasMoved);
+        if (hasMoved && !IsCompactBoundsStateActive)
+        {
+            _ = App.Current?.WidgetManager?.CompleteWidgetGroupDragAsync(Config.Id);
+        }
+        else
+        {
+            App.Current?.WidgetManager?.CancelWidgetGroupDrag(Config.Id);
+        }
 
         DisplayChangeWatcher?.ResumeRestore();
         HasMovedTitleBarDrag = false;
@@ -453,6 +467,14 @@ public abstract partial class WidgetWindowBase
         UpdateConfigBoundsFromPhysical(finalBounds.X, finalBounds.Y, finalBounds.Width, finalBounds.Height, persist: true);
         EndWidgetBoundsInteraction();
         OnDragEnd(hasMoved);
+        if (hasMoved && !IsCompactBoundsStateActive)
+        {
+            _ = App.Current?.WidgetManager?.CompleteWidgetGroupDragAsync(Config.Id);
+        }
+        else
+        {
+            App.Current?.WidgetManager?.CancelWidgetGroupDrag(Config.Id);
+        }
         DisplayChangeWatcher?.ResumeRestore();
         HasMovedTitleBarDrag = false;
         QueueBackdropRefresh();

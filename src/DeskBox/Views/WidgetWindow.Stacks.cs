@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.UI.ViewManagement;
 
@@ -27,8 +28,11 @@ public sealed partial class WidgetWindow
     private static readonly ConditionalWeakTable<FrameworkElement, StackRestingOffset>
         s_stackRestingOffsets = new();
     private readonly HashSet<Border> _stackSurfaces = [];
+    private Border? _stackMemberDropTarget;
     private long _lastStackInputTick;
     private string? _lastStackInputKey;
+    private string? _pressedStackKey;
+    private bool _stackPointerDragStarted;
     private bool _isStackTransitionRunning;
     private WidgetStackItem? _activeStackTransition;
     private bool _activeStackTransitionExpanded;
@@ -95,27 +99,243 @@ public sealed partial class WidgetWindow
             return;
         }
 
-        if (sender is Border border && e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
+        if (sender is Border border &&
+            e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
         {
+            _pressedStackKey = border.DataContext is
+                WidgetStackItem { IsExpanded: false } stack
+                ? stack.StackKey
+                : null;
+            _stackPointerDragStarted = false;
             RootGrid.Focus(FocusState.Programmatic);
             ClearOtherWidgetSelections();
             ApplyWidgetItemSurfaceState(border, ItemSurfaceState.Pressed);
         }
     }
 
-    private void WidgetStackSurface_PointerReleased(object sender, PointerRoutedEventArgs e)
+    private async void WidgetStackSurface_PointerReleased(
+        object sender,
+        PointerRoutedEventArgs e)
     {
         if (sender is not Border border)
         {
             return;
         }
 
-        var point = e.GetCurrentPoint(border).Position;
+        Windows.Foundation.Point point =
+            e.GetCurrentPoint(border).Position;
         bool isInside = point.X >= 0 && point.Y >= 0 &&
             point.X <= border.ActualWidth && point.Y <= border.ActualHeight;
+        WidgetStackItem? releasedStack =
+            border.DataContext as WidgetStackItem;
+        bool shouldToggle =
+            isInside &&
+            !_stackPointerDragStarted &&
+            releasedStack is { IsExpanded: false } &&
+            string.Equals(
+                _pressedStackKey,
+                releasedStack.StackKey,
+                StringComparison.Ordinal);
+        _pressedStackKey = null;
+        _stackPointerDragStarted = false;
         ApplyWidgetItemSurfaceState(
             border,
             isInside ? ItemSurfaceState.Hover : ItemSurfaceState.Normal);
+
+        if (shouldToggle && releasedStack is not null)
+        {
+            e.Handled = true;
+            await ToggleStackFromInputAsync(releasedStack);
+        }
+    }
+
+    private void WidgetStackSurface_DragStarting(
+        UIElement sender,
+        DragStartingEventArgs e)
+    {
+        if (_isMigrationBusy ||
+            sender is not Border
+            {
+                DataContext: WidgetStackItem stack
+            })
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        _stackPointerDragStarted = true;
+        _surfaceDragCompletionHandled = false;
+        _activeDragSourcePaths = [];
+        _activeDragHasStorageItems = false;
+        e.Data.RequestedOperation = DataPackageOperation.Link;
+        e.Data.Properties[
+            DeskBoxDragData.SourceWidgetIdProperty] =
+            ViewModel.Config.Id;
+        e.Data.Properties[
+            DeskBoxDragData.InternalFileDragTokenProperty] =
+            DeskBoxDragData.InternalFileDragToken;
+        e.Data.Properties[
+            DeskBoxDragData.StackReorderKeyProperty] =
+            stack.StackKey;
+        e.Data.Properties.Title = stack.Name;
+        e.Data.SetText(stack.Name);
+        e.AllowedOperations = DataPackageOperation.Link;
+    }
+
+    private void WidgetStackSurface_DragOver(
+        object sender,
+        DragEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Border
+            {
+                DataContext: WidgetStackItem stack
+            } border ||
+            !TryGetStackDropItems(
+                e.DataView,
+                stack,
+                out _))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = false;
+            ClearStackMemberDropTarget();
+            return;
+        }
+
+        SetStackMemberDropTarget(border);
+        e.AcceptedOperation = DataPackageOperation.Link;
+        e.DragUIOverride.IsGlyphVisible = true;
+        e.DragUIOverride.IsCaptionVisible = true;
+        e.DragUIOverride.Caption =
+            _localizationService.Format(
+                "Widget.Stack.DragCaption.Add",
+                stack.Name);
+    }
+
+    private void WidgetStackSurface_DragLeave(
+        object sender,
+        DragEventArgs e)
+    {
+        e.Handled = true;
+        if (ReferenceEquals(
+                sender,
+                _stackMemberDropTarget))
+        {
+            ClearStackMemberDropTarget();
+        }
+    }
+
+    private void WidgetStackSurface_Drop(
+        object sender,
+        DragEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Border
+            {
+                DataContext: WidgetStackItem stack
+            } ||
+            !TryGetStackDropItems(
+                e.DataView,
+                stack,
+                out WidgetItem[] items))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            ClearStackMemberDropTarget();
+            return;
+        }
+
+        ClearStackMemberDropTarget();
+        bool added = ViewModel.AddItemsToStack(
+            stack.StackKey,
+            items);
+        e.AcceptedOperation = added
+            ? DataPackageOperation.Link
+            : DataPackageOperation.None;
+        _isReorderDragActive = false;
+        _reorderDragPaths = [];
+        _reorderStackKey = null;
+        if (added)
+        {
+            ClearItemSelection();
+        }
+    }
+
+    private void WidgetStackSurface_DropCompleted(
+        UIElement sender,
+        DropCompletedEventArgs e)
+    {
+        _isReorderDragActive = false;
+        _reorderDragPaths = [];
+        _reorderStackKey = null;
+        _pressedStackKey = null;
+        _stackPointerDragStarted = false;
+        ClearStackMemberDropTarget();
+    }
+
+    private bool TryGetStackDropItems(
+        DataPackageView dataView,
+        WidgetStackItem targetStack,
+        out WidgetItem[] items)
+    {
+        items = [];
+        if (!IsSameWidgetInternalDrag(dataView) ||
+            !string.IsNullOrWhiteSpace(
+                TryGetPackageString(
+                    dataView.Properties,
+                    DeskBoxDragData.StackReorderKeyProperty)))
+        {
+            return false;
+        }
+
+        HashSet<string> targetPaths = targetStack.Members
+            .Select(item => Path.GetFullPath(item.Path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> sourcePaths =
+            TryGetPackageStringArray(
+                    dataView.Properties,
+                    DeskBoxDragData.SourcePathsProperty)
+                .Select(Path.GetFullPath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        items = ViewModel.Items
+            .Where(item =>
+                sourcePaths.Contains(
+                    Path.GetFullPath(item.Path)) &&
+                !targetPaths.Contains(
+                    Path.GetFullPath(item.Path)))
+            .ToArray();
+        return items.Length > 0;
+    }
+
+    private void SetStackMemberDropTarget(
+        Border border)
+    {
+        if (ReferenceEquals(
+                _stackMemberDropTarget,
+                border))
+        {
+            ApplyWidgetItemSurfaceState(
+                border,
+                ItemSurfaceState.DropTarget);
+            return;
+        }
+
+        ClearStackMemberDropTarget();
+        _stackMemberDropTarget = border;
+        ApplyWidgetItemSurfaceState(
+            border,
+            ItemSurfaceState.DropTarget);
+    }
+
+    private void ClearStackMemberDropTarget()
+    {
+        Border? previous = _stackMemberDropTarget;
+        _stackMemberDropTarget = null;
+        if (previous?.XamlRoot is not null)
+        {
+            ApplyWidgetItemSurfaceState(
+                previous,
+                ItemSurfaceState.Normal);
+        }
     }
 
     private void UpdateStackSurfaces()

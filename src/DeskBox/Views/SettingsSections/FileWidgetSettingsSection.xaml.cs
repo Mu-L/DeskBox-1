@@ -12,18 +12,11 @@ public sealed partial class FileWidgetSettingsSection : UserControl
 
     public event EventHandler<SettingsSectionNavigationRequestedEventArgs>? NavigationRequested;
 
-    public event RoutedEventHandler? OpenManagedStorageRequested;
-
     private void NestedSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string sectionTag })
         {
             NavigationRequested?.Invoke(this, new SettingsSectionNavigationRequestedEventArgs(sectionTag));
         }
-    }
-
-    private void OpenManagedStoragePathButton_Click(object sender, RoutedEventArgs e)
-    {
-        OpenManagedStorageRequested?.Invoke(this, e);
     }
 }

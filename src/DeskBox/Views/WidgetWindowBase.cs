@@ -177,8 +177,24 @@ public abstract partial class WidgetWindowBase : Window
     /// <summary>Called when resize starts (after elevate).</summary>
     protected virtual void OnResizeStart() { }
 
+    /// <summary>Called whenever the compact/capsule visual state changes.</summary>
+    protected virtual void OnCompactVisualStateChanged(bool collapsed) { }
+
     /// <summary>Whether to queue backdrop refresh after loading.</summary>
     protected virtual bool SupportsBackdropRefresh => true;
+
+    /// <summary>
+    /// Converts persisted content-card bounds into the physical host bounds.
+    /// Group surfaces use this to reserve a same-HWND navigation region.
+    /// </summary>
+    protected virtual RectInt32 ExpandContentBoundsToHost(RectInt32 contentBounds) =>
+        contentBounds;
+
+    /// <summary>
+    /// Converts physical host bounds back to persisted content-card bounds.
+    /// </summary>
+    protected virtual RectInt32 CollapseHostBoundsToContent(RectInt32 hostBounds) =>
+        hostBounds;
 
     /// <summary>
     /// Reports whether the window's expanded content has completed its initial
@@ -216,6 +232,11 @@ public abstract partial class WidgetWindowBase : Window
             Math.Max(1, size.Height));
     }
 
+    public Task WaitForFirstPresentedFrameAsync(CancellationToken cancellationToken)
+    {
+        return TrayAnimation.WaitForContentReadyAsync(cancellationToken);
+    }
+
     /// <summary>Called during ConfigureWindow to install subclass-specific hooks (e.g. file drop subclass).</summary>
     protected virtual void ConfigureWindowExtra() { }
 
@@ -229,6 +250,7 @@ public abstract partial class WidgetWindowBase : Window
 
     protected void CleanupBase()
     {
+        CleanupWidgetGrouping();
         CleanupWidgetCollapse();
         StopBackdropRefreshTimer();
         StopInactiveBackdropCleanupTimer();

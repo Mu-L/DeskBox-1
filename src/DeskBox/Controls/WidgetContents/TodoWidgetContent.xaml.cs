@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Numerics;
+using DeskBox.Contracts;
 using DeskBox.Services;
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -19,6 +20,7 @@ namespace DeskBox.Controls.WidgetContents;
 
 public sealed partial class TodoWidgetContent : UserControl
 {
+    public event EventHandler<WidgetFeedbackRequestedEventArgs>? FeedbackRequested;
     private sealed record TodoSelectionHitTestItem(
         TodoItemViewModel Item,
         Windows.Foundation.Rect Bounds);

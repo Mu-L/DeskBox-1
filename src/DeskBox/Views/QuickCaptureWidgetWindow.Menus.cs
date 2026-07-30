@@ -67,30 +67,6 @@ public sealed partial class QuickCaptureWidgetWindow
     private MenuFlyout CreateMoreFlyout()
     {
         var flyout = new MenuFlyout();
-        flyout.Items.Add(CreateToggleMenuItem(
-            _localizationService.T("Widget.LockPosition"),
-            "\uE72E",
-            ViewModel.Config.IsPositionLocked,
-            SetPositionLocked));
-        flyout.Items.Add(CreateToggleMenuItem(
-            _localizationService.T("Widget.LockSize"),
-            "\uE9CE",
-            ViewModel.Config.IsSizeLocked,
-            SetSizeLocked));
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
-        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
-            ViewModel.Config,
-            _chromeDescriptor,
-            _localizationService,
-            SetChromeModeOverride));
-        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
-            ViewModel.Config,
-            _localizationService,
-            SetCollapseBehaviorOverride,
-            ResetCompactWidthOverride));
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
         var renameItem = new MenuFlyoutItem
         {
             Text = _localizationService.T("Common.Rename"),
@@ -107,34 +83,29 @@ public sealed partial class QuickCaptureWidgetWindow
         };
         flyout.Items.Add(renameItem);
 
-        var settingsItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("QuickCapture.OpenSettings"),
-            Icon = new FontIcon { Glyph = "\uE713" }
-        };
-        settingsItem.Click += (_, _) => App.Current.ShowSettings("QuickCaptureSettings");
-        flyout.Items.Add(settingsItem);
+        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
+            ViewModel.Config,
+            _chromeDescriptor,
+            _localizationService,
+            App.Current.WidgetManager,
+            SetChromeModeOverride));
+        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
+            ViewModel.Config,
+            _localizationService,
+            SetCollapseBehaviorOverride,
+            ResetCompactWidthOverride));
+        flyout.Items.Add(WidgetLockMenuBuilder.Create(
+            _localizationService,
+            ViewModel.Config.IsPositionLocked,
+            ViewModel.Config.IsSizeLocked,
+            SetPositionLocked,
+            SetSizeLocked));
 
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
-        var clearItem = new MenuFlyoutItem
-        {
-            Text = _localizationService.T("QuickCapture.ClearData"),
-            Icon = new FontIcon
-            {
-                Glyph = "\uE894",
-                Foreground = new SolidColorBrush(Colors.Red)
-            }
-        };
-        clearItem.Click += (_, _) =>
-        {
-            ShowConfirmMenu(
-                MoreButton,
-                _localizationService.T("QuickCapture.ClearDataTitle"),
-                _localizationService.T("QuickCapture.ClearData"),
-                async () => await ClearDataAsync());
-        };
-        flyout.Items.Add(clearItem);
+        WidgetGroupMenuBuilder.Append(
+            flyout,
+            ViewModel.Config,
+            App.Current.WidgetManager,
+            _localizationService);
 
         // Turning off a feature widget preserves its content, configuration, and position.
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -157,6 +128,16 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void SetChromeModeOverride(WidgetChromeMode mode)
     {
+        if (App.Current.WidgetManager is { } manager &&
+            manager.IsWidgetGrouped(ViewModel.Config.Id))
+        {
+            if (manager.SetWidgetGroupChromeMode(ViewModel.Config, mode))
+            {
+                ApplyTitleBarLayout();
+            }
+            return;
+        }
+
         WidgetChromeModeNames.SetOverrideMode(ViewModel.Config, mode);
         _settingsService.UpdateWidget(ViewModel.Config);
         ApplyTitleBarLayout();
@@ -165,12 +146,14 @@ public sealed partial class QuickCaptureWidgetWindow
     private void SetPositionLocked(bool value)
     {
         ViewModel.SetPositionLocked(value);
+        SynchronizeWidgetGroupLayout();
         ApplyLockActionIconState();
     }
 
     private void SetSizeLocked(bool value)
     {
         ViewModel.SetSizeLocked(value);
+        SynchronizeWidgetGroupLayout();
         ApplyLockActionIconState();
     }
 

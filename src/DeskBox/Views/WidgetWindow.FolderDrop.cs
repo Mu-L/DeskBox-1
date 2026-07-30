@@ -26,6 +26,15 @@ public sealed partial class WidgetWindow
             return;
         }
 
+        // A drag that originated in this widget always means reorder. Let the
+        // root handler own it even when the pointer happens to cross a folder
+        // tile; never reinterpret it as a file transfer into that folder.
+        if (IsSameWidgetInternalDrag(e.DataView))
+        {
+            ClearFolderDropTarget();
+            return;
+        }
+
         if (!TryGetFolderDropTarget(sender, out var border, out var targetFolder))
         {
             return;
@@ -85,6 +94,12 @@ public sealed partial class WidgetWindow
         if (_isMigrationBusy)
         {
             e.Handled = true;
+            ClearFolderDropTarget();
+            return;
+        }
+
+        if (IsSameWidgetInternalDrag(e.DataView))
+        {
             ClearFolderDropTarget();
             return;
         }

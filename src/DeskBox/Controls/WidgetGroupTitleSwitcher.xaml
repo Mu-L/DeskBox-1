@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="DeskBox.Controls.WidgetGroupTitleSwitcher"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DeskBox.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="32"
+    d:DesignWidth="224"
+    IsTabStop="False"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!--
+            The selector owns its interaction chrome. A deliberately neutral
+            template prevents the Button's built-in hover plate from stacking
+            with the title capsule.
+        -->
+        <Style x:Key="GroupTitleSelectorButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid
+        x:Name="Root"
+        Height="32"
+        MinWidth="0"
+        Background="Transparent"
+        PointerEntered="SelectorButton_PointerEntered"
+        PointerExited="SelectorButton_PointerExited"
+        RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+            <ScaleTransform
+                x:Name="DetachScaleTransform"
+                ScaleX="1"
+                ScaleY="1" />
+        </Grid.RenderTransform>
+        <Border
+            x:Name="TitleInteractionChrome"
+            Height="28"
+            Margin="0,1,0,2"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Center"
+            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+            CornerRadius="7"
+            IsHitTestVisible="False"
+            Opacity="0" />
+        <Button
+            x:Name="SelectorButton"
+            Height="32"
+            MinWidth="0"
+            CanDrag="True"
+            HorizontalAlignment="Stretch"
+            Click="SelectorButton_Click"
+            DragStarting="GroupTitle_DragStarting"
+            DropCompleted="GroupTitle_DropCompleted"
+            KeyDown="SelectorButton_KeyDown"
+            PointerPressed="SelectorButton_PointerPressed"
+            PointerReleased="SelectorButton_PointerReleased"
+            Style="{StaticResource GroupTitleSelectorButtonStyle}"
+            UseSystemFocusVisuals="True">
+            <Border
+                x:Name="CapsuleSurface"
+                Height="28"
+                Margin="0,1,0,2"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                Background="Transparent"
+                CornerRadius="7">
+                <Border.RenderTransform>
+                    <TranslateTransform Y="-4" />
+                </Border.RenderTransform>
+                <Grid>
+                    <Border
+                        x:Name="CapsuleChrome"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        BorderThickness="0"
+                        CornerRadius="7"
+                        IsHitTestVisible="False"
+                        Opacity="0" />
+
+                    <Grid Padding="6,0,7,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid
+                            x:Name="IdentityViewport"
+                            Grid.Column="0"
+                            Width="64"
+                            Height="26"
+                            VerticalAlignment="Center">
+                            <StackPanel
+                                x:Name="OutgoingIdentityLayer"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                IsHitTestVisible="False"
+                                Opacity="0"
+                                Orientation="Horizontal"
+                                Spacing="5">
+                                <controls:WidgetTitleIcon
+                                    x:Name="OutgoingIcon"
+                                    IsHitTestVisible="False" />
+                                <TextBlock
+                                    x:Name="OutgoingTitle"
+                                    MaxWidth="132"
+                                    FontSize="{StaticResource WidgetTitleTextSize}"
+                                    FontWeight="Normal"
+                                    IsHitTestVisible="False"
+                                    TextTrimming="CharacterEllipsis"
+                                    VerticalAlignment="Center" />
+                                <TextBlock
+                                    x:Name="OutgoingPositionText"
+                                    FontSize="10"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    IsHitTestVisible="False"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel
+                                x:Name="CurrentIdentityLayer"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                IsHitTestVisible="False"
+                                Opacity="1"
+                                Orientation="Horizontal"
+                                Spacing="5">
+                                <controls:WidgetTitleIcon
+                                    x:Name="CurrentIcon"
+                                    IsHitTestVisible="False" />
+                                <TextBlock
+                                    x:Name="CurrentTitle"
+                                    MaxWidth="132"
+                                    FontSize="{StaticResource WidgetTitleTextSize}"
+                                    FontWeight="Normal"
+                                    IsHitTestVisible="False"
+                                    TextTrimming="CharacterEllipsis"
+                                    VerticalAlignment="Center" />
+                                <TextBlock
+                                    x:Name="CurrentPositionText"
+                                    FontSize="10"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    IsHitTestVisible="False"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+
+                        <ProgressRing
+                            x:Name="LoadingRing"
+                            Grid.Column="1"
+                            Width="9"
+                            Height="9"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            IsActive="False"
+                            IsHitTestVisible="False"
+                            Opacity="0" />
+                    </Grid>
+
+                    <StackPanel
+                        x:Name="CapsulePositionIndicators"
+                        Height="2"
+                        Margin="7,0,0,1"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Bottom"
+                        IsHitTestVisible="False"
+                        Orientation="Horizontal"
+                        Spacing="2" />
+                </Grid>
+            </Border>
+        </Button>
+
+        <StackPanel
+            x:Name="TabsPanel"
+            Canvas.ZIndex="1"
+            Height="30"
+            Margin="0,0,0,2"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Center"
+            Orientation="Horizontal"
+            Spacing="2"
+            Visibility="Collapsed"
+            PointerEntered="TabsPanel_PointerEntered"
+            PointerExited="TabsPanel_PointerExited" />
+    </Grid>
+</UserControl>

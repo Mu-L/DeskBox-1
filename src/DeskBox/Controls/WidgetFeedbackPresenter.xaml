@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="DeskBox.Controls.WidgetFeedbackPresenter"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border
+        x:Name="FeedbackSurface"
+        MinHeight="34"
+        MaxWidth="420"
+        Padding="10,6"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Bottom"
+        Background="{ThemeResource SystemControlAcrylicElementBrush}"
+        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+        BorderThickness="1"
+        CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
+        IsHitTestVisible="False"
+        Opacity="0"
+        Visibility="Collapsed">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="FeedbackTransform" Y="2" />
+        </Border.RenderTransform>
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                x:Name="SeverityIcon"
+                Width="16"
+                FontSize="14"
+                VerticalAlignment="Center" />
+            <TextBlock
+                x:Name="MessageText"
+                Grid.Column="1"
+                MaxLines="2"
+                TextTrimming="CharacterEllipsis"
+                TextWrapping="Wrap"
+                VerticalAlignment="Center" />
+            <Button
+                x:Name="ActionButton"
+                Grid.Column="2"
+                MinWidth="0"
+                Padding="8,3"
+                Click="ActionButton_Click"
+                Style="{StaticResource WidgetToastActionButtonStyle}"
+                Visibility="Collapsed" />
+        </Grid>
+    </Border>
+</UserControl>

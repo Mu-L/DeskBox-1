@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.ComponentModel;
+using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.ViewModels;
 using Microsoft.UI.Xaml;
@@ -20,7 +21,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private const double TitleMarqueeSpeedPixelsPerSecond = 50.0;
     private const double TitleMarqueeOverflowTolerance = 4.0;
     private const int TitleMarqueeDeferredMeasureMs = 120;
-    private const int ArtworkTransitionDurationMs = 420;
+    private const int ArtworkTransitionDurationMs =
+        WidgetMotion.SpatialMilliseconds;
     private const double MinimumResponsiveWidth = 180.0;
     private const double WideResponsiveWidth = 320.0;
     private const double MinimumResponsiveHeight = 180.0;
@@ -632,7 +634,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         bool shouldRotate = _isHostWindowVisible &&
             !_isHostCompactCollapsed &&
             RecordLayout.Visibility == Visibility.Visible &&
-            ViewModel?.IsPlaying == true;
+            ViewModel?.IsPlaying == true &&
+            AreSystemAnimationsEnabled();
         if (shouldRotate == _isRecordVinylRotating)
         {
             return;
@@ -735,7 +738,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         bool shouldRotate = _isHostWindowVisible &&
             !_isHostCompactCollapsed &&
             RecordHorizontalLayout.Visibility == Visibility.Visible &&
-            ViewModel?.IsPlaying == true;
+            ViewModel?.IsPlaying == true &&
+            AreSystemAnimationsEnabled();
         if (shouldRotate == _isRecordHorizontalVinylRotating)
         {
             return;
@@ -774,13 +778,20 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         {
             return;
         }
+        if (!AreSystemAnimationsEnabled())
+        {
+            visual.StopAnimation("RotationAngleInDegrees");
+            visual.RotationAngleInDegrees = targetAngle;
+            return;
+        }
 
         var compositor = visual.Compositor;
         var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0f), new Vector2(0f, 1f));
         var anim = compositor.CreateScalarKeyFrameAnimation();
         anim.InsertKeyFrame(0f, visual.RotationAngleInDegrees);
         anim.InsertKeyFrame(1f, targetAngle, easing);
-        anim.Duration = TimeSpan.FromMilliseconds(420);
+        anim.Duration = TimeSpan.FromMilliseconds(
+            WidgetMotion.SpatialMilliseconds);
         visual.StartAnimation("RotationAngleInDegrees", anim);
     }
 
@@ -966,6 +977,12 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             ResetArtworkVisual(AlbumArtworkImage);
             return;
         }
+        if (!AreSystemAnimationsEnabled())
+        {
+            ResetArtworkVisual(MinimalArtworkImage);
+            ResetArtworkVisual(AlbumArtworkImage);
+            return;
+        }
 
         PrepareArtworkVisual(MinimalArtworkImage);
         PrepareArtworkVisual(AlbumArtworkImage);
@@ -1046,7 +1063,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         if (!IsLoaded ||
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
-            ViewModel?.IsPlaying != true)
+            ViewModel?.IsPlaying != true ||
+            !AreSystemAnimationsEnabled())
         {
             return;
         }
@@ -1063,7 +1081,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !IsLoaded ||
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
-            ViewModel?.IsPlaying != true)
+            ViewModel?.IsPlaying != true ||
+            !AreSystemAnimationsEnabled())
         {
             return;
         }
@@ -1076,7 +1095,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         if (version != _titleMarqueeMeasureVersion ||
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
-            ViewModel?.IsPlaying != true)
+            ViewModel?.IsPlaying != true ||
+            !AreSystemAnimationsEnabled())
         {
             return;
         }
@@ -1152,6 +1172,18 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         }
 
         elements.Canvas.Translation = new Vector3((float)-offset, 0, 0);
+    }
+
+    private static bool AreSystemAnimationsEnabled()
+    {
+        try
+        {
+            return new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private double MeasureTitleWidth()

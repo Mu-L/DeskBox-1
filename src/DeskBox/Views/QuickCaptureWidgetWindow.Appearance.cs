@@ -39,6 +39,7 @@ public sealed partial class QuickCaptureWidgetWindow
             {
                 _settingsService.UpdateWidget(ViewModel.Config, notifySubscribers: false);
                 _settingsService.SaveDebounced(notifySubscribers: false);
+                SynchronizeWidgetGroupLayout();
             }
             return;
         }
@@ -53,6 +54,7 @@ public sealed partial class QuickCaptureWidgetWindow
         if (persist)
         {
             _settingsService.UpdateWidget(ViewModel.Config, notifySubscribers: false);
+            SynchronizeWidgetGroupLayout();
         }
     }
 
@@ -162,7 +164,11 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void ApplyTitleBarLayout()
     {
-        var chromeMode = _chromeModeResolver.Resolve(ViewModel.Config, _chromeDescriptor);
+        WidgetChromeMode chromeMode =
+            App.Current.WidgetManager?.ResolveWidgetChromeMode(
+                ViewModel.Config,
+                _chromeDescriptor) ??
+            _chromeModeResolver.Resolve(ViewModel.Config, _chromeDescriptor);
         double titleTextSize = chromeMode == WidgetChromeMode.Compact
             ? ViewModel.TextSize
             : ViewModel.TitleTextSize;

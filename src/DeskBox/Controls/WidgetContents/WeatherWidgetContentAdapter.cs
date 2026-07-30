@@ -6,9 +6,14 @@ using Microsoft.UI.Xaml;
 
 namespace DeskBox.Controls.WidgetContents;
 
-public sealed class WeatherWidgetContentAdapter : IWidgetContent, IWidgetResponsiveLayoutContent, IDisposable
+public sealed class WeatherWidgetContentAdapter :
+    IWidgetContent,
+    IWidgetResponsiveLayoutContent,
+    IWidgetFeedbackSource,
+    IDisposable
 {
     private readonly Func<WeatherWidgetViewModel, FrameworkElement> _viewFactory;
+    private readonly LocalizationService _localizationService;
     private FrameworkElement? _view;
 
     public WeatherWidgetContentAdapter(
@@ -24,12 +29,14 @@ public sealed class WeatherWidgetContentAdapter : IWidgetContent, IWidgetRespons
         }
 
         Config = config;
+        _localizationService = localizationService;
         ViewModel = new WeatherWidgetViewModel(
             config,
             weatherService ?? new WeatherService(),
             localizationService,
             settingsService);
         _viewFactory = viewFactory ?? (vm => new WeatherWidgetContent(vm));
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
     }
 
     public WidgetConfig Config { get; }
@@ -41,6 +48,33 @@ public sealed class WeatherWidgetContentAdapter : IWidgetContent, IWidgetRespons
     public FrameworkElement View => _view ??= _viewFactory(ViewModel);
 
     public WeatherWidgetViewModel ViewModel { get; }
+
+    public event EventHandler<WidgetFeedbackRequestedEventArgs>? FeedbackRequested;
+
+    private void ViewModel_PropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(WeatherWidgetViewModel.ShowRefreshStatus) ||
+            !ViewModel.ShowRefreshStatus)
+        {
+            return;
+        }
+
+        bool success = string.Equals(
+            ViewModel.RefreshStatusText,
+            _localizationService.T("Weather.RefreshSuccess"),
+            StringComparison.Ordinal);
+        FeedbackRequested?.Invoke(
+            this,
+            new WidgetFeedbackRequestedEventArgs(
+                new WidgetFeedbackRequest(
+                    ViewModel.RefreshStatusText,
+                    success
+                        ? WidgetFeedbackSeverity.Success
+                        : WidgetFeedbackSeverity.Error,
+                    "weather-refresh")));
+    }
 
     public Task InitializeAsync()
     {
@@ -97,6 +131,7 @@ public sealed class WeatherWidgetContentAdapter : IWidgetContent, IWidgetRespons
 
     public void Dispose()
     {
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         ViewModel.Dispose();
     }
 }

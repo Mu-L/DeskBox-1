@@ -470,7 +470,8 @@ public sealed partial class QuickCaptureWidgetWindow
 
         if (DeskBoxDragData.HasDroppedFiles(e.DataView))
         {
-            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.AcceptedOperation =
+                DeskBoxDragData.GetFileAssociationOperation(e.DataView);
             ApplyCompactQuickCaptureDropCaption(e);
             return;
         }
@@ -556,7 +557,7 @@ public sealed partial class QuickCaptureWidgetWindow
 
                 e.AcceptedOperation = imported is null
                     ? DataPackageOperation.None
-                    : DataPackageOperation.Copy;
+                    : DeskBoxDragData.GetFileAssociationOperation(e.DataView);
                 if (imported is not null)
                 {
                     ShowStatusToast(batch.SkippedCount > 0
@@ -602,15 +603,35 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         long generation = ++_statusToastGeneration;
-        StatusToast.MaxWidth = Math.Max(120, _appWindow.Size.Width - 24);
-        StatusToastText.Text = text;
-        StatusToastActionButton.Content = actionText;
-        StatusToastActionButton.Visibility = string.IsNullOrWhiteSpace(actionText)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        StatusToast.IsHitTestVisible = !string.IsNullOrWhiteSpace(actionText);
-        StatusToast.Opacity = 1;
-        _ = HideStatusToastAfterDelayAsync(generation, durationMs);
+        Func<Task>? action = string.IsNullOrWhiteSpace(actionText)
+            ? null
+            : async () =>
+            {
+                var snapshot = _pendingDeletedItemSnapshot;
+                if (snapshot is null)
+                {
+                    return;
+                }
+
+                _pendingDeletedItemSnapshot = null;
+                if (await ViewModel.RestoreDeletedItemAsync(snapshot))
+                {
+                    ShowStatusToast(_localizationService.T("Common.Undone"));
+                }
+            };
+        var request = new WidgetFeedbackRequest(
+            text,
+            WidgetFeedbackSeverity.Success,
+            "quick-capture-status",
+            actionText,
+            action);
+        QuickCaptureShell.ShowFeedback(request);
+        StatusToast.Opacity = 0;
+        StatusToast.IsHitTestVisible = false;
+        StatusToastActionButton.Visibility = Visibility.Collapsed;
+        _ = HideStatusToastAfterDelayAsync(
+            generation,
+            (int)request.DisplayDuration.TotalMilliseconds);
     }
 
     private async Task HideStatusToastAfterDelayAsync(long generation, int durationMs)

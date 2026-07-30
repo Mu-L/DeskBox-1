@@ -16,7 +16,7 @@
 
         <Style
             x:Key="WeatherIconButtonStyle"
-            BasedOn="{StaticResource DefaultButtonStyle}"
+            BasedOn="{StaticResource SubtleButtonStyle}"
             TargetType="Button">
             <Setter Property="Width" Value="28" />
             <Setter Property="Height" Value="28" />
@@ -26,11 +26,11 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
         </Style>
 
         <local:BoolToVisibilityConverter x:Key="TrueVisibilityConverter" />
@@ -49,7 +49,7 @@
         -->
         <Border
             x:Name="RichBackdrop"
-            CornerRadius="10"
+            CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
             IsHitTestVisible="False"
             Visibility="{Binding RichSkinVisibility}">
             <Border.Background>
@@ -83,7 +83,7 @@
                     x:Name="RichGlossOverlay"
                     Height="58"
                     VerticalAlignment="Top"
-                    CornerRadius="10,10,0,0">
+                    CornerRadius="8,8,0,0">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                             <GradientStop Offset="0" Color="#18FFFFFF" />
@@ -278,7 +278,7 @@
                 Grid.Row="2"
                 MinHeight="38"
                 Padding="0,7,0,2"
-                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                 BorderThickness="0,1,0,0"
                 Visibility="{Binding PrimaryMetricsVisibility}">
                 <Grid ColumnSpacing="6">
@@ -484,7 +484,7 @@
                 Grid.Row="2"
                 Height="41"
                 Padding="0,5"
-                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                 BorderThickness="0,1,0,1"
                 Visibility="{Binding PrimaryMetricsVisibility}">
                 <Grid ColumnSpacing="8">
@@ -760,7 +760,7 @@
             <Border
                 Grid.Row="5"
                 Padding="0,2,0,0"
-                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                 BorderThickness="0,1,0,0"
                 Visibility="{Binding WeekForecastVisibility}">
                 <ScrollViewer
@@ -853,10 +853,10 @@
             HorizontalAlignment="Center"
             VerticalAlignment="Bottom"
             Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
             BorderThickness="1"
-            CornerRadius="7"
-            Visibility="{Binding RefreshStatusVisibility}">
+            CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
+            Visibility="Collapsed">
             <TextBlock
                 FontSize="11"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -866,7 +866,7 @@
         <Grid
             x:Name="LoadingOverlay"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
-            CornerRadius="10"
+            CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
             Visibility="{Binding LoadingVisibility}">
             <StackPanel
                 HorizontalAlignment="Center"

@@ -142,11 +142,18 @@
                         AutomationProperties.ItemStatus="{Binding AutomationState}"
                         MaxWidth="{Binding TileWidth}"
                         Padding="{Binding TilePadding}"
+                        CanDrag="True"
+                        AllowDrop="True"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Top"
                         CornerRadius="8"
                         Loaded="WidgetStackSurface_Loaded"
                         Unloaded="WidgetStackSurface_Unloaded"
+                        DragStarting="WidgetStackSurface_DragStarting"
+                        DragLeave="WidgetStackSurface_DragLeave"
+                        DragOver="WidgetStackSurface_DragOver"
+                        Drop="WidgetStackSurface_Drop"
+                        DropCompleted="WidgetStackSurface_DropCompleted"
                         PointerEntered="WidgetStackSurface_PointerEntered"
                         PointerExited="WidgetStackSurface_PointerExited"
                         PointerPressed="WidgetStackSurface_PointerPressed"
@@ -311,10 +318,17 @@
                     AutomationProperties.ItemStatus="{Binding AutomationState}"
                     Margin="{Binding ListMargin}"
                     Padding="{Binding ListPadding}"
+                    CanDrag="True"
+                    AllowDrop="True"
                     HorizontalAlignment="Stretch"
                     CornerRadius="8"
                     Loaded="WidgetStackSurface_Loaded"
                     Unloaded="WidgetStackSurface_Unloaded"
+                    DragStarting="WidgetStackSurface_DragStarting"
+                    DragLeave="WidgetStackSurface_DragLeave"
+                    DragOver="WidgetStackSurface_DragOver"
+                    Drop="WidgetStackSurface_Drop"
+                    DropCompleted="WidgetStackSurface_DropCompleted"
                     PointerEntered="WidgetStackSurface_PointerEntered"
                     PointerExited="WidgetStackSurface_PointerExited"
                     PointerPressed="WidgetStackSurface_PointerPressed"
@@ -667,6 +681,39 @@
                 Visibility="Collapsed"
                 KeyDown="ItemRenameTextBox_KeyDown"
                 LostFocus="ItemRenameTextBox_LostFocus" />
+
+            <CommandBar
+                x:Name="FileSelectionCommandBar"
+                Margin="4,0,4,4"
+                Padding="2,0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Bottom"
+                Canvas.ZIndex="30"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                DefaultLabelPosition="Collapsed"
+                IsDynamicOverflowEnabled="True"
+                Visibility="Collapsed">
+                <AppBarButton x:Name="FileOpenSelectionButton" Click="FileOpenSelectionButton_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8E5;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Name="FileCopySelectionButton" Click="FileCopySelectionButton_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8C8;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Name="FileCutSelectionButton" Click="FileCutSelectionButton_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8C6;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Name="FileDeleteSelectionButton" Click="FileDeleteSelectionButton_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE74D;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <CommandBar.SecondaryCommands>
+                    <AppBarButton x:Name="FileRenameSelectionButton" Click="FileRenameSelectionButton_Click">
+                        <AppBarButton.Icon><FontIcon Glyph="&#xE8AC;" /></AppBarButton.Icon>
+                    </AppBarButton>
+                </CommandBar.SecondaryCommands>
+            </CommandBar>
 
             <Border
                 x:Name="StatusToast"

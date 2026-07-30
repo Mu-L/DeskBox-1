@@ -45,11 +45,20 @@
                 <toolkit:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE73F;" />
                 </toolkit:SettingsCard.HeaderIcon>
-                <ComboBox
-                    MinWidth="{StaticResource SettingsControlMinWidth}"
-                    IsEnabled="{Binding WidgetCapsuleModeEnabled}"
-                    ItemsSource="{Binding AvailableWidgetCollapseBehaviorOptions}"
-                    controls:SettingsComboBox.Value="{Binding SelectedWidgetCollapseBehavior, Mode=TwoWay}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        Command="{Binding ResetCapsuleBehaviorOverridesCommand}"
+                        IsEnabled="{Binding HasCapsuleBehaviorOverrides}"
+                        Style="{StaticResource IconActionButtonStyle}"
+                        svc:Localized.ToolTipKey="Settings.Capsule.Overrides.ResetBehavior">
+                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                    </Button>
+                    <ComboBox
+                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                        IsEnabled="{Binding WidgetCapsuleModeEnabled}"
+                        ItemsSource="{Binding AvailableWidgetCollapseBehaviorOptions}"
+                        controls:SettingsComboBox.Value="{Binding SelectedWidgetCollapseBehavior, Mode=TwoWay}" />
+                </StackPanel>
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard
@@ -59,11 +68,20 @@
                 <toolkit:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A7;" />
                 </toolkit:SettingsCard.HeaderIcon>
-                <ComboBox
-                    MinWidth="{StaticResource SettingsControlMinWidth}"
-                    IsEnabled="{Binding WidgetCapsuleModeEnabled}"
-                    ItemsSource="{Binding AvailableWidgetCompactWidthModeOptions}"
-                    controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactWidthMode, Mode=TwoWay}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        Command="{Binding ResetCapsuleWidthOverridesCommand}"
+                        IsEnabled="{Binding HasCapsuleWidthOverrides}"
+                        Style="{StaticResource IconActionButtonStyle}"
+                        svc:Localized.ToolTipKey="Settings.Capsule.Overrides.ResetWidth">
+                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                    </Button>
+                    <ComboBox
+                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                        IsEnabled="{Binding WidgetCapsuleModeEnabled}"
+                        ItemsSource="{Binding AvailableWidgetCompactWidthModeOptions}"
+                        controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactWidthMode, Mode=TwoWay}" />
+                </StackPanel>
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard

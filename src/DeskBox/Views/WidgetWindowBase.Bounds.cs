@@ -72,6 +72,7 @@ public abstract partial class WidgetWindowBase
             config,
             workArea,
             WidgetPositioningService.GetAvailableWorkAreas());
+        bounds = ExpandContentBoundsToHost(bounds);
         ApplyWindowBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, persist: false);
 
         ApplyDwmBorderStyle(RootElement.ActualTheme == ElementTheme.Dark);
@@ -80,6 +81,7 @@ public abstract partial class WidgetWindowBase
         Win32Helper.ApplyFullWindowFrame(HWnd);
         ApplyBackdropPreference();
         InitializeWidgetCollapse();
+        InitializeWidgetGrouping();
 
         RootElement.Loaded += (_, _) =>
         {
@@ -165,10 +167,11 @@ public abstract partial class WidgetWindowBase
         int height,
         bool preserveCurrentEdge = false)
     {
-        var bounds = new RectInt32(x, y, width, height);
+        var bounds = CollapseHostBoundsToContent(
+            new RectInt32(x, y, width, height));
         if (IsCompactBoundsStateActive)
         {
-            CaptureCompactPlacement(bounds, persist: false);
+            CaptureCompactPlacement(new RectInt32(x, y, width, height), persist: false);
             return;
         }
 
@@ -176,13 +179,16 @@ public abstract partial class WidgetWindowBase
         // This prevents incorrect anchor capture when the window straddles
         // two monitors during a cross-screen drag.
         var center = new PointInt32(
-            x + Math.Max(1, width) / 2,
-            y + Math.Max(1, height) / 2);
+            bounds.X + Math.Max(1, bounds.Width) / 2,
+            bounds.Y + Math.Max(1, bounds.Height) / 2);
         var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
         Config.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
         if (preserveCurrentEdge)
         {
-            WidgetPositioningService.CaptureAnchorPreservingCurrentEdge(Config, bounds, workArea);
+            WidgetPositioningService.CaptureAnchorPreservingCurrentEdge(
+                Config,
+                bounds,
+                workArea);
         }
         else
         {

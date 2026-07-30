@@ -22,9 +22,15 @@ namespace DeskBox.Views;
 
 public sealed partial class ContentWidgetWindow
 {
+    private bool _isCloseWidgetPending;
+
     private void ApplyTitleBarLayout()
     {
-        var chromeMode = _chromeModeResolver.Resolve(_config, _descriptor);
+        WidgetChromeMode chromeMode =
+            App.Current.WidgetManager?.ResolveWidgetChromeMode(
+                _config,
+                _descriptor) ??
+            _chromeModeResolver.Resolve(_config, _descriptor);
         double titleTextSize = chromeMode == WidgetChromeMode.Compact
             ? SettingsService.NormalizeTextSize(SettingsService.Settings.TextSize)
             : _titleViewModel.TitleTextSize;
@@ -120,6 +126,14 @@ public sealed partial class ContentWidgetWindow
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
+        // A feature member inside a group is only the current Surface page.
+        // Closing hides the group and must not disable the global feature.
+        if (App.Current.WidgetManager?.GetWidgetGroupPresentation(_config.Id) is not null)
+        {
+            HideWindow();
+            return;
+        }
+
         if (FeatureWidgetSettings.IsFeatureWidget(_config.WidgetKind) &&
             App.Current.WidgetManager is { } widgetManager)
         {
@@ -203,36 +217,13 @@ public sealed partial class ContentWidgetWindow
     {
         var flyout = new MenuFlyout();
 
-        flyout.Items.Add(CreateToggleMenuItem(
-            App.Current.LocalizationService.T("Widget.LockPosition"),
-            "\uE72E",
-            _config.IsPositionLocked,
-            SetPositionLocked));
-        flyout.Items.Add(CreateToggleMenuItem(
-            App.Current.LocalizationService.T("Widget.LockSize"),
-            "\uE9CE",
-            _config.IsSizeLocked,
-            SetSizeLocked));
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
-        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
-            _config,
-            _descriptor,
-            App.Current.LocalizationService,
-            SetChromeModeOverride));
-        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
-            _config,
-            App.Current.LocalizationService,
-            SetCollapseBehaviorOverride,
-            ResetCompactWidthOverride));
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
         var rename = new MenuFlyoutItem
         {
             Text = App.Current.LocalizationService.T("Common.Rename"),
             Icon = new FontIcon { Glyph = "\uE8AC" }
         };
         bool startRenameWhenClosed = false;
+        bool showCloseWhenClosed = false;
         rename.Click += (_, _) => startRenameWhenClosed = true;
         flyout.Closed += (_, _) =>
         {
@@ -240,35 +231,36 @@ public sealed partial class ContentWidgetWindow
             {
                 DispatcherQueue.TryEnqueue(StartTitleRename);
             }
+            else if (showCloseWhenClosed)
+            {
+                DispatcherQueue.TryEnqueue(ShowCloseWidgetFlyout);
+            }
         };
         flyout.Items.Add(rename);
 
-        if (_descriptor.HasSettingsPage && !string.IsNullOrWhiteSpace(_descriptor.SettingsSectionTag))
-        {
-            var settingsItem = new MenuFlyoutItem
-            {
-                Text = App.Current.LocalizationService.T(GetSettingsMenuTextKey(_config.WidgetKind)),
-                Icon = new FontIcon { Glyph = "\uE713" }
-            };
-            settingsItem.Click += (_, _) => App.Current.ShowSettings(_descriptor.SettingsSectionTag);
-            flyout.Items.Add(settingsItem);
-        }
+        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
+            _config,
+            _descriptor,
+            App.Current.LocalizationService,
+            App.Current.WidgetManager,
+            SetChromeModeOverride));
+        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
+            _config,
+            App.Current.LocalizationService,
+            SetCollapseBehaviorOverride,
+            ResetCompactWidthOverride));
+        flyout.Items.Add(WidgetLockMenuBuilder.Create(
+            App.Current.LocalizationService,
+            _config.IsPositionLocked,
+            _config.IsSizeLocked,
+            SetPositionLocked,
+            SetSizeLocked));
 
-        if (_config.WidgetKind == WidgetKind.Todo)
-        {
-            flyout.Items.Add(new MenuFlyoutSeparator());
-            var clearAllItem = new MenuFlyoutItem
-            {
-                Text = App.Current.LocalizationService.T("Todo.ClearAll"),
-                Icon = new FontIcon
-                {
-                    Glyph = "\uE894",
-                    Foreground = new SolidColorBrush(Colors.Red)
-                }
-            };
-            clearAllItem.Click += (_, _) => ShowTodoClearAllConfirmation();
-            flyout.Items.Add(clearAllItem);
-        }
+        WidgetGroupMenuBuilder.Append(
+            flyout,
+            _config,
+            App.Current.WidgetManager,
+            App.Current.LocalizationService);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
         var disableWidget = new MenuFlyoutItem
@@ -276,16 +268,179 @@ public sealed partial class ContentWidgetWindow
             Text = App.Current.LocalizationService.T("Widget.FeatureWidget.Disable"),
             Icon = new FontIcon { Glyph = "\uE7E8" }
         };
-        disableWidget.Click += async (_, _) =>
-        {
-            if (App.Current.WidgetManager is { } widgetManager)
-            {
-                await widgetManager.SetFeatureWidgetEnabledAsync(_config.WidgetKind, enabled: false, reveal: false);
-            }
-        };
+        disableWidget.Click += (_, _) => showCloseWhenClosed = true;
         flyout.Items.Add(disableWidget);
 
         return flyout;
+    }
+
+    private void ShowCloseWidgetFlyout()
+    {
+        if (_isCloseWidgetPending ||
+            App.Current.WidgetManager is not { } widgetManager)
+        {
+            return;
+        }
+
+        MenuFlyout flyout = _config.WidgetKind == WidgetKind.File
+            ? CreateFileWidgetCloseFlyout(widgetManager)
+            : CreateFeatureWidgetCloseFlyout(widgetManager);
+        ShowFlyoutWithInteraction(
+            flyout,
+            ContentWidgetShell.MoreActionButton);
+    }
+
+    private MenuFlyout CreateFeatureWidgetCloseFlyout(
+        WidgetManager widgetManager)
+    {
+        LocalizationService localization = App.Current.LocalizationService;
+        return WidgetCompactConfirmationMenuBuilder.CreateDeleteConfirmation(
+            new WidgetCompactConfirmationOptions(
+                localization.Format(
+                    "Widget.FeatureWidget.DisableConfirmTitle",
+                    _config.Name),
+                localization.T("Widget.FeatureWidget.Disable"),
+                async () =>
+                {
+                    if (_isCloseWidgetPending)
+                    {
+                        return;
+                    }
+
+                    _isCloseWidgetPending = true;
+                    try
+                    {
+                        await widgetManager.SetFeatureWidgetEnabledAsync(
+                            _config.WidgetKind,
+                            enabled: false,
+                            reveal: false);
+                    }
+                    finally
+                    {
+                        _isCloseWidgetPending = false;
+                    }
+                })
+            {
+                Message = localization.T(
+                    "Widget.FeatureWidget.DisableConfirmNote"),
+                MessageGlyph = "\uE946",
+                IsDangerAction = false,
+                CancelText = localization.T("Common.Cancel")
+            });
+    }
+
+    private MenuFlyout CreateFileWidgetCloseFlyout(
+        WidgetManager widgetManager)
+    {
+        LocalizationService localization = App.Current.LocalizationService;
+        var flyout = new MenuFlyout
+        {
+            ShouldConstrainToRootBounds = false
+        };
+        flyout.Items.Add(new MenuFlyoutItem
+        {
+            Text = localization.Format(
+                "Widget.DeleteWidgetTitle",
+                _config.Name),
+            Icon = new FontIcon { Glyph = "\uE74D" },
+            IsEnabled = false
+        });
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        if (!widgetManager.CanCleanupManagedStorageForWidget(_config.Id))
+        {
+            flyout.Items.Add(new MenuFlyoutItem
+            {
+                Text = localization.T("Widget.DeleteWidgetNote"),
+                Icon = new FontIcon { Glyph = "\uE946" },
+                IsEnabled = false
+            });
+            flyout.Items.Add(CreateFileWidgetCloseAction(
+                localization.T("Widget.DeleteWidgetConfirm"),
+                WidgetRemovalAction.RemoveWidgetOnly));
+            flyout.Items.Add(CreateFileWidgetCloseCancel(flyout));
+            return flyout;
+        }
+
+        flyout.Items.Add(new MenuFlyoutItem
+        {
+            Text = localization.T("Widget.DeleteManagedInfo"),
+            Icon = new FontIcon { Glyph = "\uE8B7" },
+            IsEnabled = false
+        });
+        flyout.Items.Add(CreateFileWidgetCloseAction(
+            localization.T("Widget.KeepManagedFolder"),
+            WidgetRemovalAction.RemoveWidgetOnly,
+            "\uE8B7",
+            isDanger: false));
+        flyout.Items.Add(CreateFileWidgetCloseAction(
+            localization.T("Widget.MoveBackThenDeleteFolder"),
+            WidgetRemovalAction.MoveManagedFolderContentsToDesktop,
+            "\uE8CA",
+            isDanger: false));
+        flyout.Items.Add(CreateFileWidgetCloseAction(
+            localization.T("Widget.DeleteFolderToRecycleBin"),
+            WidgetRemovalAction.DeleteManagedFolder));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(CreateFileWidgetCloseCancel(flyout));
+        return flyout;
+    }
+
+    private MenuFlyoutItem CreateFileWidgetCloseAction(
+        string text,
+        WidgetRemovalAction removalAction,
+        string glyph = "\uE74D",
+        bool isDanger = true)
+    {
+        var icon = new FontIcon { Glyph = glyph };
+        if (isDanger)
+        {
+            icon.Foreground = new SolidColorBrush(Colors.Red);
+        }
+
+        var item = new MenuFlyoutItem
+        {
+            Text = text,
+            Icon = icon
+        };
+        item.Click += async (_, _) =>
+        {
+            if (_isCloseWidgetPending ||
+                App.Current.WidgetManager is not { } widgetManager)
+            {
+                return;
+            }
+
+            _isCloseWidgetPending = true;
+            try
+            {
+                await widgetManager.RemoveWidgetAsync(
+                    _config.Id,
+                    removalAction);
+            }
+            catch (Exception ex)
+            {
+                _isCloseWidgetPending = false;
+                App.Log(
+                    $"[ContentWidget] Close widget failed id={_config.Id}: {ex}");
+                await ShowErrorDialogAsync(
+                    App.Current.LocalizationService.T(
+                        "Widget.DeleteWidgetFailed"),
+                    ex.Message);
+            }
+        };
+        return item;
+    }
+
+    private MenuFlyoutItem CreateFileWidgetCloseCancel(MenuFlyout flyout)
+    {
+        var item = new MenuFlyoutItem
+        {
+            Text = App.Current.LocalizationService.T("Common.Cancel"),
+            Icon = new FontIcon { Glyph = "\uE711" }
+        };
+        item.Click += (_, _) => flyout.Hide();
+        return item;
     }
 
     private void ShowTodoClearAllConfirmation()
@@ -298,6 +453,16 @@ public sealed partial class ContentWidgetWindow
 
     private void SetChromeModeOverride(WidgetChromeMode mode)
     {
+        if (App.Current.WidgetManager is { } manager &&
+            manager.IsWidgetGrouped(_config.Id))
+        {
+            if (manager.SetWidgetGroupChromeMode(_config, mode))
+            {
+                ApplyAppearancePreview();
+            }
+            return;
+        }
+
         WidgetChromeModeNames.SetOverrideMode(_config, mode);
         SettingsService.UpdateWidget(_config);
         ApplyAppearancePreview();
@@ -334,6 +499,7 @@ public sealed partial class ContentWidgetWindow
 
         _config.IsPositionLocked = value;
         SettingsService.UpdateWidget(_config);
+        SynchronizeWidgetGroupLayout();
         ApplyLockActionIconState();
     }
 
@@ -346,6 +512,7 @@ public sealed partial class ContentWidgetWindow
 
         _config.IsSizeLocked = value;
         SettingsService.UpdateWidget(_config);
+        SynchronizeWidgetGroupLayout();
         ApplyLockActionIconState();
     }
 
@@ -365,14 +532,26 @@ public sealed partial class ContentWidgetWindow
         App.Current.WidgetManager?.BeginWidgetInteraction("content-title-rename-opened");
         var editor = CreateTitleRenameEditor();
         ContentWidgetShell.TitleEditorContent = editor;
+        HoldTemporaryTopMost();
+        AppWindow.Show();
+        base.Activate();
+        Win32Helper.SetForegroundWindow(HWnd);
+        FocusTitleRenameEditor(editor);
         DispatcherQueue.TryEnqueue(() =>
         {
             if (ReferenceEquals(ContentWidgetShell.TitleEditorContent, editor))
             {
-                editor.Focus(FocusState.Programmatic);
-                editor.SelectAll();
+                base.Activate();
+                Win32Helper.SetForegroundWindow(HWnd);
+                FocusTitleRenameEditor(editor);
             }
         });
+    }
+
+    private static void FocusTitleRenameEditor(TextBox editor)
+    {
+        editor.Focus(FocusState.Programmatic);
+        editor.SelectAll();
     }
 
     private TextBox CreateTitleRenameEditor()

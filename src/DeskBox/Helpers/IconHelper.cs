@@ -29,7 +29,7 @@ public static class IconHelper
     private static readonly Dictionary<string, long> s_bitmapEstimatedBytes = new(StringComparer.OrdinalIgnoreCase);
     private static long s_totalBitmapEstimatedBytes;
 
-    // ── Image thumbnail LRU cache (separate from icon cache) ──────
+    // ── Media thumbnail LRU cache (separate from icon cache) ──────
     // Uses a linked list + dictionary for simple LRU eviction.
     private static readonly object s_thumbLock = new();
     private static readonly LinkedList<string> s_thumbLru = new();
@@ -136,7 +136,7 @@ public static class IconHelper
 
     /// <summary>
     /// Asynchronously retrieve the native Windows shell icon for the given path.
-    /// For image files, returns an actual thumbnail preview instead of the generic icon.
+    /// For image and video files, returns a thumbnail preview instead of the generic icon.
     /// </summary>
     public static async Task<BitmapImage?> GetIconAsync(
         string path,
@@ -156,13 +156,17 @@ public static class IconHelper
             ? SharedCacheScope
             : cacheScope.Trim();
 
-        if (!showImageFilesAsIcons && IsImageFile(path))
+        if (!showImageFilesAsIcons && IsMediaFile(path))
         {
-            return await LoadImageThumbnailAsync(
+            var thumbnail = await LoadMediaThumbnailAsync(
                 dispatcher,
                 path,
                 decodePixelWidth,
                 normalizedCacheScope);
+            if (thumbnail is not null)
+            {
+                return thumbnail;
+            }
         }
 
         IconSource iconSource = ResolveIconSource(path, hideShortcutArrowOverlay);
@@ -194,9 +198,22 @@ public static class IconHelper
         return ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif" or ".heic" or ".heif";
     }
 
-    // ── Image thumbnail loading with LRU cache ───────────────────
+    public static bool IsVideoFile(string path)
+    {
+        string ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext is ".mp4" or ".m4v" or ".mov" or ".avi" or ".mkv" or ".wmv" or ".webm"
+            or ".mpeg" or ".mpg" or ".mpe" or ".3gp" or ".3g2" or ".mts" or ".m2ts"
+            or ".ts" or ".vob" or ".flv" or ".ogv";
+    }
 
-    private static async Task<BitmapImage?> LoadImageThumbnailAsync(
+    public static bool IsMediaFile(string path)
+    {
+        return IsImageFile(path) || IsVideoFile(path);
+    }
+
+    // ── Media thumbnail loading with LRU cache ───────────────────
+
+    private static async Task<BitmapImage?> LoadMediaThumbnailAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
         string path,
         int decodePixelWidth,
@@ -235,10 +252,9 @@ public static class IconHelper
         {
             if (!s_thumbCache.TryGetValue(cacheKey, out task!))
             {
-                task = CreateImageThumbnailAsync(
+                task = CreateMediaThumbnailAsync(
                     dispatcher,
                     path,
-                    cacheKey,
                     normalizedDecodePixelWidth);
                 s_thumbCache[cacheKey] = task;
                 s_thumbLru.AddFirst(cacheKey);
@@ -313,10 +329,9 @@ public static class IconHelper
         }
     }
 
-    private static async Task<BitmapImage?> CreateImageThumbnailAsync(
+    private static async Task<BitmapImage?> CreateMediaThumbnailAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
         string path,
-        string cacheKey,
         int decodePixelWidth)
     {
         await s_thumbLoadSemaphore.WaitAsync();
@@ -324,10 +339,26 @@ public static class IconHelper
         {
             // Try Windows native thumbnail first — leverages the system
             // thumbnail cache and avoids reading the full image into memory.
-            var image = await TryLoadNativeThumbnailAsync(dispatcher, path, decodePixelWidth);
+            bool isVideo = IsVideoFile(path);
+            var image = await TryLoadNativeThumbnailAsync(
+                dispatcher,
+                path,
+                decodePixelWidth,
+                isVideo
+                    ? Windows.Storage.FileProperties.ThumbnailMode.VideosView
+                    : Windows.Storage.FileProperties.ThumbnailMode.PicturesView);
             if (image is not null)
             {
                 return image;
+            }
+
+            // Video decoding is intentionally left to the Windows thumbnail
+            // provider. Reading an entire video as an image would waste memory
+            // and cannot produce a valid BitmapImage; the caller falls back to
+            // the normal shell icon when Windows has no preview.
+            if (isVideo)
+            {
+                return null;
             }
 
             // Fallback: decode to the requested display size.
@@ -343,7 +374,7 @@ public static class IconHelper
         }
         catch (Exception ex)
         {
-            App.Log($"[IconHelper] Failed to load image thumbnail for {path}: {ex.Message}");
+            App.Log($"[IconHelper] Failed to load media thumbnail for {path}: {ex.Message}");
             return null;
         }
         finally
@@ -386,7 +417,8 @@ public static class IconHelper
     private static async Task<BitmapImage?> TryLoadNativeThumbnailAsync(
         Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
         string path,
-        int decodePixelWidth)
+        int decodePixelWidth,
+        Windows.Storage.FileProperties.ThumbnailMode thumbnailMode)
     {
         try
         {
@@ -397,7 +429,7 @@ public static class IconHelper
 
             var storageFile = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
             using var thumbnail = await storageFile.GetThumbnailAsync(
-                Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
+                thumbnailMode,
                 (uint)decodePixelWidth,
                 Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale);
 
@@ -459,7 +491,7 @@ public static class IconHelper
             return;
         }
 
-        if (IsImageFile(path))
+        if (IsMediaFile(path))
         {
             // Remove all thumbnail entries for this path (any version)
             string pathMarker = $"|{path}:";

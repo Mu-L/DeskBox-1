@@ -340,6 +340,7 @@ public sealed partial class WidgetManager
 
             config.CompactPlacement = CreatePlacement(bounds);
             FindLoadedWindow(id)?.ApplyCompactArrangement(bounds, constrainSize: true);
+            SynchronizeGroupLayoutFromMember(config);
         }
 
         _settingsService.SaveDebounced(notifySubscribers: false);
@@ -422,6 +423,7 @@ public sealed partial class WidgetManager
             if (config is not null)
             {
                 config.CompactPlacement = CreatePlacement(target);
+                SynchronizeGroupLayoutFromMember(config);
             }
             FindLoadedWindow(id)?.ApplyCompactArrangement(target, constrainSize: true);
         }
@@ -451,6 +453,7 @@ public sealed partial class WidgetManager
             .Where(config =>
                 config.IsVisible &&
                 !config.IsDisabled &&
+                WidgetGroupSettings.IsActiveMember(settings, config.Id) &&
                 _widgetRegistry.IsAvailableForSession(config, settings) &&
                 WidgetCollapseBehaviorNames.Resolve(config, settings.WidgetCollapseBehavior) !=
                     WidgetCollapseBehavior.Expanded)
@@ -602,6 +605,7 @@ public sealed partial class WidgetManager
                 if (!BoundsEqual(member.Bounds, target))
                 {
                     member.Config.CompactPlacement = CreatePlacement(target);
+                    SynchronizeGroupLayoutFromMember(member.Config);
                     changed = true;
                 }
 
@@ -628,6 +632,7 @@ public sealed partial class WidgetManager
             }
 
             config.CompactPlacement = ClonePlacement(placement);
+            SynchronizeGroupLayoutFromMember(config);
             RectInt32 target = ResolveCompactBounds(config);
             FindLoadedWindow(id)?.ApplyCompactArrangement(target, constrainSize: false);
             changed = true;
@@ -666,7 +671,8 @@ public sealed partial class WidgetManager
             alignToExpandedWidth:
                 SettingsService.NormalizeWidgetCompactWidthMode(
                     _settingsService.Settings.WidgetCompactWidthMode) ==
-                SettingsService.WidgetCompactWidthModeAligned);
+                SettingsService.WidgetCompactWidthModeAligned,
+            heightContentMode: _settingsService.Settings.WidgetCompactContentMode);
     }
 
     private static string ResolveBarDirection(

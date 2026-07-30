@@ -586,16 +586,26 @@ public partial class SettingsViewModel
         GetWidgetCompactMediaCornerDisplayName(SelectedWidgetCompactMediaCornerMode);
 
 
-    public int CapsuleCustomRuleCount => _settingsService.Settings.Widgets.Count(widget =>
-        widget.Metadata?.ContainsKey(WidgetCollapseBehaviorNames.MetadataKey) == true);
+    public int CapsuleCustomRuleCount =>
+        _settingsService.Settings.Widgets.Count(widget =>
+            widget.Metadata?.ContainsKey(WidgetCollapseBehaviorNames.MetadataKey) == true) +
+        _settingsService.Settings.WidgetGroups.Count(group =>
+            !string.Equals(
+                group.CollapseBehavior,
+                WidgetCollapseBehaviorNames.System,
+                StringComparison.Ordinal));
 
     public int CapsuleCustomWidthCount =>
-        _settingsService.Settings.Widgets.Count(widget => widget.CompactWidth is not null);
+        _settingsService.Settings.Widgets.Count(widget => widget.CompactWidth is not null) +
+        _settingsService.Settings.WidgetGroups.Count(group => group.CompactWidth is not null);
 
     public int CapsuleSavedPlacementCount =>
-        _settingsService.Settings.Widgets.Count(widget => widget.CompactPlacement is not null);
+        _settingsService.Settings.Widgets.Count(widget => widget.CompactPlacement is not null) +
+        _settingsService.Settings.WidgetGroups.Count(group => group.CompactPlacement is not null);
 
     public bool HasCapsuleBehaviorOverrides => CapsuleCustomRuleCount > 0;
+
+    public bool HasCapsuleWidthOverrides => CapsuleCustomWidthCount > 0;
 
     public bool HasCapsuleGeometryOverrides =>
         CapsuleCustomWidthCount > 0 || CapsuleSavedPlacementCount > 0;
@@ -643,6 +653,17 @@ public partial class SettingsViewModel
                 changed++;
             }
         }
+        foreach (WidgetGroupConfig group in _settingsService.Settings.WidgetGroups)
+        {
+            if (!string.Equals(
+                    group.CollapseBehavior,
+                    WidgetCollapseBehaviorNames.System,
+                    StringComparison.Ordinal))
+            {
+                group.CollapseBehavior = WidgetCollapseBehaviorNames.System;
+                changed++;
+            }
+        }
 
         if (changed > 0)
         {
@@ -669,6 +690,20 @@ public partial class SettingsViewModel
                 changed++;
             }
         }
+        foreach (WidgetGroupConfig group in _settingsService.Settings.WidgetGroups)
+        {
+            if (group.CompactWidth is not null)
+            {
+                group.CompactWidth = null;
+                changed++;
+            }
+
+            if (group.CompactPlacement is not null)
+            {
+                group.CompactPlacement = null;
+                changed++;
+            }
+        }
 
         if (changed > 0)
         {
@@ -681,7 +716,26 @@ public partial class SettingsViewModel
     {
         var widget = _settingsService.Settings.Widgets.FirstOrDefault(candidate =>
             string.Equals(candidate.Id, widgetId, StringComparison.Ordinal));
-        if (widget is null || !ClearCapsuleOverrides(widget))
+        if (widget is null)
+        {
+            return;
+        }
+
+        bool changed = ClearCapsuleOverrides(widget);
+        WidgetGroupConfig? group = WidgetGroupSettings.FindByMember(
+            _settingsService.Settings,
+            widgetId);
+        if (group is not null)
+        {
+            foreach (WidgetConfig member in _settingsService.Settings.Widgets.Where(candidate =>
+                         group.MemberIds.Contains(candidate.Id, StringComparer.Ordinal)))
+            {
+                changed |= ClearCapsuleOverrides(member);
+            }
+            changed |= ClearCapsuleOverrides(group);
+        }
+
+        if (!changed)
         {
             return;
         }
@@ -697,6 +751,10 @@ public partial class SettingsViewModel
         foreach (var widget in _settingsService.Settings.Widgets)
         {
             changed |= ClearCapsuleOverrides(widget);
+        }
+        foreach (WidgetGroupConfig group in _settingsService.Settings.WidgetGroups)
+        {
+            changed |= ClearCapsuleOverrides(group);
         }
 
         if (!changed)
@@ -725,6 +783,56 @@ public partial class SettingsViewModel
         if (widget.CompactPlacement is not null)
         {
             widget.CompactPlacement = null;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    [RelayCommand]
+    private void ResetCapsuleWidthOverrides()
+    {
+        int changed = 0;
+        foreach (WidgetConfig widget in _settingsService.Settings.Widgets)
+        {
+            if (widget.CompactWidth is not null)
+            {
+                widget.CompactWidth = null;
+                changed++;
+            }
+        }
+        foreach (WidgetGroupConfig group in _settingsService.Settings.WidgetGroups)
+        {
+            if (group.CompactWidth is not null)
+            {
+                group.CompactWidth = null;
+                changed++;
+            }
+        }
+
+        if (changed > 0)
+        {
+            _settingsService.SaveDebounced();
+            NotifyCapsuleOverridePropertiesChanged();
+        }
+    }
+
+    private static bool ClearCapsuleOverrides(WidgetGroupConfig group)
+    {
+        bool changed = !string.Equals(
+            group.CollapseBehavior,
+            WidgetCollapseBehaviorNames.System,
+            StringComparison.Ordinal);
+        group.CollapseBehavior = WidgetCollapseBehaviorNames.System;
+        if (group.CompactWidth is not null)
+        {
+            group.CompactWidth = null;
+            changed = true;
+        }
+
+        if (group.CompactPlacement is not null)
+        {
+            group.CompactPlacement = null;
             changed = true;
         }
 
@@ -790,6 +898,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(CapsuleCustomWidthCount));
         OnPropertyChanged(nameof(CapsuleSavedPlacementCount));
         OnPropertyChanged(nameof(HasCapsuleBehaviorOverrides));
+        OnPropertyChanged(nameof(HasCapsuleWidthOverrides));
         OnPropertyChanged(nameof(HasCapsuleGeometryOverrides));
         OnPropertyChanged(nameof(CapsuleOverrideWidgetCount));
         OnPropertyChanged(nameof(HasCapsuleOverrides));
@@ -801,6 +910,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(CapsuleBehaviorOverrideSummaryText));
         OnPropertyChanged(nameof(CapsuleGeometryOverrideSummaryText));
         ResetCapsuleBehaviorOverridesCommand.NotifyCanExecuteChanged();
+        ResetCapsuleWidthOverridesCommand.NotifyCanExecuteChanged();
         ResetCapsuleGeometryOverridesCommand.NotifyCanExecuteChanged();
         ResetAllCapsuleOverridesCommand.NotifyCanExecuteChanged();
     }

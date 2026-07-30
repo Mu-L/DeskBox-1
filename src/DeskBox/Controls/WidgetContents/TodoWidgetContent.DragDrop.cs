@@ -186,7 +186,8 @@ public sealed partial class TodoWidgetContent
         if (DeskBoxDragData.HasDroppedFiles(e.DataView))
         {
             e.Handled = true;
-            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.AcceptedOperation =
+                DeskBoxDragData.GetFileAssociationOperation(e.DataView);
             e.DragUIOverride.IsGlyphVisible = true;
             SetTodoItemHoverState(sender as DependencyObject, true);
         }
@@ -246,7 +247,7 @@ public sealed partial class TodoWidgetContent
             using DroppedFileBatch batch = await DeskBoxDragData.TryGetDroppedFilesAsync(e.DataView);
             int addedCount = await ViewModel.AddDroppedAttachmentsAsync(item.Id, batch.Files);
             e.AcceptedOperation = addedCount > 0
-                ? DataPackageOperation.Copy
+                ? DeskBoxDragData.GetFileAssociationOperation(e.DataView)
                 : DataPackageOperation.None;
         }
         catch (Exception ex)
@@ -612,7 +613,7 @@ public sealed partial class TodoWidgetContent
         }
     }
 
-    private async void RootGrid_DragOver(object sender, DragEventArgs e)
+    private void RootGrid_DragOver(object sender, DragEventArgs e)
     {
         if (_draggedTodoItemIds.Count > 0)
         {
@@ -620,10 +621,10 @@ public sealed partial class TodoWidgetContent
         }
 
         ResetTodoReorderVisualState();
-        await HandleExternalTextDragOverAsync(e);
+        HandleExternalDragOver(e);
     }
 
-    private async void TodoListView_DragOver(object sender, DragEventArgs e)
+    private void TodoListView_DragOver(object sender, DragEventArgs e)
     {
         if (_draggedTodoItemIds.Count > 0)
         {
@@ -631,7 +632,7 @@ public sealed partial class TodoWidgetContent
         }
 
         ResetTodoReorderVisualState();
-        await HandleExternalTextDragOverAsync(e);
+        HandleExternalDragOver(e);
     }
 
     private void ExternalTodoDrag_DragLeave(object sender, DragEventArgs e)
@@ -639,7 +640,7 @@ public sealed partial class TodoWidgetContent
         ResetTodoReorderVisualState();
     }
 
-    private async Task HandleExternalTextDragOverAsync(DragEventArgs e)
+    private void HandleExternalDragOver(DragEventArgs e)
     {
         if (ViewModel is null)
         {
@@ -647,20 +648,18 @@ public sealed partial class TodoWidgetContent
             return;
         }
 
-        var deferral = e.GetDeferral();
-        try
-        {
-            e.AcceptedOperation = DeskBoxDragData.HasDroppedFiles(e.DataView) ||
-                                  await HasDroppedTodoTextAsync(e.DataView)
-                ? DataPackageOperation.Copy
-                : DataPackageOperation.None;
-            e.DragUIOverride.IsGlyphVisible = e.AcceptedOperation != DataPackageOperation.None;
-        }
-        finally
-        {
-            deferral.Complete();
-            ResetTodoReorderVisualState();
-        }
+        bool supported =
+            DeskBoxDragData.HasDroppedFiles(e.DataView) ||
+            e.DataView.Contains(DeskBoxDragData.TextFormat) ||
+            e.DataView.Contains(StandardDataFormats.Text) ||
+            e.DataView.Contains(StandardDataFormats.WebLink);
+        e.AcceptedOperation = supported
+            ? DeskBoxDragData.HasDroppedFiles(e.DataView)
+                ? DeskBoxDragData.GetFileAssociationOperation(e.DataView)
+                : DataPackageOperation.Copy
+            : DataPackageOperation.None;
+        e.DragUIOverride.IsGlyphVisible = supported;
+        e.Handled = supported;
     }
 
     private async void RootGrid_Drop(object sender, DragEventArgs e)
@@ -674,7 +673,9 @@ public sealed partial class TodoWidgetContent
         try
         {
             e.AcceptedOperation = await ImportExternalDropAsync(e.DataView)
-                ? DataPackageOperation.Copy
+                ? DeskBoxDragData.HasDroppedFiles(e.DataView)
+                    ? DeskBoxDragData.GetFileAssociationOperation(e.DataView)
+                    : DataPackageOperation.Copy
                 : DataPackageOperation.None;
         }
         finally
@@ -684,10 +685,12 @@ public sealed partial class TodoWidgetContent
         }
     }
 
-    internal async Task<bool> CanImportExternalDropAsync(DataPackageView dataView)
+    internal bool CanImportExternalDrop(DataPackageView dataView)
     {
         return DeskBoxDragData.HasDroppedFiles(dataView) ||
-            await HasDroppedTodoTextAsync(dataView);
+               dataView.Contains(DeskBoxDragData.TextFormat) ||
+               dataView.Contains(StandardDataFormats.Text) ||
+               dataView.Contains(StandardDataFormats.WebLink);
     }
 
     internal async Task<bool> ImportExternalDropAsync(DataPackageView dataView)
@@ -755,12 +758,6 @@ public sealed partial class TodoWidgetContent
         {
             ResetTodoReorderVisualState();
         }
-    }
-
-    private static async Task<bool> HasDroppedTodoTextAsync(DataPackageView dataView)
-    {
-        string? text = await TryGetDroppedTodoTextAsync(dataView);
-        return !string.IsNullOrWhiteSpace(text);
     }
 
     private static async Task<string?> TryGetDroppedTodoTextAsync(DataPackageView dataView)

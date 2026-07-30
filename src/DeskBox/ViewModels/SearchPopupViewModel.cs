@@ -20,6 +20,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _indexRefreshCts;
     private CancellationTokenSource? _recommendationCts;
+    private long _recommendationGeneration;
     private readonly object _metadataTaskGate = new();
     private readonly Dictionary<SearchResultItem, Task> _metadataTasks =
         new(ReferenceEqualityComparer.Instance);
@@ -232,9 +233,13 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         _recommendationCts?.Dispose();
         _recommendationCts = new CancellationTokenSource();
         CancellationToken token = _recommendationCts.Token;
-        _recentContentItems.Clear();
+        long generation = Interlocked.Increment(ref _recommendationGeneration);
+        bool hadRecommendationCache = HasRecommendationCache;
+        var loadedItems = new List<SearchResultItem>();
+        bool recommendationsEnabled =
+            _settingsService.Settings.SearchShowRecommendations;
 
-        if (_settingsService.Settings.SearchShowRecommendations)
+        if (recommendationsEnabled)
         {
             try
             {
@@ -246,7 +251,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
                     var item = ToResultItem(recommendation);
                     if (identities.Add(Services.SearchResultRanker.GetIdentityKey(item)))
                     {
-                        _recentContentItems.Add(item);
+                        loadedItems.Add(item);
                     }
                 }
 
@@ -258,7 +263,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
                     var item = ToResultItem(recent);
                     if (identities.Add(Services.SearchResultRanker.GetIdentityKey(item)))
                     {
-                        _recentContentItems.Add(item);
+                        loadedItems.Add(item);
                     }
                 }
             }
@@ -277,26 +282,81 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             return;
         }
 
-        RebuildEmptyStateItems();
-
-        // Shortcut and executable recommendations use their real app icons.
-        // Await enrichment so the UI can show icons together with text (no pop-in).
-        if (_recentContentItems.Count > 0)
+        if (!recommendationsEnabled)
         {
-            await EnrichResultsAsync(
-                _recentContentItems,
-                token,
-                hideShortcutArrowOverlay: true);
+            ReplaceRecommendationItems([]);
+            _lastRecommendationLoadUtc = DateTime.MinValue;
+            return;
         }
 
-        if (token.IsCancellationRequested)
+        // On the first application open, publish the inexpensive recommendation
+        // identities immediately. Resolving every shell icon can take noticeably
+        // longer on a cold Windows shell cache; keeping the list private until that
+        // finishes makes the popup look empty even though the apps are already known.
+        if (!hadRecommendationCache)
+        {
+            ReplaceRecommendationItems(loadedItems);
+            if (loadedItems.Count > 0)
+            {
+                _ = CompletePublishedRecommendationEnrichmentAsync(
+                    loadedItems,
+                    generation,
+                    token);
+            }
+
+            return;
+        }
+
+        // Do not replace a useful cache with an empty transient refresh result.
+        if (loadedItems.Count == 0)
         {
             return;
         }
 
+        // Shortcut and executable recommendations use their real app icons.
+        // Enrich the replacement list off-screen so an expired cache stays visible
+        // until the refreshed icons are ready.
+        await EnrichResultsAsync(
+            loadedItems,
+            token,
+            hideShortcutArrowOverlay: true);
+
+        if (token.IsCancellationRequested ||
+            generation != Volatile.Read(ref _recommendationGeneration))
+        {
+            return;
+        }
+
+        ReplaceRecommendationItems(loadedItems);
+
         // Mark the cache timestamp so subsequent popup opens can skip the load
         // and display icons immediately.
         _lastRecommendationLoadUtc = DateTime.UtcNow;
+    }
+
+    private async Task CompletePublishedRecommendationEnrichmentAsync(
+        List<SearchResultItem> publishedItems,
+        long generation,
+        CancellationToken token)
+    {
+        await EnrichResultsAsync(
+            publishedItems,
+            token,
+            hideShortcutArrowOverlay: true);
+
+        if (!token.IsCancellationRequested &&
+            generation == Volatile.Read(ref _recommendationGeneration))
+        {
+            _lastRecommendationLoadUtc = DateTime.UtcNow;
+        }
+    }
+
+    private void ReplaceRecommendationItems(
+        IReadOnlyCollection<SearchResultItem> items)
+    {
+        _recentContentItems.Clear();
+        _recentContentItems.AddRange(items);
+        RebuildEmptyStateItems();
     }
 
     /// <summary>
@@ -980,8 +1040,8 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Cancels all transient popup work and releases result/icon references while
-    /// the initialized popup shell remains available for a fast reopen.
+    /// Cancels transient popup work while retaining the small recommendation/icon
+    /// cache. The whole popup is still disposed by the existing idle cleanup policy.
     /// </summary>
     public void OnPopupHidden()
     {
@@ -990,18 +1050,12 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         _recommendationCts?.Cancel();
         Query = string.Empty;
         _allResults = [];
-        _emptyStateItems.Clear();
-        _recentContentItems.Clear();
-        CurrentResults.Clear();
-        Tabs.Clear();
         SelectedItem = null;
-        SelectedTab = null;
         IsQueryActive = false;
         IsSearching = false;
         HasResults = false;
-        HasCurrentResults = false;
         StatusText = string.Empty;
-        _lastRecommendationLoadUtc = DateTime.MinValue;
+        RebuildEmptyStateItems();
     }
 
     public Task RefreshSearchAsync()
@@ -1026,6 +1080,13 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (HasRecommendationCache)
+        {
+            // Present the last complete set immediately and refresh it atomically.
+            _ = LoadRecommendationsAsync();
+            return;
+        }
+
         await LoadRecommendationsAsync();
     }
 
@@ -1037,6 +1098,12 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     public bool HasFreshRecommendationCache =>
         _recentContentItems.Count > 0
         && (DateTime.UtcNow - _lastRecommendationLoadUtc) < RecommendationCacheTtl;
+
+    /// <summary>
+    /// True when a complete recommendation set is available for immediate display,
+    /// even if it is old enough to warrant a background refresh.
+    /// </summary>
+    public bool HasRecommendationCache => _recentContentItems.Count > 0;
 
     private void ExecuteAction(string? actionId)
     {

@@ -9,6 +9,14 @@ public static class DeskBoxDragData
     public const string TextFormat = "DeskBox.Internal.Text.v1";
     public const string SourceFormat = "DeskBox.Internal.Source.v1";
     public const string TodoColorMarkerFormat = "DeskBox.Todo.ColorMarker.v1";
+    public const string SourceWidgetIdProperty = "DeskBoxSourceWidgetId";
+    public const string SourcePathsProperty = "DeskBoxSourcePaths";
+    public const string InternalFileDragTokenProperty =
+        "DeskBoxInternalDragToken";
+    public const string InternalFileDragToken =
+        "DeskBox.WidgetItemDrag.v2";
+    public const string StackReorderKeyProperty =
+        "DeskBoxStackReorderKey";
     public const string SourceTodo = "todo";
     public const string SourceQuickCapture = "quick-capture";
 
@@ -82,7 +90,8 @@ public static class DeskBoxDragData
 
     public static bool HasDroppedFiles(DataPackageView dataView)
     {
-        if (dataView.Contains(StandardDataFormats.StorageItems) ||
+        if (GetInternalDroppedFiles(dataView).Count > 0 ||
+            dataView.Contains(StandardDataFormats.StorageItems) ||
             dataView.Contains(StandardDataFormats.Bitmap))
         {
             return true;
@@ -91,8 +100,76 @@ public static class DeskBoxDragData
         return dataView.AvailableFormats.Any(IsLikelyFileTransferFormat);
     }
 
+    /// <summary>
+    /// Identifies a file drag that originated from a DeskBox file surface. Content
+    /// widgets treat this as a link/association, never as a file-system transfer.
+    /// </summary>
+    public static bool IsInternalFileDrag(DataPackageView dataView)
+    {
+        return dataView.Properties.TryGetValue(
+                   InternalFileDragTokenProperty,
+                   out object? token) &&
+               string.Equals(
+                   token as string,
+                   InternalFileDragToken,
+                   StringComparison.Ordinal) &&
+               dataView.Properties.ContainsKey(SourcePathsProperty);
+    }
+
+    public static DataPackageOperation GetFileAssociationOperation(
+        DataPackageView dataView)
+    {
+        return IsInternalFileDrag(dataView)
+            ? DataPackageOperation.Link
+            : DataPackageOperation.Copy;
+    }
+
+    public static bool ShouldShowImportOverlay(
+        IReadOnlyList<string> paths)
+    {
+        const long ThresholdBytes = 10 * 1024 * 1024;
+
+        long totalSize = 0;
+        foreach (string path in paths)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    totalSize += new FileInfo(path).Length;
+                }
+                else if (Directory.Exists(path))
+                {
+                    // Avoid recursively enumerating a folder on the UI path.
+                    return true;
+                }
+            }
+            catch
+            {
+                return true;
+            }
+
+            if (totalSize >= ThresholdBytes)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static async Task<DroppedFileBatch> TryGetDroppedFilesAsync(DataPackageView dataView)
     {
+        IReadOnlyList<DroppedFilePath> internalFiles =
+            GetInternalDroppedFiles(dataView);
+        if (internalFiles.Count > 0)
+        {
+            return new DroppedFileBatch(
+                internalFiles,
+                temporaryDirectory: null,
+                skippedCount: 0);
+        }
+
         var files = new List<DroppedFilePath>();
         string? temporaryDirectory = null;
         int skippedCount = 0;
@@ -160,6 +237,55 @@ public static class DeskBoxDragData
         }
 
         return new DroppedFileBatch(files, temporaryDirectory, skippedCount);
+    }
+
+    public static IReadOnlyList<DroppedFilePath> GetInternalDroppedFiles(
+        DataPackageView dataView)
+    {
+        if (!dataView.Properties.TryGetValue(
+                SourcePathsProperty,
+                out object? value))
+        {
+            return [];
+        }
+
+        IEnumerable<string> paths = value switch
+        {
+            string[] array => array,
+            IReadOnlyList<string> list => list,
+            IEnumerable<string> sequence => sequence,
+            _ => []
+        };
+
+        var files = new List<DroppedFilePath>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string path in paths)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                if (seen.Add(fullPath))
+                {
+                    files.Add(new DroppedFilePath(
+                        fullPath,
+                        Path.GetFileName(fullPath),
+                        ForceManagedCopy: false));
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[DragDrop] Ignored invalid internal path '{path}': " +
+                    ex.Message);
+            }
+        }
+
+        return files;
     }
 
     public static async Task<string?> TryGetInternalTextAsync(DataPackageView dataView)

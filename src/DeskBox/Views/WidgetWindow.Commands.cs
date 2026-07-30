@@ -256,6 +256,12 @@ public sealed partial class WidgetWindow
                 snappedBounds.Width,
                 snappedBounds.Height,
                 persist: false);
+            if (!IsCompactBoundsStateActive)
+            {
+                App.Current?.WidgetManager?.UpdateWidgetGroupDragPreview(
+                    ViewModel.Config.Id,
+                    snappedBounds);
+            }
         }
         e.Handled = true;
     }
@@ -292,6 +298,14 @@ public sealed partial class WidgetWindow
         }
         EndWidgetBoundsInteraction();
         RestoreAfterFileDrag("file-drag-capture-lost");
+        if (hasMoved && !IsCompactBoundsStateActive)
+        {
+            _ = App.Current?.WidgetManager?.CompleteWidgetGroupDragAsync(ViewModel.Config.Id);
+        }
+        else
+        {
+            App.Current?.WidgetManager?.CancelWidgetGroupDrag(ViewModel.Config.Id);
+        }
         _displayChangeWatcher?.ResumeRestore();
         _hasMovedTitleBarDrag = false;
         QueueBackdropRefresh();
@@ -323,6 +337,14 @@ public sealed partial class WidgetWindow
         }
 
         EndWidgetBoundsInteraction();
+        if (_hasMovedTitleBarDrag && !IsCompactBoundsStateActive)
+        {
+            _ = App.Current?.WidgetManager?.CompleteWidgetGroupDragAsync(ViewModel.Config.Id);
+        }
+        else
+        {
+            App.Current?.WidgetManager?.CancelWidgetGroupDrag(ViewModel.Config.Id);
+        }
         _displayChangeWatcher?.ResumeRestore();
         _hasMovedTitleBarDrag = false;
         e.Handled = true;
@@ -377,6 +399,16 @@ public sealed partial class WidgetWindow
 
     private void SetChromeModeOverride(WidgetChromeMode mode)
     {
+        if (App.Current.WidgetManager is { } manager &&
+            manager.IsWidgetGrouped(ViewModel.Config.Id))
+        {
+            if (manager.SetWidgetGroupChromeMode(ViewModel.Config, mode))
+            {
+                ApplyTitleBarLayout();
+            }
+            return;
+        }
+
         WidgetChromeModeNames.SetOverrideMode(ViewModel.Config, mode);
         _settingsService.UpdateWidget(ViewModel.Config);
         ApplyTitleBarLayout();
@@ -566,12 +598,14 @@ public sealed partial class WidgetWindow
     private void TogglePositionLock_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.TogglePositionLockCommand.Execute(null);
+        SynchronizeWidgetGroupLayout();
         ApplyLockActionIconState();
     }
 
     private void ToggleSizeLock_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.ToggleSizeLockCommand.Execute(null);
+        SynchronizeWidgetGroupLayout();
         ApplyLockActionIconState();
     }
 

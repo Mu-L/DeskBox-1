@@ -96,6 +96,75 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndReload_PreservesWidgetGroupSurfaceOrderActiveMemberAndStyle()
+    {
+        var service = new SettingsService(_settingsRoot);
+        service.Settings.Widgets =
+        [
+            new WidgetConfig { Id = "a", Name = "A" },
+            new WidgetConfig { Id = "b", Name = "B" }
+        ];
+        service.Settings.WidgetGroups =
+        [
+            new WidgetGroupConfig
+            {
+                Id = "group",
+                SurfaceId = "stable-surface",
+                MemberIds = ["b", "a"],
+                ActiveMemberId = "a",
+                NavigationStyle = WidgetGroupNavigationStyles.Tabs,
+                HoverSwitchEnabled = true
+            }
+        ];
+        service.Settings.WidgetGroupsEnabled = true;
+        await service.SaveAsync();
+
+        var reloaded = new SettingsService(_settingsRoot);
+        await reloaded.LoadAsync();
+
+        WidgetGroupConfig group = Assert.Single(
+            reloaded.Settings.WidgetGroups);
+        Assert.Equal("stable-surface", group.SurfaceId);
+        Assert.Equal(["b", "a"], group.MemberIds);
+        Assert.Equal("a", group.ActiveMemberId);
+        Assert.Equal(WidgetGroupNavigationStyles.Tabs, group.NavigationStyle);
+        Assert.True(group.HoverSwitchEnabled);
+        Assert.True(reloaded.Settings.WidgetGroupsEnabled);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacyGroupsEnableGroupingCapability()
+    {
+        var settings = new AppSettings
+        {
+            WidgetGroupsEnabled = false,
+            Widgets =
+            [
+                new WidgetConfig { Id = "a", Name = "A" },
+                new WidgetConfig { Id = "b", Name = "B" }
+            ],
+            WidgetGroups =
+            [
+                new WidgetGroupConfig
+                {
+                    Id = "legacy-group",
+                    MemberIds = ["a", "b"],
+                    ActiveMemberId = "a"
+                }
+            ]
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.True(service.Settings.WidgetGroupsEnabled);
+        Assert.Single(service.Settings.WidgetGroups);
+    }
+
+    [Fact]
     public async Task LoadAsync_SafelyDowngradesUnknownWidgetKind()
     {
         await File.WriteAllTextAsync(
@@ -698,6 +767,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.WidgetAnimationEffect, restoredDefaults.WidgetAnimationEffect);
         Assert.False(newUserDefaults.WidgetCapsuleModeEnabled);
         Assert.Equal(newUserDefaults.WidgetCapsuleModeEnabled, restoredDefaults.WidgetCapsuleModeEnabled);
+        Assert.False(newUserDefaults.WidgetGroupsEnabled);
         Assert.False(newUserDefaults.SearchHotkeyEnabled);
         Assert.Equal(newUserDefaults.SearchHotkeyEnabled, restoredDefaults.SearchHotkeyEnabled);
         Assert.Equal(SettingsService.WidgetCompactWidthModeAligned, newUserDefaults.WidgetCompactWidthMode);

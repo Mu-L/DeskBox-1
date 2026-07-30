@@ -40,11 +40,9 @@ public sealed partial class SearchPopupWindow : Window
     private readonly LocalizationService _localizationService;
     private readonly QuickLookPreviewService _quickLookService = new();
     private readonly ThemeService? _themeService;
-    private DispatcherTimer? _statusHideTimer;
     private DispatcherTimer? _searchDebounceTimer;
-    private DispatcherTimer? _skeletonBreathTimer;
-    private bool _skeletonBreathAscending = true;
-    private bool _skipPanelEntranceAnimation;
+    private CancellationTokenSource? _skeletonDelayCancellation;
+    private bool _suppressPanelEntranceAnimation;
 
     // When non-null, the recommended-apps entrance animation is "pending": each
     // card is animated the moment ItemsRepeater realizes it (via ElementPrepared),
@@ -199,8 +197,8 @@ public sealed partial class SearchPopupWindow : Window
             _appWindow?.Resize(new SizeInt32(PopupWidth, PopupHeight));
             PositionOnScreen();
         }
-        RootGrid.Opacity = 0.92;
-        PopupTranslateTransform.Y = 6;
+        RootGrid.Opacity = AreSystemAnimationsEnabled() ? 0 : 1;
+        PopupTranslateTransform.Y = AreSystemAnimationsEnabled() ? 4 : 0;
         _appWindow?.Show();
         IsPopupVisible = true;
         PopupShown?.Invoke(this, EventArgs.Empty);
@@ -217,7 +215,10 @@ public sealed partial class SearchPopupWindow : Window
 
         // Fluent entrance: quick scale + fade + rise, matching the Windows 11
         // menu/popup transition language.
-        PopupShowStoryboard.Begin();
+        if (AreSystemAnimationsEnabled())
+        {
+            PopupShowStoryboard.Begin();
+        }
 
         // Focus immediately; recommendations can continue loading without making the
         // freshly shown window feel inert.
@@ -246,19 +247,32 @@ public sealed partial class SearchPopupWindow : Window
         }
         else
         {
-            // Show skeleton only when recommendations need to be reloaded. If the
-            // ViewModel has a fresh cache (loaded within the last 60s), skip the
-            // skeleton so the user sees icons immediately on popup open.
+            // Any complete cached set is good enough for the first frame. An expired
+            // set refreshes atomically in the background instead of flashing empty.
+            bool hadRecommendationCache = _viewModel.HasRecommendationCache;
             bool showSkeleton = _settingsService.Settings.SearchShowRecommendations
-                && !_viewModel.HasFreshRecommendationCache;
+                && !hadRecommendationCache;
             if (showSkeleton)
             {
-                ShowAppsSkeleton();
+                _skeletonDelayCancellation?.Cancel();
+                _skeletonDelayCancellation?.Dispose();
+                _skeletonDelayCancellation = new CancellationTokenSource();
+                _ = ShowAppsSkeletonAfterDelayAsync(
+                    _skeletonDelayCancellation.Token);
             }
 
-            // Load data first, then update visibility once to avoid triggering the wave
-            // animation on an empty data set (which would hide containers prematurely).
-            await _viewModel.OnPopupOpenedAsync();
+            // Recommendation identities may be published before their shell icons
+            // finish resolving. Suppress property-change driven entrance playback
+            // during this open transaction and play exactly once below.
+            _suppressPanelEntranceAnimation = true;
+            try
+            {
+                await _viewModel.OnPopupOpenedAsync();
+            }
+            finally
+            {
+                _suppressPanelEntranceAnimation = false;
+            }
 
             if (!IsPopupVisible)
             {
@@ -268,17 +282,17 @@ public sealed partial class SearchPopupWindow : Window
 
             if (showSkeleton)
             {
+                _skeletonDelayCancellation?.Cancel();
+                _skeletonDelayCancellation?.Dispose();
+                _skeletonDelayCancellation = null;
                 HideAppsSkeleton();
             }
 
-            // Skip the generic panel entrance animation; per-icon animation handles it.
-            _skipPanelEntranceAnimation = showSkeleton;
             UpdatePanelVisibility();
 
-            // Trigger the icon entrance animation now that icons are ready. Whether
-            // or not we showed the skeleton, the user should see the icons animate
-            // in — fresh load uses the skeleton + per-icon animation together, cached
-            // reopens skip the skeleton and still play the per-icon entrance.
+            // Replaying the configured card entrance on every popup invocation is
+            // intentional. A cached reopen should be immediate, but not visually
+            // static; the window and its application cards are one entrance gesture.
             if (RecommendedAppsPanel.Visibility == Visibility.Visible)
             {
                 AnimateAppIconsEntrance();
@@ -314,8 +328,11 @@ public sealed partial class SearchPopupWindow : Window
         IsPopupVisible = false;
         _viewModel.OnPopupHidden();
         _searchDebounceTimer?.Stop();
-        _statusHideTimer?.Stop();
-        _skeletonBreathTimer?.Stop();
+        _skeletonDelayCancellation?.Cancel();
+        _skeletonDelayCancellation?.Dispose();
+        _skeletonDelayCancellation = null;
+        HideAppsSkeleton();
+        SearchFeedbackPresenter.Clear();
         _entranceGuardTimer?.Stop();
         PopupHidden?.Invoke(this, EventArgs.Empty);
 
@@ -324,8 +341,15 @@ public sealed partial class SearchPopupWindow : Window
         // is imperceptible but gives the dismissal a physical feel.
         PopupShowStoryboard.Stop();
         PopupHideStoryboard.Completed -= OnPopupHideCompleted;
-        PopupHideStoryboard.Completed += OnPopupHideCompleted;
-        PopupHideStoryboard.Begin();
+        if (AreSystemAnimationsEnabled())
+        {
+            PopupHideStoryboard.Completed += OnPopupHideCompleted;
+            PopupHideStoryboard.Begin();
+        }
+        else
+        {
+            OnPopupHideCompleted(null, EventArgs.Empty);
+        }
     }
 
     private void OnPopupHideCompleted(object? sender, object e)
@@ -1439,16 +1463,13 @@ public sealed partial class SearchPopupWindow : Window
             RecommendedAppsPanel.Visibility = Visibility.Visible;
             RefreshRecommendedAppIcons();
 
-            // When the home tab re-appears (e.g. typing a query, clearing it, or
-            // switching tabs back to "all"), replay the per-icon entrance animation
-            // so the user sees the currently configured style. The first-open path
-            // already calls AnimateAppIconsEntrance directly during ShowPopupCoreAsync
-            // and sets _skipPanelEntranceAnimation, so we don't double-play there.
-            if (wasHidden && !_skipPanelEntranceAnimation)
+            // When the home tab re-appears after a query, replay the configured
+            // per-icon entrance. Popup opening owns its own single playback and
+            // temporarily suppresses this property-change path.
+            if (wasHidden && !_suppressPanelEntranceAnimation)
             {
                 AnimateAppIconsEntrance();
             }
-            _skipPanelEntranceAnimation = false;
         }
         else
         {
@@ -1484,6 +1505,10 @@ public sealed partial class SearchPopupWindow : Window
         // Space/arrow keys switch back to result-list navigation.
         ClearRecommendedAppSelection();
         _isNavigatingResults = false;
+        bool hasText = !string.IsNullOrEmpty(SearchTextBox.Text);
+        HotkeyHintBadge.Visibility = hasText
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         // Debounce: wait 150ms after the last keystroke before triggering the
         // actual search so rapid typing does not cause per-character UI churn.
@@ -1492,6 +1517,20 @@ public sealed partial class SearchPopupWindow : Window
         _searchDebounceTimer.Tick -= OnSearchDebounceTick;
         _searchDebounceTimer.Tick += OnSearchDebounceTick;
         _searchDebounceTimer.Start();
+    }
+
+    private void SearchTextBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        HotkeyHintBadge.Opacity = 0.45;
+        SearchBoxBorder.BorderBrush =
+            ResolveThemeBrush("AccentFillColorDefaultBrush");
+    }
+
+    private void SearchTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        HotkeyHintBadge.Opacity = 1;
+        SearchBoxBorder.BorderBrush =
+            ResolveThemeBrush("ControlStrokeColorDefaultBrush");
     }
 
     private void OnSearchDebounceTick(object? sender, object e)
@@ -1856,6 +1895,24 @@ public sealed partial class SearchPopupWindow : Window
 
     // ── Skeleton screen ─────────────────────────────────────────────────────────
 
+    private async Task ShowAppsSkeletonAfterDelayAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(250, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (!cancellationToken.IsCancellationRequested && IsPopupVisible)
+        {
+            DispatcherQueue.TryEnqueue(ShowAppsSkeleton);
+        }
+    }
+
     private void ShowAppsSkeleton()
     {
         // Populate skeleton items to match the grid layout.
@@ -1865,39 +1922,32 @@ public sealed partial class SearchPopupWindow : Window
         RecommendedAppsPanel.Visibility = Visibility.Collapsed;
         HomeSectionHeader.Visibility = Visibility.Collapsed;
 
-        // Breathing animation on the skeleton panel.
-        _skeletonBreathAscending = true;
-        _skeletonBreathTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        _skeletonBreathTimer.Tick -= OnSkeletonBreathTick;
-        _skeletonBreathTimer.Tick += OnSkeletonBreathTick;
-        _skeletonBreathTimer.Start();
+        var visual = ElementCompositionPreview.GetElementVisual(AppsSkeletonPanel);
+        visual.StopAnimation("Opacity");
+        if (!AreSystemAnimationsEnabled())
+        {
+            visual.Opacity = 0.62f;
+            return;
+        }
+
+        var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+        animation.InsertKeyFrame(0, 0.42f);
+        animation.InsertKeyFrame(1, 0.7f);
+        animation.Duration = TimeSpan.FromMilliseconds(900);
+        animation.IterationBehavior =
+            Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
+        animation.Direction =
+            Microsoft.UI.Composition.AnimationDirection.Alternate;
+        visual.StartAnimation("Opacity", animation);
     }
 
     private void HideAppsSkeleton()
     {
-        _skeletonBreathTimer?.Stop();
+        ElementCompositionPreview
+            .GetElementVisual(AppsSkeletonPanel)
+            .StopAnimation("Opacity");
         AppsSkeletonPanel.Visibility = Visibility.Collapsed;
         AppsSkeletonPanel.Opacity = 1;
-    }
-
-    private void OnSkeletonBreathTick(object? sender, object e)
-    {
-        const double min = 0.4;
-        const double max = 0.7;
-        const double step = 0.025;
-
-        double current = AppsSkeletonPanel.Opacity;
-        if (_skeletonBreathAscending)
-        {
-            current += step;
-            if (current >= max) { current = max; _skeletonBreathAscending = false; }
-        }
-        else
-        {
-            current -= step;
-            if (current <= min) { current = min; _skeletonBreathAscending = true; }
-        }
-        AppsSkeletonPanel.Opacity = current;
     }
 
     // ── Icon entrance animations ────────────────────────────────────────────────
@@ -1911,6 +1961,21 @@ public sealed partial class SearchPopupWindow : Window
     private void AnimateAppIconsEntrance()
     {
         int style = _settingsService.Settings.SearchAppIconAnimation;
+        if (!AreSystemAnimationsEnabled())
+        {
+            int staticIndex = 0;
+            foreach (var _ in RecommendedAppsRepeater.ItemsSource as
+                         System.Collections.IEnumerable ?? Array.Empty<object>())
+            {
+                if (RecommendedAppsRepeater.TryGetElement(staticIndex)
+                    is FrameworkElement element)
+                {
+                    ElementCompositionPreview.GetElementVisual(element).Opacity = 1;
+                }
+                staticIndex++;
+            }
+            return;
+        }
 
         // Signal pending entrance so that any cards realized AFTER this point
         // (ItemsRepeater is virtualized; TryGetElement is null until the layout
@@ -1935,7 +2000,8 @@ public sealed partial class SearchPopupWindow : Window
 
         foreach (var _ in itemsSource)
         {
-            if (RecommendedAppsRepeater.TryGetElement(index) is Grid card)
+            if (RecommendedAppsRepeater.TryGetElement(index)
+                is FrameworkElement card)
             {
                 AnimateSingleAppCard(card, index, style);
             }
@@ -1957,30 +2023,33 @@ public sealed partial class SearchPopupWindow : Window
 
         ElementCompositionPreview.SetIsTranslationEnabled(card, true);
         var compositor = visual.Compositor;
+        if (!AreSystemAnimationsEnabled())
+        {
+            visual.Opacity = 1;
+            visual.Scale = System.Numerics.Vector3.One;
+            visual.StopAnimation("Translation.Y");
+            return;
+        }
 
         // WinUI deceleration curve.
         var decel = compositor.CreateCubicBezierEasingFunction(
             new System.Numerics.Vector2(0.0f, 0.0f),
             new System.Numerics.Vector2(0.1f, 1.0f));
 
-        // Springy overshoot curve for the "soft bounce" style.
         var spring = compositor.CreateCubicBezierEasingFunction(
             new System.Numerics.Vector2(0.34f, 1.56f),
             new System.Numerics.Vector2(0.64f, 1.0f));
 
-        // Stagger delay per item. The wave variant derives its stagger from the
-        // column index, so it uses a separate path below.
         int staggerMs = style switch
         {
-            0 => 30,  // Win11 staggered
-            1 => 30,  // Spotlight staggered
-            2 => 0,   // Wave uses column-based offset instead
-            3 => 30,  // Soft bounce
+            0 => 30,
+            1 => 30,
+            2 => 0,
+            3 => 30,
             _ => 30
         };
         var delay = TimeSpan.FromMilliseconds(index * staggerMs);
 
-        // Short, subtle opacity ramp so cards fade in quickly without feeling sluggish.
         var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
         opacityAnim.InsertKeyFrame(0f, 0f);
         opacityAnim.InsertKeyFrame(1f, 1f, decel);
@@ -2005,13 +2074,29 @@ public sealed partial class SearchPopupWindow : Window
 
         switch (style)
         {
-            case 0: // Fade + Scale (Win11) — subtle scale 0.92 → 1
+            case 0:
             {
-                StartScalarAnim(compositor, visual, "Scale.X", delay, 350, decel, 0.92f, 1.0f);
-                StartScalarAnim(compositor, visual, "Scale.Y", delay, 350, decel, 0.92f, 1.0f);
+                StartScalarAnim(
+                    compositor,
+                    visual,
+                    "Scale.X",
+                    delay,
+                    350,
+                    decel,
+                    0.92f,
+                    1.0f);
+                StartScalarAnim(
+                    compositor,
+                    visual,
+                    "Scale.Y",
+                    delay,
+                    350,
+                    decel,
+                    0.92f,
+                    1.0f);
                 break;
             }
-            case 1: // Fade + Rise (Spotlight) — rise 18px from below + scale 0.95
+            case 1:
             {
                 var translateAnim = compositor.CreateScalarKeyFrameAnimation();
                 translateAnim.InsertKeyFrame(0f, 18f);
@@ -2020,22 +2105,33 @@ public sealed partial class SearchPopupWindow : Window
                 translateAnim.DelayTime = delay;
                 visual.StartAnimation("Translation.Y", translateAnim);
 
-                StartScalarAnim(compositor, visual, "Scale.X", delay, 400, decel, 0.95f, 1.0f);
-                StartScalarAnim(compositor, visual, "Scale.Y", delay, 400, decel, 0.95f, 1.0f);
+                StartScalarAnim(
+                    compositor,
+                    visual,
+                    "Scale.X",
+                    delay,
+                    400,
+                    decel,
+                    0.95f,
+                    1.0f);
+                StartScalarAnim(
+                    compositor,
+                    visual,
+                    "Scale.Y",
+                    delay,
+                    400,
+                    decel,
+                    0.95f,
+                    1.0f);
                 break;
             }
-            case 2: // Wave cascade — column-based vertical stagger that reads as a rolling swell
+            case 2:
             {
                 int columns = ComputeRecommendedAppsColumnCount();
                 int column = columns <= 0 ? 0 : index % columns;
                 int row = columns <= 0 ? 0 : index / columns;
-
-                // Column wave: each column starts slightly further down, so the icons
-                // appear to roll in from the bottom of the grid. Row adds a small bonus
-                // offset so a tall grid also reads as vertical motion.
-                float columnOffset = column * 10f;
-                float rowOffset = Math.Min(row, 3) * 3f;
-                float startY = columnOffset + rowOffset;
+                float startY =
+                    (column * 10f) + (Math.Min(row, 3) * 3f);
 
                 var translateAnim = compositor.CreateScalarKeyFrameAnimation();
                 translateAnim.InsertKeyFrame(0f, startY);
@@ -2044,14 +2140,30 @@ public sealed partial class SearchPopupWindow : Window
                 translateAnim.DelayTime = delay;
                 visual.StartAnimation("Translation.Y", translateAnim);
 
-                StartScalarAnim(compositor, visual, "Scale.X", delay, 450, decel, 0.95f, 1.0f);
-                StartScalarAnim(compositor, visual, "Scale.Y", delay, 450, decel, 0.95f, 1.0f);
+                StartScalarAnim(
+                    compositor,
+                    visual,
+                    "Scale.X",
+                    delay,
+                    450,
+                    decel,
+                    0.95f,
+                    1.0f);
+                StartScalarAnim(
+                    compositor,
+                    visual,
+                    "Scale.Y",
+                    delay,
+                    450,
+                    decel,
+                    0.95f,
+                    1.0f);
                 break;
             }
-            case 3: // Soft bounce — subtle spring (0.92 → 1.06 → 1) + 12px Y settle
+            case 3:
             {
-                // Two-step keyframe with a gentle overshoot and settle.
-                var scaleAnim = compositor.CreateScalarKeyFrameAnimation();
+                var scaleAnim =
+                    compositor.CreateScalarKeyFrameAnimation();
                 scaleAnim.InsertKeyFrame(0f, 0.92f);
                 scaleAnim.InsertKeyFrame(0.7f, 1.06f, spring);
                 scaleAnim.InsertKeyFrame(1f, 1.0f, decel);
@@ -2060,7 +2172,8 @@ public sealed partial class SearchPopupWindow : Window
                 visual.StartAnimation("Scale.X", scaleAnim);
                 visual.StartAnimation("Scale.Y", scaleAnim);
 
-                var translateAnim = compositor.CreateScalarKeyFrameAnimation();
+                var translateAnim =
+                    compositor.CreateScalarKeyFrameAnimation();
                 translateAnim.InsertKeyFrame(0f, 12f);
                 translateAnim.InsertKeyFrame(0.7f, -4f, spring);
                 translateAnim.InsertKeyFrame(1f, 0f, decel);
@@ -2388,6 +2501,11 @@ public sealed partial class SearchPopupWindow : Window
             case nameof(SearchPopupViewModel.HasResults):
             case nameof(SearchPopupViewModel.HasCurrentResults):
                 UpdatePanelVisibility();
+                if (e.PropertyName == nameof(SearchPopupViewModel.HasResults) &&
+                    _viewModel.HasResults)
+                {
+                    AnimateResultsRefresh();
+                }
                 break;
 
             case nameof(SearchPopupViewModel.SelectedTab):
@@ -2904,19 +3022,33 @@ public sealed partial class SearchPopupWindow : Window
     /// </summary>
     private void ShowTransientStatus(string message)
     {
-        StatusTextBlock.Text = message;
-        SelectionActionBar.Visibility = Visibility.Collapsed;
-        StatusBar.Visibility = Visibility.Visible;
+        SearchFeedbackPresenter.Show(new WidgetFeedbackRequest(
+            message,
+            WidgetFeedbackSeverity.Info,
+            "search-status"));
+    }
 
-        _statusHideTimer?.Stop();
-        _statusHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.2) };
-        _statusHideTimer.Tick += (_, _) =>
+    private void AnimateResultsRefresh()
+    {
+        if (!AreSystemAnimationsEnabled() ||
+            ResultsPanel.Visibility != Visibility.Visible)
         {
-            StatusBar.Visibility = Visibility.Collapsed;
-            _statusHideTimer?.Stop();
-            UpdateSelectionActions();
+            ResultsPanel.Opacity = 1;
+            return;
+        }
+
+        var storyboard = new Storyboard();
+        var animation = new DoubleAnimation
+        {
+            From = 0.72,
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(83),
+            EnableDependentAnimation = true
         };
-        _statusHideTimer.Start();
+        Storyboard.SetTarget(animation, ResultsPanel);
+        Storyboard.SetTargetProperty(animation, "Opacity");
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
     }
 
     /// <summary>
@@ -3107,8 +3239,9 @@ public sealed partial class SearchPopupWindow : Window
         PopupHideStoryboard.Stop();
         PopupHideStoryboard.Completed -= OnPopupHideCompleted;
         _searchDebounceTimer?.Stop();
-        _statusHideTimer?.Stop();
-        _skeletonBreathTimer?.Stop();
+        _skeletonDelayCancellation?.Cancel();
+        _skeletonDelayCancellation?.Dispose();
+        SearchFeedbackPresenter.Clear();
         _entranceGuardTimer?.Stop();
         ResultsRepeater.ItemsSource = null;
         RecommendedAppsRepeater.ItemsSource = null;
@@ -3118,6 +3251,18 @@ public sealed partial class SearchPopupWindow : Window
         DisposeAcrylicController();
         DisposeMicaController();
         _viewModel.Dispose();
+    }
+
+    private static bool AreSystemAnimationsEnabled()
+    {
+        try
+        {
+            return new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+        }
+        catch
+        {
+            return true;
+        }
     }
 }
 

@@ -58,6 +58,37 @@ public sealed class SettingsViewModelChromeModeTests
         AssertChromeMode(settingsService.Settings.Widgets[3], SettingsService.WidgetChromeModeStandard);
     }
 
+    [Fact]
+    public void ResetWidgetChromeOverrides_PreservesGroupChromeAndOtherMemberPreferences()
+    {
+        using var scope = new TempSettingsScope();
+        var settingsService = scope.CreateSettingsService();
+        WidgetConfig weather = CreateWidget(WidgetKind.Weather, WidgetChromeMode.Overlay);
+        WidgetConfig file = CreateWidget(WidgetKind.File, WidgetChromeMode.Hidden);
+        settingsService.Settings.Widgets = [weather, file];
+        settingsService.Settings.WidgetGroups =
+        [
+            new WidgetGroupConfig
+            {
+                MemberIds = [weather.Id, file.Id],
+                ActiveMemberId = weather.Id,
+                ChromeMode = WidgetChromeModeNames.Standard
+            }
+        ];
+
+        int changed = SettingsViewModel.ResetWidgetChromeOverrides(
+            settingsService.Settings,
+            TestServices.CreateWidgetContentFactory(),
+            WidgetChromeCategory.Display);
+
+        Assert.Equal(1, changed);
+        AssertSystemChromeMode(weather);
+        AssertChromeMode(file, WidgetChromeModeNames.Hidden);
+        Assert.Equal(
+            WidgetChromeModeNames.Standard,
+            settingsService.Settings.WidgetGroups[0].ChromeMode);
+    }
+
     private static WidgetConfig CreateWidget(WidgetKind kind, WidgetChromeMode mode)
     {
         var config = new WidgetConfig

@@ -1,17 +1,24 @@
 using DeskBox.Contracts;
+using DeskBox.Controls.WidgetContents;
 using DeskBox.Services;
 using DeskBox.Helpers;
+using DeskBox.Models;
 using Microsoft.UI;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Media.Animation;
 using System.Numerics;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.UI;
+using Windows.UI.ViewManagement;
 
 namespace DeskBox.Controls;
 
@@ -25,6 +32,21 @@ public sealed partial class WidgetShell : UserControl
     private const double CompactReorderHandleWidth = 18;
     private const double CompactParticleCanvasWidth = 400;
     private const double CompactParticleCanvasHeight = 40;
+    private WidgetCompactTransitionVisualProfile _compactTransitionProfile =
+        WidgetCompactTransitionVisualProfile.Resolve(
+            SettingsService.WidgetCompactAnimationSmooth,
+            SettingsService.DefaultWidgetCompactAnimationDurationMs,
+            true);
+    private ScalarKeyFrameAnimation? _contentDropHighlightAnimation;
+    private bool _isContentDropHighlightActive;
+
+    public void ShowFeedback(WidgetFeedbackRequest request)
+    {
+        FeedbackPresenter.IsCompact = _isCollapsed;
+        FeedbackPresenter.Show(request);
+    }
+
+    public void ClearFeedback() => FeedbackPresenter.Clear();
 
     /// <summary>
     /// Content hosted below the title area. Future widget kinds should provide their body through this slot.
@@ -121,7 +143,9 @@ public sealed partial class WidgetShell : UserControl
     private Storyboard? _hideButtonsStoryboard;
     private Storyboard? _overlayHandleVisualStoryboard;
     private Storyboard? _compactLiveStoryboard;
+    private Storyboard? _compactUpdateStoryboard;
     private Storyboard? _compactReorderHandleStoryboard;
+    private Storyboard? _groupDropPreviewStoryboard;
     private DispatcherQueueTimer? _compactMarqueeDelayTimer;
     private Storyboard? _compactMarqueeStoryboard;
     private TranslateTransform? _compactMarqueeTransform;
@@ -131,8 +155,10 @@ public sealed partial class WidgetShell : UserControl
     private Canvas? _compactMarqueeCanvas;
     private FrameworkElement? _compactMarqueeViewport;
     private WidgetCompactPresentation? _compactPresentation;
+    private WidgetGroupPresentation? _groupPresentation;
     private IWidgetContent? _hostedContent;
     private IWidgetResponsiveLayoutContent? _responsiveLayoutContent;
+    private bool _isContentSnapshotTransitionActive;
     private bool _isResponsiveLayoutTransitionActive;
     private double _responsiveTargetContentWidth;
     private double _responsiveTargetContentHeight;
@@ -174,7 +200,8 @@ public sealed partial class WidgetShell : UserControl
     {
         None,
         Expand,
-        Collapse
+        Collapse,
+        OpenGroup
     }
 
     public event EventHandler<RoutedEventArgs>? AddRequested;
@@ -209,16 +236,34 @@ public sealed partial class WidgetShell : UserControl
     public event EventHandler<PointerRoutedEventArgs>? DragHandlePointerPressed;
     public event EventHandler<PointerRoutedEventArgs>? DragHandlePointerMoved;
     public event EventHandler<PointerRoutedEventArgs>? DragHandlePointerReleased;
+    public event EventHandler<WidgetGroupMemberEventArgs>? GroupMemberInvoked;
+    public event EventHandler<WidgetGroupMemberEventArgs>? GroupMemberRemoveRequested;
+    public event EventHandler<WidgetGroupMemberEventArgs>? GroupMemberDetachRequested;
+    public event EventHandler<WidgetGroupReorderEventArgs>? GroupMemberReorderRequested;
+    public event EventHandler? GroupDissolveRequested;
+    public event EventHandler? GroupPickerOpened;
+    public event EventHandler? GroupPickerClosed;
 
     public WidgetShell()
     {
         InitializeComponent();
+        GroupTitleSwitcher.MemberInvoked += (_, e) => GroupMemberInvoked?.Invoke(this, e);
+        GroupTitleSwitcher.RemoveMemberRequested += (_, e) => GroupMemberRemoveRequested?.Invoke(this, e);
+        GroupTitleSwitcher.DetachMemberRequested += (_, e) => GroupMemberDetachRequested?.Invoke(this, e);
+        GroupTitleSwitcher.ReorderRequested += (_, e) => GroupMemberReorderRequested?.Invoke(this, e);
+        GroupTitleSwitcher.DissolveRequested += (_, _) => GroupDissolveRequested?.Invoke(this, EventArgs.Empty);
+        GroupTitleSwitcher.PickerOpened += (_, _) => GroupPickerOpened?.Invoke(this, EventArgs.Empty);
+        GroupTitleSwitcher.PickerClosed += (_, _) => GroupPickerClosed?.Invoke(this, EventArgs.Empty);
         CompactTitleIcon.SetCompactPresentationMode(true);
         SetProtectedCursor(CompactIdentityHost, InputSystemCursorShape.SizeAll);
         SetProtectedCursor(CompactReorderHandle, InputSystemCursorShape.SizeAll);
         ShellRoot.AddHandler(UIElement.DragEnterEvent, new DragEventHandler(ShellRoot_DragEnter), true);
         ShellRoot.AddHandler(UIElement.DragLeaveEvent, new DragEventHandler(ShellRoot_DragLeave), true);
         ShellRoot.AddHandler(UIElement.DropEvent, new DragEventHandler(ShellRoot_Drop), true);
+        TitleBarGrid.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(TitleBarGrid_PointerWheelChanged),
+            true);
         RightActionButtons.SizeChanged += (_, _) =>
         {
             _rightButtonsTransform = RightActionButtons.RenderTransform as TranslateTransform;
@@ -239,6 +284,9 @@ public sealed partial class WidgetShell : UserControl
             StopCompactVisualTimers();
             StopCompactVinylRotation();
             _compactLiveStoryboard?.Stop();
+            _compactUpdateStoryboard?.Stop();
+            _groupDropPreviewStoryboard?.Stop();
+            StopContentDropHighlight();
         };
     }
 
@@ -349,12 +397,150 @@ public sealed partial class WidgetShell : UserControl
     public FrameworkElement MoreActionIcon => MoreButtonIcon;
     public FrameworkElement CloseActionIcon => CloseButtonIcon;
     public FrameworkElement DragHandleElement => _isCollapsed ? CollapsedChromeLayer : OverlayDragHandle;
+    public FrameworkElement GroupNavigationElement => GroupTitleSwitcher;
 
     public bool IsOverlayChromeMode => ChromeMode is WidgetChromeMode.Overlay or WidgetChromeMode.Hidden;
 
     public bool IsCollapsed => _isCollapsed;
 
     public bool IsCompactMoveHandlePress => _isCompactMoveHandlePress;
+
+    public bool HasWidgetGroup => _groupPresentation is not null;
+
+    public void SetGroupPresentation(
+        WidgetGroupPresentation? presentation,
+        bool animateIdentity = false,
+        WidgetGroupSwitchOrigin origin = WidgetGroupSwitchOrigin.Programmatic,
+        bool forward = true)
+    {
+        _groupPresentation = presentation;
+        GroupTitleSwitcher.NavigationStyle =
+            presentation?.NavigationStyle ??
+            WidgetGroupNavigationStyles.Stack;
+        GroupTitleSwitcher.DisplayMode = presentation?.TitleDisplayMode ??
+            WidgetGroupTitleDisplayModes.IconAndText;
+        GroupTitleSwitcher.WheelSwitchEnabled =
+            presentation?.WheelSwitchEnabled ?? true;
+        GroupTitleSwitcher.HoverSwitchEnabled =
+            presentation?.HoverSwitchEnabled ?? false;
+        GroupTitleSwitcher.SetPresentation(
+            presentation,
+            animateIdentity,
+            origin,
+            forward);
+        bool grouped = presentation is not null;
+        CompactGroupBadge.Visibility = grouped ? Visibility.Visible : Visibility.Collapsed;
+        CompactGroupBadgeText.Text = grouped ? presentation!.Members.Count.ToString() : string.Empty;
+        UpdateTitleBarContentVisibility();
+        ApplyChromeMode();
+    }
+
+    public void OpenGroupPicker(FrameworkElement? anchor = null)
+    {
+        if (_groupPresentation is null)
+        {
+            return;
+        }
+
+        GroupTitleSwitcher.OpenPicker(anchor ?? GroupTitleSwitcher);
+    }
+
+    public void SetGroupMemberLoading(string? widgetId, bool isLoading)
+    {
+        GroupTitleSwitcher.SetMemberLoading(widgetId, isLoading);
+    }
+
+    public void SetGroupDropPreview(
+        bool visible,
+        bool ready,
+        string? messageKey = null)
+    {
+        bool blocked =
+            !ready &&
+            !string.IsNullOrWhiteSpace(messageKey);
+        GroupDropPreviewIcon.Glyph = blocked ? "\uE7BA" : "\uE8F1";
+        string resolvedMessageKey = messageKey ??
+            (ready ? "Widget.Group.DropReady" : "Widget.Group.DropWaiting");
+        GroupDropPreviewText.Text = App.Current?.LocalizationService.T(
+            resolvedMessageKey)
+            ?? LocalizationService.DefaultText(
+                resolvedMessageKey);
+
+        _groupDropPreviewStoryboard?.Stop();
+        _groupDropPreviewStoryboard = null;
+        double targetOpacity = visible
+            ? ready
+                ? 0.96
+                : blocked
+                    ? 0.88
+                    : 0.76
+            : 0;
+        if (!IsLoaded || !SystemAnimationsEnabled())
+        {
+            GroupDropPreview.Visibility =
+                visible ? Visibility.Visible : Visibility.Collapsed;
+            GroupDropPreview.Opacity = targetOpacity;
+            GroupDropPreviewTransform.Y = 0;
+            return;
+        }
+
+        if (visible)
+        {
+            bool entering =
+                GroupDropPreview.Visibility != Visibility.Visible ||
+                GroupDropPreview.Opacity < 0.01;
+            GroupDropPreview.Visibility = Visibility.Visible;
+            if (entering)
+            {
+                GroupDropPreview.Opacity = 0;
+                GroupDropPreviewTransform.Y = 2;
+            }
+        }
+
+        int durationMs = visible
+            ? WidgetMotion.TransitionMilliseconds
+            : WidgetMotion.FeedbackMilliseconds;
+        var easing = new CubicEase
+        {
+            EasingMode = visible ? EasingMode.EaseOut : EasingMode.EaseIn
+        };
+        var opacityAnimation = new DoubleAnimation
+        {
+            To = targetOpacity,
+            Duration = TimeSpan.FromMilliseconds(durationMs),
+            EasingFunction = easing
+        };
+        var offsetAnimation = new DoubleAnimation
+        {
+            To = visible ? 0 : 1,
+            Duration = TimeSpan.FromMilliseconds(durationMs),
+            EasingFunction = easing
+        };
+        Storyboard.SetTarget(opacityAnimation, GroupDropPreview);
+        Storyboard.SetTargetProperty(opacityAnimation, nameof(Opacity));
+        Storyboard.SetTarget(offsetAnimation, GroupDropPreviewTransform);
+        Storyboard.SetTargetProperty(
+            offsetAnimation,
+            nameof(TranslateTransform.Y));
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(opacityAnimation);
+        storyboard.Children.Add(offsetAnimation);
+        if (!visible)
+        {
+            storyboard.Completed += (_, _) =>
+            {
+                if (ReferenceEquals(_groupDropPreviewStoryboard, storyboard))
+                {
+                    GroupDropPreview.Visibility = Visibility.Collapsed;
+                    GroupDropPreviewTransform.Y = 0;
+                    _groupDropPreviewStoryboard = null;
+                }
+            };
+        }
+        _groupDropPreviewStoryboard = storyboard;
+        storyboard.Begin();
+    }
 
     public void SetCompactReorderEnabled(bool enabled)
     {
@@ -374,17 +560,499 @@ public sealed partial class WidgetShell : UserControl
 
     public void SetContent(IWidgetContent content)
     {
+        DetachHostedContentEvents();
         _hostedContent = content;
+        AttachHostedContentEvents();
         _responsiveLayoutContent = content as IWidgetResponsiveLayoutContent;
         ShellContent = content.View;
         content.OnCompactStateChanged(_isCollapsed);
     }
 
+    internal bool HasPresentableContentFrame =>
+        (ShellContent is not null &&
+         ShellContentPresenter.Visibility == Visibility.Visible &&
+         ShellContentPresenter.Opacity > 0) ||
+        (OutgoingContentPresenter.Content is not null &&
+         OutgoingContentPresenter.Visibility == Visibility.Visible &&
+         OutgoingContentPresenter.Opacity > 0);
+
+    /// <summary>
+    /// Keeps a bitmap of the currently rendered body above the live presenter
+    /// while a persistent legacy host rebinds to another member context.
+    /// </summary>
+    public async Task<bool> BeginContentSnapshotTransitionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_isContentSnapshotTransitionActive ||
+            OutgoingContentPresenter.Content is not null ||
+            !IsLoaded ||
+            _isCollapsed ||
+            ShellContentPresenter.Visibility != Visibility.Visible ||
+            ShellContentPresenter.ActualWidth < 1 ||
+            ShellContentPresenter.ActualHeight < 1)
+        {
+            return false;
+        }
+
+        var snapshot = new RenderTargetBitmap();
+        try
+        {
+            await snapshot.RenderAsync(ShellContentPresenter);
+        }
+        catch (Exception ex)
+        {
+            App.LogVerbose(
+                $"[WidgetGroup] Content snapshot capture unavailable: " +
+                $"{ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (snapshot.PixelWidth < 1 || snapshot.PixelHeight < 1)
+        {
+            return false;
+        }
+
+        OutgoingContentPresenter.Content = new Image
+        {
+            Source = snapshot,
+            Stretch = Stretch.Fill,
+            IsHitTestVisible = false
+        };
+        Grid.SetRow(OutgoingContentPresenter, Grid.GetRow(ShellContentPresenter));
+        Grid.SetRowSpan(
+            OutgoingContentPresenter,
+            Grid.GetRowSpan(ShellContentPresenter));
+        Canvas.SetZIndex(
+            OutgoingContentPresenter,
+            Canvas.GetZIndex(ShellContentPresenter) + 1);
+        OutgoingContentPresenter.Margin = ShellContentPresenter.Margin;
+        OutgoingContentPresenter.Opacity = 1;
+        OutgoingContentPresenter.Visibility = ShellContentPresenter.Visibility;
+        _isContentSnapshotTransitionActive = true;
+        return true;
+    }
+
+    public void CompleteContentSnapshotTransition()
+    {
+        if (!_isContentSnapshotTransitionActive)
+        {
+            return;
+        }
+
+        _isContentSnapshotTransitionActive = false;
+        OutgoingContentPresenter.Content = null;
+        OutgoingContentPresenter.Visibility = Visibility.Collapsed;
+    }
+
+    public void BeginContentTransition(
+        IWidgetContent outgoingContent,
+        IWidgetContent incomingContent)
+    {
+        ArgumentNullException.ThrowIfNull(outgoingContent);
+        ArgumentNullException.ThrowIfNull(incomingContent);
+
+        if (_isContentSnapshotTransitionActive)
+        {
+            throw new InvalidOperationException(
+                "A snapshot transition must finish before starting a live content transition.");
+        }
+
+        EndInteractiveNeighborPreview();
+        ShellContent = null;
+        OutgoingContentPresenter.Content = outgoingContent.View;
+        Grid.SetRow(OutgoingContentPresenter, Grid.GetRow(ShellContentPresenter));
+        Grid.SetRowSpan(
+            OutgoingContentPresenter,
+            Grid.GetRowSpan(ShellContentPresenter));
+        Canvas.SetZIndex(
+            OutgoingContentPresenter,
+            Canvas.GetZIndex(ShellContentPresenter) + 1);
+        OutgoingContentPresenter.Margin = ShellContentPresenter.Margin;
+        OutgoingContentPresenter.Opacity = 1;
+        OutgoingContentPresenter.Visibility = ShellContentPresenter.Visibility;
+        // Stage the initialized incoming member in the live presenter without
+        // exposing it. The manager may wait for a presented frame and persist
+        // the group transaction before animation begins; keeping opacity at
+        // zero here guarantees that interval has exactly one visible member.
+        ShellContentPresenter.Opacity = 0;
+        ShellContentPresenter.IsHitTestVisible = false;
+        SetContent(incomingContent);
+    }
+
+    public void CompleteContentTransition()
+    {
+        ResetContentTransitionVisuals();
+        _isContentSnapshotTransitionActive = false;
+        OutgoingContentPresenter.Content = null;
+        OutgoingContentPresenter.Visibility = Visibility.Collapsed;
+    }
+
+    public async Task<RenderTargetBitmap?> CaptureOutgoingContentSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (OutgoingContentPresenter.Content is null ||
+            !IsLoaded ||
+            OutgoingContentPresenter.ActualWidth < 1 ||
+            OutgoingContentPresenter.ActualHeight < 1)
+        {
+            return null;
+        }
+
+        var snapshot = new RenderTargetBitmap();
+        try
+        {
+            await snapshot.RenderAsync(OutgoingContentPresenter);
+        }
+        catch (Exception ex)
+        {
+            App.LogVerbose(
+                $"[WidgetSurface] Snapshot capture unavailable: " +
+                $"{ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return snapshot.PixelWidth > 0 && snapshot.PixelHeight > 0
+            ? snapshot
+            : null;
+    }
+
+    private bool _isInteractiveNeighborPreviewActive;
+    private RenderTargetBitmap? _interactiveNeighborSnapshot;
+
+    public void UpdateInteractiveNeighborPreview(
+        RenderTargetBitmap snapshot,
+        double translation,
+        double progress)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (_isInteractiveNeighborPreviewActive &&
+            !ReferenceEquals(_interactiveNeighborSnapshot, snapshot))
+        {
+            EndInteractiveNeighborPreview();
+        }
+
+        if (!_isInteractiveNeighborPreviewActive)
+        {
+            OutgoingContentPresenter.Content = new Image
+            {
+                Source = snapshot,
+                Stretch = Stretch.Fill,
+                IsHitTestVisible = false
+            };
+            Grid.SetRow(
+                OutgoingContentPresenter,
+                Grid.GetRow(ShellContentPresenter));
+            Grid.SetRowSpan(
+                OutgoingContentPresenter,
+                Grid.GetRowSpan(ShellContentPresenter));
+            OutgoingContentPresenter.Margin = ShellContentPresenter.Margin;
+            Canvas.SetZIndex(
+                OutgoingContentPresenter,
+                Canvas.GetZIndex(ShellContentPresenter) - 1);
+            OutgoingContentPresenter.Visibility =
+                ShellContentPresenter.Visibility;
+            _isInteractiveNeighborPreviewActive = true;
+            _interactiveNeighborSnapshot = snapshot;
+        }
+
+        double extent = Math.Max(
+            1,
+            ShellContentPresenter.ActualHeight);
+        var liveTransform = new TranslateTransform
+        {
+            Y = translation
+        };
+        var previewTransform = new TranslateTransform
+        {
+            Y = translation < 0
+                ? extent + translation
+                : -extent + translation
+        };
+        ShellContentPresenter.RenderTransform = liveTransform;
+        OutgoingContentPresenter.RenderTransform = previewTransform;
+        ShellContentPresenter.Opacity =
+            1 - (Math.Clamp(progress, 0, 1) * 0.08);
+        OutgoingContentPresenter.Opacity =
+            0.84 + (Math.Clamp(progress, 0, 1) * 0.16);
+    }
+
+    public void EndInteractiveNeighborPreview()
+    {
+        if (!_isInteractiveNeighborPreviewActive)
+        {
+            return;
+        }
+
+        _isInteractiveNeighborPreviewActive = false;
+        _interactiveNeighborSnapshot = null;
+        ShellContentPresenter.RenderTransform = null;
+        ShellContentPresenter.Opacity = 1;
+        OutgoingContentPresenter.RenderTransform = null;
+        OutgoingContentPresenter.Opacity = 1;
+        OutgoingContentPresenter.Content = null;
+        OutgoingContentPresenter.Visibility = Visibility.Collapsed;
+    }
+
+    public Task AnimateContentTransitionAsync(
+        bool directional,
+        bool forward,
+        CancellationToken cancellationToken = default)
+    {
+        if (OutgoingContentPresenter.Content is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        bool animationsEnabled;
+        try
+        {
+            animationsEnabled = new UISettings().AnimationsEnabled;
+        }
+        catch
+        {
+            animationsEnabled = true;
+        }
+
+        WidgetContentTransitionProfile profile =
+            WidgetContentTransitionProfile.Create(
+                animationsEnabled,
+                directional);
+        if (profile.DurationMilliseconds <= 0)
+        {
+            OutgoingContentPresenter.Opacity = 0;
+            ShellContentPresenter.Opacity = 1;
+            ShellContentPresenter.IsHitTestVisible = true;
+            return Task.CompletedTask;
+        }
+
+        double distance = profile.TranslationDistance;
+        double sign = forward ? 1 : -1;
+        var incomingTransform = new CompositeTransform
+        {
+            ScaleX = profile.MinimumScale,
+            ScaleY = profile.MinimumScale,
+            TranslateY = profile.UsesMotion
+                ? distance * sign
+                : 0
+        };
+        var outgoingTransform = new CompositeTransform();
+        ShellContentPresenter.RenderTransformOrigin =
+            new Windows.Foundation.Point(0.5, 0.5);
+        OutgoingContentPresenter.RenderTransformOrigin =
+            new Windows.Foundation.Point(0.5, 0.5);
+        ShellContentPresenter.RenderTransform = incomingTransform;
+        OutgoingContentPresenter.RenderTransform = outgoingTransform;
+
+        ShellContentPresenter.Opacity = 0;
+        OutgoingContentPresenter.Opacity = 1;
+        int outgoingDurationMs = profile.OutgoingDurationMilliseconds;
+        int incomingBeginTimeMs =
+            outgoingDurationMs + profile.SwapGapMilliseconds;
+        int incomingDurationMs = profile.IncomingDurationMilliseconds;
+        var storyboard = new Storyboard();
+        if (profile.UsesMotion)
+        {
+            AddTransitionAnimation(
+                storyboard,
+                outgoingTransform,
+                nameof(CompositeTransform.TranslateY),
+                -distance * sign,
+                outgoingDurationMs,
+                easingMode: EasingMode.EaseIn);
+            AddTransitionAnimation(
+                storyboard,
+                incomingTransform,
+                nameof(CompositeTransform.TranslateY),
+                0,
+                incomingDurationMs,
+                incomingBeginTimeMs);
+        }
+        AddTransitionAnimation(
+            storyboard,
+            outgoingTransform,
+            nameof(CompositeTransform.ScaleX),
+            profile.MinimumScale,
+            outgoingDurationMs,
+            easingMode: EasingMode.EaseIn);
+        AddTransitionAnimation(
+            storyboard,
+            outgoingTransform,
+            nameof(CompositeTransform.ScaleY),
+            profile.MinimumScale,
+            outgoingDurationMs,
+            easingMode: EasingMode.EaseIn);
+        AddTransitionAnimation(
+            storyboard,
+            incomingTransform,
+            nameof(CompositeTransform.ScaleX),
+            1,
+            incomingDurationMs,
+            incomingBeginTimeMs);
+        AddTransitionAnimation(
+            storyboard,
+            incomingTransform,
+            nameof(CompositeTransform.ScaleY),
+            1,
+            incomingDurationMs,
+            incomingBeginTimeMs);
+        AddTransitionAnimation(
+            storyboard,
+            OutgoingContentPresenter,
+            "Opacity",
+            0,
+            outgoingDurationMs,
+            easingMode: EasingMode.EaseIn);
+        AddTransitionAnimation(
+            storyboard,
+            ShellContentPresenter,
+            "Opacity",
+            1,
+            incomingDurationMs,
+            incomingBeginTimeMs);
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bool settled = false;
+        void Settle(bool cancelled)
+        {
+            if (settled)
+            {
+                return;
+            }
+
+            settled = true;
+            storyboard.Stop();
+            SetContentTransitionVisuals(incomingVisible: !cancelled);
+            if (cancelled)
+            {
+                completion.TrySetCanceled(cancellationToken);
+            }
+            else
+            {
+                completion.TrySetResult();
+            }
+        }
+
+        storyboard.Completed += (_, _) => Settle(cancelled: false);
+        CancellationTokenRegistration registration = cancellationToken.Register(
+            () => DispatcherQueue.TryEnqueue(() => Settle(cancelled: true)));
+        _ = completion.Task.ContinueWith(
+            _ => registration.Dispose(),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        storyboard.Begin();
+        return completion.Task;
+    }
+
+    private static void AddTransitionAnimation(
+        Storyboard storyboard,
+        DependencyObject target,
+        string property,
+        double to,
+        int durationMs,
+        int beginTimeMs = 0,
+        EasingMode easingMode = EasingMode.EaseOut)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = to,
+            Duration = TimeSpan.FromMilliseconds(durationMs),
+            BeginTime = TimeSpan.FromMilliseconds(beginTimeMs),
+            EasingFunction = new CubicEase { EasingMode = easingMode }
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+        storyboard.Children.Add(animation);
+    }
+
+    private void ResetContentTransitionVisuals()
+    {
+        SetContentTransitionVisuals(incomingVisible: true);
+    }
+
+    private void SetContentTransitionVisuals(bool incomingVisible)
+    {
+        _isInteractiveNeighborPreviewActive = false;
+        _interactiveNeighborSnapshot = null;
+        ShellContentPresenter.Opacity = incomingVisible ? 1 : 0;
+        ShellContentPresenter.IsHitTestVisible = incomingVisible;
+        OutgoingContentPresenter.Opacity = incomingVisible ? 0 : 1;
+        ShellContentPresenter.RenderTransform = null;
+        OutgoingContentPresenter.RenderTransform = null;
+        ShellContentPresenter.RenderTransformOrigin =
+            new Windows.Foundation.Point(0, 0);
+        OutgoingContentPresenter.RenderTransformOrigin =
+            new Windows.Foundation.Point(0, 0);
+    }
+
+    private void ContentTransitionViewport_SizeChanged(
+        object sender,
+        SizeChangedEventArgs e)
+    {
+        ContentTransitionViewport.Clip = new RectangleGeometry
+        {
+            Rect = new Windows.Foundation.Rect(
+                0,
+                0,
+                Math.Max(0, e.NewSize.Width),
+                Math.Max(0, e.NewSize.Height))
+        };
+    }
+
+    public void RollbackContentTransition(IWidgetContent outgoingContent)
+    {
+        ArgumentNullException.ThrowIfNull(outgoingContent);
+        ShellContent = null;
+        CompleteContentTransition();
+        SetContent(outgoingContent);
+    }
+
     public void ClearContent()
     {
+        DetachHostedContentEvents();
         _hostedContent = null;
         _responsiveLayoutContent = null;
         ShellContent = null;
+        StopContentDropHighlight();
+        CompleteContentTransition();
+    }
+
+    private void AttachHostedContentEvents()
+    {
+        if (_hostedContent is FileSurfaceContent fileSurface)
+        {
+            fileSurface.ExternalFileDragEnded += HostedFileSurface_ExternalFileDragEnded;
+            fileSurface.ImportBusyChanged += HostedFileSurface_ImportBusyChanged;
+            TitleBarGrid.IsHitTestVisible = !fileSurface.IsImportBusy;
+        }
+    }
+
+    private void DetachHostedContentEvents()
+    {
+        if (_hostedContent is FileSurfaceContent fileSurface)
+        {
+            fileSurface.ExternalFileDragEnded -= HostedFileSurface_ExternalFileDragEnded;
+            fileSurface.ImportBusyChanged -= HostedFileSurface_ImportBusyChanged;
+        }
+
+        TitleBarGrid.IsHitTestVisible = true;
+    }
+
+    private void HostedFileSurface_ExternalFileDragEnded(
+        object? sender,
+        EventArgs e)
+    {
+        StopContentDropHighlight();
+    }
+
+    private void HostedFileSurface_ImportBusyChanged(bool isBusy)
+    {
+        TitleBarGrid.IsHitTestVisible = !isBusy;
     }
 
     public void BeginResponsiveLayoutTransition(
@@ -552,7 +1220,8 @@ public sealed partial class WidgetShell : UserControl
         double expandedOuterRadius,
         double compactOuterRadius,
         double compactInnerRadius,
-        double compactMediaRadius)
+        double compactMediaRadius,
+        WidgetCompactTransitionVisualProfile? visualProfile = null)
     {
         if (_isCollapsed == collapsed)
         {
@@ -563,6 +1232,11 @@ public sealed partial class WidgetShell : UserControl
         _compactOuterCornerRadius = Math.Max(0, compactOuterRadius);
         _compactInnerCornerRadius = Math.Max(0, compactInnerRadius);
         _compactMediaCornerRadius = Math.Max(0, compactMediaRadius);
+        _compactTransitionProfile = visualProfile ??
+            WidgetCompactTransitionVisualProfile.Resolve(
+                SettingsService.WidgetCompactAnimationSmooth,
+                SettingsService.DefaultWidgetCompactAnimationDurationMs,
+                SystemAnimationsEnabled());
         _transitionOuterCornerRadiusFrom = collapsed
             ? _expandedOuterCornerRadius
             : _compactOuterCornerRadius;
@@ -594,22 +1268,8 @@ public sealed partial class WidgetShell : UserControl
         }
 
         double value = Math.Clamp(progress, 0, 1);
-        double compactOpacity;
-        double expandedOpacity;
-        if (collapsed)
-        {
-            expandedOpacity = 1 - SmoothStep(Math.Clamp(value / 0.62, 0, 1));
-            compactOpacity = SmoothStep(Math.Clamp((value - 0.36) / 0.64, 0, 1));
-        }
-        else
-        {
-            compactOpacity = 1 - SmoothStep(Math.Clamp(value / 0.46, 0, 1));
-            double expandedRevealStart = _isResponsiveLayoutTransitionActive ? 0.42 : 0.28;
-            expandedOpacity = SmoothStep(Math.Clamp(
-                (value - expandedRevealStart) / (1 - expandedRevealStart),
-                0,
-                1));
-        }
+        (double compactOpacity, double expandedOpacity) =
+            _compactTransitionProfile.GetOpacity(collapsed, value);
 
         CollapsedChromeLayer.Opacity = compactOpacity;
         TitleBarGrid.Opacity = expandedOpacity;
@@ -630,13 +1290,13 @@ public sealed partial class WidgetShell : UserControl
             {
                 // Collapsing: fade in after compact layer is partially visible
                 fullBleedOpacity = SmoothStep(Math.Clamp((value - 0.5) / 0.5, 0, 1));
-                fullBleedScale = Lerp(0.9, 1.0, fullBleedOpacity);
+                fullBleedScale = Lerp(0.98, 1.0, fullBleedOpacity);
             }
             else
             {
                 // Expanding: fade out faster than compact layer, shrink slightly
                 fullBleedOpacity = 1 - SmoothStep(Math.Clamp(value / 0.35, 0, 1));
-                fullBleedScale = Lerp(1.0, 1.15, 1 - fullBleedOpacity);
+                fullBleedScale = Lerp(1.0, 1.02, 1 - fullBleedOpacity);
             }
 
             CompactFullBleedBackground.Opacity = fullBleedOpacity;
@@ -679,6 +1339,8 @@ public sealed partial class WidgetShell : UserControl
         CollapsedChromeLayer.IsHitTestVisible = true;
         FullBleedScaleTransform.ScaleX = 1;
         FullBleedScaleTransform.ScaleY = 1;
+        TitleIdentityHost.Opacity = 1;
+        GroupTitleSwitcher.Opacity = 1;
     }
 
     public void SetCompactPresentation(WidgetCompactPresentation presentation)
@@ -1339,17 +2001,22 @@ public sealed partial class WidgetShell : UserControl
         CompactLiveProgressTransform.ScaleX = _compactLiveIndeterminateSegment;
         CompactLiveProgressTransform.TranslateX = 0;
 
+        if (!SystemAnimationsEnabled())
+        {
+            StopCompactLiveIndeterminate();
+            CompactLiveProgressTransform.ScaleX = 1;
+            CompactLiveProgressTransform.TranslateX = 0;
+            CompactLiveProgress.Opacity = isFullBleed ? 0.72 : 0.5;
+            return;
+        }
+
         if (_compactLiveIndeterminateTimer is not null)
         {
             return;
         }
 
-        // Drive the sweep directly with a DispatcherQueue timer. This is not a
-        // XAML Storyboard, so it is not affected by the OS "Show animations"
-        // setting — it keeps running whether or not the user has system
-        // animations enabled. This fixes the symptom where, with animations
-        // disabled, the bar would freeze at a static semi-transparent segment
-        // for the entire Duration-unknown window (e.g. music first ~40 s).
+        // The timer is only used while system animations are enabled. Reduced
+        // motion gets a static full-width progress treatment above.
         _compactLiveIndeterminateTimer = DispatcherQueue.CreateTimer();
         _compactLiveIndeterminateTimer.Interval = TimeSpan.FromMilliseconds(40);
         _compactLiveIndeterminateTimer.Tick += CompactLiveIndeterminateTimer_Tick;
@@ -1537,7 +2204,7 @@ public sealed partial class WidgetShell : UserControl
         {
             CompactEdgeGlowBrush.Color = p.EdgeGlowColor.Value;
             CompactEdgeGlow.BorderThickness = new Thickness(1.5);
-            CompactEdgeGlow.Opacity = 0.7;
+            CompactEdgeGlow.Opacity = 0.56;
             StartEdgeGlowPulse();
         }
         else
@@ -1588,7 +2255,7 @@ public sealed partial class WidgetShell : UserControl
     {
         _edgeGlowPulsePhase += 0.04;
         CompactEdgeGlow.Opacity =
-            0.5 + 0.25 * Math.Sin(_edgeGlowPulsePhase);
+            0.48 + 0.1 * Math.Sin(_edgeGlowPulsePhase);
     }
 
     // ── Particles (rain / snow) ────────────────────────────────
@@ -1841,7 +2508,10 @@ public sealed partial class WidgetShell : UserControl
         var sb = new Storyboard();
         var anim = new DoubleAnimation
         {
-            From = 1.0, To = 0.5, Duration = TimeSpan.FromMilliseconds(150),
+            From = 0.9,
+            To = 0.45,
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.FeedbackMilliseconds),
             AutoReverse = true, EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
         };
         Storyboard.SetTarget(anim, CompactEdgeGlow);
@@ -1853,23 +2523,31 @@ public sealed partial class WidgetShell : UserControl
     private void TriggerCapsuleBounce()
     {
         if (!SystemAnimationsEnabled()) return;
-        var sb = new Storyboard();
+        _compactUpdateStoryboard?.Stop();
+        CompactIdentityPulseTransform.ScaleX = 0.92;
+        CompactIdentityPulseTransform.ScaleY = 0.92;
         var animX = new DoubleAnimation
         {
-            From = 1.0, To = 1.03, Duration = TimeSpan.FromMilliseconds(100),
-            AutoReverse = true, EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.TransitionMilliseconds),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         var animY = new DoubleAnimation
         {
-            From = 1.0, To = 1.03, Duration = TimeSpan.FromMilliseconds(100),
-            AutoReverse = true, EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.TransitionMilliseconds),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
-        Storyboard.SetTarget(animX, ShellRootScale);
+        Storyboard.SetTarget(animX, CompactIdentityPulseTransform);
         Storyboard.SetTargetProperty(animX, "ScaleX");
-        Storyboard.SetTarget(animY, ShellRootScale);
+        Storyboard.SetTarget(animY, CompactIdentityPulseTransform);
         Storyboard.SetTargetProperty(animY, "ScaleY");
+        var sb = new Storyboard();
         sb.Children.Add(animX);
         sb.Children.Add(animY);
+        _compactUpdateStoryboard = sb;
         sb.Begin();
     }
 
@@ -1893,18 +2571,20 @@ public sealed partial class WidgetShell : UserControl
         });
         indicatorAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
         {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
-            Value = 0.9,
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(
+                WidgetMotion.FeedbackMilliseconds)),
+            Value = 0.82,
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
         indicatorAnimation.KeyFrames.Add(new LinearDoubleKeyFrame
         {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)),
-            Value = 0.9
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(
+                WidgetMotion.SpatialMilliseconds)),
+            Value = 0.82
         });
         indicatorAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
         {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(860)),
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(667)),
             Value = 0,
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         });
@@ -1913,9 +2593,10 @@ public sealed partial class WidgetShell : UserControl
 
         var textOpacityAnimation = new DoubleAnimation
         {
-            From = 0.58,
+            From = 0.72,
             To = 1,
-            Duration = new Duration(TimeSpan.FromMilliseconds(220)),
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.TransitionMilliseconds),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         Storyboard.SetTarget(textOpacityAnimation, CompactTextHost);
@@ -1923,9 +2604,10 @@ public sealed partial class WidgetShell : UserControl
 
         var textOffsetAnimation = new DoubleAnimation
         {
-            From = 5,
+            From = WidgetMotion.TranslationDistance,
             To = 0,
-            Duration = new Duration(TimeSpan.FromMilliseconds(260)),
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.TransitionMilliseconds),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         Storyboard.SetTarget(textOffsetAnimation, CompactTextTransform);
@@ -2388,9 +3070,17 @@ public sealed partial class WidgetShell : UserControl
 
     private void UpdateTitleBarContentVisibility()
     {
-        bool hasCustomTitleBar = TitleBarContent is not null;
+        bool hasGroupNavigation = _groupPresentation is not null;
+        bool isEditingTitle = TitleEditorContent is not null;
+        bool hasCustomTitleBar = TitleBarContent is not null && !hasGroupNavigation;
         CustomTitleBarContentPresenter.Visibility = hasCustomTitleBar ? Visibility.Visible : Visibility.Collapsed;
         DefaultTitleBarContentHost.Visibility = hasCustomTitleBar ? Visibility.Collapsed : Visibility.Visible;
+        TitleIdentityHost.Visibility = hasGroupNavigation && !isEditingTitle
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        GroupTitleSwitcher.Visibility = hasGroupNavigation && !isEditingTitle
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void ApplyChromeMode()
@@ -2436,7 +3126,16 @@ public sealed partial class WidgetShell : UserControl
         Grid.SetRow(ShellContentPresenter, usesOverlay ? 0 : 1);
         Grid.SetRowSpan(ShellContentPresenter, usesOverlay ? 2 : 1);
         ShellContentPresenter.Margin = new Thickness(0);
-        TitleIdentityHost.Visibility = usesOverlay && !isEditingTitle ? Visibility.Collapsed : Visibility.Visible;
+        TitleIdentityHost.Visibility = !isEditingTitle &&
+                                       (_groupPresentation is not null || usesOverlay)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        GroupTitleSwitcher.Visibility =
+            _groupPresentation is not null &&
+            !usesOverlay &&
+            !isEditingTitle
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         OverlayChromeLayer.Visibility = usesOverlay && !isEditingTitle ? Visibility.Visible : Visibility.Collapsed;
         OverlayIdentityHost.Visibility = Visibility.Collapsed;
         OverlayDragHandle.Visibility = usesOverlay && !isEditingTitle ? Visibility.Visible : Visibility.Collapsed;
@@ -2477,7 +3176,6 @@ public sealed partial class WidgetShell : UserControl
         OverlayIdentityHost.Opacity = 0;
         OverlayDragHandle.Opacity = showHandle ? 1 : 0;
         OverlayDragHandle.IsHitTestVisible = showHandle;
-
         if (!animateButtons)
         {
             if (ChromeMode is WidgetChromeMode.Overlay or WidgetChromeMode.Hidden)
@@ -2509,11 +3207,15 @@ public sealed partial class WidgetShell : UserControl
         if (!animate || !SystemAnimationsEnabled())
         {
             CompactActionHost.Opacity = visible ? 1 : 0;
-            CompactActionHostTransform.X = visible ? 0 : 16;
+            CompactActionHostTransform.X =
+                visible ? 0 : WidgetMotion.TranslationDistance;
             return;
         }
 
-        var duration = TimeSpan.FromMilliseconds(visible ? 200 : 150);
+        var duration = TimeSpan.FromMilliseconds(
+            visible
+                ? WidgetMotion.TransitionMilliseconds
+                : WidgetMotion.FeedbackMilliseconds);
         var easing = new CubicEase
         {
             EasingMode = visible ? EasingMode.EaseOut : EasingMode.EaseIn
@@ -2527,7 +3229,7 @@ public sealed partial class WidgetShell : UserControl
         };
         var slideAnim = new DoubleAnimation
         {
-            To = visible ? 0 : 16,
+            To = visible ? 0 : WidgetMotion.TranslationDistance,
             Duration = new Duration(duration),
             EasingFunction = easing
         };
@@ -2560,7 +3262,10 @@ public sealed partial class WidgetShell : UserControl
         var animation = new DoubleAnimation
         {
             To = targetOpacity,
-            Duration = new Duration(TimeSpan.FromMilliseconds(visible ? 140 : 100)),
+            Duration = TimeSpan.FromMilliseconds(
+                visible
+                    ? WidgetMotion.TransitionMilliseconds
+                    : WidgetMotion.FeedbackMilliseconds),
             EasingFunction = new CubicEase
             {
                 EasingMode = visible ? EasingMode.EaseOut : EasingMode.EaseIn
@@ -2656,7 +3361,10 @@ public sealed partial class WidgetShell : UserControl
         var animation = new DoubleAnimation
         {
             To = show ? 0.7 : 0,
-            Duration = new Duration(TimeSpan.FromMilliseconds(show ? 150 : 100)),
+            Duration = TimeSpan.FromMilliseconds(
+                show
+                    ? WidgetMotion.TransitionMilliseconds
+                    : WidgetMotion.FeedbackMilliseconds),
             EasingFunction = new CubicEase
             {
                 EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn
@@ -2771,7 +3479,8 @@ public sealed partial class WidgetShell : UserControl
         var animation = new DoubleAnimation
         {
             To = targetOpacity,
-            Duration = new Duration(TimeSpan.FromMilliseconds(show ? 120 : 150)),
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.FeedbackMilliseconds),
             EasingFunction = new CubicEase
             {
                 EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn
@@ -2795,11 +3504,17 @@ public sealed partial class WidgetShell : UserControl
     private void AnimateOpacity(UIElement element, double target)
     {
         if (Math.Abs(element.Opacity - target) < 0.01) return;
+        if (!SystemAnimationsEnabled())
+        {
+            element.Opacity = target;
+            return;
+        }
         var sb = new Storyboard();
         var anim = new DoubleAnimation
         {
             To = target,
-            Duration = TimeSpan.FromMilliseconds(100),
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.FeedbackMilliseconds),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
         };
         Storyboard.SetTarget(anim, element);
@@ -2887,11 +3602,96 @@ public sealed partial class WidgetShell : UserControl
         ApplyCompactActionVisibility();
     }
 
-    private void ShellRoot_DragEnter(object sender, DragEventArgs e) => CompactDragEntered?.Invoke(this, EventArgs.Empty);
+    private void ShellRoot_DragEnter(object sender, DragEventArgs e)
+    {
+        if (ShouldShowContentDropHighlight(e.DataView))
+        {
+            StartContentDropHighlight();
+        }
 
-    private void ShellRoot_DragLeave(object sender, DragEventArgs e) => CompactDragLeft?.Invoke(this, EventArgs.Empty);
+        CompactDragEntered?.Invoke(this, EventArgs.Empty);
+    }
 
-    private void ShellRoot_Drop(object sender, DragEventArgs e) => CompactDropCompleted?.Invoke(this, EventArgs.Empty);
+    private void ShellRoot_DragLeave(object sender, DragEventArgs e)
+    {
+        StopContentDropHighlight();
+        CompactDragLeft?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ShellRoot_Drop(object sender, DragEventArgs e)
+    {
+        StopContentDropHighlight();
+        CompactDropCompleted?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool ShouldShowContentDropHighlight(
+        DataPackageView dataView)
+    {
+        return _hostedContent is FileSurfaceContent fileSurface &&
+               DeskBoxDragData.HasDroppedFiles(dataView) &&
+               !fileSurface.IsInternalReorderDrag(dataView);
+    }
+
+    private void StartContentDropHighlight()
+    {
+        if (_isContentDropHighlightActive)
+        {
+            return;
+        }
+
+        _isContentDropHighlightActive = true;
+        Color accent =
+            App.Current?.ThemeService?.GetEffectiveAccentColor() ??
+            AccentColorHelper.DefaultAccentColor;
+        ContentDropHighlightBorder.BorderBrush =
+            new SolidColorBrush(Color.FromArgb(
+                0xD8,
+                accent.R,
+                accent.G,
+                accent.B));
+        ContentDropHighlightBorder.Visibility = Visibility.Visible;
+
+        Visual visual = ElementCompositionPreview.GetElementVisual(
+            ContentDropHighlightBorder);
+        visual.StopAnimation("Opacity");
+        if (!SystemAnimationsEnabled())
+        {
+            visual.Opacity = 0.72f;
+            return;
+        }
+
+        ScalarKeyFrameAnimation animation =
+            visual.Compositor.CreateScalarKeyFrameAnimation();
+        animation.Duration = TimeSpan.FromMilliseconds(1500);
+        animation.IterationBehavior = AnimationIterationBehavior.Forever;
+        CubicBezierEasingFunction easing =
+            visual.Compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.42f, 0),
+                new Vector2(0.58f, 1));
+        animation.InsertKeyFrame(0, 0.25f);
+        animation.InsertKeyFrame(0.5f, 0.9f, easing);
+        animation.InsertKeyFrame(1, 0.25f, easing);
+        _contentDropHighlightAnimation = animation;
+        visual.StartAnimation("Opacity", animation);
+    }
+
+    private void StopContentDropHighlight()
+    {
+        if (!_isContentDropHighlightActive)
+        {
+            return;
+        }
+
+        _isContentDropHighlightActive = false;
+        Visual visual = ElementCompositionPreview.GetElementVisual(
+            ContentDropHighlightBorder);
+        visual.StopAnimation("Opacity");
+        visual.Opacity = 0;
+        ContentDropHighlightBorder.Visibility = Visibility.Collapsed;
+        ContentDropHighlightBorder.BorderBrush =
+            new SolidColorBrush(Colors.Transparent);
+        _contentDropHighlightAnimation = null;
+    }
 
     private Brush CreateOpaqueOverlayButtonBackground()
     {
@@ -2969,6 +3769,13 @@ public sealed partial class WidgetShell : UserControl
         TitleRightTapped?.Invoke(this, e);
     }
 
+    private void TitleBarGrid_PointerWheelChanged(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        GroupTitleSwitcher.HandleTitleBarPointerWheel(TitleBarGrid, e);
+    }
+
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         TitlePointerPressed?.Invoke(this, e);
@@ -3018,9 +3825,11 @@ public sealed partial class WidgetShell : UserControl
                 IsWithin(reorderSource, CompactReorderHandle);
             _isCompactMoveHandlePress = pressedMoveHandle;
             startsWindowDrag = pressedMoveHandle || pressedReorderHandle;
-            _pendingDragHandleClickAction = startsWindowDrag
-                ? DragHandleClickAction.None
-                : DragHandleClickAction.Expand;
+            _pendingDragHandleClickAction = pressedMoveHandle && _groupPresentation is not null
+                ? DragHandleClickAction.OpenGroup
+                : startsWindowDrag
+                    ? DragHandleClickAction.None
+                    : DragHandleClickAction.Expand;
         }
         else if (_isCollapseActionAvailable && IsOverlayChromeMode)
         {
@@ -3083,6 +3892,10 @@ public sealed partial class WidgetShell : UserControl
         {
             CollapseRequested?.Invoke(this, e);
         }
+        else if (clickAction == DragHandleClickAction.OpenGroup)
+        {
+            OpenGroupPicker(CompactIdentityHost);
+        }
     }
 
     private void OverlayDragHandle_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
@@ -3128,22 +3941,51 @@ public sealed partial class WidgetShell : UserControl
             _isCollapseActionAvailable &&
             _isPointerOverDragHandle &&
             !_isDragHandlePressed;
-        double gripOpacity = showCollapseCue ? 0 : 0.76;
-        double chevronOpacity = showCollapseCue ? 0.9 : 0;
+        double gripOpacity = showCollapseCue ? 0.9 : 0.76;
+        double leftAngle = showCollapseCue ? -13 : 0;
+        double rightAngle = showCollapseCue ? 13 : 0;
 
         _overlayHandleVisualStoryboard?.Stop();
         if (!animate || !SystemAnimationsEnabled())
         {
             OverlayDragGrip.Opacity = gripOpacity;
-            OverlayCollapseChevron.Opacity = chevronOpacity;
+            OverlayDragGripLeftRotation.Angle = leftAngle;
+            OverlayDragGripRightRotation.Angle = rightAngle;
             return;
         }
 
         var storyboard = new Storyboard();
         AddOpacityAnimation(storyboard, OverlayDragGrip, gripOpacity);
-        AddOpacityAnimation(storyboard, OverlayCollapseChevron, chevronOpacity);
+        AddHandleAngleAnimation(
+            storyboard,
+            OverlayDragGripLeftRotation,
+            leftAngle);
+        AddHandleAngleAnimation(
+            storyboard,
+            OverlayDragGripRightRotation,
+            rightAngle);
         _overlayHandleVisualStoryboard = storyboard;
         storyboard.Begin();
+    }
+
+    private static void AddHandleAngleAnimation(
+        Storyboard storyboard,
+        RotateTransform target,
+        double angle)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = angle,
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.TransitionMilliseconds),
+            EasingFunction = new CubicEase
+            {
+                EasingMode = EasingMode.EaseOut
+            }
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, nameof(RotateTransform.Angle));
+        storyboard.Children.Add(animation);
     }
 
     private static void AddOpacityAnimation(
@@ -3154,7 +3996,8 @@ public sealed partial class WidgetShell : UserControl
         var animation = new DoubleAnimation
         {
             To = opacity,
-            Duration = new Duration(TimeSpan.FromMilliseconds(100)),
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.FeedbackMilliseconds),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         Storyboard.SetTarget(animation, target);

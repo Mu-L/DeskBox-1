@@ -167,6 +167,58 @@ public sealed class WidgetFileStackSettingsTests
     }
 
     [Fact]
+    public void StackOrder_RoundTripPreservesMixedDisplayUnitOrder()
+    {
+        var config = new WidgetConfig();
+        string[] order =
+        [
+            "Documents",
+            @"Item:C:\B",
+            "Images",
+            @"Item:C:\A"
+        ];
+
+        WidgetFileStackSettings.SetStackOrder(config, order);
+
+        Assert.Equal(order, WidgetFileStackSettings.GetStackOrder(config));
+    }
+
+    [Fact]
+    public void StackMemberOverrides_RoundTripPreservesManualMemberships()
+    {
+        var config = new WidgetConfig();
+        var memberships =
+            new Dictionary<string, List<string>>
+            {
+                ["Manual:alpha"] =
+                [
+                    @"C:\Work\one.txt",
+                    @"C:\Work\two.png"
+                ],
+                ["Documents"] =
+                [
+                    @"C:\Work\forced.pdf"
+                ]
+            };
+
+        WidgetFileStackSettings.SetStackMemberOverrides(
+            config,
+            memberships);
+
+        Dictionary<string, List<string>> restored =
+            WidgetFileStackSettings.GetStackMemberOverrides(config);
+        Assert.Equal(
+            memberships.Keys,
+            restored.Keys);
+        Assert.Equal(
+            memberships["Manual:alpha"],
+            restored["Manual:alpha"]);
+        Assert.Equal(
+            memberships["Documents"],
+            restored["Documents"]);
+    }
+
+    [Fact]
     public void AppSettings_CustomRulesRoundTripThroughJson()
     {
         var settings = new AppSettings

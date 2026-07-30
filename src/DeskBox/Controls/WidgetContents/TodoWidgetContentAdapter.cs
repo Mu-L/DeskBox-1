@@ -11,7 +11,12 @@ namespace DeskBox.Controls.WidgetContents;
 /// Content adapter for the future Todo widget. This keeps Todo in the shared
 /// content pipeline without making the widget kind user-creatable yet.
 /// </summary>
-public sealed class TodoWidgetContentAdapter : IWidgetContent, IWidgetAddActionContent, IDisposable
+public sealed class TodoWidgetContentAdapter :
+    IWidgetContent,
+    IWidgetAddActionContent,
+    IWidgetFeedbackSource,
+    IWidgetTransientStateContent,
+    IDisposable
 {
     private readonly Func<TodoWidgetViewModel, FrameworkElement> _viewFactory;
     private FrameworkElement? _view;
@@ -52,9 +57,33 @@ public sealed class TodoWidgetContentAdapter : IWidgetContent, IWidgetAddActionC
 
     public WidgetKind WidgetKind => Config.WidgetKind;
 
-    public FrameworkElement View => _view ??= _viewFactory(ViewModel);
+    public FrameworkElement View
+    {
+        get
+        {
+            if (_view is null)
+            {
+                _view = _viewFactory(ViewModel);
+                if (_view is TodoWidgetContent todoContent)
+                {
+                    todoContent.FeedbackRequested += TodoContent_FeedbackRequested;
+                }
+            }
+
+            return _view;
+        }
+    }
 
     public TodoWidgetViewModel ViewModel { get; }
+
+    public event EventHandler<WidgetFeedbackRequestedEventArgs>? FeedbackRequested;
+
+    private void TodoContent_FeedbackRequested(
+        object? sender,
+        WidgetFeedbackRequestedEventArgs e)
+    {
+        FeedbackRequested?.Invoke(this, e);
+    }
 
     public Task InitializeAsync()
     {
@@ -79,6 +108,26 @@ public sealed class TodoWidgetContentAdapter : IWidgetContent, IWidgetAddActionC
     {
     }
 
+    public object? CaptureTransientState()
+    {
+        return new TodoTransientState(
+            ViewModel.InputText,
+            ViewModel.DraftImportant,
+            ViewModel.DraftDueDate);
+    }
+
+    public void RestoreTransientState(object? state)
+    {
+        if (state is not TodoTransientState todoState)
+        {
+            return;
+        }
+
+        ViewModel.InputText = todoState.InputText;
+        ViewModel.DraftImportant = todoState.DraftImportant;
+        ViewModel.DraftDueDate = todoState.DraftDueDate;
+    }
+
     public Task AddFromTitleButtonAsync()
     {
         if (View is TodoWidgetContent todoContent)
@@ -89,11 +138,16 @@ public sealed class TodoWidgetContentAdapter : IWidgetContent, IWidgetAddActionC
         return Task.CompletedTask;
     }
 
-    internal Task<bool> CanImportExternalDropAsync(DataPackageView dataView)
+    private sealed record TodoTransientState(
+        string InputText,
+        bool DraftImportant,
+        DateTimeOffset? DraftDueDate);
+
+    internal bool CanImportExternalDrop(DataPackageView dataView)
     {
         return View is TodoWidgetContent todoContent
-            ? todoContent.CanImportExternalDropAsync(dataView)
-            : Task.FromResult(false);
+            ? todoContent.CanImportExternalDrop(dataView)
+            : false;
     }
 
     internal Task<bool> ImportExternalDropAsync(DataPackageView dataView)
@@ -105,6 +159,11 @@ public sealed class TodoWidgetContentAdapter : IWidgetContent, IWidgetAddActionC
 
     public void Dispose()
     {
+        if (_view is TodoWidgetContent todoContent)
+        {
+            todoContent.FeedbackRequested -= TodoContent_FeedbackRequested;
+        }
+
         if (ViewModel is IDisposable disposable)
         {
             disposable.Dispose();

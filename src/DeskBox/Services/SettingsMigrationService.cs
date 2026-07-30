@@ -20,7 +20,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 3;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -28,6 +28,8 @@ public sealed class SettingsMigrationPipeline
     {
         // Register migrations in order
         _migrations.Add(new Migration_0_To_1());
+        _migrations.Add(new Migration_1_To_2());
+        _migrations.Add(new Migration_2_To_3());
     }
 
     /// <summary>
@@ -99,10 +101,70 @@ internal sealed class Migration_0_To_1 : ISettingsMigration
         // Ensure Widgets list is initialized
         settings.Widgets ??= [];
 
+        // Ensure widget groups are initialized. Older settings have no groups.
+        settings.WidgetGroups ??= [];
+
         // Ensure DeletedWidgetIds list is initialized
         settings.DeletedWidgetIds ??= [];
 
         // Ensure RecentOrganizationHistory is initialized
         settings.RecentOrganizationHistory ??= [];
+    }
+}
+
+/// <summary>
+/// Removes the implicit wheel-off override written by the early Tabs
+/// compatibility migration. A group whose navigation follows the application
+/// default must also be able to follow the application's wheel setting.
+/// Explicit navigation styles and future per-group choices remain untouched.
+/// </summary>
+internal sealed class Migration_1_To_2 : ISettingsMigration
+{
+    public int FromVersion => 1;
+
+    public void Migrate(AppSettings settings)
+    {
+        settings.WidgetGroups ??= [];
+        foreach (WidgetGroupConfig group in settings.WidgetGroups)
+        {
+            if (string.Equals(
+                    WidgetGroupNavigationStyles.Normalize(
+                        group.NavigationStyle,
+                        allowFollowDefault: true),
+                    WidgetGroupNavigationStyles.FollowDefault,
+                    StringComparison.Ordinal) &&
+                group.WheelSwitchEnabled == false)
+            {
+                group.WheelSwitchEnabled = null;
+            }
+        }
+    }
+}
+
+/// <summary>
+/// Repairs groups changed from Tabs to FollowDefault after schema version 2.
+/// Those groups could retain the compatibility wheel-off value even though
+/// the application-level wheel setting was enabled.
+/// </summary>
+internal sealed class Migration_2_To_3 : ISettingsMigration
+{
+    public int FromVersion => 2;
+
+    public void Migrate(AppSettings settings)
+    {
+        settings.WidgetGroups ??= [];
+        foreach (WidgetGroupConfig group in settings.WidgetGroups)
+        {
+            if (string.Equals(
+                    WidgetGroupNavigationStyles.Normalize(
+                        group.NavigationStyle,
+                        allowFollowDefault: true),
+                    WidgetGroupNavigationStyles.FollowDefault,
+                    StringComparison.Ordinal) &&
+                group.WheelSwitchEnabled == false)
+            {
+                group.WheelSwitchEnabled = null;
+            }
+        }
     }
 }

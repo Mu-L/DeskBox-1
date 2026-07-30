@@ -28,17 +28,19 @@ namespace DeskBox.Views;
 /// </summary>
 public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidgetWindow
 {
-    private readonly WidgetConfig _config;
-    private readonly WidgetContentDescriptor _descriptor;
+    private WidgetConfig _config;
+    private WidgetContentDescriptor _descriptor;
     private readonly WidgetChromeModeResolver _chromeModeResolver;
     private readonly WidgetShellContentHost _contentHost;
     private readonly ContentWidgetTitleViewModel _titleViewModel;
+    private readonly Task _contentLoadTask;
 
     private bool _isHidePrepared;
     private bool _isCommittingTitleRename;
     private bool _isCancellingTitleRename;
     private bool _compactPresentationRefreshQueued;
     private INotifyPropertyChanged? _compactPresentationSource;
+    private IWidgetFeedbackSource? _feedbackSource;
 
     private bool _isVisibleOnDesktop;
     private SearchHistoryService? _subscribedSearchHistoryService;
@@ -84,7 +86,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         // ✅ Set initial title
         this.Title = App.Current.LocalizationService.T("Window.ContentWidget.Title");
         
-        _ = LoadContentAsync(content);
+        _contentLoadTask = LoadContentAsync(content);
 
         App.Current.LocalizationService.LanguageChanged += OnLanguageChanged;
     }
@@ -107,9 +109,13 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         string contentMode = ResolveEffectiveCompactContentMode();
         return CurrentContent switch
         {
+            FileSurfaceContent file =>
+                CreateFileCompactPresentation(file, contentMode),
             TodoWidgetContentAdapter todo => CreateTodoCompactPresentation(todo, contentMode, localization),
             MusicWidgetContentAdapter music =>
                 CreateMusicCompactPresentation(music, contentMode),
+            QuickCaptureSurfaceContent quickCapture =>
+                CreateQuickCaptureCompactPresentation(quickCapture, contentMode),
             WeatherWidgetContentAdapter weather => CreateWeatherCompactPresentation(weather, contentMode),
             SearchWidgetContentAdapter => CreateSearchCompactPresentation(contentMode, localization),
             _ => new WidgetCompactPresentation(
@@ -464,21 +470,24 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             {
                 SettingsService.UpdateWidget(_config, notifySubscribers: false);
                 SettingsService.SaveDebounced(notifySubscribers: false);
+                SynchronizeWidgetGroupLayout();
             }
             return;
         }
 
-        var bounds = new RectInt32(x, y, width, height);
+        var bounds = CollapseHostBoundsToContent(
+            new RectInt32(x, y, width, height));
         // Use center point for consistent monitor determination across drag/resize.
         var center = new PointInt32(
-            x + Math.Max(1, width) / 2,
-            y + Math.Max(1, height) / 2);
+            bounds.X + Math.Max(1, bounds.Width) / 2,
+            bounds.Y + Math.Max(1, bounds.Height) / 2);
         var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
         WidgetPositioningService.UpdateConfigFromPhysicalBounds(_config, bounds, workArea);
         if (persist)
         {
             SettingsService.UpdateWidget(_config, notifySubscribers: false);
             SettingsService.SaveDebounced();
+            SynchronizeWidgetGroupLayout();
         }
     }
 
@@ -561,6 +570,8 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     }
 
     internal IWidgetContent? CurrentContent => _contentHost.CurrentContent;
+
+    internal Task ContentReadyTask => _contentLoadTask;
 
     public void ApplyAppearancePreview()
     {
@@ -718,6 +729,7 @@ IsHideAnimationRunning = true;
 
     public void HideWindow()
     {
+        App.Current?.WidgetManager?.CancelWidgetSurfaceSwitch(_config.Id);
         TrayAnimation.Stop();
         TrayAnimation.RevealWindowForTrayShow();
         IsHideAnimationRunning = false;
@@ -765,9 +777,36 @@ IsHideAnimationRunning = true;
     private async Task LoadContentAsync(IWidgetContent content)
     {
         await _contentHost.SetContentAsync(content);
+        if (!ReferenceEquals(_contentHost.CurrentContent, content))
+        {
+            return;
+        }
+
         AttachCompactPresentationSource(content);
+        AttachFeedbackSource(content);
         RefreshCompactPresentation();
         ApplyTitleActionButtonConfiguration();
+    }
+
+    private void AttachFeedbackSource(IWidgetContent content)
+    {
+        if (_feedbackSource is not null)
+        {
+            _feedbackSource.FeedbackRequested -= FeedbackSource_FeedbackRequested;
+        }
+
+        _feedbackSource = content as IWidgetFeedbackSource;
+        if (_feedbackSource is not null)
+        {
+            _feedbackSource.FeedbackRequested += FeedbackSource_FeedbackRequested;
+        }
+    }
+
+    private void FeedbackSource_FeedbackRequested(
+        object? sender,
+        WidgetFeedbackRequestedEventArgs e)
+    {
+        ContentWidgetShell.ShowFeedback(e.Request);
     }
 
     private void AttachCompactPresentationSource(IWidgetContent content)
@@ -779,9 +818,11 @@ IsHideAnimationRunning = true;
 
         _compactPresentationSource = content switch
         {
+            FileSurfaceContent file => file.ViewModel,
             TodoWidgetContentAdapter todo => todo.ViewModel,
             MusicWidgetContentAdapter music => music.ViewModel,
             WeatherWidgetContentAdapter weather => weather.ViewModel,
+            QuickCaptureSurfaceContent quickCapture => quickCapture.ViewModel,
             _ => null
         };
 
@@ -1053,7 +1094,7 @@ IsHideAnimationRunning = true;
 
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
-        public WidgetConfig Config { get; }
+        public WidgetConfig Config { get; private set; }
 
         public string DisplayName
         {
@@ -1102,6 +1143,12 @@ IsHideAnimationRunning = true;
                 double textSize = SettingsService.NormalizeTextSize(_settingsService.Settings.TextSize);
                 return Math.Min(SettingsService.MaxTextSize + 2, textSize + 3);
             }
+        }
+
+        public void SetConfig(WidgetConfig config)
+        {
+            Config = config;
+            RefreshDisplayName();
         }
 
         public void RefreshDisplayName()

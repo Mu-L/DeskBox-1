@@ -13,27 +13,27 @@
 
     <UserControl.Resources>
         <Style x:Key="TodoColorFilterButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-            <Setter Property="Width" Value="30" />
+            <Setter Property="Width" Value="26" />
             <Setter Property="Height" Value="24" />
-            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="MinWidth" Value="26" />
             <Setter Property="MinHeight" Value="24" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
         </Style>
 
         <Style x:Key="TodoColorFilterSelectedButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-            <Setter Property="Width" Value="30" />
+            <Setter Property="Width" Value="26" />
             <Setter Property="Height" Value="24" />
-            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="MinWidth" Value="26" />
             <Setter Property="MinHeight" Value="24" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
         </Style>
 
         <Style x:Key="TodoCardIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
@@ -43,7 +43,7 @@
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
         </Style>
 
         <Style x:Key="TodoDetailHeaderIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
@@ -78,10 +78,10 @@
         <Style x:Key="TodoCardBorderStyle" TargetType="Border">
             <Setter Property="MinHeight" Value="48" />
             <Setter Property="Padding" Value="8,5" />
-            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="Background" Value="{ThemeResource WidgetLayerFillSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource WidgetLayerStrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
         </Style>
 
         <Style x:Key="TodoDetailRowButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
@@ -94,10 +94,10 @@
         </Style>
 
         <Style x:Key="TodoDetailGroupStyle" TargetType="Border">
-            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="Background" Value="{ThemeResource WidgetLayerFillSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource WidgetLayerStrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
         </Style>
 
         <Style x:Key="TodoDetailTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource WidgetBorderlessInputTextBoxStyle}">
@@ -161,14 +161,14 @@
             </toolkit:Segmented>
 
             <StackPanel Orientation="Horizontal" Spacing="3" Visibility="{Binding ColorFilterVisibility}">
-                <Button x:Name="RedColorFilterButton" AutomationProperties.Name="{Binding RedColorText}" CanDrag="True" Click="RedColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="red" ToolTipService.ToolTip="{Binding RedColorText}"><Border Width="18" Height="8" Background="#E34D4D" CornerRadius="4" /></Button>
-                <Button x:Name="OrangeColorFilterButton" AutomationProperties.Name="{Binding OrangeColorText}" CanDrag="True" Click="OrangeColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="orange" ToolTipService.ToolTip="{Binding OrangeColorText}"><Border Width="18" Height="8" Background="#F08A3C" CornerRadius="4" /></Button>
-                <Button x:Name="YellowColorFilterButton" AutomationProperties.Name="{Binding YellowColorText}" CanDrag="True" Click="YellowColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="yellow" ToolTipService.ToolTip="{Binding YellowColorText}"><Border Width="18" Height="8" Background="#F2C94C" CornerRadius="4" /></Button>
-                <Button x:Name="GreenColorFilterButton" AutomationProperties.Name="{Binding GreenColorText}" CanDrag="True" Click="GreenColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="green" ToolTipService.ToolTip="{Binding GreenColorText}"><Border Width="18" Height="8" Background="#4CAF6D" CornerRadius="4" /></Button>
-                <Button x:Name="BlueColorFilterButton" AutomationProperties.Name="{Binding BlueColorText}" CanDrag="True" Click="BlueColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="blue" ToolTipService.ToolTip="{Binding BlueColorText}"><Border Width="18" Height="8" Background="#4D8FE3" CornerRadius="4" /></Button>
-                <Button x:Name="PurpleColorFilterButton" AutomationProperties.Name="{Binding PurpleColorText}" CanDrag="True" Click="PurpleColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="purple" ToolTipService.ToolTip="{Binding PurpleColorText}"><Border Width="18" Height="8" Background="#9B6BE8" CornerRadius="4" /></Button>
-                <Button x:Name="TealColorFilterButton" AutomationProperties.Name="{Binding TealColorText}" CanDrag="True" Click="TealColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="teal" ToolTipService.ToolTip="{Binding TealColorText}"><Border Width="18" Height="8" Background="#2DB7A3" CornerRadius="4" /></Button>
-                <Button x:Name="PinkColorFilterButton" AutomationProperties.Name="{Binding PinkColorText}" CanDrag="True" Click="PinkColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="pink" ToolTipService.ToolTip="{Binding PinkColorText}"><Border Width="18" Height="8" Background="#E66AA2" CornerRadius="4" /></Button>
+                <Button x:Name="RedColorFilterButton" AutomationProperties.Name="{Binding RedColorText}" CanDrag="True" Click="RedColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="red" ToolTipService.ToolTip="{Binding RedColorText}"><Border Width="14" Height="6" Background="#E34D4D" CornerRadius="3" /></Button>
+                <Button x:Name="OrangeColorFilterButton" AutomationProperties.Name="{Binding OrangeColorText}" CanDrag="True" Click="OrangeColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="orange" ToolTipService.ToolTip="{Binding OrangeColorText}"><Border Width="14" Height="6" Background="#F08A3C" CornerRadius="3" /></Button>
+                <Button x:Name="YellowColorFilterButton" AutomationProperties.Name="{Binding YellowColorText}" CanDrag="True" Click="YellowColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="yellow" ToolTipService.ToolTip="{Binding YellowColorText}"><Border Width="14" Height="6" Background="#F2C94C" CornerRadius="3" /></Button>
+                <Button x:Name="GreenColorFilterButton" AutomationProperties.Name="{Binding GreenColorText}" CanDrag="True" Click="GreenColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="green" ToolTipService.ToolTip="{Binding GreenColorText}"><Border Width="14" Height="6" Background="#4CAF6D" CornerRadius="3" /></Button>
+                <Button x:Name="BlueColorFilterButton" AutomationProperties.Name="{Binding BlueColorText}" CanDrag="True" Click="BlueColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="blue" ToolTipService.ToolTip="{Binding BlueColorText}"><Border Width="14" Height="6" Background="#4D8FE3" CornerRadius="3" /></Button>
+                <Button x:Name="PurpleColorFilterButton" AutomationProperties.Name="{Binding PurpleColorText}" CanDrag="True" Click="PurpleColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="purple" ToolTipService.ToolTip="{Binding PurpleColorText}"><Border Width="14" Height="6" Background="#9B6BE8" CornerRadius="3" /></Button>
+                <Button x:Name="TealColorFilterButton" AutomationProperties.Name="{Binding TealColorText}" CanDrag="True" Click="TealColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="teal" ToolTipService.ToolTip="{Binding TealColorText}"><Border Width="14" Height="6" Background="#2DB7A3" CornerRadius="3" /></Button>
+                <Button x:Name="PinkColorFilterButton" AutomationProperties.Name="{Binding PinkColorText}" CanDrag="True" Click="PinkColorFilterButton_Click" DragStarting="ColorFilterButton_DragStarting" PointerCaptureLost="ColorFilterButton_PointerCaptureLost" PointerMoved="ColorFilterButton_PointerMoved" PointerPressed="ColorFilterButton_PointerPressed" PointerReleased="ColorFilterButton_PointerReleased" Style="{StaticResource TodoColorFilterButtonStyle}" Tag="pink" ToolTipService.ToolTip="{Binding PinkColorText}"><Border Width="14" Height="6" Background="#E66AA2" CornerRadius="3" /></Button>
             </StackPanel>
         </StackPanel>
 
@@ -208,11 +208,11 @@
                         Padding="{Binding AddCardPadding}"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        Background="{ThemeResource WidgetLayerFillSecondaryBrush}"
+                        BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                         BorderThickness="1"
                         Click="AddCard_Click"
-                        CornerRadius="4">
+                        CornerRadius="{StaticResource WidgetCornerRadiusMedium}">
                             <Grid ColumnSpacing="4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="32" />
@@ -283,7 +283,7 @@
                                     x:Name="TodoItemHoverBackground"
                                     Grid.ColumnSpan="4"
                                     Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
-                                    CornerRadius="4"
+                                    CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
                                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                     IsHitTestVisible="False"
                                     Opacity="0" />
@@ -292,7 +292,7 @@
                                     Grid.ColumnSpan="4"
                                     Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                    CornerRadius="4"
+                                    CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
                                     IsHitTestVisible="False"
                                     Opacity="0.12"
                                     Visibility="{Binding CopySelectionVisibility}" />
@@ -302,9 +302,10 @@
                                         <Border
                                             x:Name="TodoCompletionBox"
                                             Background="Transparent"
-                                            BorderBrush="{ThemeResource TextFillColorSecondaryBrush}"
+                                            BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                             BorderThickness="{Binding CompletionBorderThickness}"
-                                            CornerRadius="5" />
+                                            CornerRadius="5"
+                                            Opacity="0.38" />
                                         <FontIcon
                                             FontSize="{Binding ElementName=TodoListView, Path=DataContext.SmallIconSize}"
                                             Foreground="White"
@@ -388,9 +389,14 @@
             </Canvas>
 
             <StackPanel
-                Spacing="4"
                 Style="{StaticResource WidgetEmptyStatePanelStyle}"
                 Visibility="{Binding EmptyStateVisibility}">
+                <FontIcon
+                    FontSize="24"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Glyph="&#xE73E;"
+                    Opacity="0.72"
+                    Style="{StaticResource WidgetEmptyStateIconStyle}" />
                 <TextBlock
                     FontSize="{Binding TitleTextSize}"
                     FontWeight="SemiBold"
@@ -424,6 +430,7 @@
                 Padding="8,4"
                 Click="ClearCompletedButton_Click"
                 IsEnabled="{Binding HasCompletedItems}"
+                Style="{StaticResource SubtleButtonStyle}"
                 Visibility="{Binding ClearCompletedButtonVisibility}">
                 <TextBlock FontSize="{Binding SecondaryTextSize}" Text="{Binding ClearCompletedText}" />
             </Button>
@@ -496,7 +503,7 @@
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0" AutomationProperties.Name="{Binding CompletionToggleText}" Click="DetailCompletionButton_Click" Style="{StaticResource TodoDetailHeaderIconButtonStyle}" ToolTipService.ToolTip="{Binding CompletionToggleText}">
                             <Grid Width="{Binding ElementName=RootGrid, Path=DataContext.PrimaryIconSize}" Height="{Binding ElementName=RootGrid, Path=DataContext.PrimaryIconSize}">
-                                <Border x:Name="DetailCompletionBox" BorderBrush="{ThemeResource TextFillColorSecondaryBrush}" BorderThickness="{Binding CompletionBorderThickness}" CornerRadius="10" />
+                                <Border x:Name="DetailCompletionBox" BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="{Binding CompletionBorderThickness}" CornerRadius="10" Opacity="0.38" />
                                 <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Foreground="White" Glyph="{Binding CompletionGlyph}" Opacity="{Binding CompletionGlyphOpacity}" />
                             </Grid>
                         </Button>

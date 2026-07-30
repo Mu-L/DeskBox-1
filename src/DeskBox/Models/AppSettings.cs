@@ -331,7 +331,8 @@ public class AppSettings
     public bool HideShortcutArrowOverlay { get; set; } = true;
 
     /// <summary>
-    /// Whether image files in file widgets should use the system file icon instead of image thumbnails.
+    /// Whether image and video files in file widgets should use the system file icon
+    /// instead of media thumbnails.
     /// </summary>
     public bool ShowImageFilesAsIcons { get; set; }
 
@@ -448,6 +449,43 @@ public class AppSettings
 
     /// <summary>All configured widgets.</summary>
     public List<WidgetConfig> Widgets { get; set; } = [];
+
+    /// <summary>
+    /// Groups that present several normal widget configs through one desktop
+    /// surface. Widget data stays in <see cref="Widgets"/>; this collection owns
+    /// group membership, active member, and shared window state.
+    /// </summary>
+    public List<WidgetGroupConfig> WidgetGroups { get; set; } = [];
+
+    /// <summary>
+    /// Enables creation and structural editing of widget groups. Existing
+    /// groups remain intact when this capability is disabled.
+    /// </summary>
+    public bool WidgetGroupsEnabled { get; set; }
+
+    /// <summary>
+    /// Legacy navigation style retained only so pre-title-switcher settings can
+    /// be migrated without losing user intent.
+    /// </summary>
+    public string WidgetGroupDefaultNavigationStyle { get; set; } = "Auto";
+
+    /// <summary>
+    /// Default identity layout used by the title-bar member selector.
+    /// </summary>
+    public string WidgetGroupDefaultTitleDisplayMode { get; set; } =
+        WidgetGroupTitleDisplayModes.IconAndText;
+
+    /// <summary>
+    /// Enables sequential member switching while the pointer is over the
+    /// title-bar member selector.
+    /// </summary>
+    public bool WidgetGroupWheelSwitchEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Enables delayed pointer-hover activation for flat group title tabs.
+    /// Individual groups may override this default.
+    /// </summary>
+    public bool WidgetGroupHoverSwitchEnabled { get; set; }
 
     /// <summary>
     /// When true, clicking one widget during batch raise keeps only that widget on top;

@@ -280,6 +280,8 @@ public const int WeatherRefreshMaxMinutes = 180;
                 [nameof(AppSettings.QuickCaptureEnabled)] = DefaultPreferencePreservationReason.UserChoice,
                 [nameof(AppSettings.TodoEnabled)] = DefaultPreferencePreservationReason.UserChoice,
                 [nameof(AppSettings.Widgets)] = DefaultPreferencePreservationReason.UserData,
+                [nameof(AppSettings.WidgetGroups)] = DefaultPreferencePreservationReason.UserData,
+                [nameof(AppSettings.WidgetGroupsEnabled)] = DefaultPreferencePreservationReason.UserChoice,
                 [nameof(AppSettings.WidgetCapsuleBarOrder)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.WidgetCapsuleFreePlacements)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.DeletedWidgetIds)] = DefaultPreferencePreservationReason.UserData,
@@ -329,6 +331,12 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.DisplayWidgetChromeMode = WidgetChromeModeOverlay;
         settings.InteractiveWidgetChromeMode = WidgetChromeModeStandard;
         settings.WidgetCollapseBehavior = WidgetCollapseBehaviorSmart;
+        settings.WidgetGroupDefaultNavigationStyle =
+            WidgetGroupNavigationStyles.Auto;
+        settings.WidgetGroupDefaultTitleDisplayMode =
+            WidgetGroupTitleDisplayModes.IconAndText;
+        settings.WidgetGroupWheelSwitchEnabled = true;
+        settings.WidgetGroupHoverSwitchEnabled = false;
         settings.WidgetCapsuleModeEnabled = false;
         settings.WidgetCompactWidthMode = WidgetCompactWidthModeAligned;
         settings.WidgetCapsuleArrangementMode = WidgetCapsuleArrangementFree;
@@ -562,7 +570,23 @@ changed |= NormalizeDeletionSettings(_settings);
         }
     }
 
-    private async Task SaveToFileOnlyAsync()
+    /// <summary>
+    /// Persists settings and reports whether the atomic file replacement
+    /// succeeded. Transactional callers use this before retiring a live
+    /// surface so a disk failure can still roll back safely.
+    /// </summary>
+    public async Task<bool> SaveCheckedAsync(bool notifySubscribers = true)
+    {
+        bool saved = await SaveToFileOnlyAsync();
+        if (saved && notifySubscribers)
+        {
+            SettingsChanged?.Invoke();
+        }
+
+        return saved;
+    }
+
+    private async Task<bool> SaveToFileOnlyAsync()
     {
         await _fileWriteLock.WaitAsync();
         try
@@ -594,10 +618,12 @@ changed |= NormalizeDeletionSettings(_settings);
             string tempPath = _settingsPath + ".tmp";
             await File.WriteAllTextAsync(tempPath, json);
             File.Move(tempPath, _settingsPath, overwrite: true);
+            return true;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SettingsService] Failed to save settings: {ex.Message}");
+            return false;
         }
         finally
         {
@@ -1610,6 +1636,18 @@ changed |= NormalizeDeletionSettings(_settings);
     private static bool NormalizeWidgetContentSettings(AppSettings settings)
     {
         bool changed = false;
+
+        changed |= WidgetGroupSettings.Normalize(settings);
+        if (settings.WidgetGroups.Count > 0 &&
+            !settings.WidgetGroupsEnabled)
+        {
+            // A disabled capability must never strand persisted groups in an
+            // uneditable state. Legacy settings with existing groups are
+            // treated as enabled; the normal disable flow dissolves all groups
+            // before persisting false.
+            settings.WidgetGroupsEnabled = true;
+            changed = true;
+        }
 
         int removedProductivityWidgets = settings.Widgets.RemoveAll(widget => widget.WidgetKind == WidgetKind.Productivity);
         if (removedProductivityWidgets > 0)

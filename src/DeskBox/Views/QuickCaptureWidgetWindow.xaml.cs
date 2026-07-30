@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using DeskBox.Controls;
+using DeskBox.Contracts;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -29,7 +30,10 @@ using WinRT.Interop;
 
 namespace DeskBox.Views;
 
-public sealed partial class QuickCaptureWidgetWindow : WidgetWindowBase, IDesktopWidgetWindow
+public sealed partial class QuickCaptureWidgetWindow :
+    WidgetWindowBase,
+    IDesktopWidgetWindow,
+    IWidgetTransientStateContent
 {
     private sealed record QuickCaptureSelectionHitTestItem(
         QuickCaptureItemViewModel Item,

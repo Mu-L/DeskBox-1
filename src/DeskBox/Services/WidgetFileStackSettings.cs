@@ -12,6 +12,7 @@ public static class WidgetFileStackSettings
     public const string DisabledStacksMetadataKey = "FileStackDisabledGroups";
     public const string StackNameOverridesMetadataKey = "FileStackNameOverrides";
     public const string StackOrderMetadataKey = "FileStackGroupOrder";
+    public const string StackMemberOverridesMetadataKey = "FileStackMemberOverrides";
 
     public static bool? GetEnabledOverride(WidgetConfig config)
     {
@@ -210,7 +211,7 @@ public static class WidgetFileStackSettings
     /// are ignored at merge time; new groups append in default order.
     /// </summary>
     public static List<string> GetStackOrder(WidgetConfig config) =>
-        [.. ReadStringCollection(config, StackOrderMetadataKey)];
+        ReadStringList(config, StackOrderMetadataKey);
 
     public static void SetStackOrder(WidgetConfig config, IEnumerable<string>? stackKeys)
     {
@@ -221,6 +222,110 @@ public static class WidgetFileStackSettings
         }
 
         WriteStringCollection(config, StackOrderMetadataKey, stackKeys);
+    }
+
+    public static Dictionary<string, List<string>> GetStackMemberOverrides(
+        WidgetConfig config)
+    {
+        if (config.Metadata is null ||
+            !config.Metadata.TryGetValue(
+                StackMemberOverridesMetadataKey,
+                out string? json) ||
+            string.IsNullOrWhiteSpace(json))
+        {
+            return new Dictionary<string, List<string>>(
+                StringComparer.Ordinal);
+        }
+
+        try
+        {
+            Dictionary<string, List<string>>? values =
+                JsonSerializer.Deserialize<
+                    Dictionary<string, List<string>>>(json);
+            if (values is null)
+            {
+                return new Dictionary<string, List<string>>(
+                    StringComparer.Ordinal);
+            }
+
+            return values
+                .Where(entry =>
+                    !string.IsNullOrWhiteSpace(entry.Key))
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => (entry.Value ?? [])
+                        .Where(path =>
+                            !string.IsNullOrWhiteSpace(path))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    StringComparer.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, List<string>>(
+                StringComparer.Ordinal);
+        }
+    }
+
+    public static void SetStackMemberOverrides(
+        WidgetConfig config,
+        IReadOnlyDictionary<string, List<string>> overrides)
+    {
+        config.Metadata ??= [];
+        Dictionary<string, List<string>> normalized = overrides
+            .Where(entry =>
+                !string.IsNullOrWhiteSpace(entry.Key))
+            .Select(entry => new
+            {
+                entry.Key,
+                Paths = (entry.Value ?? [])
+                    .Where(path =>
+                        !string.IsNullOrWhiteSpace(path))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+            })
+            .Where(entry => entry.Paths.Count > 0)
+            .ToDictionary(
+                entry => entry.Key,
+                entry => entry.Paths,
+                StringComparer.Ordinal);
+        if (normalized.Count == 0)
+        {
+            config.Metadata.Remove(
+                StackMemberOverridesMetadataKey);
+            return;
+        }
+
+        config.Metadata[StackMemberOverridesMetadataKey] =
+            JsonSerializer.Serialize(normalized);
+    }
+
+    private static List<string> ReadStringList(
+        WidgetConfig config,
+        string key)
+    {
+        if (config.Metadata is null ||
+            !config.Metadata.TryGetValue(key, out string? json) ||
+            string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) is
+                { } list
+                ? list
+                    .Where(value =>
+                        !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList()
+                : [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private static HashSet<string> ReadStringCollection(WidgetConfig config, string key)

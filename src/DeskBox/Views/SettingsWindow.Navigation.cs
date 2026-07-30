@@ -41,6 +41,7 @@ public sealed partial class SettingsWindow
             ["CapsuleArrangementSettings"] = CapsuleArrangementSettingsSection,
             ["CapsuleAnimationSettings"] = CapsuleAnimationSettingsSection,
             ["CapsuleOverridesSettings"] = CapsuleOverridesSettingsSection,
+            ["WidgetGroups"] = WidgetGroupsSection,
             ["AppearanceDetail"] = AppearanceDetailSection,
             ["FileDisplaySettings"] = FileDisplaySettingsSection,
             ["FileStorageSettings"] = FileStorageSettingsSection,
@@ -141,7 +142,16 @@ public sealed partial class SettingsWindow
     {
         foreach ((string sectionTag, FrameworkElement section) in _settingsSectionElements)
         {
-            if (!TryGetSectionRoute(sectionTag, out SettingsSectionRoute route))
+            string destinationTag = sectionTag switch
+            {
+                "FileStorageSettings" => "AppearanceDetail",
+                "InteractionWindowSettings" => "Interaction",
+                "ResetSettings" => "Maintenance",
+                _ => sectionTag
+            };
+            if (!TryGetSectionRoute(
+                    destinationTag,
+                    out SettingsSectionRoute route))
             {
                 continue;
             }
@@ -160,7 +170,7 @@ public sealed partial class SettingsWindow
 
                 string? descriptionKey = Localized.GetDescriptionKey(element);
                 yield return new SettingsSearchResult(
-                    sectionTag,
+                    destinationTag,
                     _localizationService.T(headerKey),
                     breadcrumb,
                     string.IsNullOrWhiteSpace(descriptionKey)
@@ -388,16 +398,41 @@ public sealed partial class SettingsWindow
     {
         foreach (var item in SettingsNavigationView.MenuItems)
         {
-            if (item is NavigationViewItem navItem && navItem.Tag is string navTag && navTag == tag)
+            if (item is NavigationViewItem navItem &&
+                FindNavItemByTag(navItem, tag) is { } match)
             {
-                return navItem;
+                return match;
             }
         }
         return null;
     }
 
+    private static NavigationViewItem? FindNavItemByTag(
+        NavigationViewItem item,
+        string tag)
+    {
+        if (item.Tag is string itemTag &&
+            string.Equals(itemTag, tag, StringComparison.Ordinal))
+        {
+            return item;
+        }
+
+        foreach (object child in item.MenuItems)
+        {
+            if (child is NavigationViewItem childItem &&
+                FindNavItemByTag(childItem, tag) is { } match)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
     private void NavigateToSettingsSection(string sectionTag)
     {
+        sectionTag = NormalizeSettingsSectionTag(sectionTag);
+
         ShowSettingsSection(sectionTag);
         var navItem = GetNavItemForSection(sectionTag);
         if (navItem is not null && !ReferenceEquals(SettingsNavigationView.SelectedItem, navItem))
@@ -423,6 +458,8 @@ public sealed partial class SettingsWindow
 
     private void ShowSettingsSection(string sectionTag, bool isNestedSection = false)
     {
+        sectionTag = NormalizeSettingsSectionTag(sectionTag);
+
         if (!TryGetSectionRoute(sectionTag, out var route))
         {
             sectionTag = "General";
@@ -434,14 +471,28 @@ public sealed partial class SettingsWindow
         string visibleSectionTag = sectionTag == "Advanced" ? "Interaction" : sectionTag;
         foreach ((string tag, FrameworkElement sectionElement) in _settingsSectionElements)
         {
-            sectionElement.Visibility = string.Equals(tag, visibleSectionTag, StringComparison.Ordinal)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            bool isPrimarySection = string.Equals(
+                tag,
+                visibleSectionTag,
+                StringComparison.Ordinal);
+            bool isInlineSection = sectionTag switch
+            {
+                "AppearanceDetail" => tag == "FileStorageSettings",
+                "Interaction" or "Advanced" => tag == "InteractionWindowSettings",
+                "Maintenance" => tag == "ResetSettings",
+                _ => false
+            };
+            sectionElement.Visibility = isPrimarySection || isInlineSection
+                ? Visibility.Visible : Visibility.Collapsed;
         }
 
         if (sectionTag == "FileStackSettings")
         {
             _ = ViewModel.RefreshFileStackRulePreviewFromDiskAsync();
+        }
+        if (sectionTag == "WidgetGroups")
+        {
+            ViewModel.RefreshWidgetGroupSettings();
         }
         if (sectionTag == "FeatureWidgets")
         {
@@ -460,7 +511,7 @@ public sealed partial class SettingsWindow
         {
             RefreshManagedStorageFolderList();
         }
-        else if (sectionTag == "FileStorageSettings")
+        else if (sectionTag == "AppearanceDetail")
         {
             _ = ViewModel.RefreshQuickAccessStateAsync();
         }
@@ -523,6 +574,17 @@ public sealed partial class SettingsWindow
         return SectionRoutes.TryGetValue(sectionTag, out route!);
     }
 
+    private static string NormalizeSettingsSectionTag(string sectionTag)
+    {
+        return sectionTag switch
+        {
+            "FileStorageSettings" => "AppearanceDetail",
+            "InteractionWindowSettings" => "Interaction",
+            "ResetSettings" => "Maintenance",
+            _ => sectionTag
+        };
+    }
+
     private void NestedSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string sectionTag })
@@ -543,6 +605,18 @@ public sealed partial class SettingsWindow
         if (sender is Button { Tag: string widgetId })
         {
             ViewModel.ResetCapsuleOverridesForWidget(widgetId);
+        }
+    }
+
+    private void ResetWidgetGroupOverrideButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string groupId })
+        {
+            if (ViewModel.ResetWidgetGroupOverrides(groupId))
+            {
+                App.Current.WidgetManager?
+                    .NotifyWidgetGroupPresentationSettingsChanged();
+            }
         }
     }
 

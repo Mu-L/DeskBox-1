@@ -153,7 +153,10 @@ public sealed partial class WidgetManager
             if (config is not null)
             {
                 SetFeatureWidgetEnabledState(WidgetKind.Todo, true);
-                await ShowContentWidgetAsync(config, reveal: true);
+                await ShowWidgetAsync(
+                    config.Id,
+                    reveal: true,
+                    autoRestoreOnReveal: false);
                 _contentWidgets.TryGetValue(config.Id, out window);
             }
         }
@@ -257,14 +260,15 @@ public sealed partial class WidgetManager
 
     public async Task SetQuickCaptureEnabledAsync(bool enabled, bool reveal = true)
     {
-        SetFeatureWidgetEnabledState(WidgetKind.QuickCapture, enabled);
-
         if (enabled)
         {
+            SetFeatureWidgetEnabledState(WidgetKind.QuickCapture, true);
             await CreateOrShowQuickCaptureWidgetAsync(reveal);
             return;
         }
 
+        await DetachFeatureWidgetsFromGroupsAsync(WidgetKind.QuickCapture);
+        SetFeatureWidgetEnabledState(WidgetKind.QuickCapture, false);
         foreach (var config in _settingsService.Settings.Widgets.Where(widget =>
                      widget.WidgetKind == WidgetKind.QuickCapture &&
                      !IsDeleted(widget.Id)))
@@ -614,6 +618,7 @@ public sealed partial class WidgetManager
             return;
         }
 
+        await DetachFeatureWidgetsFromGroupsAsync(kind);
         var suppressedClosedIds = _settingsService.Settings.Widgets
             .Where(widget => widget.WidgetKind == kind)
             .Select(widget => widget.Id)
@@ -630,6 +635,10 @@ public sealed partial class WidgetManager
             var configs = _settingsService.Settings.Widgets
                 .Where(widget => widget.WidgetKind == kind)
                 .ToList();
+            foreach (WidgetConfig existingConfig in configs)
+            {
+                ClearWidgetGroupTransientState(existingConfig.Id);
+            }
 
             if (kind == WidgetKind.QuickCapture)
             {
@@ -753,10 +762,9 @@ public sealed partial class WidgetManager
 
     public async Task SetTodoEnabledAsync(bool enabled, bool reveal = true)
     {
-        SetFeatureWidgetEnabledState(WidgetKind.Todo, enabled);
-
         if (enabled)
         {
+            SetFeatureWidgetEnabledState(WidgetKind.Todo, true);
             if (reveal)
             {
                 await CreateTodoWidgetAsync();
@@ -777,6 +785,8 @@ public sealed partial class WidgetManager
             return;
         }
 
+        await DetachFeatureWidgetsFromGroupsAsync(WidgetKind.Todo);
+        SetFeatureWidgetEnabledState(WidgetKind.Todo, false);
         foreach (var config in _settingsService.Settings.Widgets.Where(widget =>
                      widget.WidgetKind == WidgetKind.Todo &&
                      !IsDeleted(widget.Id)))
@@ -814,6 +824,7 @@ public sealed partial class WidgetManager
             return;
         }
 
+        await DetachFeatureWidgetsFromGroupsAsync(kind);
         foreach (var config in _settingsService.Settings.Widgets.Where(widget =>
                      widget.WidgetKind == kind &&
                      !IsDeleted(widget.Id)))
@@ -828,6 +839,21 @@ public sealed partial class WidgetManager
         // exact SearchHistoryService instance before that service is released.
         SetFeatureWidgetEnabledState(kind, false);
         await _settingsService.SaveAsync();
+    }
+
+    private async Task DetachFeatureWidgetsFromGroupsAsync(WidgetKind kind)
+    {
+        List<string> groupedIds = _settingsService.Settings.Widgets
+            .Where(widget =>
+                widget.WidgetKind == kind &&
+                WidgetGroupSettings.FindByMember(_settingsService.Settings, widget.Id) is not null)
+            .Select(widget => widget.Id)
+            .ToList();
+
+        foreach (string widgetId in groupedIds)
+        {
+            await RemoveWidgetFromGroupAsync(widgetId, revealStandalone: false);
+        }
     }
 
     private Task SetWeatherFeatureWidgetEnabledAsync(bool enabled, bool reveal)
@@ -928,8 +954,11 @@ public sealed partial class WidgetManager
         WidgetConfig config,
         bool keepPreparedForAnimation = false,
         bool revealAfterCreate = false,
-        bool showRaisedWhileInitializing = false)
+        bool showRaisedWhileInitializing = false,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (_quickCaptureWidgets.TryGetValue(config.Id, out var existing))
         {
             return existing.Window;
@@ -953,6 +982,8 @@ public sealed partial class WidgetManager
 
         _themeService.TrackWindow(window);
         _quickCaptureWidgets[config.Id] = (window, viewModel);
+        RegisterCreatedSurfaceHost(config, window);
+        RestoreWidgetGroupTransientState(config.Id);
         _widgetWindowHandles.Add(window.WindowHandle);
         ApplyCapsuleArrangementIfChanged(force: true);
 
@@ -964,6 +995,7 @@ public sealed partial class WidgetManager
                 _quickCaptureWidgets.Remove(config.Id);
             }
 
+            UnregisterSurfaceHost(window);
             _widgetWindowHandles.Remove(window.WindowHandle);
             if (IsDeleted(config.Id) || FindConfig(config.Id) is null)
             {
@@ -981,6 +1013,7 @@ public sealed partial class WidgetManager
             }
 
             config.IsVisible = false;
+            SetWidgetGroupVisibility(config, isVisible: false);
             _settingsService.SaveDebounced();
         };
 
@@ -998,7 +1031,7 @@ public sealed partial class WidgetManager
                 return window;
             }
 
-            await viewModel.InitializeAsync();
+            await viewModel.InitializeAsync().WaitAsync(cancellationToken);
             if (!keepPreparedForAnimation)
             {
                 window.CompleteTrayShowWithoutAnimation();
@@ -1012,15 +1045,12 @@ public sealed partial class WidgetManager
         {
             _quickCaptureWidgets.Remove(config.Id);
             viewModel.Dispose();
-
-            try
-            {
-                window.Close();
-            }
-            catch
-            {
-            }
-
+            _widgetWindowHandles.Remove(window.WindowHandle);
+            UnregisterSurfaceHost(window);
+            CloseFailedCreatedWindow(
+                config.Id,
+                window,
+                preserveVisibility: cancellationToken.CanBeCanceled);
             throw;
         }
 

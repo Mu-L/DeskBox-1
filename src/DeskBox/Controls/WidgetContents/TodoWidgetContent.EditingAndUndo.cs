@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Numerics;
+using DeskBox.Contracts;
 using DeskBox.Services;
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -377,16 +378,18 @@ public sealed partial class TodoWidgetContent
         bool isCompleted = itemRoot is FrameworkElement { DataContext: TodoItemViewModel { IsCompleted: true } };
         if (FindVisualChild<Border>(itemRoot, "TodoCompletionBox") is { } completionBox)
         {
+            Brush completionAccentBrush = GetBrushResourceOrFallback(
+                "AccentTextFillColorPrimaryBrush",
+                accentColor);
             completionBox.Background = isCompleted
-                ? new SolidColorBrush(WithAlpha(accentColor, 0xFF))
+                ? completionAccentBrush
                 : new SolidColorBrush(Colors.Transparent);
-            completionBox.BorderBrush = isCompleted
-                ? new SolidColorBrush(WithAlpha(accentColor, 0xFF))
-                : new SolidColorBrush(isHovered
-                    ? WithAlpha(accentColor, isDark ? (byte)0xFF : (byte)0xE8)
-                    : isDark
-                        ? WithAlpha(accentColor, 0xD8)
-                        : WithAlpha(accentColor, 0xB8));
+            completionBox.BorderBrush = completionAccentBrush;
+            completionBox.Opacity = isCompleted
+                ? 1
+                : isHovered
+                    ? 0.58
+                    : 0.38;
         }
     }
 
@@ -422,14 +425,14 @@ public sealed partial class TodoWidgetContent
 
         bool isDark = ActualTheme == ElementTheme.Dark;
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor;
+        Brush completionAccentBrush = GetBrushResourceOrFallback(
+            "AccentTextFillColorPrimaryBrush",
+            accentColor);
         DetailCompletionBox.Background = item.IsCompleted
-            ? new SolidColorBrush(accentColor)
+            ? completionAccentBrush
             : new SolidColorBrush(Colors.Transparent);
-        DetailCompletionBox.BorderBrush = item.IsCompleted
-            ? new SolidColorBrush(Colors.Transparent)
-            : new SolidColorBrush(isDark
-                ? WithAlpha(accentColor, 0xD8)
-                : WithAlpha(accentColor, 0xB8));
+        DetailCompletionBox.BorderBrush = completionAccentBrush;
+        DetailCompletionBox.Opacity = item.IsCompleted ? 1 : 0.38;
     }
 
     private void ApplySelectionRectangleStyle()
@@ -668,14 +671,31 @@ public sealed partial class TodoWidgetContent
         bool clearUndoOnHide = true)
     {
         long generation = ++_undoToastGeneration;
-        UndoToastText.Text = text;
-        UndoToastActionButton.Content = actionText;
-        UndoToastActionButton.Visibility = string.IsNullOrWhiteSpace(actionText)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        UndoToast.IsHitTestVisible = !string.IsNullOrWhiteSpace(actionText);
-        UndoToast.Opacity = 1;
-        _ = HideUndoToastAfterDelayAsync(generation, durationMs, clearUndoOnHide);
+        Func<Task>? action = string.IsNullOrWhiteSpace(actionText)
+            ? null
+            : async () =>
+            {
+                if (ViewModel is not null)
+                {
+                    await ViewModel.UndoLastActionAsync();
+                }
+            };
+        var request = new WidgetFeedbackRequest(
+            text,
+            WidgetFeedbackSeverity.Success,
+            "todo-status",
+            actionText,
+            action);
+        FeedbackRequested?.Invoke(
+            this,
+            new WidgetFeedbackRequestedEventArgs(request));
+        UndoToast.Opacity = 0;
+        UndoToast.IsHitTestVisible = false;
+        UndoToastActionButton.Visibility = Visibility.Collapsed;
+        _ = HideUndoToastAfterDelayAsync(
+            generation,
+            (int)request.DisplayDuration.TotalMilliseconds,
+            clearUndoOnHide);
     }
 
     private async Task HideUndoToastAfterDelayAsync(long generation, int durationMs, bool clearUndo)

@@ -24,7 +24,8 @@ public sealed record WidgetStackGroup(
     IReadOnlyList<WidgetItem> Items,
     string? StackKey = null,
     string? DisplayName = null,
-    bool CanStack = true)
+    bool CanStack = true,
+    bool ForceStack = false)
 {
     public string EffectiveKey => StackKey ?? Category.ToString();
 }

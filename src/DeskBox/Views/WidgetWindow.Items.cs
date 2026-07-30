@@ -289,6 +289,23 @@ public sealed partial class WidgetWindow
         };
         flyout.Items.Add(showItem);
 
+        var propertiesItem = CreateFileContextCommand(
+            "Common.Properties",
+            "\uE946");
+        propertiesItem.Click += (_, _) =>
+        {
+            flyout.Hide();
+            if (!ShellContextMenuHelper.ShowProperties(
+                    _hWnd,
+                    item.Path))
+            {
+                ShowStatusToast(
+                    _localizationService.T(
+                        "Widget.Error.OperationIncomplete"));
+            }
+        };
+        flyout.Items.Add(propertiesItem);
+
         if (CanMoveItemsBackToDesktop())
         {
             flyout.Items.Add(new MenuFlyoutSeparator());

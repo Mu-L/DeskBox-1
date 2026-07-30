@@ -277,7 +277,8 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         e.Handled = true;
-        e.AcceptedOperation = DataPackageOperation.Copy;
+        e.AcceptedOperation =
+            DeskBoxDragData.GetFileAssociationOperation(e.DataView);
         e.DragUIOverride.IsGlyphVisible = true;
         SetItemHoverState(sender as DependencyObject, true);
     }
@@ -309,7 +310,7 @@ public sealed partial class QuickCaptureWidgetWindow
             QuickCaptureItemViewModel? updated = await ViewModel.AddAttachmentsAsync(item, batch.Files);
             e.AcceptedOperation = updated is null
                 ? DataPackageOperation.None
-                : DataPackageOperation.Copy;
+                : DeskBoxDragData.GetFileAssociationOperation(e.DataView);
             if (updated is not null)
             {
                 ShowStatusToast(_localizationService.T("QuickCapture.Dropped"));

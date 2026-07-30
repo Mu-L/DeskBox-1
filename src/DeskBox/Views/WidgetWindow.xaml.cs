@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using DeskBox.Contracts;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -25,7 +26,10 @@ using WinRT.Interop;
 
 namespace DeskBox.Views;
 
-public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindow
+public sealed partial class WidgetWindow :
+    WidgetWindowBase,
+    IDesktopWidgetWindow,
+    IWidgetTransientStateContent
 {
     private const int MinWidth = (int)SettingsService.MinWidgetWidth;
     private const int MinHeight = (int)SettingsService.MinWidgetHeight;
@@ -89,7 +93,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
     private Border BackgroundPlate => FileWidgetShell.BackgroundSurface;
     private Border HeaderDivider => FileWidgetShell.Divider;
 
-    public WidgetViewModel ViewModel { get; }
+    public WidgetViewModel ViewModel { get; private set; }
 
     public IntPtr WindowHandle => HWnd;
 
@@ -264,6 +268,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         RootGrid.DataContext = ViewModel;
 
         ApplyLocalizedText();
+        ConfigureSelectionCommandBar();
         FileWidgetShell.SetDividerMargin(new Thickness(12, 0, 12, 0));
 
         HWnd = WindowNative.GetWindowHandle(this);
@@ -290,8 +295,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         ConfigureWindow();
         SetupEventHandlers();
 
-        ViewModel.Items.CollectionChanged += ViewModel_ItemsCollectionChanged;
-        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        AttachViewModelSubscriptions(ViewModel);
         UpdateEmptyState();
         ApplyTitleBarLayout();
     }
@@ -330,8 +334,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             WidgetLayerService.ReleaseWindow(_hWnd);
             _settingsService.SettingsChanged -= OnSettingsChanged;
             _localizationService.LanguageChanged -= OnLanguageChanged;
-            ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-            ViewModel.Items.CollectionChanged -= ViewModel_ItemsCollectionChanged;
+            DetachViewModelSubscriptions(ViewModel);
             _appWindow.Changed -= AppWindow_Changed;
             _displayChangeWatcher?.Dispose();
             _displayChangeWatcher = null;
@@ -846,6 +849,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
             {
                 SettingsService.UpdateWidget(ViewModel.Config, notifySubscribers: false);
                 SettingsService.SaveDebounced(notifySubscribers: false);
+                SynchronizeWidgetGroupLayout();
             }
             return;
         }
@@ -860,6 +864,7 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
         if (persist)
         {
             SettingsService.UpdateWidget(ViewModel.Config, notifySubscribers: false);
+            SynchronizeWidgetGroupLayout();
         }
     }
 
@@ -1092,12 +1097,12 @@ public sealed partial class WidgetWindow : WidgetWindowBase, IDesktopWidgetWindo
 
     private void RootGrid_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        ApplyLegacyTitleActionButtonVisibility(_chromeModeResolver.Resolve(ViewModel.Config, _chromeDescriptor));
+        ApplyLegacyTitleActionButtonVisibility(ResolveCurrentChromeMode());
     }
 
     private void RootGrid_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        ApplyLegacyTitleActionButtonVisibility(_chromeModeResolver.Resolve(ViewModel.Config, _chromeDescriptor));
+        ApplyLegacyTitleActionButtonVisibility(ResolveCurrentChromeMode());
     }
 
     private static Windows.UI.Color ApplySurfaceOpacity(Windows.UI.Color color, double opacity)

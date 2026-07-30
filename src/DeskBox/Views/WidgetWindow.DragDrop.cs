@@ -40,6 +40,7 @@ public sealed partial class WidgetWindow
     // ── Real-time reorder state ──
     private bool _isReorderDragActive;
     private string[] _reorderDragPaths = [];
+    private string? _reorderStackKey;
     private DataPackageView? _pendingDropDataView;
 
     // ── Drop poll (compensates for WinUI 3 Drop not firing) ──
@@ -59,11 +60,34 @@ public sealed partial class WidgetWindow
     private bool _isManualDropInProgress;
     private string[]? _cachedDropPaths;
     private bool _isCachingDropPaths;
+    private long _manualDropOwnershipGeneration;
+    private static readonly object s_manualDropOwnershipGate = new();
+    private static WeakReference<WidgetWindow>? s_manualDropOwner;
+    private static long s_manualDropGeneration;
 
     private async void RootGrid_DragOver(object sender, DragEventArgs e)
     {
         e.Handled = true;
         ClearFolderDropTarget();
+
+        if (IsSameWidgetInternalDrag(e.DataView))
+        {
+            ReleaseManualDropOwnership();
+            _pendingDropDataView = null;
+            _cachedDropPaths = null;
+            _isCachingDropPaths = false;
+            StopDropPoll();
+            StopDragHighlight();
+            e.AcceptedOperation = DataPackageOperation.Link;
+            e.DragUIOverride.IsGlyphVisible = false;
+            e.DragUIOverride.IsCaptionVisible = false;
+            HandleRealTimeReorder(
+                e.DataView.Properties,
+                e.GetPosition(GetDropTargetControl()));
+            return;
+        }
+
+        ClaimManualDropOwnership();
 
         // WORKAROUND: WinUI 3's Drop event sometimes fails to fire for non-Chromium
         // OLE drag sources (e.g., WeChat chat files). Detect mouse-button release
@@ -73,6 +97,12 @@ public sealed partial class WidgetWindow
         bool isLeftButtonReleased = !Win32Helper.IsKeyDown(0x01);
         if (isLeftButtonReleased && _pendingDropDataView is not null && !_isManualDropInProgress)
         {
+            if (!TryConsumeManualDropOwnership())
+            {
+                CancelPendingManualDrop("release-in-drag-over-not-owner");
+                return;
+            }
+
             var capturedView = _pendingDropDataView;
             _pendingDropDataView = null;
             _isManualDropInProgress = true;
@@ -162,6 +192,18 @@ public sealed partial class WidgetWindow
 
 private void RootGrid_DragEnter(object sender, DragEventArgs e)
 {
+if (IsSameWidgetInternalDrag(e.DataView))
+{
+    ReleaseManualDropOwnership();
+    _pendingDropDataView = null;
+    _cachedDropPaths = null;
+    _isCachingDropPaths = false;
+    StopDropPoll();
+    StopDragHighlight();
+    return;
+}
+
+ClaimManualDropOwnership();
 LogDropDiagnostic("RootDragEnter", e.DataView, e.AcceptedOperation, !string.IsNullOrEmpty(ViewModel.MappedFolderPath));
 StartDragHighlight();
 _cachedDropPaths = null;
@@ -234,15 +276,38 @@ private void RootGrid_DragLeave(object sender, DragEventArgs e)
     // Persist any real-time reordering that was done during DragOver.
     if (_isReorderDragActive)
     {
+        bool reorderedStack =
+            !string.IsNullOrWhiteSpace(_reorderStackKey);
         _isReorderDragActive = false;
         _reorderDragPaths = [];
-        ViewModel.PersistManualOrder();
+        _reorderStackKey = null;
+        if (!reorderedStack)
+        {
+            ViewModel.PersistManualOrder();
+        }
     }
 }
 
 private async void RootGrid_Drop(object sender, DragEventArgs e)
 {
     e.Handled = true;
+
+    // DragOver can detect release a few milliseconds before WinUI raises Drop.
+    // In that case the manual path already owns the one transfer; acknowledge the
+    // native event without importing the same source a second time.
+    if (_isManualDropInProgress)
+    {
+        e.AcceptedOperation = NormalizePathDropOperation(
+            e.DataView.RequestedOperation,
+            movesIntoFolder: !string.IsNullOrEmpty(ViewModel.MappedFolderPath));
+        App.Log(
+            $"[DropDiagnostic] widget='{ViewModel.Name}' stage=RootDropSuppressed " +
+            "reason=manual-drop-already-in-progress");
+        return;
+    }
+
+    ClaimManualDropOwnership();
+    ReleaseManualDropOwnership();
     _pendingDropDataView = null;
     _cachedDropPaths = null;
     _isCachingDropPaths = false;
@@ -256,6 +321,23 @@ StopDragHighlight();
         {
             if (_isMigrationBusy)
             {
+                return;
+            }
+
+            if (IsSameWidgetInternalDrag(e.DataView))
+            {
+                HandleFinalReorder(
+                    e.DataView.Properties,
+                    e.GetPosition(GetDropTargetControl()));
+                if (string.IsNullOrWhiteSpace(
+                        _reorderStackKey))
+                {
+                    ViewModel.PersistManualOrder();
+                }
+
+                _isReorderDragActive = false;
+                _reorderDragPaths = [];
+                _reorderStackKey = null;
                 return;
             }
 
@@ -293,30 +375,6 @@ StopDragHighlight();
                 : null;
 
             string? sourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
-
-            // ── Same-widget internal drag: persist real-time reorder ──
-            if (HasDeskBoxInternalDragData(e.DataView.Properties) &&
-                string.Equals(sourceWidgetId, ViewModel.Config.Id, StringComparison.Ordinal))
-            {
-                // Real-time reordering was done during DragOver.  If the mode
-                // wasn't Manual yet, switch now (HandleRealTimeReorder already
-                // did this, but this covers edge cases).
-                if (ViewModel.Config.SortMode != WidgetSortMode.Manual)
-                {
-                    ViewModel.SetSortMode(WidgetSortMode.Manual);
-                }
-
-                // Do a final reorder to the exact drop position, then persist.
-                var dragPaths = TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths");
-                HandleFinalReorder(dragPaths, e.GetPosition(GetDropTargetControl()));
-                ViewModel.PersistManualOrder();
-
-                _isReorderDragActive = false;
-                _reorderDragPaths = [];
-
-                // Same-widget drop: no file transfer needed regardless of mode.
-                return;
-            }
 
             if (movesIntoFolder &&
                 HasDeskBoxInternalDragData(e.DataView.Properties) &&
@@ -383,37 +441,7 @@ StopDragHighlight();
     /// <returns>True if the native menu was shown (regardless of whether a command was invoked); false if it failed and the caller should fall back.</returns>
     private static bool ShouldShowImportOverlay(IReadOnlyList<string> paths)
     {
-        const long ThresholdBytes = 10 * 1024 * 1024; // 10 MB
-
-        long totalSize = 0;
-        foreach (string path in paths)
-        {
-            try
-            {
-                if (File.Exists(path))
-                {
-                    totalSize += new FileInfo(path).Length;
-                }
-                else if (Directory.Exists(path))
-                {
-                    // For directories, enumerate is too expensive — assume
-                    // large and show the overlay.
-                    return true;
-                }
-            }
-            catch
-            {
-                // If we can't stat the file, err on the side of showing the overlay.
-                return true;
-            }
-
-            if (totalSize >= ThresholdBytes)
-            {
-                return true;
-            }
-        }
-
-        return totalSize >= ThresholdBytes;
+        return DeskBoxDragData.ShouldShowImportOverlay(paths);
     }
 
     private static bool IsInvalidFolderDrop(IReadOnlyList<string> sourcePaths, string destinationFolder)
@@ -537,6 +565,17 @@ StopDragHighlight();
         return !string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath);
     }
 
+    private bool IsSameWidgetInternalDrag(DataPackageView dataView)
+    {
+        return HasDeskBoxInternalDragData(dataView.Properties) &&
+               string.Equals(
+                   TryGetPackageString(
+                       dataView.Properties,
+                       "DeskBoxSourceWidgetId"),
+                   ViewModel.Config.Id,
+                   StringComparison.Ordinal);
+    }
+
     // ── Real-time reorder helpers ────────────────────────────────
 
     /// <summary>
@@ -559,9 +598,19 @@ StopDragHighlight();
         DataPackagePropertySetView properties,
         Windows.Foundation.Point position)
     {
-        // Skip when file stacks are enabled — VisibleItems != Items.
-        if (ViewModel.FileStacksEnabled)
+        string? stackKey = TryGetPackageString(
+            properties,
+            DeskBoxDragData.StackReorderKeyProperty);
+        if (!string.IsNullOrWhiteSpace(stackKey))
         {
+            _isReorderDragActive = true;
+            _reorderStackKey = stackKey;
+            _reorderDragPaths = [];
+            ViewModel.MoveStackForReorder(
+                stackKey,
+                ComputeDropInsertionIndex(
+                    GetDropTargetControl(),
+                    position));
             return;
         }
 
@@ -571,19 +620,8 @@ StopDragHighlight();
             return;
         }
 
-        // Switch to Manual mode if needed (only once per drag).
-        if (!_isReorderDragActive)
-        {
-            if (ViewModel.Config.SortMode != WidgetSortMode.Manual)
-            {
-                ViewModel.SetSortMode(WidgetSortMode.Manual);
-            }
-            _isReorderDragActive = true;
-            _reorderDragPaths = dragPaths.ToArray();
-        }
-
         // Find the dragged item (single-item drag is most common).
-        var pathSet = _reorderDragPaths
+        var pathSet = dragPaths
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -595,7 +633,30 @@ StopDragHighlight();
             return;
         }
 
-        int currentIndex = ViewModel.Items.IndexOf(draggedItem);
+        if (!_isReorderDragActive)
+        {
+            if (ViewModel.FileStacksEnabled)
+            {
+                if (!ViewModel.PrepareVisibleItemReorder(draggedItem))
+                {
+                    return;
+                }
+            }
+            else if (ViewModel.Config.SortMode != WidgetSortMode.Manual)
+            {
+                ViewModel.SetSortMode(WidgetSortMode.Manual);
+            }
+
+            _isReorderDragActive = true;
+            _reorderDragPaths = dragPaths.ToArray();
+            _reorderStackKey = null;
+        }
+
+        int currentIndex = ViewModel.FileStacksEnabled
+            ? ViewModel.VisibleItems
+                .ToList()
+                .FindIndex(item => ReferenceEquals(item, draggedItem))
+            : ViewModel.Items.IndexOf(draggedItem);
         if (currentIndex < 0)
         {
             return;
@@ -603,31 +664,64 @@ StopDragHighlight();
 
         int targetIndex = ComputeDropInsertionIndex(GetDropTargetControl(), position);
 
-        // Adjust for Move semantics: Move(oldIndex, newIndex) puts the item
-        // AT newIndex.  If target > current, we need target-1 so the item
-        // ends up visually where the insertion indicator shows.
+        if (ViewModel.FileStacksEnabled)
+        {
+            ViewModel.MoveVisibleItemForReorder(
+                draggedItem,
+                targetIndex);
+            return;
+        }
+
+        // Move(oldIndex, newIndex) places the item at newIndex. Account for
+        // the source slot only for the ungrouped Items collection.
         if (targetIndex > currentIndex)
         {
             targetIndex--;
         }
 
-        // Skip if no meaningful move.
         if (targetIndex == currentIndex || targetIndex < 0)
         {
             return;
         }
 
-        ViewModel.MoveItemForReorder(draggedItem, targetIndex);
+        ViewModel.MoveItemForReorder(
+            draggedItem,
+            targetIndex);
     }
 
     /// <summary>
     /// Final reorder on drop — moves the item to the exact drop position.
     /// </summary>
     private void HandleFinalReorder(
+        DataPackagePropertySetView properties,
+        Windows.Foundation.Point dropPosition)
+    {
+        string? stackKey = TryGetPackageString(
+            properties,
+            DeskBoxDragData.StackReorderKeyProperty);
+        if (!string.IsNullOrWhiteSpace(stackKey))
+        {
+            _reorderStackKey = stackKey;
+            ViewModel.MoveStackForReorder(
+                stackKey,
+                ComputeDropInsertionIndex(
+                    GetDropTargetControl(),
+                    dropPosition));
+            return;
+        }
+
+        HandleFinalReorder(
+            TryGetPackageStringArray(
+                properties,
+                DeskBoxDragData.SourcePathsProperty),
+            dropPosition);
+    }
+
+    private void HandleFinalReorder(
         IReadOnlyList<string> dragPaths,
         Windows.Foundation.Point dropPosition)
     {
-        if (dragPaths.Count == 0 || ViewModel.FileStacksEnabled)
+        if (dragPaths.Count == 0)
         {
             return;
         }
@@ -644,13 +738,31 @@ StopDragHighlight();
             return;
         }
 
-        int currentIndex = ViewModel.Items.IndexOf(draggedItem);
+        if (ViewModel.FileStacksEnabled &&
+            !ViewModel.PrepareVisibleItemReorder(draggedItem))
+        {
+            return;
+        }
+
+        int currentIndex = ViewModel.FileStacksEnabled
+            ? ViewModel.VisibleItems
+                .ToList()
+                .FindIndex(item => ReferenceEquals(item, draggedItem))
+            : ViewModel.Items.IndexOf(draggedItem);
         if (currentIndex < 0)
         {
             return;
         }
 
         int targetIndex = ComputeDropInsertionIndex(GetDropTargetControl(), dropPosition);
+
+        if (ViewModel.FileStacksEnabled)
+        {
+            ViewModel.MoveVisibleItemForReorder(
+                draggedItem,
+                targetIndex);
+            return;
+        }
 
         if (targetIndex > currentIndex)
         {
@@ -662,7 +774,9 @@ StopDragHighlight();
             return;
         }
 
-        ViewModel.MoveItemForReorder(draggedItem, targetIndex);
+        ViewModel.MoveItemForReorder(
+            draggedItem,
+            targetIndex);
     }
 
     // ── Drop poll (background thread) ─────────────────────────
@@ -771,6 +885,12 @@ StopDragHighlight();
             return;
         }
 
+        if (!TryConsumeManualDropOwnership())
+        {
+            CancelPendingManualDrop("poll-release-not-owner");
+            return;
+        }
+
         _pendingDropDataView = null;
         _isManualDropInProgress = true;
         StopDropPoll();
@@ -826,6 +946,7 @@ StopDragHighlight();
         }
 
         _isCachingDropPaths = true;
+        long ownershipGeneration = _manualDropOwnershipGeneration;
         // Capture the view and extract paths asynchronously.
         var capturedView = dataView;
         Task.Run(async () =>
@@ -841,9 +962,136 @@ StopDragHighlight();
                 App.Log($"[DropDiagnostic] Pre-cache failed: {ex.Message}");
             }
 
-            _cachedDropPaths = result ?? [];
-            _isCachingDropPaths = false;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_manualDropOwnershipGeneration != ownershipGeneration ||
+                    !IsManualDropOwner())
+                {
+                    return;
+                }
+
+                _cachedDropPaths = result ?? [];
+                _isCachingDropPaths = false;
+            });
         });
+    }
+
+    /// <summary>
+    /// Claims the single process-wide fallback-drop target. A desktop drag can pass
+    /// through several DeskBox windows before release; only the latest window may
+    /// keep polling and commit the cached payload.
+    /// </summary>
+    private void ClaimManualDropOwnership()
+    {
+        if (IsManualDropOwner())
+        {
+            return;
+        }
+
+        WidgetWindow? previous = null;
+        long previousGeneration = 0;
+        lock (s_manualDropOwnershipGate)
+        {
+            if (s_manualDropOwner is not null &&
+                s_manualDropOwner.TryGetTarget(out var current) &&
+                !ReferenceEquals(current, this))
+            {
+                previous = current;
+                previousGeneration = current._manualDropOwnershipGeneration;
+            }
+
+            _manualDropOwnershipGeneration = Interlocked.Increment(ref s_manualDropGeneration);
+            s_manualDropOwner = new WeakReference<WidgetWindow>(this);
+        }
+
+        if (previous is not null)
+        {
+            previous.DispatcherQueue.TryEnqueue(
+                () => previous.CancelPendingManualDrop(
+                    "ownership-moved-to-another-widget",
+                    previousGeneration));
+        }
+    }
+
+    private bool IsManualDropOwner()
+    {
+        lock (s_manualDropOwnershipGate)
+        {
+            return _manualDropOwnershipGeneration != 0 &&
+                s_manualDropOwner is not null &&
+                s_manualDropOwner.TryGetTarget(out var owner) &&
+                ReferenceEquals(owner, this);
+        }
+    }
+
+    private bool TryConsumeManualDropOwnership()
+    {
+        lock (s_manualDropOwnershipGate)
+        {
+            if (_manualDropOwnershipGeneration == 0 ||
+                s_manualDropOwner is null ||
+                !s_manualDropOwner.TryGetTarget(out var owner) ||
+                !ReferenceEquals(owner, this) ||
+                !IsPointerOverThisWidget())
+            {
+                return false;
+            }
+
+            s_manualDropOwner = null;
+            _manualDropOwnershipGeneration = 0;
+            return true;
+        }
+    }
+
+    private bool IsPointerOverThisWidget()
+    {
+        if (!Win32Helper.GetCursorPos(out var cursor))
+        {
+            return false;
+        }
+
+        IntPtr pointerWindow = Win32Helper.WindowFromPoint(cursor);
+        if (pointerWindow == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        return Win32Helper.GetAncestor(pointerWindow, Win32Helper.GA_ROOT) ==
+            Win32Helper.GetAncestor(_hWnd, Win32Helper.GA_ROOT);
+    }
+
+    private void ReleaseManualDropOwnership()
+    {
+        lock (s_manualDropOwnershipGate)
+        {
+            if (s_manualDropOwner is not null &&
+                s_manualDropOwner.TryGetTarget(out var owner) &&
+                ReferenceEquals(owner, this))
+            {
+                s_manualDropOwner = null;
+            }
+
+            _manualDropOwnershipGeneration = 0;
+        }
+    }
+
+    private void CancelPendingManualDrop(string reason, long expectedGeneration = 0)
+    {
+        if (expectedGeneration != 0 &&
+            _manualDropOwnershipGeneration != expectedGeneration)
+        {
+            return;
+        }
+
+        App.Log(
+            $"[DropDiagnostic] Manual drop ownership revoked widget='{ViewModel.Name}' reason={reason}");
+        ReleaseManualDropOwnership();
+        _pendingDropDataView = null;
+        _cachedDropPaths = null;
+        _isCachingDropPaths = false;
+        StopDropPoll();
+        StopDragHighlight();
+        ClearFolderDropTarget();
     }
 
     /// <summary>

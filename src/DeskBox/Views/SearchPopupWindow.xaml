@@ -25,14 +25,14 @@
             <Storyboard x:Name="PopupShowStoryboard">
                 <DoubleAnimation Storyboard.TargetName="RootGrid"
                                  Storyboard.TargetProperty="Opacity"
-                                 From="0.92" To="1" Duration="0:0:0.16">
+                                 From="0" To="1" Duration="0:0:0.167">
                     <DoubleAnimation.EasingFunction>
                         <CubicEase EasingMode="EaseOut"/>
                     </DoubleAnimation.EasingFunction>
                 </DoubleAnimation>
                 <DoubleAnimation Storyboard.TargetName="PopupTranslateTransform"
                                  Storyboard.TargetProperty="Y"
-                                 From="6" To="0" Duration="0:0:0.16">
+                                 From="4" To="0" Duration="0:0:0.167">
                     <DoubleAnimation.EasingFunction>
                         <CubicEase EasingMode="EaseOut"/>
                     </DoubleAnimation.EasingFunction>
@@ -41,14 +41,14 @@
             <Storyboard x:Name="PopupHideStoryboard">
                 <DoubleAnimation Storyboard.TargetName="RootGrid"
                                  Storyboard.TargetProperty="Opacity"
-                                 From="1" To="0" Duration="0:0:0.11">
+                                 From="1" To="0" Duration="0:0:0.083">
                     <DoubleAnimation.EasingFunction>
                         <CubicEase EasingMode="EaseIn"/>
                     </DoubleAnimation.EasingFunction>
                 </DoubleAnimation>
                 <DoubleAnimation Storyboard.TargetName="PopupTranslateTransform"
                                  Storyboard.TargetProperty="Y"
-                                 From="0" To="-3" Duration="0:0:0.11">
+                                 From="0" To="-2" Duration="0:0:0.083">
                     <DoubleAnimation.EasingFunction>
                         <CubicEase EasingMode="EaseIn"/>
                     </DoubleAnimation.EasingFunction>
@@ -303,6 +303,8 @@
                              Padding="0"
                              MinHeight="0"
                              VerticalAlignment="Center"
+                             GotFocus="SearchTextBox_GotFocus"
+                             LostFocus="SearchTextBox_LostFocus"
                              TextChanged="SearchTextBox_TextChanged"
                              KeyDown="SearchTextBox_KeyDown">
                         <!--
@@ -327,7 +329,8 @@
                         </TextBox.Resources>
                     </TextBox>
 
-                    <!-- Keycap-style hotkey badge -->
+                    <!-- Keycap-style hotkey badge. The native TextBox clear button
+                         is the only clear affordance once text is present. -->
                     <Border x:Name="HotkeyHintBadge" Grid.Column="2" Padding="7,3,7,4" CornerRadius="5"
                             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
@@ -345,7 +348,7 @@
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     Background="Transparent" BorderThickness="0"
                     Click="ClosePopupButton_Click">
-                <FontIcon Glyph="&#xE8BB;" FontSize="12"/>
+                <FontIcon Glyph="&#xE70D;" FontSize="12"/>
             </Button>
 
             <ProgressBar x:Name="SearchProgressBar" Height="2"
@@ -830,6 +833,12 @@
         -->
         <Border x:Name="PopupBorderOverlay" Grid.RowSpan="5"
                 IsHitTestVisible="False" CornerRadius="8"/>
+
+        <controls:WidgetFeedbackPresenter
+            x:Name="SearchFeedbackPresenter"
+            Grid.RowSpan="5"
+            Margin="18,0,18,48"
+            Canvas.ZIndex="80" />
 
         <!--
             Drag hot zone is intentionally limited to a thin strip at the very top of

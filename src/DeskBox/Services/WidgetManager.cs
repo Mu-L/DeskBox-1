@@ -41,7 +41,8 @@ internal sealed record WidgetWindowCreationRequest(
     WidgetConfig Config,
     bool KeepPreparedForAnimation,
     bool RevealAfterCreate,
-    bool ShowRaisedWhileInitializing);
+    bool ShowRaisedWhileInitializing,
+    CancellationToken CancellationToken);
 
 internal sealed record WidgetWindowProvider(
     WidgetKind WidgetKind,
@@ -74,6 +75,11 @@ internal interface IDesktopWidgetWindow
     void EnsureRaisedFromTrayTopMost();
     void ForceRestoreDesktopLayerFromManager();
     void RestoreDesktopLayerFromManager();
+    Task WaitForFirstPresentedFrameAsync(CancellationToken cancellationToken);
+    void SetGroupDropPreview(
+        bool visible,
+        bool ready,
+        string? messageKey = null);
     void HideWindow();
     void CloseWindow();
 }
@@ -111,12 +117,10 @@ public sealed partial class WidgetManager
     public WidgetSessionState SessionState => _sessionManager.State;
     public bool IsWidgetInteractionActive => _sessionManager.IsInteractionActive;
 
-    public bool HasVisibleWidgets => _widgets.Values.Any(entry => entry.Window.Visible) ||
-                                     _quickCaptureWidgets.Values.Any(entry => entry.Window.Visible) ||
-                                     _contentWidgets.Values.Any(window => window.Visible);
+    public bool HasVisibleWidgets =>
+        GetLoadedDesktopWindows().Any(window => window.Visible);
 
-    internal int LoadedWidgetCount =>
-        _widgets.Count + _quickCaptureWidgets.Count + _contentWidgets.Count;
+    internal int LoadedWidgetCount => _widgetSurfaces.Count;
 
     internal int VisibleWidgetCount => GetLoadedDesktopWindows().Count(window => window.Visible);
 
@@ -169,12 +173,11 @@ public sealed partial class WidgetManager
 
     private IReadOnlyList<IDesktopWidgetWindow> GetLoadedDesktopWindows()
     {
-        var windows = new List<IDesktopWidgetWindow>(
-            _widgets.Count + _quickCaptureWidgets.Count + _contentWidgets.Count);
-        windows.AddRange(_widgets.Values.Select(entry => (IDesktopWidgetWindow)entry.Window));
-        windows.AddRange(_quickCaptureWidgets.Values.Select(entry => (IDesktopWidgetWindow)entry.Window));
-        windows.AddRange(_contentWidgets.Values.Select(window => (IDesktopWidgetWindow)window));
-        return windows;
+        return _widgetSurfaces.GetSessions()
+            .Select(session => session.Host)
+            .GroupBy(host => host.WindowHandle)
+            .Select(group => group.First())
+            .ToList();
     }
 
     public void BeginWidgetInteraction(string reason)
@@ -329,6 +332,7 @@ public sealed partial class WidgetManager
             _lastFeatureWidgetEnabledStates[kind] = FeatureWidgetSettings.IsEnabled(_settingsService.Settings, kind);
         }
         _lastWidgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(_settingsService.Settings.WidgetLayerMode);
+        InitializeWidgetGroupPresentationDefaults();
         _settingsService.SettingsChanged += OnSettingsChanged;
         _settingsService.AppearancePreviewChanged += ApplyAppearancePreview;
         _themeService.AppearanceChanged += ApplyAppearancePreview;
@@ -374,46 +378,52 @@ public sealed partial class WidgetManager
         [
             new(
                 WidgetKind.File,
-                async request => await CreateWidgetFromConfigAsync(
+                async request => await CreateCancellableWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
                     request.RevealAfterCreate,
-                    request.ShowRaisedWhileInitializing)),
+                    request.ShowRaisedWhileInitializing,
+                    request.CancellationToken)),
             new(
                 WidgetKind.QuickCapture,
                 async request => await CreateQuickCaptureWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
                     request.RevealAfterCreate,
-                    request.ShowRaisedWhileInitializing)),
+                    request.ShowRaisedWhileInitializing,
+                    request.CancellationToken)),
             new(
                 WidgetKind.Todo,
                 async request => await CreateContentWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
                     request.RevealAfterCreate,
-                    request.ShowRaisedWhileInitializing)),
+                    request.ShowRaisedWhileInitializing,
+                    request.CancellationToken)),
             new(
                 WidgetKind.Music,
                 async request => await CreateContentWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
                     request.RevealAfterCreate,
-                    request.ShowRaisedWhileInitializing)),
+                    request.ShowRaisedWhileInitializing,
+                    request.CancellationToken)),
             new(
                 WidgetKind.Weather,
                 async request => await CreateContentWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
                     request.RevealAfterCreate,
-                    request.ShowRaisedWhileInitializing)),
+                    request.ShowRaisedWhileInitializing,
+                    request.CancellationToken)),
             new(
                 WidgetKind.Search,
                 async request => await CreateContentWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
                     request.RevealAfterCreate,
-                    request.ShowRaisedWhileInitializing))
+                    request.ShowRaisedWhileInitializing,
+                    request.CancellationToken))
         ];
 
         return providers.ToDictionary(provider => provider.WidgetKind);
@@ -436,6 +446,8 @@ public sealed partial class WidgetManager
             _lastFeatureWidgetEnabledStates[kind] = enabled;
             ApplyFeatureWidgetEnabledState(kind, enabled);
         }
+
+        RefreshWidgetGroupPresentationDefaultsIfChanged();
     }
 
     private void ApplyWidgetLayerModeIfChanged()
@@ -520,11 +532,13 @@ public sealed partial class WidgetManager
 
         // Dedup feature widgets: each kind should only have one config
         DeduplicateFeatureWidgets();
+        NormalizeWidgetGroupsForRuntime();
 
         var visibleConfigs = _settingsService.Settings.Widgets.Where(widget =>
                 widget.IsVisible &&
                 !widget.IsDisabled &&
-                !IsDeleted(widget.Id))
+                !IsDeleted(widget.Id) &&
+                WidgetGroupSettings.IsActiveMember(_settingsService.Settings, widget.Id))
             .ToList();
 
         foreach (var unsupportedConfig in visibleConfigs.Where(widget => !_widgetRegistry.CanCreateWindow(widget.WidgetKind)))
@@ -674,6 +688,29 @@ public sealed partial class WidgetManager
         if (!_widgetRegistry.IsAvailableForSession(config, _settingsService.Settings))
         {
             return false;
+        }
+
+        WidgetGroupConfig? group = WidgetGroupSettings.FindByMember(
+            _settingsService.Settings,
+            widgetId);
+        if (group is not null)
+        {
+            group.IsVisible = true;
+            foreach (string memberId in group.MemberIds)
+            {
+                if (FindConfig(memberId) is { } memberConfig)
+                {
+                    memberConfig.IsVisible = true;
+                }
+            }
+            _settingsService.SaveDebounced(notifySubscribers: false);
+
+            if (!string.Equals(group.ActiveMemberId, widgetId, StringComparison.Ordinal))
+            {
+                return await SwitchWidgetGroupMemberAsync(widgetId);
+            }
+
+            ApplyGroupLayoutToMember(group, config);
         }
 
         if (config.WidgetKind == WidgetKind.QuickCapture)
@@ -861,6 +898,7 @@ public sealed partial class WidgetManager
             return;
         }
 
+        CancelAllWidgetSurfaceSwitches();
         var hideCandidates = GetLoadedDesktopWindows()
             .Where(window => window.Visible)
             .ToList();
@@ -957,6 +995,10 @@ public sealed partial class WidgetManager
     public async Task RemoveWidgetAsync(string widgetId, WidgetRemovalAction removalAction = WidgetRemovalAction.RemoveWidgetOnly)
     {
         var config = FindConfig(widgetId);
+        if (config is not null)
+        {
+            await RemoveWidgetFromGroupAsync(widgetId, revealStandalone: false);
+        }
         _deletedWidgetIds.Add(widgetId);
 
         if (_widgets.TryGetValue(widgetId, out var entry))
@@ -1016,6 +1058,7 @@ public sealed partial class WidgetManager
         }
 
         _settingsService.RemoveWidgetImmediate(widgetId);
+        ClearWidgetGroupTransientState(widgetId);
         if (config is not null && FeatureWidgetSettings.IsFeatureWidget(config.WidgetKind))
         {
             SetFeatureWidgetEnabledState(config.WidgetKind, false);
@@ -1065,6 +1108,10 @@ public sealed partial class WidgetManager
         config.Name = newName;
         config.IsDefaultTitle = false;
         _settingsService.UpdateWidget(config);
+        if (WidgetGroupSettings.FindByMember(_settingsService.Settings, widgetId) is not null)
+        {
+            RaiseWidgetGroupsChanged();
+        }
     }
 
     private void SyncStorageFolderEntries(string oldRootPath)
@@ -1093,12 +1140,27 @@ public sealed partial class WidgetManager
 
             window.ClearItemSelection();
         }
+
+        foreach (ContentWidgetWindow window in _contentWidgets.Values.Distinct())
+        {
+            if (window.CurrentContent is not FileSurfaceContent fileContent ||
+                string.Equals(
+                    fileContent.WidgetId,
+                    activeWidgetId,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            fileContent.ClearItemSelection();
+        }
     }
 
     private bool IsSessionCandidate(WidgetConfig widget)
     {
         return !widget.IsDisabled &&
                !IsDeleted(widget.Id) &&
+               WidgetGroupSettings.IsActiveMember(_settingsService.Settings, widget.Id) &&
                _widgetRegistry.IsAvailableForSession(widget, _settingsService.Settings);
     }
 
@@ -1124,21 +1186,32 @@ public sealed partial class WidgetManager
     /// </summary>
     public bool HideWidget(string widgetId)
     {
+        WidgetGroupConfig? group = WidgetGroupSettings.FindByMember(
+            _settingsService.Settings,
+            widgetId);
+        if (group is not null)
+        {
+            _widgetGroupSwitchRequests.Cancel(group.SurfaceId);
+        }
+
         if (_widgets.TryGetValue(widgetId, out var entry))
         {
             entry.Window.HideWindow();
+            SetWidgetGroupVisibility(entry.Window.Config, isVisible: false);
             return true;
         }
 
         if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))
         {
             quickCaptureEntry.Window.HideWindow();
+            SetWidgetGroupVisibility(quickCaptureEntry.Window.Config, isVisible: false);
             return true;
         }
 
         if (_contentWidgets.TryGetValue(widgetId, out var contentWindow))
         {
             contentWindow.HideWindow();
+            SetWidgetGroupVisibility(contentWindow.Config, isVisible: false);
             return true;
         }
 
@@ -1182,6 +1255,7 @@ public sealed partial class WidgetManager
         if (_widgets.TryGetValue(widgetId, out var loadedEntry))
         {
             loadedEntry.ViewModel.SetPositionLocked(locked);
+            SynchronizeGroupLayoutFromMember(loadedEntry.ViewModel.Config);
             return true;
         }
 
@@ -1192,6 +1266,17 @@ public sealed partial class WidgetManager
         }
 
         config.IsPositionLocked = locked;
+        if (WidgetGroupSettings.FindByMember(_settingsService.Settings, widgetId) is { } group)
+        {
+            group.IsPositionLocked = locked;
+            foreach (string memberId in group.MemberIds)
+            {
+                if (FindConfig(memberId) is { } member)
+                {
+                    member.IsPositionLocked = locked;
+                }
+            }
+        }
         _settingsService.UpdateWidget(config);
         return true;
     }
@@ -1204,6 +1289,7 @@ public sealed partial class WidgetManager
         if (_widgets.TryGetValue(widgetId, out var loadedEntry))
         {
             loadedEntry.ViewModel.SetSizeLocked(locked);
+            SynchronizeGroupLayoutFromMember(loadedEntry.ViewModel.Config);
             return true;
         }
 
@@ -1214,6 +1300,17 @@ public sealed partial class WidgetManager
         }
 
         config.IsSizeLocked = locked;
+        if (WidgetGroupSettings.FindByMember(_settingsService.Settings, widgetId) is { } group)
+        {
+            group.IsSizeLocked = locked;
+            foreach (string memberId in group.MemberIds)
+            {
+                if (FindConfig(memberId) is { } member)
+                {
+                    member.IsSizeLocked = locked;
+                }
+            }
+        }
         _settingsService.UpdateWidget(config);
         return true;
     }
@@ -1235,12 +1332,13 @@ public sealed partial class WidgetManager
     /// </summary>
     public void CloseAll()
     {
+        CancelAllWidgetSurfaceSwitches();
         StopTrayLayerRestoreMonitor();
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _settingsService.AppearancePreviewChanged -= ApplyAppearancePreview;
         _themeService.AppearanceChanged -= ApplyAppearancePreview;
 
-        foreach (var (_, (window, viewModel)) in _widgets)
+        foreach (var (_, (window, viewModel)) in _widgets.ToList())
         {
             viewModel.Dispose();
             try
@@ -1291,6 +1389,7 @@ public sealed partial class WidgetManager
 
         _contentWidgets.Clear();
         _widgetWindowHandles.Clear();
+        _widgetSurfaces.Clear();
         _sessionManager.MarkHidden("close-all");
     }
 
@@ -1372,12 +1471,29 @@ public sealed partial class WidgetManager
         return SetContentFeatureWidgetEnabledAsync(WidgetKind.Music, enabled, reveal);
     }
 
-    private async Task<WidgetWindow> CreateWidgetFromConfigAsync(
+    private Task<WidgetWindow> CreateWidgetFromConfigAsync(
         WidgetConfig config,
         bool keepPreparedForAnimation = false,
         bool revealAfterCreate = false,
         bool showRaisedWhileInitializing = false)
     {
+        return CreateCancellableWidgetFromConfigAsync(
+            config,
+            keepPreparedForAnimation,
+            revealAfterCreate,
+            showRaisedWhileInitializing,
+            CancellationToken.None);
+    }
+
+    private async Task<WidgetWindow> CreateCancellableWidgetFromConfigAsync(
+        WidgetConfig config,
+        bool keepPreparedForAnimation = false,
+        bool revealAfterCreate = false,
+        bool showRaisedWhileInitializing = false,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (config.WidgetKind != WidgetKind.File)
         {
             throw new InvalidOperationException(
@@ -1398,20 +1514,13 @@ public sealed partial class WidgetManager
 
         _themeService.TrackWindow(window);
         _widgets[config.Id] = (window, viewModel);
+        RegisterCreatedSurfaceHost(config, window);
         _widgetWindowHandles.Add(window.WindowHandle);
         ApplyCapsuleArrangementIfChanged(force: true);
 
-        window.Closed += (_, _) =>
-        {
-            if (IsDeleted(config.Id) || FindConfig(config.Id) is null)
-            {
-                return;
-            }
+        window.Closed += (_, _) => OnFileWidgetWindowClosed(window);
 
-            config.IsVisible = false;
-            _settingsService.SaveDebounced();
-        };
-
+        Task? initializationTask = null;
         try
         {
             window.PrepareTrayShowAnimation();
@@ -1428,7 +1537,8 @@ public sealed partial class WidgetManager
                 return window;
             }
 
-            await viewModel.InitializeAsync();
+            initializationTask = viewModel.InitializeAsync();
+            await initializationTask.WaitAsync(cancellationToken);
             if (!keepPreparedForAnimation)
             {
                 window.CompleteTrayShowWithoutAnimation();
@@ -1441,16 +1551,16 @@ public sealed partial class WidgetManager
         catch
         {
             _widgets.Remove(config.Id);
-            viewModel.Dispose();
-
-            try
-            {
-                window.Close();
-            }
-            catch
-            {
-            }
-
+            _widgetWindowHandles.Remove(window.WindowHandle);
+            UnregisterSurfaceHost(window);
+            _ = ObserveAndDisposeWidgetInitializationAsync(
+                initializationTask ?? Task.CompletedTask,
+                viewModel,
+                config);
+            CloseFailedCreatedWindow(
+                config.Id,
+                window,
+                preserveVisibility: cancellationToken.CanBeCanceled);
             throw;
         }
 
@@ -1458,12 +1568,60 @@ public sealed partial class WidgetManager
         return window;
     }
 
+    private void OnFileWidgetWindowClosed(WidgetWindow window)
+    {
+        List<string> registeredIds = _widgets
+            .Where(entry => ReferenceEquals(entry.Value.Window, window))
+            .Select(entry => entry.Key)
+            .ToList();
+        foreach (string registeredId in registeredIds)
+        {
+            _widgets.Remove(registeredId);
+        }
+
+        UnregisterSurfaceHost(window);
+        _widgetWindowHandles.Remove(window.WindowHandle);
+        WidgetConfig closedConfig = window.Config;
+        if (IsDeleted(closedConfig.Id) || FindConfig(closedConfig.Id) is null)
+        {
+            return;
+        }
+
+        if (_suppressClosedVisibilityPersistence.Contains(closedConfig.Id) ||
+            registeredIds.Any(_suppressClosedVisibilityPersistence.Contains))
+        {
+            return;
+        }
+
+        if (_widgets.Values.Any(entry => ReferenceEquals(entry.Window, window)))
+        {
+            return;
+        }
+
+        closedConfig.IsVisible = false;
+        SetWidgetGroupVisibility(closedConfig, isVisible: false);
+        _settingsService.SaveDebounced();
+    }
+
     private async Task<IDesktopWidgetWindow> CreateRegisteredWidgetFromConfigAsync(
         WidgetConfig config,
         bool keepPreparedForAnimation = false,
         bool revealAfterCreate = false,
-        bool showRaisedWhileInitializing = false)
+        bool showRaisedWhileInitializing = false,
+        CancellationToken cancellationToken = default)
     {
+        WidgetGroupConfig? group = WidgetGroupSettings.FindByMember(
+            _settingsService.Settings,
+            config.Id);
+        if (group is not null &&
+            config.WidgetKind is WidgetKind.File or
+                WidgetKind.QuickCapture)
+        {
+            return await CreateContentWidgetFromConfigAsync(
+                config, keepPreparedForAnimation, revealAfterCreate,
+                showRaisedWhileInitializing, cancellationToken);
+        }
+
         if (!_windowProviders.TryGetValue(config.WidgetKind, out var provider))
         {
             throw new NotSupportedException($"Widget kind '{config.WidgetKind}' is not registered as creatable.");
@@ -1473,30 +1631,40 @@ public sealed partial class WidgetManager
             config,
             keepPreparedForAnimation,
             revealAfterCreate,
-            showRaisedWhileInitializing));
+            showRaisedWhileInitializing,
+            cancellationToken));
     }
 
-    private Task<ContentWidgetWindow> CreateContentWidgetFromConfigAsync(
+    private async Task<ContentWidgetWindow> CreateContentWidgetFromConfigAsync(
         WidgetConfig config,
         bool keepPreparedForAnimation = false,
         bool revealAfterCreate = false,
-        bool showRaisedWhileInitializing = false)
+        bool showRaisedWhileInitializing = false,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!HasUiThreadAccess())
         {
-            return RunOnUiThreadAsync(() => CreateContentWidgetFromConfigAsync(
+            return await RunOnUiThreadAsync(() => CreateContentWidgetFromConfigAsync(
                 config,
                 keepPreparedForAnimation,
                 revealAfterCreate,
-                showRaisedWhileInitializing));
+                showRaisedWhileInitializing,
+                cancellationToken));
         }
 
         if (_contentWidgets.TryGetValue(config.Id, out var existing))
         {
-            return Task.FromResult(existing);
+            if (!showRaisedWhileInitializing)
+            {
+                await existing.ContentReadyTask.WaitAsync(cancellationToken);
+            }
+
+            return existing;
         }
 
-        var factory = new ContentWidgetWindowFactory(new WidgetContentFactory(_localizationService), _settingsService);
+        ContentWidgetWindowFactory factory = CreateSurfaceContentWindowFactory();
         if (!factory.CanCreateContentWindow(config.WidgetKind))
         {
             throw new NotSupportedException(
@@ -1514,49 +1682,62 @@ public sealed partial class WidgetManager
         var window = factory.CreateContentWindow(config);
         _themeService.TrackWindow(window);
         _contentWidgets[config.Id] = window;
+        RegisterCreatedSurfaceHost(config, window);
+        RestoreWidgetGroupTransientState(config.Id);
         _widgetWindowHandles.Add(window.WindowHandle);
         ApplyCapsuleArrangementIfChanged(force: true);
 
         window.Closed += (_, _) =>
         {
-            if (_contentWidgets.TryGetValue(config.Id, out var currentWindow) &&
-                ReferenceEquals(currentWindow, window))
+            List<string> registeredIds = _contentWidgets
+                .Where(entry => ReferenceEquals(entry.Value, window))
+                .Select(entry => entry.Key)
+                .ToList();
+            foreach (string registeredId in registeredIds)
             {
-                _contentWidgets.Remove(config.Id);
+                _contentWidgets.Remove(registeredId);
             }
 
+            UnregisterSurfaceHost(window);
             _widgetWindowHandles.Remove(window.WindowHandle);
-            if (IsDeleted(config.Id) || FindConfig(config.Id) is null)
+            WidgetConfig closedConfig = window.Config;
+            if (IsDeleted(closedConfig.Id) || FindConfig(closedConfig.Id) is null)
             {
                 return;
             }
 
-            if (_suppressClosedVisibilityPersistence.Contains(config.Id))
+            if (_suppressClosedVisibilityPersistence.Contains(closedConfig.Id) ||
+                registeredIds.Any(_suppressClosedVisibilityPersistence.Contains))
             {
                 return;
             }
 
-            if (_contentWidgets.ContainsKey(config.Id))
+            if (_contentWidgets.Values.Any(candidate => ReferenceEquals(candidate, window)))
             {
                 return;
             }
 
-            config.IsVisible = false;
+            closedConfig.IsVisible = false;
+            SetWidgetGroupVisibility(closedConfig, isVisible: false);
             _settingsService.SaveDebounced();
         };
 
         try
         {
+            if (keepPreparedForAnimation && showRaisedWhileInitializing)
+            {
+                window.PrepareTrayShowAnimation();
+                window.ShowPreparedRaisedFromTray();
+                QueueDeferredContentInitialization(config, window);
+                return window;
+            }
+
+            await window.ContentReadyTask.WaitAsync(cancellationToken);
             window.PrepareTrayShowAnimation();
             if (!keepPreparedForAnimation)
             {
                 window.ShowPreparedAtDesktopLayer();
                 window.CompleteTrayShowWithoutAnimation();
-            }
-            else if (showRaisedWhileInitializing)
-            {
-                window.ShowPreparedRaisedFromTray();
-                return Task.FromResult(window);
             }
 
             if (revealAfterCreate)
@@ -1569,19 +1750,104 @@ public sealed partial class WidgetManager
         {
             _contentWidgets.Remove(config.Id);
             _widgetWindowHandles.Remove(window.WindowHandle);
-
-            try
-            {
-                window.Close();
-            }
-            catch
-            {
-            }
-
+            UnregisterSurfaceHost(window);
+            CloseFailedCreatedWindow(
+                config.Id,
+                window,
+                preserveVisibility: cancellationToken.CanBeCanceled);
             throw;
         }
 
-        return Task.FromResult(window);
+        return window;
+    }
+
+    private void CloseFailedCreatedWindow(
+        string widgetId,
+        IDesktopWidgetWindow window,
+        bool preserveVisibility)
+    {
+        if (preserveVisibility)
+        {
+            _suppressClosedVisibilityPersistence.Add(widgetId);
+        }
+
+        try
+        {
+            window.CloseWindow();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            if (preserveVisibility)
+            {
+                _suppressClosedVisibilityPersistence.Remove(widgetId);
+            }
+        }
+    }
+
+    private static async Task ObserveAndDisposeWidgetInitializationAsync(
+        Task initializationTask,
+        WidgetViewModel viewModel,
+        WidgetConfig config)
+    {
+        try
+        {
+            await initializationTask;
+        }
+        catch (Exception ex)
+        {
+            App.LogVerbose(
+                $"[WidgetManager] Retired file widget initialization completed with error " +
+                $"id={config.Id}: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            try
+            {
+                viewModel.Dispose();
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[WidgetManager] Retired file widget cleanup failed " +
+                    $"id={config.Id}: {ex}");
+            }
+        }
+    }
+
+    private void QueueDeferredContentInitialization(
+        WidgetConfig config,
+        ContentWidgetWindow window)
+    {
+        App.UiDispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Yield();
+            try
+            {
+                await window.ContentReadyTask;
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[WidgetManager] Failed to initialize content widget " +
+                    $"'{config.Name}' ({config.Id}) after show: {ex}");
+                if (_contentWidgets.TryGetValue(config.Id, out var currentWindow) &&
+                    ReferenceEquals(currentWindow, window))
+                {
+                    _contentWidgets.Remove(config.Id);
+                    _widgetWindowHandles.Remove(window.WindowHandle);
+                    try
+                    {
+                        window.Close();
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        });
     }
 
     private void QueueDeferredWidgetInitialization(

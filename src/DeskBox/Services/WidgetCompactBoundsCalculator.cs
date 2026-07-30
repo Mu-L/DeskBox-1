@@ -32,7 +32,8 @@ public static class WidgetCompactBoundsCalculator
         string? contentMode,
         WidgetKind widgetKind = WidgetKind.File,
         double? compactWidth = null,
-        bool clampCustomWidth = true)
+        bool clampCustomWidth = true,
+        string? heightContentMode = null)
     {
         double scale = double.IsFinite(dpiScale) && dpiScale > 0 ? dpiScale : 1;
         double logicalWidth = ResolveLogicalWidth(
@@ -41,7 +42,9 @@ public static class WidgetCompactBoundsCalculator
             compactWidth,
             clampCustomWidth);
         int width = Math.Max(1, (int)Math.Round(logicalWidth * scale));
-        int height = Math.Max(1, (int)Math.Round(ResolveLogicalHeight(contentMode, widgetKind) * scale));
+        int height = Math.Max(
+            1,
+            (int)Math.Round(ResolveLogicalHeight(heightContentMode ?? contentMode, widgetKind) * scale));
         bool anchorRight = positionAnchor is WidgetPositionAnchors.RightTop or WidgetPositionAnchors.RightBottom;
         bool anchorBottom = positionAnchor is WidgetPositionAnchors.LeftBottom or WidgetPositionAnchors.RightBottom;
         int x = anchorRight ? expandedBounds.X + expandedBounds.Width - width : expandedBounds.X;
@@ -54,7 +57,8 @@ public static class WidgetCompactBoundsCalculator
         RectInt32 expandedBounds,
         double dpiScale,
         string? contentMode,
-        bool alignToExpandedWidth = false)
+        bool alignToExpandedWidth = false,
+        string? heightContentMode = null)
     {
         double? compactWidth = alignToExpandedWidth
             ? config.Width
@@ -68,7 +72,8 @@ public static class WidgetCompactBoundsCalculator
                 contentMode,
                 config.WidgetKind,
                 compactWidth,
-                clampCustomWidth: !alignToExpandedWidth);
+                clampCustomWidth: !alignToExpandedWidth,
+                heightContentMode: heightContentMode);
         }
 
         var placementConfig = new WidgetConfig
@@ -80,7 +85,7 @@ public static class WidgetCompactBoundsCalculator
                 config.WidgetKind,
                 compactWidth,
                 clampCustomWidth: !alignToExpandedWidth),
-            Height = ResolveLogicalHeight(contentMode, config.WidgetKind),
+            Height = ResolveLogicalHeight(heightContentMode ?? contentMode, config.WidgetKind),
             BoundsCoordinateVersion = placement.BoundsCoordinateVersion,
             PositionAnchor = placement.PositionAnchor,
             PositionMarginX = placement.PositionMarginX,
@@ -155,6 +160,18 @@ public static class WidgetCompactBoundsCalculator
             [anchor]).ExpandedBounds;
     }
 
+    public static SizeInt32 ResolveExpandedSizeForWidthMode(
+        RectInt32 compactBounds,
+        SizeInt32 expandedSize,
+        string? widthMode)
+    {
+        int width = SettingsService.NormalizeWidgetCompactWidthMode(widthMode) ==
+            SettingsService.WidgetCompactWidthModeAligned
+                ? Math.Max(1, compactBounds.Width)
+                : Math.Max(1, expandedSize.Width);
+        return new SizeInt32(width, Math.Max(1, expandedSize.Height));
+    }
+
     public static double ResolveLogicalWidth(
         string? contentMode,
         WidgetKind widgetKind,
@@ -189,11 +206,13 @@ public static class WidgetCompactBoundsCalculator
 
     public static double ResolveLogicalHeight(string? contentMode, WidgetKind widgetKind)
     {
+        // The Smart presentation is the shared high-density capsule treatment.
+        // Keep every widget kind on the same outer height so mixed capsule bars
+        // do not alternate between short and tall items.
         bool usesSmartDetailLayout = string.Equals(
-                contentMode,
-                SettingsService.WidgetCompactContentModeSmart,
-                StringComparison.Ordinal) &&
-            widgetKind is WidgetKind.Music or WidgetKind.Weather or WidgetKind.QuickCapture or WidgetKind.Search;
+            contentMode,
+            SettingsService.WidgetCompactContentModeSmart,
+            StringComparison.Ordinal);
         return usesSmartDetailLayout ? SmartDetailHeight : Height;
     }
 

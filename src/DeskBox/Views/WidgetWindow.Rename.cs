@@ -22,6 +22,7 @@ public sealed partial class WidgetWindow
     private bool _isCommittingItemRename;
     private bool _isCancellingTitleRename;
     private bool _isCancellingItemRename;
+    private bool _usesShellTitleRenameEditor;
 
     // ── Title rename ───────────────────────────────────────────
 
@@ -29,6 +30,36 @@ public sealed partial class WidgetWindow
     {
         _isCancellingTitleRename = false;
         BeginInteractionLayer("file-title-rename-opened", elevate: false);
+        if (FileWidgetShell.HasWidgetGroup)
+        {
+            _usesShellTitleRenameEditor = true;
+            var editor = new TextBox
+            {
+                Text = ViewModel.Name,
+                PlaceholderText = _localizationService.T("Widget.TitlePlaceholder"),
+                Width = 180,
+                MaxWidth = 220,
+                FontSize = 13,
+                Style = Application.Current.Resources.TryGetValue(
+                    "WidgetTitleRenameTextBoxStyle",
+                    out object? styleResource)
+                    ? styleResource as Style
+                    : null,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            editor.KeyDown += TitleEditBox_KeyDown;
+            editor.LostFocus += TitleEditBox_LostFocus;
+            FileWidgetShell.TitleEditorContent = editor;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                editor.Focus(FocusState.Programmatic);
+                editor.SelectAll();
+            });
+            return;
+        }
+
+        _usesShellTitleRenameEditor = false;
         PrepareRenameEditor();
         TitleText.Visibility = Visibility.Collapsed;
         TitleEditBox.Visibility = Visibility.Visible;
@@ -47,13 +78,18 @@ public sealed partial class WidgetWindow
 
     private async Task CommitRenameAsync()
     {
+        TextBox? editor = _usesShellTitleRenameEditor
+            ? FileWidgetShell.TitleEditorContent as TextBox
+            : TitleEditBox.Visibility == Visibility.Visible
+                ? TitleEditBox
+                : null;
         if (_isCommittingTitleRename ||
-            TitleEditBox.Visibility != Visibility.Visible)
+            editor is null)
         {
             return;
         }
 
-        string newName = TitleEditBox.Text.Trim();
+        string newName = editor.Text.Trim();
         _isCommittingTitleRename = true;
         try
         {
@@ -62,15 +98,14 @@ public sealed partial class WidgetWindow
                 await ViewModel.RenameAsync(newName);
             }
 
-            TitleEditBox.Visibility = Visibility.Collapsed;
-            TitleText.Visibility = Visibility.Visible;
+            CompleteTitleRenameEditor();
             ReleaseInteractionLayer("file-title-rename-committed");
         }
         catch (Exception ex)
         {
             await ShowErrorDialogAsync(_localizationService.T("Widget.RenameFailed"), ex.Message);
-            TitleEditBox.Focus(FocusState.Programmatic);
-            TitleEditBox.SelectAll();
+            editor.Focus(FocusState.Programmatic);
+            editor.SelectAll();
         }
         finally
         {
@@ -81,9 +116,26 @@ public sealed partial class WidgetWindow
     private void CancelRename()
     {
         _isCancellingTitleRename = true;
-        TitleEditBox.Visibility = Visibility.Collapsed;
-        TitleText.Visibility = Visibility.Visible;
+        CompleteTitleRenameEditor();
         ReleaseInteractionLayer("file-title-rename-canceled");
+    }
+
+    private void CompleteTitleRenameEditor()
+    {
+        if (_usesShellTitleRenameEditor &&
+            FileWidgetShell.TitleEditorContent is TextBox editor)
+        {
+            editor.KeyDown -= TitleEditBox_KeyDown;
+            editor.LostFocus -= TitleEditBox_LostFocus;
+            FileWidgetShell.TitleEditorContent = null;
+        }
+        else
+        {
+            TitleEditBox.Visibility = Visibility.Collapsed;
+            TitleText.Visibility = Visibility.Visible;
+        }
+
+        _usesShellTitleRenameEditor = false;
     }
 
     private async void TitleEditBox_LostFocus(object sender, RoutedEventArgs e)

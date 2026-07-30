@@ -147,7 +147,7 @@ public sealed partial class WidgetWindow
     {
         double listIcon = ViewModel.ListIconSize;
         double labelFont = ViewModel.ListLabelFontSize;
-        var chromeMode = _chromeModeResolver.Resolve(ViewModel.Config, _chromeDescriptor);
+        WidgetChromeMode chromeMode = ResolveCurrentChromeMode();
         double titleTextSize = chromeMode == WidgetChromeMode.Compact
             ? labelFont
             : labelFont * 1.27;
@@ -218,6 +218,16 @@ public sealed partial class WidgetWindow
         RootGrid.RowDefinitions[0].Height = metrics.RowHeight;
         FileWidgetShell.SetTitleBarRowHeight(metrics.RowHeight);
         TitleBarGrid.Padding = metrics.InnerTitlePadding;
+    }
+
+    private WidgetChromeMode ResolveCurrentChromeMode()
+    {
+        return App.Current.WidgetManager?.ResolveWidgetChromeMode(
+                   ViewModel.Config,
+                   _chromeDescriptor) ??
+               _chromeModeResolver.Resolve(
+                   ViewModel.Config,
+                   _chromeDescriptor);
     }
 
     private void ApplyTitleActionButtonConfiguration(WidgetChromeMode chromeMode)

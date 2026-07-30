@@ -259,11 +259,6 @@ await ConfigureFolderWatchersAsync(normalizedPath);
             return Task.CompletedTask;
         }
 
-        if (string.IsNullOrEmpty(MappedFolderPath))
-        {
-            return Task.CompletedTask;
-        }
-
         foreach (var path in normalizedPaths)
         {
             RemoveItemByPath(path);
@@ -315,6 +310,9 @@ await ConfigureFolderWatchersAsync(normalizedPath);
             loadIcon: false,
             loadFolderItemCount: false);
         ApplyRuntimeItemData(item, refreshedItem);
+        UpdateStackMemberOverridePath(
+            sourcePath,
+            destinationPath);
         StartItemHydration();
 
         int originalIndex = Items.IndexOf(item);
@@ -364,6 +362,8 @@ await ConfigureFolderWatchersAsync(normalizedPath);
         }
 
         NormalizeSortOrder();
+        RemoveStackMemberOverridePaths(
+            targets.Select(item => item.Path));
     }
 
     public void UpdateBounds(double x, double y, double width, double height, bool persist)

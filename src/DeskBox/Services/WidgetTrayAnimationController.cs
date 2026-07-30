@@ -189,6 +189,34 @@ public sealed class WidgetTrayAnimationController
         CompositionTarget.Rendering += _contentReadyRenderingHandler;
     }
 
+    /// <summary>
+    /// Waits until two composition frames have elapsed for a newly shown
+    /// window. The first frame commits its XAML surface; the second confirms
+    /// that the surface can replace an already-visible group member.
+    /// </summary>
+    public async Task WaitForContentReadyAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Action readyAction = () => completion.TrySetResult();
+        PlayAfterContentReady(readyAction);
+        try
+        {
+            await completion.Task.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            if (ReferenceEquals(_contentReadyAction, readyAction))
+            {
+                CancelContentReadyCallback();
+            }
+            throw;
+        }
+    }
+
     public WidgetTrayAnimationProfile CreateProfile(WidgetAnimationOptions options)
     {
         string effect = options.Effect;

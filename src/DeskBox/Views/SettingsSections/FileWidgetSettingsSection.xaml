@@ -17,7 +17,7 @@
         <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Appearance.DetailTitle" />
         <StackPanel Margin="0,8,0,0" Spacing="4">
             <Border Style="{StaticResource SettingsGroupStyle}">
-                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="FileDisplaySettings">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8A5;" IsHitTestVisible="False" VerticalAlignment="Center" />
@@ -27,14 +27,13 @@
                             </StackPanel>
                         </Grid>
                     </Button>
-                    <ToggleSwitch
+                    <FontIcon
                         Grid.Column="1"
-                        MinWidth="0"
-                        OffContent=""
-                        OnContent=""
+                        FontSize="12"
+                        Glyph="&#xE76C;"
+                        IsHitTestVisible="False"
                         VerticalAlignment="Center"
-                        IsOn="{Binding ShowFileExtensions, Mode=TwoWay}" />
-                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                        />
                 </Grid>
             </Border>
 
@@ -60,28 +59,6 @@
                 </Grid>
             </Border>
 
-            <Border Style="{StaticResource SettingsGroupStyle}">
-                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
-                    <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="FileStorageSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                            <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8B7;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.FileStorage.Title" />
-                                <TextBlock MaxLines="1" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding ManagedStorageRootPath}" TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
-                    <Button
-                        Grid.Column="1"
-                        Click="OpenManagedStoragePathButton_Click"
-                        Style="{StaticResource IconActionButtonStyle}"
-                        VerticalAlignment="Center"
-                        svc:Localized.ToolTipKey="Settings.ManagedPath.OpenTooltip">
-                        <SymbolIcon Symbol="OpenFile" />
-                    </Button>
-                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                </Grid>
-            </Border>
         </StackPanel>
     </StackPanel>
 </UserControl>

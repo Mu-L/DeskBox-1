@@ -45,7 +45,8 @@ public sealed class WidgetShellContentHostTests
             "initialize:second",
             "deactivate:first",
             "set:second",
-            "appearance:second"
+            "appearance:second",
+            "dispose:first"
         ], calls);
     }
 
@@ -72,13 +73,254 @@ public sealed class WidgetShellContentHostTests
         ], calls);
     }
 
-    private sealed class TestWidgetContent : IWidgetContent
+    [Fact]
+    public async Task PreparedTransition_KeepsOutgoingContentUntilCompletion()
+    {
+        var calls = new List<string>();
+        var first = new TestWidgetContent("first", WidgetKind.Todo, calls);
+        var second = new TestWidgetContent("second", WidgetKind.Weather, calls);
+        var host = new WidgetShellContentHost(
+            setContent: content => calls.Add($"set:{content.WidgetId}"),
+            beginTransition: (outgoing, incoming) =>
+                calls.Add($"begin:{outgoing.WidgetId}->{incoming.WidgetId}"),
+            completeTransition: () => calls.Add("complete"),
+            rollbackTransition: content => calls.Add($"rollback:{content.WidgetId}"));
+        await host.SetContentAsync(first);
+        calls.Clear();
+
+        using WidgetShellContentHost.WidgetShellPreparedContent? prepared =
+            await host.PrepareContentAsync(second, CancellationToken.None);
+
+        Assert.NotNull(prepared);
+        Assert.Same(first, host.CurrentContent);
+        Assert.Equal(["initialize:second"], calls);
+
+        using WidgetShellContentHost.WidgetShellContentTransition? transition =
+            host.CommitPreparedContent(prepared!);
+
+        Assert.NotNull(transition);
+        Assert.Same(second, host.CurrentContent);
+        Assert.DoesNotContain("dispose:first", calls);
+        transition!.Complete();
+
+        Assert.Equal(
+        [
+            "initialize:second",
+            "deactivate:first",
+            "begin:first->second",
+            "appearance:second",
+            "complete",
+            "dispose:first"
+        ], calls);
+    }
+
+    [Fact]
+    public async Task PreparedTransition_RollbackRestoresOutgoingAndDisposesCandidate()
+    {
+        var calls = new List<string>();
+        var first = new TestWidgetContent("first", WidgetKind.Todo, calls);
+        var second = new TestWidgetContent("second", WidgetKind.Music, calls);
+        var host = new WidgetShellContentHost(
+            setContent: content => calls.Add($"set:{content.WidgetId}"),
+            beginTransition: (outgoing, incoming) =>
+                calls.Add($"begin:{outgoing.WidgetId}->{incoming.WidgetId}"),
+            rollbackTransition: content => calls.Add($"rollback:{content.WidgetId}"));
+        await host.SetContentAsync(first);
+        calls.Clear();
+
+        using WidgetShellContentHost.WidgetShellPreparedContent? prepared =
+            await host.PrepareContentAsync(second, CancellationToken.None);
+        using WidgetShellContentHost.WidgetShellContentTransition? transition =
+            host.CommitPreparedContent(prepared!);
+        transition!.Rollback();
+
+        Assert.Same(first, host.CurrentContent);
+        Assert.Equal(
+        [
+            "initialize:second",
+            "deactivate:first",
+            "begin:first->second",
+            "appearance:second",
+            "deactivate:second",
+            "rollback:first",
+            "appearance:first",
+            "dispose:second"
+        ], calls);
+    }
+
+    [Fact]
+    public async Task CompletePresenterFailure_RemainsRollbackCapable()
+    {
+        var calls = new List<string>();
+        var first = new TestWidgetContent("first", WidgetKind.Todo, calls);
+        var second = new TestWidgetContent("second", WidgetKind.Weather, calls);
+        var host = new WidgetShellContentHost(
+            setContent: content => calls.Add($"set:{content.WidgetId}"),
+            beginTransition: (outgoing, incoming) =>
+                calls.Add($"begin:{outgoing.WidgetId}->{incoming.WidgetId}"),
+            completeTransition: () => throw new InvalidOperationException("presenter failed"),
+            rollbackTransition: content => calls.Add($"rollback:{content.WidgetId}"));
+        await host.SetContentAsync(first);
+        calls.Clear();
+
+        using WidgetShellContentHost.WidgetShellPreparedContent? prepared =
+            await host.PrepareContentAsync(second, CancellationToken.None);
+        using WidgetShellContentHost.WidgetShellContentTransition? transition =
+            host.CommitPreparedContent(prepared!);
+
+        Assert.Throws<InvalidOperationException>(() => transition!.Complete());
+        transition!.Rollback();
+
+        Assert.Same(first, host.CurrentContent);
+        Assert.Contains("rollback:first", calls);
+        Assert.Contains("dispose:second", calls);
+        Assert.DoesNotContain("dispose:first", calls);
+    }
+
+    [Fact]
+    public async Task OutgoingDisposeFailure_DoesNotUndoCommittedIncoming()
+    {
+        var calls = new List<string>();
+        var first = new TestWidgetContent(
+            "first",
+            WidgetKind.Todo,
+            calls,
+            throwOnDispose: true);
+        var second = new TestWidgetContent("second", WidgetKind.Weather, calls);
+        var host = new WidgetShellContentHost(
+            setContent: content => calls.Add($"set:{content.WidgetId}"),
+            beginTransition: (outgoing, incoming) =>
+                calls.Add($"begin:{outgoing.WidgetId}->{incoming.WidgetId}"),
+            completeTransition: () => calls.Add("complete"),
+            rollbackTransition: content => calls.Add($"rollback:{content.WidgetId}"));
+        await host.SetContentAsync(first);
+        calls.Clear();
+
+        using WidgetShellContentHost.WidgetShellPreparedContent? prepared =
+            await host.PrepareContentAsync(second, CancellationToken.None);
+        using WidgetShellContentHost.WidgetShellContentTransition? transition =
+            host.CommitPreparedContent(prepared!);
+
+        transition!.Complete();
+        transition.Rollback();
+
+        Assert.Same(second, host.CurrentContent);
+        Assert.Contains("complete", calls);
+        Assert.Contains("dispose:first", calls);
+        Assert.DoesNotContain("rollback:first", calls);
+        Assert.DoesNotContain("dispose:second", calls);
+    }
+
+    [Fact]
+    public async Task CancelledInitialization_DisposesCandidateAfterInitializationSettles()
+    {
+        var calls = new List<string>();
+        var initialization = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var content = new DeferredWidgetContent(
+            "candidate",
+            calls,
+            initialization.Task);
+        var host = new WidgetShellContentHost(setContent: _ => { });
+        using var cancellation = new CancellationTokenSource();
+
+        Task<WidgetShellContentHost.WidgetShellPreparedContent?> preparing =
+            host.PrepareContentAsync(content, cancellation.Token);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            async () => await preparing);
+        Assert.Equal(0, content.DisposeCount);
+
+        initialization.SetResult();
+        await WaitUntilAsync(() => content.DisposeCount == 1);
+
+        Assert.Equal(1, content.DisposeCount);
+        Assert.Null(host.CurrentContent);
+    }
+
+    [Fact]
+    public async Task DisposeDuringTransition_ReleasesIncomingAndOutgoingExactlyOnce()
+    {
+        var calls = new List<string>();
+        var first = new DeferredWidgetContent(
+            "first",
+            calls,
+            Task.CompletedTask);
+        var second = new DeferredWidgetContent(
+            "second",
+            calls,
+            Task.CompletedTask);
+        var host = new WidgetShellContentHost(
+            setContent: _ => { },
+            beginTransition: (_, _) => { });
+        await host.SetContentAsync(first);
+        using WidgetShellContentHost.WidgetShellPreparedContent? prepared =
+            await host.PrepareContentAsync(second, CancellationToken.None);
+        using WidgetShellContentHost.WidgetShellContentTransition? transition =
+            host.CommitPreparedContent(prepared!);
+
+        host.DisposeContent();
+        host.DisposeContent();
+        transition!.Rollback();
+
+        Assert.Equal(1, first.DisposeCount);
+        Assert.Equal(1, second.DisposeCount);
+        Assert.Null(host.CurrentContent);
+    }
+
+    [Fact]
+    public async Task BeginTransition_ExposesIncomingBeforeOutgoingCanBeReleased()
+    {
+        var calls = new List<string>();
+        var first = new TestWidgetContent("first", WidgetKind.File, calls);
+        var second = new TestWidgetContent("second", WidgetKind.QuickCapture, calls);
+        bool outgoingVisible = true;
+        bool incomingVisible = false;
+        var host = new WidgetShellContentHost(
+            setContent: _ => incomingVisible = true,
+            beginTransition: (_, _) => incomingVisible = true,
+            completeTransition: () => outgoingVisible = false);
+        await host.SetContentAsync(first);
+        incomingVisible = false;
+        using WidgetShellContentHost.WidgetShellPreparedContent? prepared =
+            await host.PrepareContentAsync(second, CancellationToken.None);
+        using WidgetShellContentHost.WidgetShellContentTransition? transition =
+            host.CommitPreparedContent(prepared!);
+
+        Assert.True(outgoingVisible || incomingVisible);
+        Assert.True(outgoingVisible);
+        Assert.True(incomingVisible);
+
+        transition!.Complete();
+
+        Assert.False(outgoingVisible);
+        Assert.True(incomingVisible);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        for (int attempt = 0; attempt < 50 && !condition(); attempt++)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition());
+    }
+
+    private sealed class TestWidgetContent : IWidgetContent, IDisposable
     {
         private readonly List<string> _calls;
+        private readonly bool _throwOnDispose;
 
-        public TestWidgetContent(string id, WidgetKind widgetKind, List<string> calls)
+        public TestWidgetContent(
+            string id,
+            WidgetKind widgetKind,
+            List<string> calls,
+            bool throwOnDispose = false)
         {
             _calls = calls;
+            _throwOnDispose = throwOnDispose;
             Config = new WidgetConfig
             {
                 Id = id,
@@ -120,6 +362,65 @@ public sealed class WidgetShellContentHostTests
         public void OnDeactivated()
         {
             _calls.Add($"deactivate:{WidgetId}");
+        }
+
+        public void Dispose()
+        {
+            _calls.Add($"dispose:{WidgetId}");
+            if (_throwOnDispose)
+            {
+                throw new InvalidOperationException(
+                    $"dispose failed for {WidgetId}");
+            }
+        }
+    }
+
+    private sealed class DeferredWidgetContent(
+        string id,
+        List<string> calls,
+        Task initialization) : IWidgetContent, IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public WidgetConfig Config { get; } = new()
+        {
+            Id = id,
+            Name = id,
+            WidgetKind = WidgetKind.Todo
+        };
+
+        public string WidgetId => Config.Id;
+
+        public WidgetKind WidgetKind => Config.WidgetKind;
+
+        public FrameworkElement View =>
+            throw new NotSupportedException(
+                "Tests do not instantiate WinUI views.");
+
+        public async Task InitializeAsync()
+        {
+            calls.Add($"initialize:{id}");
+            await initialization;
+        }
+
+        public Task RefreshAsync() => Task.CompletedTask;
+
+        public void ApplyAppearance()
+        {
+        }
+
+        public void OnActivated()
+        {
+        }
+
+        public void OnDeactivated()
+        {
+        }
+
+        public void Dispose()
+        {
+            DisposeCount++;
+            calls.Add($"dispose:{id}");
         }
     }
 }

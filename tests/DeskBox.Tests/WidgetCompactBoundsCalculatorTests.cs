@@ -40,8 +40,8 @@ public sealed class WidgetCompactBoundsCalculatorTests
     }
 
     [Theory]
-    [InlineData(SettingsService.WidgetCompactContentModeSmart, WidgetKind.File, 42)]
-    [InlineData(SettingsService.WidgetCompactContentModeSmart, WidgetKind.Todo, 42)]
+    [InlineData(SettingsService.WidgetCompactContentModeSmart, WidgetKind.File, 52)]
+    [InlineData(SettingsService.WidgetCompactContentModeSmart, WidgetKind.Todo, 52)]
     [InlineData(SettingsService.WidgetCompactContentModeSmart, WidgetKind.Music, 52)]
     [InlineData(SettingsService.WidgetCompactContentModeSmart, WidgetKind.Weather, 52)]
     [InlineData(SettingsService.WidgetCompactContentModeSmart, WidgetKind.QuickCapture, 52)]
@@ -57,6 +57,20 @@ public sealed class WidgetCompactBoundsCalculatorTests
             kind);
 
         Assert.Equal(expectedHeight, result.Height);
+    }
+
+    [Fact]
+    public void Calculate_SmartOuterHeightStaysTallWhenSensitiveContentUsesSummary()
+    {
+        RectInt32 result = WidgetCompactBoundsCalculator.Calculate(
+            new RectInt32(0, 0, 600, 400),
+            WidgetPositionAnchors.LeftTop,
+            1,
+            SettingsService.WidgetCompactContentModeSummary,
+            WidgetKind.Todo,
+            heightContentMode: SettingsService.WidgetCompactContentModeSmart);
+
+        Assert.Equal((int)WidgetCompactBoundsCalculator.SmartDetailHeight, result.Height);
     }
 
     [Theory]
@@ -138,6 +152,22 @@ public sealed class WidgetCompactBoundsCalculatorTests
 
         Assert.Equal(720, aligned.Width);
         Assert.Equal(20, aligned.X);
+    }
+
+    [Theory]
+    [InlineData(SettingsService.WidgetCompactWidthModeAligned, 286)]
+    [InlineData(SettingsService.WidgetCompactWidthModeIndependent, 420)]
+    public void ResolveExpandedSizeForWidthMode_UsesActualCapsuleWidthWhenAligned(
+        string widthMode,
+        int expectedWidth)
+    {
+        SizeInt32 result = WidgetCompactBoundsCalculator.ResolveExpandedSizeForWidthMode(
+            new RectInt32(100, 200, 286, 52),
+            new SizeInt32(420, 360),
+            widthMode);
+
+        Assert.Equal(expectedWidth, result.Width);
+        Assert.Equal(360, result.Height);
     }
 
     [Theory]

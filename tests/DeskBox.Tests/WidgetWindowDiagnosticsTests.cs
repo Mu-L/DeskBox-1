@@ -61,10 +61,13 @@ public sealed class WidgetWindowDiagnosticsTests
         var identity = diagnostics.Identity;
 
         Assert.Equal("file-widget-123", identity.WidgetId);
+        Assert.Equal("file-widget-123", identity.SurfaceId);
         Assert.Equal(WidgetKind.File, identity.WidgetKind);
         Assert.Equal("Work", identity.Name);
         Assert.Equal("File", identity.LogKind);
         Assert.Equal("file-wid", identity.ShortWidgetId);
+        Assert.Equal("file-wid", identity.ShortSurfaceId);
+        Assert.False(identity.IsGroupSurface);
         Assert.Equal(new IntPtr(0xCAFE), identity.WindowHandle);
         Assert.Equal("Work#file-wid", identity.DisplayName);
         Assert.Equal("File Work#file-wid", identity.LogDisplayName);
@@ -72,6 +75,42 @@ public sealed class WidgetWindowDiagnosticsTests
         Assert.Equal(4, identity.AnimationBounds.Y);
         Assert.Equal(320, identity.AnimationBounds.Width);
         Assert.Equal(180, identity.AnimationBounds.Height);
+    }
+
+    [Fact]
+    public void Identity_KeepsSurfaceStableWhenActiveWidgetContextChanges()
+    {
+        var initial = new WidgetConfig
+        {
+            Id = "todo-member",
+            Name = "Todo",
+            WidgetKind = WidgetKind.Todo
+        };
+        var target = new WidgetConfig
+        {
+            Id = "weather-member",
+            Name = "Weather",
+            WidgetKind = WidgetKind.Weather,
+            X = 20,
+            Y = 30,
+            Width = 240,
+            Height = 200
+        };
+        var diagnostics = new WidgetWindowDiagnostics(
+            "Content",
+            initial,
+            () => new IntPtr(0x1234));
+
+        diagnostics.SetSurfaceId("group-surface-123");
+        diagnostics.SetWidgetContext(target);
+        WidgetWindowIdentity identity = diagnostics.Identity;
+
+        Assert.Equal("weather-member", identity.WidgetId);
+        Assert.Equal("group-surface-123", identity.SurfaceId);
+        Assert.Equal("group-su", identity.ShortSurfaceId);
+        Assert.True(identity.IsGroupSurface);
+        Assert.Equal(20, identity.AnimationBounds.X);
+        Assert.Equal(240, identity.AnimationBounds.Width);
     }
 
     [Theory]

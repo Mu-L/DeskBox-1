@@ -17,9 +17,9 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
-            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Template">
@@ -31,6 +31,9 @@
                             CornerRadius="{TemplateBinding CornerRadius}">
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition GeneratedDuration="0:0:0.083" />
+                                    </VisualStateGroup.Transitions>
                                     <VisualState x:Name="Normal">
                                         <VisualState.Setters>
                                             <Setter Target="IconButtonHoverSurface.Opacity" Value="0" />
@@ -115,7 +118,7 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="21" />
             <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Template">
@@ -127,6 +130,9 @@
                             CornerRadius="{TemplateBinding CornerRadius}">
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition GeneratedDuration="0:0:0.083" />
+                                    </VisualStateGroup.Transitions>
                                     <VisualState x:Name="Normal">
                                         <VisualState.Setters>
                                             <Setter Target="PrimarySurface.Opacity" Value="1" />
@@ -220,7 +226,7 @@
                 x:Name="MinimalArtworkSurface"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                Background="{ThemeResource WidgetLayerFillSecondaryBrush}">
                 <Grid>
                     <Rectangle
                         x:Name="MinimalArtworkImage"
@@ -251,10 +257,10 @@
                 Padding="8,5"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
-                Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource WidgetLayerFillBrush}"
+                BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                 BorderThickness="1"
-                CornerRadius="6">
+                CornerRadius="{StaticResource WidgetCornerRadiusMedium}">
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -409,8 +415,8 @@
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"
                 Background="#66000000"
-                CornerRadius="12"
-                Opacity="0.18"
+                CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
+                Opacity="0.12"
                 Translation="0,2,0"
                 Visibility="{Binding ThumbnailVisibility}" />
 
@@ -422,10 +428,10 @@
                 Height="82"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource WidgetLayerFillSecondaryBrush}"
+                BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                 BorderThickness="1"
-                CornerRadius="12"
+                CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
                 PointerEntered="AlbumArtSurface_PointerEntered"
                 PointerExited="AlbumArtSurface_PointerExited"
                 PointerMoved="AlbumArtSurface_PointerMoved"
@@ -1242,10 +1248,10 @@
             Padding="10,8"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            Background="{ThemeResource SystemControlAcrylicElementBrush}"
+            BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
             BorderThickness="1"
-            CornerRadius="8"
+            CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
             PointerPressed="InlineVolumePanel_PointerPressed"
             Visibility="Collapsed">
             <Grid ColumnSpacing="9">

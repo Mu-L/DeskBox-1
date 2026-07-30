@@ -148,12 +148,50 @@ public sealed partial class WidgetManager
 
     public async Task NotifyItemsMovedOutAsync(string widgetId, IEnumerable<string> sourcePaths)
     {
-        if (!_widgets.TryGetValue(widgetId, out var entry) || IsDeleted(widgetId))
+        if (IsDeleted(widgetId))
         {
             return;
         }
 
-        await entry.ViewModel.HandleItemsMovedOutAsync(sourcePaths);
+        string[] paths = sourcePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (paths.Length == 0)
+        {
+            return;
+        }
+
+        if (_widgets.TryGetValue(widgetId, out var entry))
+        {
+            await entry.ViewModel.HandleItemsMovedOutAsync(paths);
+            return;
+        }
+
+        ContentWidgetWindow? contentWindow =
+            _contentWidgets.TryGetValue(widgetId, out var registeredWindow)
+                ? registeredWindow
+                : _contentWidgets.Values
+                    .Distinct()
+                    .FirstOrDefault(window =>
+                        window.CurrentContent is FileSurfaceContent surface &&
+                        string.Equals(
+                            surface.WidgetId,
+                            widgetId,
+                            StringComparison.Ordinal));
+        if (contentWindow?.CurrentContent is not FileSurfaceContent fileSurface ||
+            !string.Equals(
+                fileSurface.WidgetId,
+                widgetId,
+                StringComparison.Ordinal))
+        {
+            App.Log(
+                $"[WidgetManager] Moved-out refresh target not loaded " +
+                $"widget={widgetId} paths={paths.Length}");
+            return;
+        }
+
+        await fileSurface.ViewModel.HandleItemsMovedOutAsync(paths);
     }
 
     public async Task<ManagedStorageMigrationResult> UpdateDefaultManagedStorageRootAsync(string newRootPath)

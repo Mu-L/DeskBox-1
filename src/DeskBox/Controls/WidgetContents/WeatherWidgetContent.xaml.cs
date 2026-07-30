@@ -1,4 +1,5 @@
 using DeskBox.ViewModels;
+using DeskBox.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
@@ -222,13 +223,19 @@ public sealed partial class WeatherWidgetContent : UserControl
             icon.RenderTransform = rotate;
             icon.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
         }
+        if (!AreSystemAnimationsEnabled())
+        {
+            rotate.Angle = 0;
+            return;
+        }
 
         var sb = new Storyboard();
         var anim = new DoubleAnimation
         {
             From = 0,
             To = 360,
-            Duration = TimeSpan.FromMilliseconds(600),
+            Duration = TimeSpan.FromMilliseconds(
+                WidgetMotion.SpatialMilliseconds),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         Storyboard.SetTarget(anim, rotate);
@@ -361,7 +368,7 @@ public sealed partial class WeatherWidgetContent : UserControl
             return;
         }
 
-        if (_viewModel.IsRefreshing)
+        if (_viewModel.IsRefreshing && AreSystemAnimationsEnabled())
         {
             // Rebuild in case layout changed and icons were recreated
             FindRefreshIcons();
@@ -378,6 +385,18 @@ public sealed partial class WeatherWidgetContent : UserControl
                     rt.Angle = 0;
                 }
             }
+        }
+    }
+
+    private static bool AreSystemAnimationsEnabled()
+    {
+        try
+        {
+            return new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+        }
+        catch
+        {
+            return true;
         }
     }
 }
