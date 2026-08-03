@@ -286,6 +286,9 @@ public const int WeatherRefreshMaxMinutes = 180;
                 [nameof(AppSettings.WidgetCapsuleFreePlacements)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.DeletedWidgetIds)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.RecentOrganizationHistory)] = DefaultPreferencePreservationReason.UserData,
+                [nameof(AppSettings.DesktopOrganizationRules)] = DefaultPreferencePreservationReason.UserData,
+                [nameof(AppSettings.DesktopAutoOrganizationEnabled)] = DefaultPreferencePreservationReason.UserChoice,
+                [nameof(AppSettings.DesktopAutoOrganizationBaselineUtc)] = DefaultPreferencePreservationReason.RuntimeState,
                 [nameof(AppSettings.DefaultManagedStorageRootPath)] = DefaultPreferencePreservationReason.Storage,
                 [nameof(AppSettings.HasCompletedOnboarding)] = DefaultPreferencePreservationReason.RuntimeState,
                 [nameof(AppSettings.LastQuickCaptureFileWidgetId)] = DefaultPreferencePreservationReason.RuntimeState,
@@ -1894,6 +1897,66 @@ changed |= NormalizeDeletionSettings(_settings);
                 ? entry.TransferMode
                 : ManagedDropActionMove;
             entry.Items ??= [];
+            entry.Targets ??= [];
+            foreach (var item in entry.Items)
+            {
+                item.TargetWidgetId ??= string.Empty;
+                item.TargetWidgetName ??= string.Empty;
+            }
+        }
+
+        settings.DesktopOrganizationRules ??= [];
+        var validFileWidgetIds = settings.Widgets
+            .Where(widget =>
+                widget.WidgetKind == WidgetKind.File &&
+                !widget.IsDisabled &&
+                !settings.DeletedWidgetIds.Contains(widget.Id) &&
+                !string.IsNullOrWhiteSpace(widget.MappedFolderPath))
+            .Select(widget => widget.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var normalizedDesktopRules = settings.DesktopOrganizationRules
+            .Where(rule => rule is not null)
+            .Select(rule =>
+            {
+                rule.Id = string.IsNullOrWhiteSpace(rule.Id)
+                    ? Guid.NewGuid().ToString("N")
+                    : rule.Id.Trim();
+                rule.TargetWidgetId = rule.TargetWidgetId?.Trim() ?? string.Empty;
+                rule.CategoryIds = NormalizeDesktopOrganizationValues(
+                    rule.CategoryIds,
+                    StringComparer.Ordinal);
+                rule.SubtypeIds = NormalizeDesktopOrganizationValues(
+                    rule.SubtypeIds,
+                    StringComparer.Ordinal);
+                rule.Extensions = NormalizeDesktopOrganizationExtensions(rule.Extensions);
+                rule.ExcludedExtensions = NormalizeDesktopOrganizationExtensions(rule.ExcludedExtensions);
+                if (!validFileWidgetIds.Contains(rule.TargetWidgetId))
+                {
+                    rule.IsEnabled = false;
+                }
+                return rule;
+            })
+            .Where(rule => !string.IsNullOrWhiteSpace(rule.TargetWidgetId))
+            .GroupBy(rule => rule.Id, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToList();
+        if (normalizedDesktopRules.Count != settings.DesktopOrganizationRules.Count)
+        {
+            changed = true;
+        }
+        settings.DesktopOrganizationRules = normalizedDesktopRules;
+        bool hasEffectiveDesktopOrganizationRule = normalizedDesktopRules.Any(rule =>
+            rule.IsEnabled &&
+            validFileWidgetIds.Contains(rule.TargetWidgetId) &&
+            (rule.CategoryIds.Count > 0 ||
+             rule.SubtypeIds.Count > 0 ||
+             rule.Extensions.Count > 0));
+        if (settings.DesktopAutoOrganizationEnabled &&
+            !hasEffectiveDesktopOrganizationRule)
+        {
+            settings.DesktopAutoOrganizationEnabled = false;
+            settings.DesktopAutoOrganizationBaselineUtc = null;
+            changed = true;
         }
 
         foreach (var widget in settings.Widgets)
@@ -1925,6 +1988,27 @@ changed |= NormalizeDeletionSettings(_settings);
         }
 
         return changed;
+    }
+
+    private static List<string> NormalizeDesktopOrganizationValues(
+        IEnumerable<string>? values,
+        StringComparer comparer)
+    {
+        return (values ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(comparer)
+            .ToList();
+    }
+
+    private static List<string> NormalizeDesktopOrganizationExtensions(
+        IEnumerable<string>? extensions)
+    {
+        return (extensions ?? [])
+            .Select(DesktopOrganizationClassifier.NormalizeExtension)
+            .Where(extension => !string.IsNullOrWhiteSpace(extension))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public static string NormalizeAttachmentStorageMode(string? storageMode)

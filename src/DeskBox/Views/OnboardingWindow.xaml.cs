@@ -57,7 +57,7 @@ public sealed partial class OnboardingWindow : Window
         InitializeComponent();
         _localizationService.LanguageChanged += OnLanguageChanged;
 
-        SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+        WindowsCompatibilityService.ApplySafeBackdrop(this);
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarHost);
@@ -121,6 +121,7 @@ public sealed partial class OnboardingWindow : Window
             _hotkeyDemoCts?.Cancel();
             _hotkeyDemoCts?.Dispose();
             _hotkeyDemoCts = null;
+            DetachDesktopOrganizationWindow();
             IntroMarkHost.Children.Clear();
             RemoveMinimumSizeHook();
             _localizationService.LanguageChanged -= OnLanguageChanged;
@@ -210,15 +211,16 @@ public sealed partial class OnboardingWindow : Window
     //  Step Navigation
     // ════════════════════════════════════════════════════════════
 
-    private static readonly int StepCount = 5;
+    private static readonly int StepCount = 6;
 
     private FrameworkElement GetStepPanel(int index) => index switch
     {
         0 => Step1Panel,
-        1 => Step2Panel,
-        2 => Step3Panel,
-        3 => Step4Panel,
+        1 => Step3Panel,
+        2 => Step4Panel,
+        3 => StepOrganizationPanel,
         4 => Step5Panel,
+        5 => Step2Panel,
         _ => Step1Panel
     };
 
@@ -239,6 +241,11 @@ public sealed partial class OnboardingWindow : Window
             return;
         }
 
+        if (_stepIndex == 3 && !_desktopOrganizationCompleted)
+        {
+            OpenDesktopOrganizationWindow();
+            return;
+        }
         if (_stepIndex < StepCount - 1)
         {
             await NavigateToStepAsync(_stepIndex + 1, forward: true);
@@ -250,6 +257,12 @@ public sealed partial class OnboardingWindow : Window
 
     private async void SkipButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_stepIndex == 3)
+        {
+            await NavigateToStepAsync(4, forward: true);
+            return;
+        }
+
         await CompleteOnboardingAsync();
     }
 
@@ -391,16 +404,19 @@ public sealed partial class OnboardingWindow : Window
                 if (animate) StartStep1CardAnimation();
                 break;
             case 1:
-                SetupStep2Features();
-                break;
-            case 2:
                 SetupStep3();
                 break;
-            case 3:
+            case 2:
                 SetupStep4();
+                break;
+            case 3:
+                SetupOrganizationStep();
                 break;
             case 4:
                 SetupStep5();
+                break;
+            case 5:
+                SetupStep2Features();
                 break;
         }
     }
@@ -541,15 +557,15 @@ public sealed partial class OnboardingWindow : Window
             case 0:
                 StartStep1CardAnimation();
                 break;
-            case 3:
-                // Step 4: Start keycap pulse if hotkey is enabled
+            case 2:
+                // Daily-use step: start keycap pulse if hotkey is enabled.
                 if (Step4HotkeyToggle.IsOn)
                 {
                     StartKeycapPulse();
                 }
                 break;
             case 4:
-                // Step 5: Start search demo animation
+                // Ready summary: start the search demo animation.
                 StartSearchDemoAnimation();
                 break;
         }
@@ -599,12 +615,20 @@ public sealed partial class OnboardingWindow : Window
         NextButton.Content = _stepIndex == StepCount - 1
             ? _localizationService.T("Onboarding.Start")
             : _localizationService.T("Onboarding.Next");
+        if (_stepIndex == 3)
+        {
+            NextButton.Content = _desktopOrganizationCompleted
+                ? _localizationService.T("Onboarding.Organization.Continue")
+                : _localizationService.T("Onboarding.Organization.ReviewAction");
+            SkipButton.Content = _localizationService.T(
+                "Onboarding.Organization.NotNow");
+        }
         SkipButton.Visibility = _stepIndex == StepCount - 1 ? Visibility.Collapsed : Visibility.Visible;
         UpdateProgressDots();
     }
 
     // ════════════════════════════════════════════════════════════
-    //  Step 2: Storage & Quick Access
+    //  Window sizing and title-bar plumbing
     // ════════════════════════════════════════════════════════════
 
     private void InstallMinimumSizeHook()

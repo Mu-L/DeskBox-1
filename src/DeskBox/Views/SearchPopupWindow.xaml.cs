@@ -23,6 +23,8 @@ using Windows.Storage;
 using WinRT.Interop;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Linq;
+using System.Text;
 using WinRT;
 
 namespace DeskBox.Views;
@@ -87,11 +89,20 @@ public sealed partial class SearchPopupWindow : Window
 
     // Drag state for result rows: distinguishes a click (execute) from a drag
     // (export the file/folder path to another app or widget).
+    // Drag is initiated only from the icon column, not the entire row.
     private SearchResultItem? _dragCandidate;
     private SearchResultRowControl? _dragSourceRow;
+    private SearchResultItem? _pressedItem;
     private Windows.Foundation.Point _dragStartPoint;
     private bool _dragOccurred;
     private bool _restoreResultFocusAfterFlyout;
+
+    // Multi-selection state: tracks all items selected via rubber-band or Ctrl+click.
+    // When non-empty, batch operations (copy/cut/delete) act on these items.
+    private readonly HashSet<SearchResultItem> _multiSelectedItems = new();
+    private bool _isRubberBanding;
+    private Point _rubberBandStart;
+    private bool _suppressMultiSelectSync;
 
     // One stable search surface. Layout differences should follow available width,
     // not a user-facing mode that only changes the window dimensions.
@@ -748,9 +759,9 @@ public sealed partial class SearchPopupWindow : Window
             _ => Win32Helper.DWMWCP_ROUND
         };
 
-        Win32Helper.DwmSetWindowAttribute(
+        Win32Helper.TrySetDwmWindowAttribute(
             _hwnd, Win32Helper.DWMWA_WINDOW_CORNER_PREFERENCE,
-            ref cornerPreference, sizeof(int));
+            ref cornerPreference);
 
         // Keep the XAML border overlay corner radius in sync with the native corner.
         PopupBorderOverlay.CornerRadius = cornerPreference switch
@@ -805,7 +816,7 @@ public sealed partial class SearchPopupWindow : Window
             if (controllerApplied)
             {
                 backdropType = Win32Helper.DWMSBT_NONE;
-                Win32Helper.DwmSetWindowAttribute(_hwnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                Win32Helper.TrySetDwmWindowAttribute(_hwnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 Win32Helper.DisableAccentPolicy(_hwnd);
                 // Keep the XAML surface transparent so the native backdrop shows through.
                 RootGrid.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x01, 0x00, 0x00, 0x00));
@@ -815,7 +826,7 @@ public sealed partial class SearchPopupWindow : Window
                 DetachAcrylicControllerTarget();
                 DetachMicaControllerTarget();
                 backdropType = Win32Helper.DWMSBT_NONE;
-                Win32Helper.DwmSetWindowAttribute(_hwnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                Win32Helper.TrySetDwmWindowAttribute(_hwnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 Win32Helper.DisableAccentPolicy(_hwnd);
                 RootGrid.Background = new SolidColorBrush(
                     BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity, materialIntensity, materialType));
@@ -824,7 +835,7 @@ public sealed partial class SearchPopupWindow : Window
             {
                 // Fallback: use legacy accent blur.
                 backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
-                Win32Helper.DwmSetWindowAttribute(_hwnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                Win32Helper.TrySetDwmWindowAttribute(_hwnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 DetachAcrylicControllerTarget();
                 DetachMicaControllerTarget();
                 Win32Helper.ApplyAccentBlur(_hwnd, BuildNativeBackdropTintColor(isDark, accentColor, materialIntensity), Math.Min(surfaceOpacity, 0.52), true);
@@ -866,7 +877,7 @@ public sealed partial class SearchPopupWindow : Window
 
     private bool ApplyMicaController(bool isDark, Windows.UI.Color tintColor, bool useAlt)
     {
-        if (!MicaController.IsSupported())
+        if (!WindowsCompatibilityService.SupportsMica)
         {
             DisposeMicaController();
             return false;
@@ -924,7 +935,7 @@ public sealed partial class SearchPopupWindow : Window
 
     private bool ApplyAcrylicController(bool isDark, Windows.UI.Color tintColor, double surfaceOpacity, bool useBase)
     {
-        if (!DesktopAcrylicController.IsSupported())
+        if (!WindowsCompatibilityService.SupportsDesktopAcrylic)
         {
             DisposeAcrylicController();
             return false;
@@ -1505,6 +1516,7 @@ public sealed partial class SearchPopupWindow : Window
         // Space/arrow keys switch back to result-list navigation.
         ClearRecommendedAppSelection();
         _isNavigatingResults = false;
+        ClearMultiSelection();
         bool hasText = !string.IsNullOrEmpty(SearchTextBox.Text);
         HotkeyHintBadge.Visibility = hasText
             ? Visibility.Collapsed
@@ -1654,6 +1666,45 @@ public sealed partial class SearchPopupWindow : Window
             case Windows.System.VirtualKey.Space:
                 TryPreviewSelectedItem();
                 e.Handled = true;
+                break;
+
+            case Windows.System.VirtualKey.C when Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control):
+                if (_multiSelectedItems.Count > 0)
+                {
+                    _ = CopySelectedItemsAsync(DataPackageOperation.Copy);
+                    e.Handled = true;
+                }
+                break;
+
+            case Windows.System.VirtualKey.X when Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control):
+                if (_multiSelectedItems.Count > 0)
+                {
+                    _ = CopySelectedItemsAsync(DataPackageOperation.Move);
+                    e.Handled = true;
+                }
+                break;
+
+            case Windows.System.VirtualKey.Delete:
+                if (_multiSelectedItems.Count > 0)
+                {
+                    _ = DeleteSelectedItemsAsync();
+                    e.Handled = true;
+                }
+                break;
+
+            case Windows.System.VirtualKey.A when Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control):
+                // Ctrl+A: select all results.
+                if (_viewModel.CurrentResults is { Count: > 0 } results)
+                {
+                    _multiSelectedItems.Clear();
+                    foreach (var r in results)
+                    {
+                        _multiSelectedItems.Add(r);
+                    }
+                    SyncMultiSelectionVisuals();
+                    UpdateSelectionActions();
+                    e.Handled = true;
+                }
                 break;
 
             default:
@@ -2278,6 +2329,7 @@ public sealed partial class SearchPopupWindow : Window
         {
             TabsList.SelectedItem = _viewModel.SelectedTab;
         }
+        ClearMultiSelection();
     }
 
     /// <summary>
@@ -2364,31 +2416,98 @@ public sealed partial class SearchPopupWindow : Window
     private void ResultsPanel_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(ResultsPanel);
-        var item = FindDataContext<SearchResultItem>(e.OriginalSource as DependencyObject);
-        var row = FindItemRow(e.OriginalSource as DependencyObject);
+        var source = e.OriginalSource as DependencyObject;
+        var item = FindDataContext<SearchResultItem>(source);
+        var row = FindItemRow(source);
+        _pressedItem = null;
 
-        if (item is not null &&
-            (point.Properties.IsLeftButtonPressed || point.Properties.IsRightButtonPressed))
+        bool isCtrlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
+        bool isShiftPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift);
+        bool isLeft = point.Properties.IsLeftButtonPressed;
+        bool isRight = point.Properties.IsRightButtonPressed;
+        bool anyButton = isLeft || isRight;
+
+        // Ctrl-click / Shift-click on a row: modify the multi-selection.
+        if (item is not null && anyButton)
+        {
+            if (isLeft && isCtrlPressed)
+            {
+                ToggleMultiSelectionItem(item);
+                e.Handled = true;
+                return;
+            }
+
+            if (isLeft && isShiftPressed && _viewModel.SelectedIndex >= 0)
+            {
+                RangeSelectItems(_viewModel.SelectedIndex, item);
+                e.Handled = true;
+                return;
+            }
+        }
+
+        // Left-click on empty space — either outside any row or on a blank part
+        // of the row (not icon/title/type/size/date) — clears the selection and
+        // starts rubber-band. Right-click on a row is handled by RightTapped;
+        // right-click on empty space falls through without opening a context menu.
+        bool onRowInteractivePart = row is not null
+            && IsPointerOnRowInteractivePart(source, row);
+        bool onEmptySpace = item is null
+            || (row is not null && isLeft && !onRowInteractivePart);
+
+        if (isLeft && !isCtrlPressed && !isShiftPressed && onEmptySpace)
+        {
+            _pressedItem = null;
+            _dragCandidate = null;
+            _dragSourceRow = null;
+            ClearMultiSelection();
+            StartRubberBand(e);
+            e.Handled = true;
+            return;
+        }
+
+        if (item is not null && anyButton)
         {
             SelectResultItem(item, row);
         }
 
         if (!point.Properties.IsLeftButtonPressed)
         {
+            _pressedItem = null;
             _dragCandidate = null;
             _dragSourceRow = null;
             _dragOccurred = false;
             return;
         }
 
-        _dragCandidate = item;
-        _dragSourceRow = row;
-        _dragStartPoint = e.GetCurrentPoint(null).Position;
+        // Keep click-to-open independent from drag detection. Only the icon can
+        // start a drag, while every non-blank result cell keeps its click action.
+        _pressedItem = item;
+
+        // Drag is initiated only from the icon column, not the entire row.
+        if (item is not null && row is not null && IsPointerOnIcon(e.OriginalSource as DependencyObject, row))
+        {
+            _dragCandidate = item;
+            _dragSourceRow = row;
+            _dragStartPoint = e.GetCurrentPoint(null).Position;
+        }
+        else
+        {
+            _dragCandidate = null;
+            _dragSourceRow = null;
+        }
         _dragOccurred = false;
     }
 
     private async void ResultsPanel_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        // Update rubber-band selection if active.
+        if (_isRubberBanding)
+        {
+            UpdateRubberBand(e.GetCurrentPoint(ResultsSurface).Position);
+            e.Handled = true;
+            return;
+        }
+
         if (_dragCandidate is null || _dragSourceRow is null || _dragOccurred ||
             string.IsNullOrWhiteSpace(_dragCandidate.DetailPath))
         {
@@ -2408,6 +2527,10 @@ public sealed partial class SearchPopupWindow : Window
         var item = _dragCandidate;
         var row = _dragSourceRow;
 
+        // The icon itself is the drag source, so the shell drag visual remains
+        // compact and the rest of the row never becomes a wide drag surface.
+        var dragSource = FindIconDragSource(row) ?? (UIElement?)row;
+
         Windows.Foundation.TypedEventHandler<UIElement, DragStartingEventArgs> handler = null!;
         handler = async (_, args) =>
         {
@@ -2421,35 +2544,78 @@ public sealed partial class SearchPopupWindow : Window
             finally
             {
                 deferral.Complete();
-                row.DragStarting -= handler;
+                dragSource.DragStarting -= handler;
             }
         };
-        row.DragStarting += handler;
+        dragSource.DragStarting += handler;
 
         try
         {
-            await row.StartDragAsync(e.GetCurrentPoint(row));
+            await dragSource.StartDragAsync(e.GetCurrentPoint(dragSource));
         }
         finally
         {
-            row.DragStarting -= handler;
+            dragSource.DragStarting -= handler;
             _dragCandidate = null;
             _dragSourceRow = null;
         }
     }
 
+    /// <summary>
+    /// Returns the icon container within a result row. It is both the only drag
+    /// handle and the source of the compact system drag visual.
+    /// </summary>
+    private static UIElement? FindIconDragSource(SearchResultRowControl row)
+    {
+        return FindVisualChild<Grid>(row, "IconColumn");
+    }
+
+    /// <summary>
+    /// Recursively walks descendants of <paramref name="root"/> and returns the
+    /// first <typeparamref name="T"/> whose <see cref="FrameworkElement.Name"/>
+    /// equals <paramref name="childName"/>.
+    /// </summary>
+    private static T? FindVisualChild<T>(DependencyObject root, string childName)
+        where T : FrameworkElement
+    {
+        int count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T fe && string.Equals(fe.Name, childName, StringComparison.Ordinal))
+            {
+                return fe;
+            }
+            var nested = FindVisualChild<T>(child, childName);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+        return null;
+    }
+
     private void ResultsPanel_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        // Finalize rubber-band selection.
+        if (_isRubberBanding)
+        {
+            EndRubberBand();
+            e.Handled = true;
+            return;
+        }
+
         var releasedItem = FindDataContext<SearchResultItem>(e.OriginalSource as DependencyObject);
         bool isLeftRelease = e.GetCurrentPoint(ResultsPanel).Properties.PointerUpdateKind ==
                              PointerUpdateKind.LeftButtonReleased;
-        if (isLeftRelease && _dragCandidate is not null && !_dragOccurred &&
-            ReferenceEquals(_dragCandidate, releasedItem))
+        if (isLeftRelease && _pressedItem is not null && !_dragOccurred &&
+            ReferenceEquals(_pressedItem, releasedItem))
         {
-            _viewModel.ExecuteItem(_dragCandidate);
+            _viewModel.ExecuteItem(_pressedItem);
             e.Handled = true;
         }
 
+        _pressedItem = null;
         _dragCandidate = null;
         _dragSourceRow = null;
         _dragOccurred = false;
@@ -2549,6 +2715,74 @@ public sealed partial class SearchPopupWindow : Window
             row.IsTabStop = true;
             row.StartBringIntoView();
         }
+        else if (_viewModel.SelectedIndex >= 0)
+        {
+            // Element not realized (off-screen). Scroll the ScrollViewer
+            // to bring it into the viewport so the ItemsRepeater realizes it.
+            ScrollToSelectedIndex();
+        }
+    }
+
+    /// <summary>
+    /// Scrolls the results ScrollViewer to bring the selected index into view.
+    /// Used when the ItemsRepeater has not realized the element yet.
+    /// </summary>
+    private void ScrollToSelectedIndex()
+    {
+        int index = _viewModel.SelectedIndex;
+        if (index < 0)
+        {
+            return;
+        }
+
+        double rowHeight = EstimateRowHeight();
+        double targetTop = index * rowHeight;
+        double targetBottom = targetTop + rowHeight;
+        double viewTop = ResultsPanel.VerticalOffset;
+        double viewBottom = viewTop + ResultsPanel.ViewportHeight;
+
+        double? scrollTarget = null;
+        if (targetTop < viewTop)
+        {
+            scrollTarget = Math.Max(0, targetTop - rowHeight);
+        }
+        else if (targetBottom > viewBottom)
+        {
+            scrollTarget = targetBottom - ResultsPanel.ViewportHeight + rowHeight;
+        }
+
+        if (scrollTarget is not null)
+        {
+            ResultsPanel.ChangeView(null, scrollTarget, null, disableAnimation: true);
+            // After scrolling, try to find and highlight the row on the next layout pass.
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_viewModel.SelectedItem is { } selected &&
+                    FindRowByDataContext(ResultsRepeater, selected) is { } row &&
+                    _selectedRow is null)
+                {
+                    _selectedRow = row;
+                    row.IsSelected = true;
+                    row.IsTabStop = true;
+                }
+            });
+        }
+    }
+
+    private double EstimateRowHeight()
+    {
+        // Measure a realized element to get the actual row height.
+        if (ResultsRepeater.ItemsSource is System.Collections.ICollection coll)
+        {
+            for (int i = 0; i < Math.Min(coll.Count, 5); i++)
+            {
+                if (ResultsRepeater.TryGetElement(i) is FrameworkElement fe && fe.ActualHeight > 0)
+                {
+                    return fe.ActualHeight + fe.Margin.Top + fe.Margin.Bottom;
+                }
+            }
+        }
+        return 48; // Fallback estimate
     }
 
     /// <summary>
@@ -2592,6 +2826,9 @@ public sealed partial class SearchPopupWindow : Window
             row.IsSelected = false;
             row.IsTabStop = false;
         }
+
+        // Sync multi-selection state on recycled elements.
+        row.IsMultiSelected = row.Item is { } rowItem && _multiSelectedItems.Contains(rowItem);
     }
 
     private async Task EnrichPreparedResultRowAsync(
@@ -2627,6 +2864,21 @@ public sealed partial class SearchPopupWindow : Window
         var item = FindDataContext<SearchResultItem>(e.OriginalSource as DependencyObject);
         if (item is null)
         {
+            // Right-click on empty area with multi-selection: show batch context menu.
+            if (_multiSelectedItems.Count > 0)
+            {
+                ShowBatchResultFlyout(ResultsPanel, e.GetPosition(ResultsPanel));
+            }
+            return;
+        }
+
+        // If the right-clicked item is already in multi-selection, show batch menu.
+        if (_multiSelectedItems.Contains(item))
+        {
+            var batchAnchor = FindItemRow(e.OriginalSource as DependencyObject)
+                              as UIElement ?? ResultsPanel;
+            ShowBatchResultFlyout(batchAnchor, e.GetPosition(batchAnchor));
+            e.Handled = true;
             return;
         }
 
@@ -2635,6 +2887,414 @@ public sealed partial class SearchPopupWindow : Window
         var anchor = (UIElement?)row ?? ResultsPanel;
         ShowResultFlyout(item, anchor, e.GetPosition(anchor));
         e.Handled = true;
+    }
+
+    // ── Icon-only drag detection ──
+
+    /// <summary>
+    /// Checks whether the pointer press originated within the icon column of the row.
+    /// </summary>
+    private static bool IsPointerOnIcon(DependencyObject? element, SearchResultRowControl row)
+    {
+        while (element is not null)
+        {
+            if (element is FrameworkElement { Name: "IconColumn" })
+            {
+                return true;
+            }
+            if (ReferenceEquals(element, row))
+            {
+                return false;
+            }
+            element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the pointer landed on an interactive cell of the
+    /// row — the icon column (drag origin), title / subtitle (column 2), or the
+    /// type / size / date cells (columns 3 / 4 / 5). Clicks on the selection-bar
+    /// gutter (column 0), inter-column gaps, or the row padding / margins return
+    /// <c>false</c>, so the popup treats them as empty space and starts
+    /// rubber-band selection instead of selecting that row.
+    /// </summary>
+    private static bool IsPointerOnRowInteractivePart(
+        DependencyObject? element, SearchResultRowControl row)
+    {
+        while (element is not null)
+        {
+            if (element is FrameworkElement fe)
+            {
+                switch (fe.Name)
+                {
+                    case "IconColumn":
+                    case "TitleText":
+                    case "SubtitleText":
+                    case "TypeText":
+                    case "SizeText":
+                    case "DateText":
+                        return true;
+                }
+            }
+
+            if (ReferenceEquals(element, row))
+            {
+                break;
+            }
+
+            element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
+        }
+
+        return false;
+    }
+
+    // ── Rubber-band multi-selection ──
+
+    private void StartRubberBand(PointerRoutedEventArgs e)
+    {
+        _isRubberBanding = true;
+        var position = e.GetCurrentPoint(ResultsSurface).Position;
+        _rubberBandStart = position;
+        RubberBandRect.Visibility = Visibility.Visible;
+        UpdateRubberBandRect(position, position);
+        ResultsPanel.CapturePointer(e.Pointer);
+    }
+
+    private void UpdateRubberBand(Point position)
+    {
+        UpdateRubberBandRect(_rubberBandStart, position);
+        SelectItemsIntersectingRubberBand(_rubberBandStart, position);
+    }
+
+    private void EndRubberBand()
+    {
+        _isRubberBanding = false;
+        RubberBandRect.Visibility = Visibility.Collapsed;
+        ResultsPanel.ReleasePointerCaptures();
+    }
+
+    private void ResultsPanel_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isRubberBanding)
+        {
+            return;
+        }
+
+        _isRubberBanding = false;
+        RubberBandRect.Visibility = Visibility.Collapsed;
+    }
+
+    private void ResultsPanel_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Keep the transparent selection surface at least as tall as the viewport,
+        // so blank space below a short result list can also start a selection box.
+        ResultsSurface.MinHeight = Math.Max(
+            0,
+            e.NewSize.Height - ResultsPanel.Padding.Top - ResultsPanel.Padding.Bottom);
+    }
+
+    private void UpdateRubberBandRect(Point start, Point end)
+    {
+        double x = Math.Min(start.X, end.X);
+        double y = Math.Min(start.Y, end.Y);
+        double w = Math.Abs(end.X - start.X);
+        double h = Math.Abs(end.Y - start.Y);
+        RubberBandRect.Width = w;
+        RubberBandRect.Height = h;
+        // Pointer, rows, and rectangle all use ResultsSurface coordinates. This
+        // stays correct across scrolling and avoids hard-coded padding offsets.
+        RubberBandRect.RenderTransform = new TranslateTransform { X = x, Y = y };
+    }
+
+    private static bool Intersects(Rect a, Rect b)
+    {
+        return a.X < b.X + b.Width &&
+               a.X + a.Width > b.X &&
+               a.Y < b.Y + b.Height &&
+               a.Y + a.Height > b.Y;
+    }
+
+    private void SelectItemsIntersectingRubberBand(Point start, Point end)
+    {
+        var rubberRect = new Rect(
+            Math.Min(start.X, end.X),
+            Math.Min(start.Y, end.Y),
+            Math.Abs(end.X - start.X),
+            Math.Abs(end.Y - start.Y));
+
+        // If the rubber band is too small, don't select anything yet.
+        if (rubberRect.Width < 3 && rubberRect.Height < 3)
+        {
+            return;
+        }
+
+        _suppressMultiSelectSync = true;
+        _multiSelectedItems.Clear();
+
+        if (_viewModel.CurrentResults is { } results)
+        {
+            for (int i = 0; i < results.Count; i++)
+            {
+                if (ResultsRepeater.TryGetElement(i) is not FrameworkElement fe)
+                {
+                    continue;
+                }
+
+                var elementRect = new Rect(
+                    fe.TransformToVisual(ResultsSurface).TransformPoint(new Point(0, 0)),
+                    new Size(fe.ActualWidth, fe.ActualHeight));
+
+                if (Intersects(rubberRect, elementRect))
+                {
+                    _multiSelectedItems.Add(results[i]);
+                }
+            }
+        }
+
+        _suppressMultiSelectSync = false;
+        SyncMultiSelectionVisuals();
+        UpdateSelectionActions();
+    }
+
+    // ── Multi-selection helpers ──
+
+    private void ToggleMultiSelectionItem(SearchResultItem item)
+    {
+        if (!_multiSelectedItems.Add(item))
+        {
+            _multiSelectedItems.Remove(item);
+        }
+        SyncMultiSelectionVisuals();
+        UpdateSelectionActions();
+    }
+
+    private void RangeSelectItems(int fromIndex, SearchResultItem toItem)
+    {
+        int toIndex = _viewModel.CurrentResults.IndexOf(toItem);
+        if (toIndex < 0)
+        {
+            return;
+        }
+
+        int start = Math.Min(fromIndex, toIndex);
+        int end = Math.Max(fromIndex, toIndex);
+
+        _multiSelectedItems.Clear();
+        for (int i = start; i <= end; i++)
+        {
+            _multiSelectedItems.Add(_viewModel.CurrentResults[i]);
+        }
+
+        SelectResultItem(toItem);
+        SyncMultiSelectionVisuals();
+        UpdateSelectionActions();
+    }
+
+    private void ClearMultiSelection()
+    {
+        if (_multiSelectedItems.Count == 0)
+        {
+            return;
+        }
+        _multiSelectedItems.Clear();
+        SyncMultiSelectionVisuals();
+        UpdateSelectionActions();
+    }
+
+    private void SyncMultiSelectionVisuals()
+    {
+        if (_suppressMultiSelectSync)
+        {
+            return;
+        }
+
+        if (_viewModel.CurrentResults is { } results)
+        {
+            for (int i = 0; i < results.Count; i++)
+            {
+                if (ResultsRepeater.TryGetElement(i) is SearchResultRowControl row)
+                {
+                    row.IsMultiSelected = _multiSelectedItems.Contains(results[i]);
+                }
+            }
+        }
+    }
+
+    // ── Batch operations ──
+
+    private void ShowBatchResultFlyout(UIElement anchor, Point point)
+    {
+        var flyout = BuildBatchContextMenu();
+        if (flyout.Items.Count == 0)
+        {
+            return;
+        }
+        _restoreResultFocusAfterFlyout = true;
+        flyout.Closed += (_, _) => _restoreResultFocusAfterFlyout = false;
+        flyout.ShowAt(anchor, point);
+    }
+
+    private MenuFlyout BuildBatchContextMenu()
+    {
+        var flyout = new MenuFlyout();
+        int count = _multiSelectedItems.Count;
+        bool allFileSystem = count > 0 && _multiSelectedItems.All(i =>
+            i.Kind is SearchResultKind.File or SearchResultKind.Folder &&
+            !string.IsNullOrWhiteSpace(i.DetailPath) &&
+            (File.Exists(i.DetailPath) || Directory.Exists(i.DetailPath)));
+
+        if (!allFileSystem)
+        {
+            var openAll = new MenuFlyoutItem
+            {
+                Text = string.Format(_localizationService.T("Search.Batch.OpenAll"), count),
+                Icon = new FontIcon { Glyph = "\uE8E5" }
+            };
+            openAll.Click += (_, _) => OpenSelectedItems();
+            flyout.Items.Add(openAll);
+            return flyout;
+        }
+
+        var copyItem = new MenuFlyoutItem
+        {
+            Text = _localizationService.T("Common.Copy"),
+            Icon = new FontIcon { Glyph = "\uE8C8" }
+        };
+        copyItem.Click += async (_, _) => await CopySelectedItemsAsync(DataPackageOperation.Copy);
+        flyout.Items.Add(copyItem);
+
+        var cutItem = new MenuFlyoutItem
+        {
+            Text = _localizationService.T("Common.Cut"),
+            Icon = new FontIcon { Glyph = "\uE8C6" }
+        };
+        cutItem.Click += async (_, _) => await CopySelectedItemsAsync(DataPackageOperation.Move);
+        flyout.Items.Add(cutItem);
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var deleteItem = new MenuFlyoutItem
+        {
+            Text = _localizationService.T("Common.Delete"),
+            Icon = new FontIcon { Glyph = "\uE74D" }
+        };
+        deleteItem.Click += async (_, _) => await DeleteSelectedItemsAsync();
+        flyout.Items.Add(deleteItem);
+
+        return flyout;
+    }
+
+    private void OpenSelectedItems()
+    {
+        foreach (var item in _multiSelectedItems.ToList())
+        {
+            _viewModel.ExecuteItem(item);
+        }
+        ClearMultiSelection();
+    }
+
+    private async Task CopySelectedItemsAsync(DataPackageOperation operation)
+    {
+        var paths = _multiSelectedItems
+            .Where(i => !string.IsNullOrWhiteSpace(i.DetailPath))
+            .Select(i => i.DetailPath!)
+            .ToList();
+        if (paths.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var data = new DataPackage { RequestedOperation = operation };
+            await SetDragPayloadAsync(data, paths);
+            Clipboard.SetContent(data);
+            Clipboard.Flush();
+            ShowTransientStatus(_localizationService.T(
+                operation == DataPackageOperation.Move
+                    ? "Search.Action.CutReady"
+                    : "Search.Action.CopyReady"));
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SearchPopup] Batch clipboard failed: {ex.Message}");
+            ShowTransientStatus(_localizationService.T("Search.Action.FileOperationFailed"));
+        }
+    }
+
+    private async Task DeleteSelectedItemsAsync()
+    {
+        var items = _multiSelectedItems
+            .Where(i => !string.IsNullOrWhiteSpace(i.DetailPath))
+            .ToList();
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = string.Format(_localizationService.T("Search.Batch.DeleteTitle"), items.Count),
+            Content = _localizationService.T("Search.Delete.Message"),
+            PrimaryButtonText = _localizationService.T("Common.Delete"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                foreach (var item in items)
+                {
+                    var path = item.DetailPath!;
+                    if (File.Exists(path))
+                    {
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                            path,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                    }
+                    else if (Directory.Exists(path))
+                    {
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                            path,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                    }
+                }
+            });
+            ShowTransientStatus(_localizationService.T("Search.Action.Deleted"));
+            ClearMultiSelection();
+            await RefreshResultsAfterFileOperationAsync();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SearchPopup] Batch delete failed: {ex.Message}");
+            ShowTransientStatus(_localizationService.T("Search.Action.FileOperationFailed"));
+        }
+    }
+
+    private async void CopySelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        await CopySelectedItemsAsync(DataPackageOperation.Copy);
+    }
+
+    private async void CutSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        await CopySelectedItemsAsync(DataPackageOperation.Move);
+    }
+
+    private async void DeleteSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        await DeleteSelectedItemsAsync();
     }
 
     private void ShowResultFlyout(SearchResultItem item, UIElement anchor, Windows.Foundation.Point point)
@@ -3081,6 +3741,43 @@ public sealed partial class SearchPopupWindow : Window
         data.SetText(path);
     }
 
+    private static async Task SetDragPayloadAsync(DataPackage data, List<string> paths)
+    {
+        var items = new List<IStorageItem>();
+        var fallbackText = new StringBuilder();
+        foreach (var path in paths)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    items.Add(await StorageFolder.GetFolderFromPathAsync(path));
+                }
+                else if (File.Exists(path))
+                {
+                    items.Add(await StorageFile.GetFileFromPathAsync(path));
+                }
+                else
+                {
+                    fallbackText.AppendLine(path);
+                }
+            }
+            catch
+            {
+                fallbackText.AppendLine(path);
+            }
+        }
+
+        if (items.Count > 0)
+        {
+            data.SetStorageItems(items);
+        }
+        if (fallbackText.Length > 0 && items.Count == 0)
+        {
+            data.SetText(fallbackText.ToString().TrimEnd());
+        }
+    }
+
     private static SearchResultRowControl? FindItemRow(DependencyObject? element)
     {
         while (element is not null)
@@ -3160,15 +3857,40 @@ public sealed partial class SearchPopupWindow : Window
     private void UpdateSelectionActions()
     {
         var item = _viewModel.SelectedItem;
-        bool show = item is not null &&
+        bool hasMulti = _multiSelectedItems.Count > 0;
+        bool show = (item is not null || hasMulti) &&
                     ResultsPanel.Visibility == Visibility.Visible &&
                     StatusBar.Visibility != Visibility.Visible;
         SelectionActionBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show || item is null)
+        if (!show)
         {
             return;
         }
 
+        // Batch action buttons only visible when multiple items are selected.
+        CopySelectedButton.Visibility = hasMulti ? Visibility.Visible : Visibility.Collapsed;
+        CutSelectedButton.Visibility = hasMulti ? Visibility.Visible : Visibility.Collapsed;
+        DeleteSelectedButton.Visibility = hasMulti ? Visibility.Visible : Visibility.Collapsed;
+
+        if (hasMulti)
+        {
+            CopySelectedLabel.Text = _localizationService.T("Common.Copy");
+            CutSelectedLabel.Text = _localizationService.T("Common.Cut");
+            DeleteSelectedLabel.Text = _localizationService.T("Common.Delete");
+            OpenSelectedButton.Visibility = Visibility.Collapsed;
+            OpenLocationButton.Visibility = Visibility.Collapsed;
+            AttachSelectedButton.Visibility = Visibility.Collapsed;
+            SaveSelectedButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (item is null)
+        {
+            return;
+        }
+
+        // Single-selection mode: show the standard action buttons.
+        OpenSelectedButton.Visibility = Visibility.Visible;
         bool isFileSystemItem = item.Kind is SearchResultKind.File or SearchResultKind.Folder &&
                                 !string.IsNullOrWhiteSpace(item.DetailPath);
         OpenLocationButton.Visibility = isFileSystemItem ? Visibility.Visible : Visibility.Collapsed;
@@ -3255,14 +3977,7 @@ public sealed partial class SearchPopupWindow : Window
 
     private static bool AreSystemAnimationsEnabled()
     {
-        try
-        {
-            return new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
+        return WindowsCompatibilityService.ShouldAnimate;
     }
 }
 

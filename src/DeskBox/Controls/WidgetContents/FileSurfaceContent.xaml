@@ -440,6 +440,28 @@
                     BorderThickness="1"
                     CornerRadius="0"
                     Visibility="Collapsed" />
+                <Grid
+                    x:Name="ReorderInsertionIndicator"
+                    Canvas.ZIndex="25"
+                    Width="0"
+                    Height="0"
+                    IsHitTestVisible="False"
+                    Opacity="0"
+                    Visibility="Collapsed">
+                    <Border
+                        x:Name="ReorderInsertionGlow"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        CornerRadius="6"
+                        Opacity="0.24" />
+                    <Border
+                        x:Name="ReorderInsertionLine"
+                        Width="2"
+                        Height="2"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        CornerRadius="2" />
+                </Grid>
             </Canvas>
 
             <TextBox

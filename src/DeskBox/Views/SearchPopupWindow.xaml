@@ -509,19 +509,28 @@
             <!-- Result rows (SearchResultRowControl owns hover/selection visuals) -->
             <ScrollViewer x:Name="ResultsPanel" Grid.Row="2" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto" Padding="12,2,12,12"
+                          Background="Transparent"
+                          SizeChanged="ResultsPanel_SizeChanged"
                           KeyDown="ResultsPanel_KeyDown"
                           PointerPressed="ResultsPanel_PointerPressed"
                           PointerMoved="ResultsPanel_PointerMoved"
                           PointerReleased="ResultsPanel_PointerReleased"
+                          PointerCaptureLost="ResultsPanel_PointerCaptureLost"
                           DoubleTapped="ResultsPanel_DoubleTapped"
                           RightTapped="ResultsPanel_RightTapped">
-                <ItemsRepeater x:Name="ResultsRepeater">
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate>
-                            <controls:SearchResultRowControl/>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
+                <Grid x:Name="ResultsSurface" Background="Transparent">
+                    <ItemsRepeater x:Name="ResultsRepeater">
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <controls:SearchResultRowControl/>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                    <Rectangle x:Name="RubberBandRect" Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                               Opacity="0.2" Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                               StrokeThickness="1" Visibility="Collapsed" IsHitTestVisible="False"
+                               HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                </Grid>
             </ScrollViewer>
 
             <!-- Empty tab: the selected tab has no items (empty state browsing) -->
@@ -804,6 +813,27 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE70B;" FontSize="12"/>
                         <TextBlock x:Name="SaveSelectedLabel"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="CopySelectedButton" Padding="10,5"
+                        Click="CopySelectedButton_Click" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8C8;" FontSize="12"/>
+                        <TextBlock x:Name="CopySelectedLabel"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="CutSelectedButton" Padding="10,5"
+                        Click="CutSelectedButton_Click" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8C6;" FontSize="12"/>
+                        <TextBlock x:Name="CutSelectedLabel"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="DeleteSelectedButton" Padding="10,5"
+                        Click="DeleteSelectedButton_Click" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE74D;" FontSize="12"/>
+                        <TextBlock x:Name="DeleteSelectedLabel"/>
                     </StackPanel>
                 </Button>
             </toolkit:WrapPanel>

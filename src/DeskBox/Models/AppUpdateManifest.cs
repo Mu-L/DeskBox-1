@@ -15,6 +15,12 @@ public sealed class AppUpdateManifest
     public long Size { get; set; }
     public string ReleaseNotesUrl { get; set; } = string.Empty;
     public Dictionary<string, string> Summary { get; set; } = [];
+    /// <summary>
+    /// Full release notes in Markdown, keyed by locale. This is optional so
+    /// older manifests remain compatible with clients that only understand
+    /// the short summary fields.
+    /// </summary>
+    public Dictionary<string, string> ReleaseNotes { get; set; } = [];
 
     public string GetLocalizedSummary(string cultureName)
     {
@@ -39,7 +45,73 @@ public sealed class AppUpdateManifest
             return languageMatch.Value;
         }
 
+        // Non-Chinese locales should never inherit a Chinese-only summary when
+        // the server omits their exact translation. Prefer the English
+        // fallback, then use any available value for compatibility with older
+        // manifests that predate the English entry.
+        if (Summary.TryGetValue("en-US", out string? english) &&
+            !string.IsNullOrWhiteSpace(english))
+        {
+            return english;
+        }
+
         return Summary.Values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Returns the exact or language-level release note for a requested
+    /// locale. This method is used when the user explicitly switches the
+    /// language in the release-notes window.
+    /// </summary>
+    public string GetReleaseNotesForLocale(string cultureName)
+    {
+        if (ReleaseNotes.Count == 0 || string.IsNullOrWhiteSpace(cultureName))
+        {
+            return string.Empty;
+        }
+
+        if (ReleaseNotes.TryGetValue(cultureName, out string? exact) &&
+            !string.IsNullOrWhiteSpace(exact))
+        {
+            return exact;
+        }
+
+        string language = cultureName.Split('-', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault() ?? cultureName;
+        var languageMatch = ReleaseNotes.FirstOrDefault(pair =>
+            pair.Key.StartsWith(language, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(pair.Value));
+        return languageMatch.Value ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Applies the product's deterministic language policy: Chinese users
+    /// prefer Chinese and fall back to English; every other language uses
+    /// English because English is the only guaranteed non-Chinese locale.
+    /// </summary>
+    public string GetLocalizedReleaseNotes(string cultureName)
+    {
+        bool isChinese = cultureName.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
+        if (isChinese)
+        {
+            string chinese = GetReleaseNotesForLocale("zh-CN");
+            if (!string.IsNullOrWhiteSpace(chinese))
+            {
+                return chinese;
+            }
+        }
+
+        return GetReleaseNotesForLocale("en-US");
+    }
+
+    public bool HasReleaseNotes => ReleaseNotes.Values.Any(value => !string.IsNullOrWhiteSpace(value));
+
+    public bool HasReleaseNotesOrUrl => HasReleaseNotes || IsSafeReleaseNotesUrl(ReleaseNotesUrl);
+
+    public static bool IsSafeReleaseNotesUrl(string? url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) &&
+            uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     }
 }
 

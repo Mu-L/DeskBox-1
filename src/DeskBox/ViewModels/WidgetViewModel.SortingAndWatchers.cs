@@ -184,7 +184,7 @@ public partial class WidgetViewModel
         _folderWatcher.Stop();
         _publicFolderWatcher.Stop();
 
-        if (string.IsNullOrEmpty(folderPath))
+        if (_isDisposed || string.IsNullOrEmpty(folderPath))
         {
             return;
         }
@@ -198,9 +198,20 @@ public partial class WidgetViewModel
         }
     }
 
-    private async void OnFolderChanged(FolderChangeBatch changeBatch)
+    private void OnFolderChanged(FolderChangeBatch changeBatch)
     {
-        if (string.IsNullOrEmpty(MappedFolderPath))
+        // FolderWatcherService uses an Action event and therefore cannot await
+        // subscribers directly. Keep the event boundary synchronous and route
+        // the async work through a task that owns its exception handling.
+        _ = ProcessFolderChangedAsync(changeBatch);
+    }
+
+    private async Task ProcessFolderChangedAsync(FolderChangeBatch changeBatch)
+    {
+        if (_isDisposed ||
+            string.IsNullOrEmpty(MappedFolderPath) ||
+            !IsCurrentWatcherBatch(changeBatch, MappedFolderPath) ||
+            !IsCurrentWatcherGeneration(changeBatch))
         {
             return;
         }
@@ -212,7 +223,10 @@ public partial class WidgetViewModel
         await _folderRefreshGate.WaitAsync();
         try
         {
-            if (string.IsNullOrEmpty(MappedFolderPath))
+            if (_isDisposed ||
+                string.IsNullOrEmpty(MappedFolderPath) ||
+                !IsCurrentWatcherBatch(changeBatch, MappedFolderPath) ||
+                !IsCurrentWatcherGeneration(changeBatch))
             {
                 return;
             }
@@ -223,17 +237,36 @@ public partial class WidgetViewModel
                 return;
             }
 
+            FolderPathSnapshot snapshot =
+                await FileService.CaptureDirectChildSnapshotAsync(changeBatch.WatchedPath);
+            if (!FolderSnapshotStatusPolicy.IsSuccessful(snapshot.Status))
+            {
+                App.Log(
+                    $"[FolderRefresh] Incremental root unavailable; retaining snapshot: " +
+                    $"'{changeBatch.WatchedPath}'");
+                return;
+            }
+
             foreach (var change in changeBatch.Changes)
             {
-                await ApplyFolderChangeAsync(change);
+                await ApplyFolderChangeAsync(change, snapshot);
             }
         }
         catch (Exception ex)
         {
             App.Log($"[FolderRefresh] Incremental refresh failed for '{MappedFolderPath}': {ex}");
-            if (!string.IsNullOrEmpty(MappedFolderPath))
+            if (!_isDisposed && !string.IsNullOrEmpty(MappedFolderPath))
             {
-                await LoadFolderContentsAsync(MappedFolderPath);
+                try
+                {
+                    await LoadFolderContentsAsync(MappedFolderPath);
+                }
+                catch (Exception fallbackEx)
+                {
+                    // A transient network/ACL failure must not escape to the
+                    // dispatcher or fault an unobserved refresh task.
+                    App.Log($"[FolderRefresh] Fallback refresh failed for '{MappedFolderPath}': {fallbackEx}");
+                }
             }
         }
         finally
@@ -249,6 +282,11 @@ public partial class WidgetViewModel
     /// </summary>
     private void OnFolderIconChanged(string folderPath)
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
         int index = FindItemIndexByPath(folderPath);
         if (index < 0)
         {
@@ -282,23 +320,92 @@ public partial class WidgetViewModel
                changeBatch.Changes.Any(change => !FileService.IsPathUnderDirectory(change.FullPath, mappedFolderPath));
     }
 
-    private async Task ApplyFolderChangeAsync(FolderChange change)
+    internal static bool IsCurrentWatcherBatch(
+        FolderChangeBatch changeBatch,
+        string mappedFolderPath)
+    {
+        if (changeBatch.WatchedPath.Equals(
+                mappedFolderPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var (userDesktop, publicDesktop) = FileService.GetDesktopPaths();
+        return mappedFolderPath.Equals(userDesktop, StringComparison.OrdinalIgnoreCase) &&
+               changeBatch.WatchedPath.Equals(publicDesktop, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsCurrentWatcherGeneration(FolderChangeBatch changeBatch)
+    {
+        FolderWatcherService watcher =
+            string.Equals(
+                changeBatch.WatchedPath,
+                MappedFolderPath,
+                StringComparison.OrdinalIgnoreCase)
+                ? _folderWatcher
+                : _publicFolderWatcher;
+        return changeBatch.Generation == watcher.Generation;
+    }
+
+    private async Task ApplyFolderChangeAsync(
+        FolderChange change,
+        FolderPathSnapshot snapshot)
     {
         if (change.ChangeType == WatcherChangeTypes.Renamed && !string.IsNullOrWhiteSpace(change.OldFullPath))
         {
-            TransferFileAddedAt(change.OldFullPath, change.FullPath);
-            RemoveItemByPath(change.OldFullPath);
-            await UpsertFolderItemAsync(change.FullPath);
+            FolderEntryRefreshStatus oldState =
+                FileService.ClassifyDirectChild(snapshot, change.OldFullPath);
+            FolderEntryRefreshStatus newState =
+                FileService.ClassifyDirectChild(snapshot, change.FullPath);
+            if (ShouldRemoveExistingItem(WatcherChangeTypes.Renamed, oldState))
+            {
+                if (newState == FolderEntryRefreshStatus.Available)
+                {
+                    TransferFileAddedAt(change.OldFullPath, change.FullPath);
+                }
+
+                RemoveItemByPath(change.OldFullPath);
+            }
+
+            if (newState == FolderEntryRefreshStatus.Available)
+            {
+                await UpsertFolderItemAsync(change.FullPath);
+            }
+            else if (newState == FolderEntryRefreshStatus.Filtered)
+            {
+                RemoveItemByPath(change.FullPath);
+            }
+
             return;
         }
 
-        if (change.ChangeType == WatcherChangeTypes.Deleted)
+        FolderEntryRefreshStatus state =
+            FileService.ClassifyDirectChild(snapshot, change.FullPath);
+        if (ShouldRemoveExistingItem(change.ChangeType, state))
         {
             RemoveItemByPath(change.FullPath);
             return;
         }
 
-        await UpsertFolderItemAsync(change.FullPath);
+        if (state == FolderEntryRefreshStatus.Available)
+        {
+            await UpsertFolderItemAsync(change.FullPath);
+        }
+    }
+
+    internal static bool ShouldRemoveExistingItem(
+        WatcherChangeTypes changeType,
+        FolderEntryRefreshStatus state)
+    {
+        if (state == FolderEntryRefreshStatus.Filtered)
+        {
+            return true;
+        }
+
+        return state == FolderEntryRefreshStatus.NotFound &&
+               (changeType == WatcherChangeTypes.Deleted ||
+                changeType == WatcherChangeTypes.Renamed);
     }
 
     private async Task UpsertFolderItemAsync(string path)
@@ -313,7 +420,9 @@ public partial class WidgetViewModel
             loadFolderItemCount: false);
         if (item is null)
         {
-            RemoveItemByPath(path);
+            // A null result can also mean an ACL/provider race. Incremental
+            // callers classify explicit deletion before reaching this method,
+            // so preserving the current item is the only safe fallback.
             return;
         }
 
@@ -392,7 +501,10 @@ public partial class WidgetViewModel
         target.TargetPath = source.TargetPath;
         target.Icon = source.Icon;
         target.FileSize = source.FileSize;
-        target.FolderItemCount = source.FolderItemCount;
+        if (source.IsFolderItemCountLoaded)
+        {
+            target.FolderItemCount = source.FolderItemCount;
+        }
         target.IsFolderItemCountLoaded = source.IsFolderItemCountLoaded;
         target.CreatedAt = source.CreatedAt;
         target.LastModified = source.LastModified;

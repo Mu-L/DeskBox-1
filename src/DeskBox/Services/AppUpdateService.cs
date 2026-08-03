@@ -413,10 +413,19 @@ public sealed class AppUpdateService : IAppUpdateService
             Sha256 = sha256,
             Size = Math.Max(0, installerAsset.Size),
             ReleaseNotesUrl = release.HtmlUrl,
+            ReleaseNotes = string.IsNullOrWhiteSpace(release.Body)
+                ? []
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["en-US"] = release.Body
+                },
             Summary =
             {
                 ["zh-CN"] = $"DeskBox {version} 已发布，可从 GitHub Releases 下载更新。",
-                ["en-US"] = $"DeskBox {version} is available from GitHub Releases."
+                ["en-US"] = $"DeskBox {version} is available from GitHub Releases.",
+                ["ja-JP"] = $"DeskBox {version} は GitHub Releases から入手できます。",
+                ["de-DE"] = $"DeskBox {version} ist über GitHub Releases verfügbar.",
+                ["pt-BR"] = $"O DeskBox {version} está disponível no GitHub Releases."
             }
         };
     }
@@ -546,6 +555,9 @@ public sealed class AppUpdateService : IAppUpdateService
 
         [JsonPropertyName("html_url")]
         public string HtmlUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("body")]
+        public string Body { get; set; } = string.Empty;
 
         public GitHubReleaseAsset[] Assets { get; set; } = [];
     }

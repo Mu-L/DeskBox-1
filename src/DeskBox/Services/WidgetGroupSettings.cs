@@ -30,6 +30,43 @@ public static class WidgetGroupSettings
                string.Equals(group.ActiveMemberId, widgetId, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Returns the member that can actually be restored in the current
+    /// session. The persisted active member wins when it is available;
+    /// otherwise the first available member is used without changing the
+    /// group's persisted membership.
+    /// </summary>
+    public static string? ResolveRestorableActiveMemberId(
+        AppSettings settings,
+        WidgetGroupConfig group,
+        Func<WidgetConfig, bool> isAvailable)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(group);
+        ArgumentNullException.ThrowIfNull(isAvailable);
+
+        WidgetConfig? activeConfig = settings.Widgets.FirstOrDefault(widget =>
+            string.Equals(widget.Id, group.ActiveMemberId, StringComparison.Ordinal));
+        if (activeConfig is not null &&
+            group.MemberIds.Contains(activeConfig.Id, StringComparer.Ordinal) &&
+            isAvailable(activeConfig))
+        {
+            return activeConfig.Id;
+        }
+
+        foreach (string memberId in group.MemberIds)
+        {
+            WidgetConfig? member = settings.Widgets.FirstOrDefault(widget =>
+                string.Equals(widget.Id, memberId, StringComparison.Ordinal));
+            if (member is not null && isAvailable(member))
+            {
+                return member.Id;
+            }
+        }
+
+        return null;
+    }
+
     public static bool Normalize(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

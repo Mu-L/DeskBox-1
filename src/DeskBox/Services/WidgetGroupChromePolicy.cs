@@ -40,14 +40,17 @@ public readonly record struct WidgetGroupChromeDecision(
 public static class WidgetGroupChromePolicy
 {
     /// <summary>
-    /// Validates two resolved member modes. The destination member owns the
-    /// resulting surface, so its concrete mode becomes the initial group mode.
+    /// Resolves two member modes to the visible chrome required by a group.
+    /// The destination owns the resulting surface, so its Standard/Compact
+    /// mode wins. Overlay/Hidden members are allowed to join and temporarily
+    /// adopt the group's visible chrome; their standalone override is kept for
+    /// use if they are detached later.
     /// </summary>
     public static WidgetGroupChromeDecision EvaluateMerge(
         WidgetChromeMode sourceEffectiveMode,
         WidgetChromeMode targetEffectiveMode)
     {
-        WidgetGroupChromeDecision sourceDecision = EvaluateEffectiveMode(
+        WidgetGroupChromeDecision sourceDecision = EvaluateMergeParticipant(
             sourceEffectiveMode,
             WidgetGroupChromeParticipant.Source);
         if (!sourceDecision.IsAllowed)
@@ -55,7 +58,7 @@ public static class WidgetGroupChromePolicy
             return sourceDecision;
         }
 
-        WidgetGroupChromeDecision targetDecision = EvaluateEffectiveMode(
+        WidgetGroupChromeDecision targetDecision = EvaluateMergeParticipant(
             targetEffectiveMode,
             WidgetGroupChromeParticipant.Target);
         if (!targetDecision.IsAllowed)
@@ -63,7 +66,17 @@ public static class WidgetGroupChromePolicy
             return targetDecision;
         }
 
-        return Allowed(targetEffectiveMode);
+        if (IsSupportedGroupMode(targetEffectiveMode))
+        {
+            return Allowed(targetEffectiveMode);
+        }
+
+        if (IsSupportedGroupMode(sourceEffectiveMode))
+        {
+            return Allowed(sourceEffectiveMode);
+        }
+
+        return Allowed(WidgetChromeMode.Standard);
     }
 
     /// <summary>
@@ -143,6 +156,33 @@ public static class WidgetGroupChromePolicy
                 RejectedParticipant: participant,
                 RejectionReason: rejectionReason,
                 RejectedMode: effectiveMode);
+    }
+
+    private static WidgetGroupChromeDecision EvaluateMergeParticipant(
+        WidgetChromeMode effectiveMode,
+        WidgetGroupChromeParticipant participant)
+    {
+        return effectiveMode switch
+        {
+            WidgetChromeMode.Standard or
+            WidgetChromeMode.Compact or
+            WidgetChromeMode.Overlay or
+            WidgetChromeMode.Hidden => Allowed(effectiveMode),
+            WidgetChromeMode.System => new WidgetGroupChromeDecision(
+                IsAllowed: false,
+                GroupMode: null,
+                RejectedParticipant: participant,
+                RejectionReason:
+                    WidgetGroupChromeRejectionReason.EffectiveModeIsUnresolved,
+                RejectedMode: effectiveMode),
+            _ => new WidgetGroupChromeDecision(
+                IsAllowed: false,
+                GroupMode: null,
+                RejectedParticipant: participant,
+                RejectionReason:
+                    WidgetGroupChromeRejectionReason.UnsupportedChromeMode,
+                RejectedMode: effectiveMode)
+        };
     }
 
     private static WidgetGroupChromeDecision Allowed(WidgetChromeMode mode)

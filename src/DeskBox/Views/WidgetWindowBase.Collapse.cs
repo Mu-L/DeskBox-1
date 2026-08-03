@@ -362,6 +362,33 @@ public abstract partial class WidgetWindowBase
         _isSmartPinnedOpen = false;
         ApplyCompactTooltips();
         ApplyEffectiveCollapseBehavior(animate: true);
+        RefreshStaleCompactPlacement();
+    }
+
+    /// <summary>
+    /// When switching to a collapse behavior that uses compact expansion geometry
+    /// (Click or Smart) while the widget is expanded, the persisted
+    /// <see cref="WidgetConfig.CompactPlacement"/> may be stale if the widget
+    /// was moved while in Expanded mode — moving only updates the main position
+    /// anchor, not the compact placement.  Recompute the placement from the
+    /// current window bounds so subsequent drag operations use the correct
+    /// compact position instead of jumping to a stale location.
+    /// </summary>
+    private void RefreshStaleCompactPlacement()
+    {
+        if (_targetCollapsed || !UsesCompactExpansionGeometry() || IsClosing)
+        {
+            return;
+        }
+
+        // Clear the stale placement so the calculator falls back to the
+        // Calculate path, which derives compact bounds from the current
+        // expanded window position.
+        Config.CompactPlacement = null;
+        InvalidateStableCompactBounds();
+        RectInt32 current = GetCurrentWindowBounds();
+        RectInt32 fresh = GetCompactBounds(current);
+        CaptureCompactPlacement(fresh, persist: true);
     }
 
     protected void ResetCompactWidthOverride()
@@ -2235,6 +2262,25 @@ public abstract partial class WidgetWindowBase
 
         RectInt32 expanded = GetCurrentWindowBounds();
         RectInt32 compact = GetStableCompactBounds(expanded);
+
+        // Defensive: if the resolved compact bounds land on a different
+        // display than the expanded window, the persisted CompactPlacement
+        // is stale (e.g. the widget was moved across monitors while in
+        // Expanded mode, or the display configuration changed).  Discard
+        // the stale placement and recompute from the current expanded
+        // bounds so the drag pair stays consistent.
+        var expandedDisplay = Microsoft.UI.Windowing.DisplayArea.GetFromRect(
+            expanded, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest);
+        var compactDisplay = Microsoft.UI.Windowing.DisplayArea.GetFromRect(
+            compact, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest);
+        if (expandedDisplay.DisplayId.Value != compactDisplay.DisplayId.Value)
+        {
+            Config.CompactPlacement = null;
+            InvalidateStableCompactBounds();
+            compact = GetCompactBounds(expanded);
+            _stableCompactBounds = compact;
+        }
+
         WidgetCompactExpansionLayout layout = ResolveCompactExpansionLayout(
             compact,
             new SizeInt32(expanded.Width, expanded.Height),
@@ -2634,14 +2680,7 @@ public abstract partial class WidgetWindowBase
 
     private static bool SystemAnimationsEnabled()
     {
-        try
-        {
-            return new UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
+        return WindowsCompatibilityService.ShouldAnimate;
     }
 
     private bool IsPointerPhysicallyInsideWindow()

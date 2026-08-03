@@ -15,6 +15,11 @@ public sealed partial class SettingsWindow
         ViewModel.RefreshDragDropPermissionDiagnostic();
     }
 
+    private async void ResyncRuntimeStateButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.ResyncRuntimeStateAsync();
+    }
+
     private async void RepairDragDropPermissionButton_Click(object sender, RoutedEventArgs e)
     {
         if (SettingsRoot.XamlRoot is null)

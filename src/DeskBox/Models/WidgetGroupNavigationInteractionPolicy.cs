@@ -1,9 +1,13 @@
 namespace DeskBox.Models;
 
+public readonly record struct WidgetGroupPositionRailSlot(
+    int MemberIndex,
+    bool IsActive);
+
 /// <summary>
 /// Pure decision rules shared by mouse, touch, pen, precision touchpad and
 /// keyboard navigation. Keeping these rules free of XAML makes the gesture
-/// boundary and no-wrap behavior directly testable.
+/// boundary and keyboard wrap behavior directly testable.
 /// </summary>
 public static class WidgetGroupNavigationInteractionPolicy
 {
@@ -64,13 +68,31 @@ public static class WidgetGroupNavigationInteractionPolicy
         int activeIndex,
         int memberCount,
         int delta,
-        out int targetIndex)
+        out int targetIndex,
+        bool wrap = false)
     {
+        targetIndex = -1;
+        if (delta == 0 ||
+            memberCount <= 0 ||
+            activeIndex < 0 ||
+            activeIndex >= memberCount)
+        {
+            return false;
+        }
+
         targetIndex = activeIndex + Math.Sign(delta);
-        return delta != 0 &&
-               activeIndex >= 0 &&
-               targetIndex >= 0 &&
-               targetIndex < memberCount;
+        if (targetIndex >= 0 && targetIndex < memberCount)
+        {
+            return true;
+        }
+
+        if (!wrap)
+        {
+            return false;
+        }
+
+        targetIndex = targetIndex < 0 ? memberCount - 1 : 0;
+        return true;
     }
 
     public static bool TryConsumeWheelStep(
@@ -88,5 +110,41 @@ public static class WidgetGroupNavigationInteractionPolicy
         direction = accumulator < 0 ? 1 : -1;
         accumulator = 0;
         return true;
+    }
+
+    /// <summary>
+    /// Resolves the compact title-bar position rail. Two- and three-member
+    /// groups map one-to-one; larger groups expose a rolling three-slot window
+    /// so the active member is at the leading edge, center or trailing edge.
+    /// </summary>
+    public static IReadOnlyList<WidgetGroupPositionRailSlot>
+        ResolvePositionRailSlots(int activeIndex, int memberCount)
+    {
+        if (memberCount < 2)
+        {
+            return Array.Empty<WidgetGroupPositionRailSlot>();
+        }
+
+        int resolvedActiveIndex = Math.Clamp(
+            activeIndex,
+            0,
+            memberCount - 1);
+        int visibleCount = Math.Min(3, memberCount);
+        int startIndex = memberCount <= visibleCount
+            ? 0
+            : Math.Clamp(
+                resolvedActiveIndex - 1,
+                0,
+                memberCount - visibleCount);
+        var slots = new WidgetGroupPositionRailSlot[visibleCount];
+        for (int slotIndex = 0; slotIndex < visibleCount; slotIndex++)
+        {
+            int memberIndex = startIndex + slotIndex;
+            slots[slotIndex] = new WidgetGroupPositionRailSlot(
+                memberIndex,
+                memberIndex == resolvedActiveIndex);
+        }
+
+        return slots;
     }
 }

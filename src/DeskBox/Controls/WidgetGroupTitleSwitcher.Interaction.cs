@@ -26,6 +26,12 @@ public sealed partial class WidgetGroupTitleSwitcher
     private bool _isSelectorPressed;
     private Storyboard? _identityStoryboard;
     private Storyboard? _interactionChromeStoryboard;
+    private Storyboard? _wheelFeedbackStoryboard;
+    private Storyboard? _scrollSurfaceStoryboard;
+    private Storyboard? _boundaryReboundStoryboard;
+    private DispatcherTimer? _wheelFeedbackFallbackTimer;
+    private DateTimeOffset _lastWheelFeedbackAt;
+    private int _wheelFeedbackBurst;
     private double _pendingIdentityWidth;
 
     private void RegisterKeyboardAccelerators()
@@ -133,6 +139,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         _isSelectorPressed = false;
         _wheelAccumulator = 0;
         _pendingWheelTargetId = null;
+        CancelWheelFeedback();
         UpdateInteractionChrome();
     }
 
@@ -146,6 +153,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         }
 
         _isSelectorPressed = true;
+        BeginDetachLongPress(SelectorButton, e);
         UpdateInteractionChrome();
     }
 
@@ -154,6 +162,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         PointerRoutedEventArgs e)
     {
         _isSelectorPressed = false;
+        GroupTitle_PointerReleased(sender, e);
         UpdateInteractionChrome();
     }
 
@@ -178,18 +187,53 @@ public sealed partial class WidgetGroupTitleSwitcher
     {
         _wheelAccumulator = 0;
         _pendingWheelTargetId = null;
+        CancelWheelFeedback();
     }
 
     private void ProcessPointerWheel(
         UIElement source,
         PointerRoutedEventArgs e)
     {
+        double delta =
+            e.GetCurrentPoint(source).Properties.MouseWheelDelta;
+        if (ProcessWheelDelta(delta))
+        {
+            e.Handled = true;
+        }
+    }
+
+    internal bool HandleNativeWheel(int delta)
+    {
+        return ProcessWheelDelta(delta);
+    }
+
+    private bool ProcessWheelDelta(double delta)
+    {
         if (!WheelSwitchEnabled ||
             _pickerOpen ||
             _presentation is null ||
-            _presentation.Members.Count < 2)
+            _presentation.Members.Count < 2 ||
+            delta == 0)
         {
-            return;
+            return false;
+        }
+
+        try
+        {
+            AnimateWheelDirectionFeedback(scrollsUp: delta > 0);
+            AnimateScrollSurfaceFeedback();
+        }
+        catch (Exception ex)
+        {
+            // Visual feedback must never prevent the actual navigation. WinUI
+            // can reject a storyboard at runtime when a theme/animation state
+            // changes while the wheel event is being processed.
+            _wheelFeedbackStoryboard = null;
+            UpWheelFeedback.Opacity = 0;
+            DownWheelFeedback.Opacity = 0;
+            UpWheelFeedbackTransform.ScaleY = 1;
+            DownWheelFeedbackTransform.ScaleY = 1;
+            App.Log($"[WidgetGroup] Wheel feedback animation failed: {ex}");
         }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -199,29 +243,306 @@ public sealed partial class WidgetGroupTitleSwitcher
             // zone. Consume cooldown/arming input instead of letting it leak
             // into the active member's scrollable content.
             _wheelAccumulator = 0;
-            e.Handled = true;
-            return;
+            return true;
         }
 
-        double delta =
-            e.GetCurrentPoint(source).Properties.MouseWheelDelta;
-        if (!WidgetGroupNavigationInteractionPolicy.TryConsumeWheelStep(
+        bool consumedStep =
+            WidgetGroupNavigationInteractionPolicy.TryConsumeWheelStep(
                 ref _wheelAccumulator,
                 delta,
-                out int direction))
+                out int direction);
+        if (!consumedStep)
         {
-            e.Handled = true;
-            return;
+            return true;
         }
 
         if (SwitchRelative(direction, WidgetGroupSwitchOrigin.Wheel))
         {
+            CancelBoundaryRebound();
             _lastWheelSwitchAt = now;
+        }
+        else
+        {
+            AnimateBoundaryRebound(direction);
         }
 
         // The pointer is over the explicit switcher hot zone. Consume even an
         // edge attempt so it cannot accidentally scroll member content.
-        e.Handled = true;
+        return true;
+    }
+
+    private void AnimateWheelDirectionFeedback(bool scrollsUp)
+    {
+        if (XamlRoot is null)
+        {
+            return;
+        }
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        _wheelFeedbackBurst = now - _lastWheelFeedbackAt <=
+            TimeSpan.FromMilliseconds(420)
+                ? Math.Min(3, _wheelFeedbackBurst + 1)
+                : 0;
+        _lastWheelFeedbackAt = now;
+
+        _wheelFeedbackStoryboard?.Stop();
+        _wheelFeedbackStoryboard = null;
+        UpWheelFeedback.Opacity = 0;
+        DownWheelFeedback.Opacity = 0;
+        UpWheelFeedbackTransform.ScaleY = 1;
+        DownWheelFeedbackTransform.ScaleY = 1;
+
+        Border target = scrollsUp
+            ? UpWheelFeedback
+            : DownWheelFeedback;
+        ScaleTransform transform = scrollsUp
+            ? UpWheelFeedbackTransform
+            : DownWheelFeedbackTransform;
+        double peakOpacity = 0.25 + _wheelFeedbackBurst * 0.035;
+
+        if (!AreSystemAnimationsEnabled())
+        {
+            target.Opacity = peakOpacity;
+            _wheelFeedbackFallbackTimer ??= CreateWheelFeedbackFallbackTimer();
+            _wheelFeedbackFallbackTimer.Stop();
+            _wheelFeedbackFallbackTimer.Start();
+            return;
+        }
+
+        double valleyOpacity = peakOpacity * 0.36;
+        double echoOpacity = peakOpacity * 0.62;
+        var storyboard = new Storyboard();
+        var opacityAnimation = new DoubleAnimationUsingKeyFrames();
+        opacityAnimation.KeyFrames.Add(new DiscreteDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero),
+            Value = 0
+        });
+        opacityAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(70)),
+            Value = peakOpacity,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+        opacityAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(155)),
+            Value = valleyOpacity,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+        });
+        opacityAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(230)),
+            Value = echoOpacity,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+        opacityAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)),
+            Value = 0,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        });
+        Storyboard.SetTarget(opacityAnimation, target);
+        Storyboard.SetTargetProperty(opacityAnimation, nameof(UIElement.Opacity));
+        storyboard.Children.Add(opacityAnimation);
+
+        var scaleAnimation = new DoubleAnimationUsingKeyFrames();
+        scaleAnimation.KeyFrames.Add(new DiscreteDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero),
+            Value = 0.84
+        });
+        scaleAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(115)),
+            Value = 1.035,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+        scaleAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)),
+            Value = 1,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+        });
+        Storyboard.SetTarget(scaleAnimation, transform);
+        Storyboard.SetTargetProperty(scaleAnimation, nameof(ScaleTransform.ScaleY));
+        storyboard.Children.Add(scaleAnimation);
+
+        storyboard.Completed += (_, _) =>
+        {
+            if (!ReferenceEquals(_wheelFeedbackStoryboard, storyboard))
+            {
+                return;
+            }
+
+            target.Opacity = 0;
+            transform.ScaleY = 1;
+            _wheelFeedbackStoryboard = null;
+        };
+        _wheelFeedbackStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
+    private void CancelWheelFeedback()
+    {
+        _wheelFeedbackStoryboard?.Stop();
+        _wheelFeedbackStoryboard = null;
+        _wheelFeedbackFallbackTimer?.Stop();
+        _wheelFeedbackBurst = 0;
+        UpWheelFeedback.Opacity = 0;
+        DownWheelFeedback.Opacity = 0;
+        UpWheelFeedbackTransform.ScaleY = 1;
+        DownWheelFeedbackTransform.ScaleY = 1;
+        CancelBoundaryRebound();
+        _scrollSurfaceStoryboard?.Stop();
+        _scrollSurfaceStoryboard = null;
+        TitleInteractionChromeTransform.ScaleX = 1;
+        TitleInteractionChromeTransform.ScaleY = 1;
+    }
+
+    private DispatcherTimer CreateWheelFeedbackFallbackTimer()
+    {
+        var timer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(220)
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            UpWheelFeedback.Opacity = 0;
+            DownWheelFeedback.Opacity = 0;
+        };
+        return timer;
+    }
+
+    private void AnimateScrollSurfaceFeedback()
+    {
+        _interactionChromeStoryboard?.Stop();
+        _interactionChromeStoryboard = null;
+        _scrollSurfaceStoryboard?.Stop();
+        _scrollSurfaceStoryboard = null;
+
+        double restingOpacity = ResolveInteractionSurfaceOpacity();
+        if (!AreSystemAnimationsEnabled() || XamlRoot is null)
+        {
+            TitleInteractionChrome.Opacity = Math.Max(restingOpacity, 0.3);
+            return;
+        }
+
+        var opacity = new DoubleAnimationUsingKeyFrames();
+        opacity.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(65)),
+            Value = Math.Max(restingOpacity, 0.34),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+        opacity.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(340)),
+            Value = restingOpacity,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        });
+        Storyboard.SetTarget(opacity, TitleInteractionChrome);
+        Storyboard.SetTargetProperty(opacity, nameof(UIElement.Opacity));
+
+        var scaleX = CreateSurfaceScaleAnimation();
+        var scaleY = CreateSurfaceScaleAnimation();
+        Storyboard.SetTarget(scaleX, TitleInteractionChromeTransform);
+        Storyboard.SetTargetProperty(scaleX, nameof(ScaleTransform.ScaleX));
+        Storyboard.SetTarget(scaleY, TitleInteractionChromeTransform);
+        Storyboard.SetTargetProperty(scaleY, nameof(ScaleTransform.ScaleY));
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(opacity);
+        storyboard.Children.Add(scaleX);
+        storyboard.Children.Add(scaleY);
+        storyboard.Completed += (_, _) =>
+        {
+            if (!ReferenceEquals(_scrollSurfaceStoryboard, storyboard))
+            {
+                return;
+            }
+
+            TitleInteractionChromeTransform.ScaleX = 1;
+            TitleInteractionChromeTransform.ScaleY = 1;
+            _scrollSurfaceStoryboard = null;
+        };
+        _scrollSurfaceStoryboard = storyboard;
+        storyboard.Begin();
+
+        static DoubleAnimationUsingKeyFrames CreateSurfaceScaleAnimation()
+        {
+            var animation = new DoubleAnimationUsingKeyFrames();
+            animation.KeyFrames.Add(new EasingDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(70)),
+                Value = 1.012,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
+            animation.KeyFrames.Add(new EasingDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(340)),
+                Value = 1,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+            });
+            return animation;
+        }
+    }
+
+    private void AnimateBoundaryRebound(int direction)
+    {
+        CancelBoundaryRebound();
+        if (!AreSystemAnimationsEnabled() || XamlRoot is null || direction == 0)
+        {
+            return;
+        }
+
+        double attemptedOffset = -Math.Sign(direction) * 4.5;
+        var transform = new TranslateTransform();
+        CurrentIdentityLayer.RenderTransform = transform;
+        var motion = new DoubleAnimationUsingKeyFrames();
+        motion.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(75)),
+            Value = attemptedOffset,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+        motion.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(245)),
+            Value = 0,
+            EasingFunction = new BackEase
+            {
+                Amplitude = 0.24,
+                EasingMode = EasingMode.EaseOut
+            }
+        });
+        Storyboard.SetTarget(motion, transform);
+        Storyboard.SetTargetProperty(motion, nameof(TranslateTransform.Y));
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(motion);
+        storyboard.Completed += (_, _) =>
+        {
+            if (!ReferenceEquals(_boundaryReboundStoryboard, storyboard))
+            {
+                return;
+            }
+
+            CurrentIdentityLayer.RenderTransform = null;
+            _boundaryReboundStoryboard = null;
+        };
+        _boundaryReboundStoryboard = storyboard;
+        storyboard.Begin();
+    }
+
+    private void CancelBoundaryRebound()
+    {
+        _boundaryReboundStoryboard?.Stop();
+        _boundaryReboundStoryboard = null;
+        if (_identityStoryboard is null)
+        {
+            CurrentIdentityLayer.RenderTransform = null;
+        }
     }
 
     private bool SwitchRelative(
@@ -263,7 +584,8 @@ public sealed partial class WidgetGroupTitleSwitcher
                 activeIndex,
                 _presentation.Members.Count,
                 delta,
-                out int targetIndex))
+                out int targetIndex,
+                wrap: origin == WidgetGroupSwitchOrigin.Keyboard))
         {
             return false;
         }
@@ -323,15 +645,17 @@ public sealed partial class WidgetGroupTitleSwitcher
         SetIdentity(
             OutgoingIcon,
             OutgoingTitle,
-            OutgoingPositionText,
             previous);
         SetIdentity(
             CurrentIcon,
             CurrentTitle,
-            CurrentPositionText,
             next);
+        SetPositionRail(OutgoingPositionRailLayer, previous);
+        SetPositionRail(CurrentPositionRailLayer, next);
         OutgoingIdentityLayer.Opacity = 1;
         CurrentIdentityLayer.Opacity = 0;
+        OutgoingPositionRailLayer.Opacity = 1;
+        CurrentPositionRailLayer.Opacity = 0;
         double currentIdentityWidth = IdentityViewport.Width;
         _pendingIdentityWidth = MeasureIdentityWidth(next);
 
@@ -350,8 +674,9 @@ public sealed partial class WidgetGroupTitleSwitcher
             SetIdentity(
                 OutgoingIcon,
                 OutgoingTitle,
-                OutgoingPositionText,
                 null);
+            SetPositionRail(OutgoingPositionRailLayer, null);
+            CurrentPositionRailLayer.Opacity = 1;
             return;
         }
 
@@ -362,13 +687,21 @@ public sealed partial class WidgetGroupTitleSwitcher
         int incomingDurationMs = profile.IncomingDurationMilliseconds;
         double sign = forward ? 1 : -1;
         double distance = profile.TranslationDistance;
+        double railDistance = Math.Min(4, distance);
         var outgoingTransform = new TranslateTransform();
         var incomingTransform = new TranslateTransform
         {
             Y = directional ? distance * sign : 0
         };
+        var outgoingRailTransform = new TranslateTransform();
+        var incomingRailTransform = new TranslateTransform
+        {
+            Y = directional ? railDistance * sign : 0
+        };
         OutgoingIdentityLayer.RenderTransform = outgoingTransform;
         CurrentIdentityLayer.RenderTransform = incomingTransform;
+        OutgoingPositionRailLayer.RenderTransform = outgoingRailTransform;
+        CurrentPositionRailLayer.RenderTransform = incomingRailTransform;
 
         var outgoingFade = new DoubleAnimation
         {
@@ -400,6 +733,56 @@ public sealed partial class WidgetGroupTitleSwitcher
         var storyboard = new Storyboard();
         storyboard.Children.Add(outgoingFade);
         storyboard.Children.Add(incomingFade);
+
+        var iconScaleX = CreateIncomingIconScaleAnimation();
+        var iconScaleY = CreateIncomingIconScaleAnimation();
+        Storyboard.SetTarget(iconScaleX, CurrentIconScaleTransform);
+        Storyboard.SetTargetProperty(
+            iconScaleX,
+            nameof(ScaleTransform.ScaleX));
+        Storyboard.SetTarget(iconScaleY, CurrentIconScaleTransform);
+        Storyboard.SetTargetProperty(
+            iconScaleY,
+            nameof(ScaleTransform.ScaleY));
+        storyboard.Children.Add(iconScaleX);
+        storyboard.Children.Add(iconScaleY);
+
+        var outgoingRailFade = new DoubleAnimation
+        {
+            From = 1,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(outgoingDurationMs),
+            EasingFunction = new CubicEase
+            {
+                EasingMode = EasingMode.EaseIn
+            }
+        };
+        Storyboard.SetTarget(
+            outgoingRailFade,
+            OutgoingPositionRailLayer);
+        Storyboard.SetTargetProperty(
+            outgoingRailFade,
+            nameof(Opacity));
+        storyboard.Children.Add(outgoingRailFade);
+
+        var incomingRailFade = new DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            BeginTime = TimeSpan.FromMilliseconds(incomingBeginTimeMs),
+            Duration = TimeSpan.FromMilliseconds(incomingDurationMs),
+            EasingFunction = new CubicEase
+            {
+                EasingMode = EasingMode.EaseOut
+            }
+        };
+        Storyboard.SetTarget(
+            incomingRailFade,
+            CurrentPositionRailLayer);
+        Storyboard.SetTargetProperty(
+            incomingRailFade,
+            nameof(Opacity));
+        storyboard.Children.Add(incomingRailFade);
         var widthAnimation = new DoubleAnimation
         {
             From = currentIdentityWidth,
@@ -447,29 +830,96 @@ public sealed partial class WidgetGroupTitleSwitcher
             Storyboard.SetTargetProperty(incomingMotion, nameof(TranslateTransform.Y));
             storyboard.Children.Add(incomingMotion);
 
+            var outgoingRailMotion = new DoubleAnimation
+            {
+                From = 0,
+                To = -railDistance * sign,
+                Duration = TimeSpan.FromMilliseconds(outgoingDurationMs),
+                EasingFunction = new CubicEase
+                {
+                    EasingMode = EasingMode.EaseIn
+                }
+            };
+            Storyboard.SetTarget(
+                outgoingRailMotion,
+                outgoingRailTransform);
+            Storyboard.SetTargetProperty(
+                outgoingRailMotion,
+                nameof(TranslateTransform.Y));
+            storyboard.Children.Add(outgoingRailMotion);
+
+            var incomingRailMotion = new DoubleAnimation
+            {
+                From = railDistance * sign,
+                To = 0,
+                BeginTime = TimeSpan.FromMilliseconds(incomingBeginTimeMs),
+                Duration = TimeSpan.FromMilliseconds(incomingDurationMs),
+                EasingFunction = new CubicEase
+                {
+                    EasingMode = EasingMode.EaseOut
+                }
+            };
+            Storyboard.SetTarget(
+                incomingRailMotion,
+                incomingRailTransform);
+            Storyboard.SetTargetProperty(
+                incomingRailMotion,
+                nameof(TranslateTransform.Y));
+            storyboard.Children.Add(incomingRailMotion);
         }
         storyboard.Completed += IdentityStoryboard_Completed;
         _identityStoryboard = storyboard;
         storyboard.Begin();
+
+        DoubleAnimationUsingKeyFrames CreateIncomingIconScaleAnimation()
+        {
+            var animation = new DoubleAnimationUsingKeyFrames();
+            animation.KeyFrames.Add(new DiscreteDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(incomingBeginTimeMs)),
+                Value = 0.9
+            });
+            animation.KeyFrames.Add(new EasingDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(
+                    incomingBeginTimeMs + (incomingDurationMs * 0.62))),
+                Value = 1.055,
+                EasingFunction = new CubicEase
+                {
+                    EasingMode = EasingMode.EaseOut
+                }
+            });
+            animation.KeyFrames.Add(new EasingDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(
+                    incomingBeginTimeMs + incomingDurationMs)),
+                Value = 1,
+                EasingFunction = new BackEase
+                {
+                    Amplitude = 0.18,
+                    EasingMode = EasingMode.EaseOut
+                }
+            });
+            return animation;
+        }
     }
 
     private void UpdateInteractionChrome(bool animate = true)
     {
         _interactionChromeStoryboard?.Stop();
         _interactionChromeStoryboard = null;
+        _scrollSurfaceStoryboard?.Stop();
+        _scrollSurfaceStoryboard = null;
+        TitleInteractionChromeTransform.ScaleX = 1;
+        TitleInteractionChromeTransform.ScaleY = 1;
 
         CapsuleChrome.Background = ResolveThemeBrush(
             _isSelectorPressed
                 ? "SubtleFillColorTertiaryBrush"
                 : "SubtleFillColorSecondaryBrush",
             new SolidColorBrush(Colors.Transparent));
-        double targetSurfaceOpacity = _pickerOpen
-            ? 0.34
-            : _isSelectorPressed
-                ? 0.4
-                : _isPointerOverSelector
-                    ? 0.26
-                    : 0;
+        double targetSurfaceOpacity = ResolveInteractionSurfaceOpacity();
         CapsuleChrome.Opacity = 0;
         bool animationsEnabled = animate && AreSystemAnimationsEnabled();
         if (!animationsEnabled || XamlRoot is null)
@@ -503,6 +953,17 @@ public sealed partial class WidgetGroupTitleSwitcher
         }
     }
 
+    private double ResolveInteractionSurfaceOpacity()
+    {
+        return _pickerOpen
+            ? 0.34
+            : _isSelectorPressed
+                ? 0.4
+                : _isPointerOverSelector
+                    ? 0.26
+                    : 0;
+    }
+
     private void IdentityStoryboard_Completed(object? sender, object e)
     {
         if (sender is Storyboard storyboard)
@@ -514,12 +975,18 @@ public sealed partial class WidgetGroupTitleSwitcher
         CurrentIdentityLayer.Opacity = 1;
         OutgoingIdentityLayer.RenderTransform = null;
         CurrentIdentityLayer.RenderTransform = null;
+        OutgoingPositionRailLayer.Opacity = 0;
+        CurrentPositionRailLayer.Opacity = 1;
+        OutgoingPositionRailLayer.RenderTransform = null;
+        CurrentPositionRailLayer.RenderTransform = null;
+        CurrentIconScaleTransform.ScaleX = 1;
+        CurrentIconScaleTransform.ScaleY = 1;
         IdentityViewport.Width = _pendingIdentityWidth;
         SetIdentity(
             OutgoingIcon,
             OutgoingTitle,
-            OutgoingPositionText,
             null);
+        SetPositionRail(OutgoingPositionRailLayer, null);
         _identityStoryboard = null;
     }
 
@@ -536,6 +1003,13 @@ public sealed partial class WidgetGroupTitleSwitcher
         CurrentIdentityLayer.Opacity = 1;
         OutgoingIdentityLayer.RenderTransform = null;
         CurrentIdentityLayer.RenderTransform = null;
+        OutgoingPositionRailLayer.Opacity = 0;
+        CurrentPositionRailLayer.Opacity = 1;
+        OutgoingPositionRailLayer.RenderTransform = null;
+        CurrentPositionRailLayer.RenderTransform = null;
+        CurrentIconScaleTransform.ScaleX = 1;
+        CurrentIconScaleTransform.ScaleY = 1;
+        SetPositionRail(OutgoingPositionRailLayer, null);
     }
 
     private bool CanAnimateIdentity()
@@ -545,13 +1019,6 @@ public sealed partial class WidgetGroupTitleSwitcher
 
     private static bool AreSystemAnimationsEnabled()
     {
-        try
-        {
-            return new UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
+        return DeskBox.Services.WindowsCompatibilityService.ShouldAnimate;
     }
 }

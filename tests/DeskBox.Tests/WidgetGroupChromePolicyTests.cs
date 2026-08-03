@@ -9,7 +9,7 @@ public sealed class WidgetGroupChromePolicyTests
     [InlineData(WidgetChromeMode.Standard, WidgetChromeMode.Compact)]
     [InlineData(WidgetChromeMode.Compact, WidgetChromeMode.Standard)]
     [InlineData(WidgetChromeMode.Compact, WidgetChromeMode.Compact)]
-    public void EvaluateMerge_AllowsConcreteVisibleModesAndUsesTargetMode(
+    public void EvaluateMerge_PrefersConcreteVisibleTargetMode(
         WidgetChromeMode sourceMode,
         WidgetChromeMode targetMode)
     {
@@ -31,12 +31,6 @@ public sealed class WidgetGroupChromePolicyTests
     [InlineData(
         WidgetChromeMode.System,
         WidgetGroupChromeRejectionReason.EffectiveModeIsUnresolved)]
-    [InlineData(
-        WidgetChromeMode.Overlay,
-        WidgetGroupChromeRejectionReason.OverlayChromeCannotBeGrouped)]
-    [InlineData(
-        WidgetChromeMode.Hidden,
-        WidgetGroupChromeRejectionReason.HiddenChromeCannotBeGrouped)]
     [InlineData(
         (WidgetChromeMode)999,
         WidgetGroupChromeRejectionReason.UnsupportedChromeMode)]
@@ -63,12 +57,6 @@ public sealed class WidgetGroupChromePolicyTests
         WidgetChromeMode.System,
         WidgetGroupChromeRejectionReason.EffectiveModeIsUnresolved)]
     [InlineData(
-        WidgetChromeMode.Overlay,
-        WidgetGroupChromeRejectionReason.OverlayChromeCannotBeGrouped)]
-    [InlineData(
-        WidgetChromeMode.Hidden,
-        WidgetGroupChromeRejectionReason.HiddenChromeCannotBeGrouped)]
-    [InlineData(
         (WidgetChromeMode)999,
         WidgetGroupChromeRejectionReason.UnsupportedChromeMode)]
     public void EvaluateMerge_RejectsInvalidTargetWithStructuredReason(
@@ -87,6 +75,52 @@ public sealed class WidgetGroupChromePolicyTests
             decision.RejectedParticipant);
         Assert.Equal(expectedReason, decision.RejectionReason);
         Assert.Equal(targetMode, decision.RejectedMode);
+    }
+
+    [Theory]
+    [InlineData(WidgetChromeMode.Overlay)]
+    [InlineData(WidgetChromeMode.Hidden)]
+    public void EvaluateMerge_AllowsFloatingOrHiddenSourceToAdoptTargetGroupMode(
+        WidgetChromeMode sourceMode)
+    {
+        WidgetGroupChromeDecision decision =
+            WidgetGroupChromePolicy.EvaluateMerge(
+                sourceMode,
+                WidgetChromeMode.Compact);
+
+        Assert.True(decision.IsAllowed);
+        Assert.Equal(WidgetChromeMode.Compact, decision.GroupMode);
+    }
+
+    [Theory]
+    [InlineData(WidgetChromeMode.Overlay)]
+    [InlineData(WidgetChromeMode.Hidden)]
+    public void EvaluateMerge_UsesVisibleSourceModeWhenTargetHasOverlayChrome(
+        WidgetChromeMode targetMode)
+    {
+        WidgetGroupChromeDecision decision =
+            WidgetGroupChromePolicy.EvaluateMerge(
+                WidgetChromeMode.Compact,
+                targetMode);
+
+        Assert.True(decision.IsAllowed);
+        Assert.Equal(WidgetChromeMode.Compact, decision.GroupMode);
+    }
+
+    [Theory]
+    [InlineData(WidgetChromeMode.Overlay, WidgetChromeMode.Overlay)]
+    [InlineData(WidgetChromeMode.Overlay, WidgetChromeMode.Hidden)]
+    [InlineData(WidgetChromeMode.Hidden, WidgetChromeMode.Overlay)]
+    [InlineData(WidgetChromeMode.Hidden, WidgetChromeMode.Hidden)]
+    public void EvaluateMerge_FallsBackToStandardWhenNeitherMemberHasVisibleChrome(
+        WidgetChromeMode sourceMode,
+        WidgetChromeMode targetMode)
+    {
+        WidgetGroupChromeDecision decision =
+            WidgetGroupChromePolicy.EvaluateMerge(sourceMode, targetMode);
+
+        Assert.True(decision.IsAllowed);
+        Assert.Equal(WidgetChromeMode.Standard, decision.GroupMode);
     }
 
     [Theory]

@@ -39,6 +39,16 @@ public partial class SettingsViewModel
             "Settings.About.Developer",
             RepositoryUrl.Replace("https://", string.Empty).Replace("http://", string.Empty).TrimEnd('/'));
     public string AvailableUpdateReleaseNotesUrl => _availableUpdateManifest?.ReleaseNotesUrl ?? string.Empty;
+    /// <summary>
+    /// Latest manifest returned by a successful check. This is intentionally
+    /// separate from the available-update manifest so release notes remain
+    /// accessible when the current build is already up to date.
+    /// </summary>
+    public AppUpdateManifest? LatestUpdateManifest => _latestUpdateManifest;
+    public bool CanViewReleaseNotes => _latestUpdateManifest?.HasReleaseNotesOrUrl == true;
+    public Visibility ReleaseNotesButtonVisibility =>
+        CanViewReleaseNotes ? Visibility.Visible : Visibility.Collapsed;
+    public string ViewReleaseNotesButtonText => _localizationService.T("Settings.Update.ViewReleaseNotes");
     public string UpdateFallbackUrl => RepositoryUrl + "/releases";
 
     public string ManualUpdateDownloadUrl => GetManualUpdateDownloadUrl(_availableUpdateManifest);
@@ -260,6 +270,11 @@ public partial class SettingsViewModel
 
     private void ApplyUpdateCheckResult(AppUpdateCheckResult result)
     {
+        if (result.Manifest is not null && AppUpdateService.IsManifestUsable(result.Manifest))
+        {
+            _latestUpdateManifest = result.Manifest;
+        }
+
         if (result.IsUpdateAvailable && result.Manifest is not null)
         {
             _availableUpdateManifest = result.Manifest;
@@ -414,6 +429,10 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(UpdateProgressTextVisibility));
         OnPropertyChanged(nameof(UpdateReleaseNotesVisibility));
         OnPropertyChanged(nameof(AvailableUpdateReleaseNotesUrl));
+        OnPropertyChanged(nameof(LatestUpdateManifest));
+        OnPropertyChanged(nameof(CanViewReleaseNotes));
+        OnPropertyChanged(nameof(ReleaseNotesButtonVisibility));
+        OnPropertyChanged(nameof(ViewReleaseNotesButtonText));
         OnPropertyChanged(nameof(ManualUpdateDownloadUrl));
         OnPropertyChanged(nameof(CanOpenManualUpdateDownload));
         OnPropertyChanged(nameof(ManualUpdateFallbackVisibility));

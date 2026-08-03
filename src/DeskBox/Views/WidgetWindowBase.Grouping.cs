@@ -1,12 +1,23 @@
 using DeskBox.Controls;
 using DeskBox.Helpers;
+using Windows.Graphics;
 
 namespace DeskBox.Views;
 
 public abstract partial class WidgetWindowBase
 {
+    private static readonly UIntPtr GroupWheelSubclassId = new(0xDDB4);
     private bool _groupingInitialized;
     private bool _groupPickerInteractionOpen;
+    private string? _groupDetachDragMemberId;
+    private int _groupDetachDragOffsetX;
+    private int _groupDetachDragOffsetY;
+    private CancellationTokenSource? _groupDetachPreviewCancellation;
+    private WidgetDetachPlacementPreviewWindow? _groupDetachPlacementPreview;
+    private bool _groupDetachCommitInProgress;
+    private Win32Helper.SubclassProc? _groupWheelSubclassProc;
+    private bool _isGroupWheelSubclassInstalled;
+    private bool _nativeGroupWheelEnabled;
 
     protected void InitializeWidgetGrouping()
     {
@@ -16,9 +27,12 @@ public abstract partial class WidgetWindowBase
         }
 
         _groupingInitialized = true;
+        InstallGroupWheelSubclass();
         WidgetShellControl.GroupMemberInvoked += WidgetShellControl_GroupMemberInvoked;
         WidgetShellControl.GroupMemberRemoveRequested += WidgetShellControl_GroupMemberRemoveRequested;
         WidgetShellControl.GroupMemberDetachRequested += WidgetShellControl_GroupMemberDetachRequested;
+        WidgetShellControl.GroupMemberDetachDragStarted += WidgetShellControl_GroupMemberDetachDragStarted;
+        WidgetShellControl.GroupMemberDetachDragCompleted += WidgetShellControl_GroupMemberDetachDragCompleted;
         WidgetShellControl.GroupMemberReorderRequested += WidgetShellControl_GroupMemberReorderRequested;
         WidgetShellControl.GroupDissolveRequested += WidgetShellControl_GroupDissolveRequested;
         WidgetShellControl.GroupPickerOpened += WidgetShellControl_GroupPickerOpened;
@@ -40,6 +54,41 @@ public abstract partial class WidgetWindowBase
         WidgetShellControl.SetGroupDropPreview(visible, ready, messageKey);
     }
 
+    public RectInt32? GetGroupMergeTitleScreenBounds()
+    {
+        Microsoft.UI.Xaml.FrameworkElement? titleTarget =
+            WidgetShellControl.GroupMergeTitleTargetElement;
+        if (titleTarget?.XamlRoot is null ||
+            titleTarget.ActualWidth <= 0 ||
+            titleTarget.ActualHeight <= 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            Windows.Foundation.Point topLeft = titleTarget.TransformToVisual(null)
+                .TransformPoint(new Windows.Foundation.Point(0, 0));
+            double scale = titleTarget.XamlRoot.RasterizationScale;
+            PointInt32 windowPosition = AppWindow.Position;
+            int left = windowPosition.X + (int)Math.Floor(topLeft.X * scale);
+            int top = windowPosition.Y + (int)Math.Floor(topLeft.Y * scale);
+            int right = windowPosition.X +
+                (int)Math.Ceiling((topLeft.X + titleTarget.ActualWidth) * scale);
+            int bottom = windowPosition.Y +
+                (int)Math.Ceiling((topLeft.Y + titleTarget.ActualHeight) * scale);
+            return new RectInt32(
+                left,
+                top,
+                Math.Max(1, right - left),
+                Math.Max(1, bottom - top));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     protected void CleanupWidgetGrouping()
     {
         if (!_groupingInitialized)
@@ -48,9 +97,12 @@ public abstract partial class WidgetWindowBase
         }
 
         _groupingInitialized = false;
+        RemoveGroupWheelSubclass();
         WidgetShellControl.GroupMemberInvoked -= WidgetShellControl_GroupMemberInvoked;
         WidgetShellControl.GroupMemberRemoveRequested -= WidgetShellControl_GroupMemberRemoveRequested;
         WidgetShellControl.GroupMemberDetachRequested -= WidgetShellControl_GroupMemberDetachRequested;
+        WidgetShellControl.GroupMemberDetachDragStarted -= WidgetShellControl_GroupMemberDetachDragStarted;
+        WidgetShellControl.GroupMemberDetachDragCompleted -= WidgetShellControl_GroupMemberDetachDragCompleted;
         WidgetShellControl.GroupMemberReorderRequested -= WidgetShellControl_GroupMemberReorderRequested;
         WidgetShellControl.GroupDissolveRequested -= WidgetShellControl_GroupDissolveRequested;
         WidgetShellControl.GroupPickerOpened -= WidgetShellControl_GroupPickerOpened;
@@ -66,6 +118,139 @@ public abstract partial class WidgetWindowBase
             _groupPickerInteractionOpen = false;
             ReleaseInteractionLayer("widget-group-picker-cleanup");
         }
+
+        ClearGroupDetachDragAnchor();
+        StopGroupDetachPreviewPolling();
+        if (!_groupDetachCommitInProgress)
+        {
+            CloseGroupDetachPlacementPreview();
+        }
+        _nativeGroupWheelEnabled = false;
+    }
+
+    private void InstallGroupWheelSubclass()
+    {
+        if (_isGroupWheelSubclassInstalled || HWnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        _groupWheelSubclassProc ??= GroupWheelSubclassProc;
+        _isGroupWheelSubclassInstalled = Win32Helper.SetWindowSubclass(
+            HWnd,
+            _groupWheelSubclassProc,
+            GroupWheelSubclassId,
+            UIntPtr.Zero);
+        App.LogVerbose(
+            $"[WidgetGroup] Native wheel hook hwnd=0x{HWnd.ToInt64():X} " +
+            $"installed={_isGroupWheelSubclassInstalled}");
+    }
+
+    private void RemoveGroupWheelSubclass()
+    {
+        if (!_isGroupWheelSubclassInstalled ||
+            _groupWheelSubclassProc is null ||
+            HWnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        Win32Helper.RemoveWindowSubclass(
+            HWnd,
+            _groupWheelSubclassProc,
+            GroupWheelSubclassId);
+        _isGroupWheelSubclassInstalled = false;
+    }
+
+    private IntPtr GroupWheelSubclassProc(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr subclassId,
+        UIntPtr refData)
+    {
+        try
+        {
+            if (message == Win32Helper.WM_MOUSEWHEEL &&
+                TryQueueNativeGroupWheel(wParam, lParam))
+            {
+                return IntPtr.Zero;
+            }
+
+            if (message == Win32Helper.WM_NCDESTROY)
+            {
+                RemoveGroupWheelSubclass();
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[WidgetGroup] Native wheel hook failed: {ex}");
+        }
+
+        return Win32Helper.DefSubclassProc(
+            hWnd,
+            message,
+            wParam,
+            lParam);
+    }
+
+    private bool TryQueueNativeGroupWheel(UIntPtr wParam, IntPtr lParam)
+    {
+        int delta = unchecked((short)(wParam.ToUInt64() >> 16));
+        long packedPoint = lParam.ToInt64();
+        var clientPoint = new Win32Helper.POINT
+        {
+            X = unchecked((short)(packedPoint & 0xFFFF)),
+            Y = unchecked((short)((packedPoint >> 16) & 0xFFFF))
+        };
+        if (!_nativeGroupWheelEnabled ||
+            delta == 0 ||
+            !Win32Helper.ScreenToClient(HWnd, ref clientPoint))
+        {
+            return false;
+        }
+
+        double scale = Win32Helper.GetDpiScaleForWindow(
+            HWnd,
+            xamlRoot: null);
+        if (!double.IsFinite(scale) || scale <= 0)
+        {
+            scale = 1;
+        }
+
+        int broadTitleHeight = Math.Max(
+            1,
+            (int)Math.Ceiling(72 * scale));
+        if (clientPoint.X < 0 ||
+            clientPoint.Y < 0 ||
+            clientPoint.X > AppWindow.Size.Width ||
+            clientPoint.Y > broadTitleHeight)
+        {
+            return false;
+        }
+
+        int capturedX = clientPoint.X;
+        int capturedY = clientPoint.Y;
+        return DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                var logicalPoint = new Windows.Foundation.Point(
+                    capturedX / scale,
+                    capturedY / scale);
+                if (WidgetShellControl.IsPointOverGroupTitleBar(
+                        RootElement,
+                        logicalPoint))
+                {
+                    WidgetShellControl.HandleNativeGroupTitleWheel(delta);
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetGroup] Queued native wheel failed: {ex}");
+            }
+        });
     }
 
     protected void RefreshWidgetGroupPresentation(
@@ -75,6 +260,9 @@ public abstract partial class WidgetWindowBase
     {
         WidgetGroupPresentation? presentation =
             App.Current?.WidgetManager?.GetWidgetGroupPresentation(Config.Id);
+        _nativeGroupWheelEnabled =
+            presentation is { WheelSwitchEnabled: true } &&
+            presentation.Members.Count > 1;
         Diagnostics.SetSurfaceId(presentation?.SurfaceId);
         WidgetShellControl.SetGroupPresentation(
             presentation,
@@ -150,32 +338,209 @@ public abstract partial class WidgetWindowBase
         object? sender,
         WidgetGroupMemberEventArgs e)
     {
-        if (!IsCursorOutsideGroupWindow() ||
-            App.Current?.WidgetManager is not { } manager)
+        if (!Win32Helper.GetCursorPos(out Win32Helper.POINT cursor))
         {
+            ClearGroupDetachDragAnchor();
             return;
         }
 
+        bool isOutside = IsCursorOutsideGroupWindow(cursor);
+        PointInt32? detachedPosition = TryResolveDetachedPosition(
+            e.WidgetId,
+            cursor);
+        if (!isOutside ||
+            detachedPosition is null ||
+            App.Current?.WidgetManager is not { } manager)
+        {
+            ClearGroupDetachDragAnchor();
+            CloseGroupDetachPlacementPreview();
+            return;
+        }
+
+        _groupDetachCommitInProgress = true;
+        StopGroupDetachPreviewPolling();
+        var detachedBounds = new RectInt32(
+            detachedPosition.Value.X,
+            detachedPosition.Value.Y,
+            AppWindow.Size.Width,
+            AppWindow.Size.Height);
+        _groupDetachPlacementPreview?.MarkCommitted(detachedBounds);
+        ClearGroupDetachDragAnchor();
         try
         {
             await manager.RemoveWidgetFromGroupAsync(
                 e.WidgetId,
-                revealStandalone: true);
+                revealStandalone: true,
+                detachedPosition: detachedPosition);
         }
         catch (Exception ex)
         {
             App.Log(
                 $"[WidgetGroup] Drag detach failed id={e.WidgetId}: {ex}");
         }
+        finally
+        {
+            _groupDetachCommitInProgress = false;
+            WidgetDetachPlacementPreviewWindow? preview =
+                _groupDetachPlacementPreview;
+            _groupDetachPlacementPreview = null;
+            if (preview is not null)
+            {
+                await preview.FadeOutAndCloseAsync();
+            }
+        }
     }
 
-    private bool IsCursorOutsideGroupWindow()
+    private void WidgetShellControl_GroupMemberDetachDragStarted(
+        object? sender,
+        WidgetGroupMemberEventArgs e)
     {
         if (!Win32Helper.GetCursorPos(out Win32Helper.POINT cursor))
         {
-            return false;
+            ClearGroupDetachDragAnchor();
+            return;
         }
 
+        var position = AppWindow.Position;
+        _groupDetachDragMemberId = e.WidgetId;
+        _groupDetachDragOffsetX = cursor.X - position.X;
+        _groupDetachDragOffsetY = cursor.Y - position.Y;
+        StartGroupDetachPlacementPreview(cursor);
+    }
+
+    private void WidgetShellControl_GroupMemberDetachDragCompleted(
+        object? sender,
+        WidgetGroupMemberEventArgs e)
+    {
+        if (!_groupDetachCommitInProgress)
+        {
+            CloseGroupDetachPlacementPreview();
+        }
+    }
+
+    private void StartGroupDetachPlacementPreview(Win32Helper.POINT cursor)
+    {
+        CloseGroupDetachPlacementPreview();
+        _groupDetachCommitInProgress = false;
+
+        WidgetDetachPlacementPreviewWindow preview;
+        try
+        {
+            string caption = App.Current.LocalizationService.T(
+                "Widget.Group.DetachDragCaption");
+            preview = new WidgetDetachPlacementPreviewWindow(
+                caption,
+                GetCurrentSurfaceCornerRadius());
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[WidgetGroup] Failed to create detach preview: {ex}");
+            return;
+        }
+
+        _groupDetachPlacementPreview = preview;
+        var sourcePosition = AppWindow.Position;
+        var sourceSize = AppWindow.Size;
+        int offsetX = _groupDetachDragOffsetX;
+        int offsetY = _groupDetachDragOffsetY;
+        preview.Update(
+            new RectInt32(
+                cursor.X - offsetX,
+                cursor.Y - offsetY,
+                sourceSize.Width,
+                sourceSize.Height),
+            visible: false);
+
+        var cancellation = new CancellationTokenSource();
+        _groupDetachPreviewCancellation = cancellation;
+        CancellationToken token = cancellation.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    if (Win32Helper.GetCursorPos(out Win32Helper.POINT point))
+                    {
+                        const int releaseMargin = 8;
+                        bool outside =
+                            point.X < sourcePosition.X - releaseMargin ||
+                            point.Y < sourcePosition.Y - releaseMargin ||
+                            point.X > sourcePosition.X +
+                                sourceSize.Width + releaseMargin ||
+                            point.Y > sourcePosition.Y +
+                                sourceSize.Height + releaseMargin;
+                        preview.Update(
+                            new RectInt32(
+                                point.X - offsetX,
+                                point.Y - offsetY,
+                                sourceSize.Width,
+                                sourceSize.Height),
+                            outside);
+                    }
+
+                    await Task.Delay(24, token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetGroup] Detach preview tracking failed: {ex}");
+            }
+        }, token);
+    }
+
+    private void StopGroupDetachPreviewPolling()
+    {
+        CancellationTokenSource? cancellation =
+            _groupDetachPreviewCancellation;
+        _groupDetachPreviewCancellation = null;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    private void CloseGroupDetachPlacementPreview()
+    {
+        StopGroupDetachPreviewPolling();
+        WidgetDetachPlacementPreviewWindow? preview =
+            _groupDetachPlacementPreview;
+        _groupDetachPlacementPreview = null;
+        preview?.Dispose();
+    }
+
+    private PointInt32? TryResolveDetachedPosition(
+        string widgetId,
+        Win32Helper.POINT cursor)
+    {
+        if (!string.Equals(
+                widgetId,
+                _groupDetachDragMemberId,
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return new PointInt32(
+            cursor.X - _groupDetachDragOffsetX,
+            cursor.Y - _groupDetachDragOffsetY);
+    }
+
+    private void ClearGroupDetachDragAnchor()
+    {
+        _groupDetachDragMemberId = null;
+        _groupDetachDragOffsetX = 0;
+        _groupDetachDragOffsetY = 0;
+    }
+
+    private bool IsCursorOutsideGroupWindow(Win32Helper.POINT cursor)
+    {
         var position = AppWindow.Position;
         var size = AppWindow.Size;
         const int releaseMargin = 8;

@@ -105,6 +105,28 @@ public sealed class WidgetGroupNavigationInteractionPolicyTests
     }
 
     [Fact]
+    public void RelativeNavigation_CanWrapWhenKeyboardNavigationRequestsIt()
+    {
+        Assert.True(
+            WidgetGroupNavigationInteractionPolicy.TryResolveRelativeTarget(
+                activeIndex: 2,
+                memberCount: 3,
+                delta: 1,
+                out int nextTarget,
+                wrap: true));
+        Assert.Equal(0, nextTarget);
+
+        Assert.True(
+            WidgetGroupNavigationInteractionPolicy.TryResolveRelativeTarget(
+                activeIndex: 0,
+                memberCount: 3,
+                delta: -1,
+                out int previousTarget,
+                wrap: true));
+        Assert.Equal(2, previousTarget);
+    }
+
+    [Fact]
     public void EdgeDamping_OnlyAppliesWhenMovingPastAnEnd()
     {
         Assert.Equal(
@@ -150,5 +172,51 @@ public sealed class WidgetGroupNavigationInteractionPolicyTests
 
         Assert.Equal(1, direction);
         Assert.Equal(0, accumulator);
+    }
+
+    [Fact]
+    public void PositionRail_MapsTwoAndThreeMembersOneToOne()
+    {
+        IReadOnlyList<WidgetGroupPositionRailSlot> two =
+            WidgetGroupNavigationInteractionPolicy
+                .ResolvePositionRailSlots(activeIndex: 1, memberCount: 2);
+        IReadOnlyList<WidgetGroupPositionRailSlot> three =
+            WidgetGroupNavigationInteractionPolicy
+                .ResolvePositionRailSlots(activeIndex: 1, memberCount: 3);
+
+        Assert.Equal([0, 1], two.Select(slot => slot.MemberIndex));
+        Assert.False(two[0].IsActive);
+        Assert.True(two[1].IsActive);
+        Assert.Equal([0, 1, 2], three.Select(slot => slot.MemberIndex));
+        Assert.True(three[1].IsActive);
+    }
+
+    [Theory]
+    [InlineData(0, 8, 0, 0)]
+    [InlineData(4, 8, 3, 1)]
+    [InlineData(7, 8, 5, 2)]
+    public void PositionRail_UsesAThreeSlotRollingWindow(
+        int activeIndex,
+        int memberCount,
+        int expectedFirstIndex,
+        int expectedActiveSlot)
+    {
+        IReadOnlyList<WidgetGroupPositionRailSlot> slots =
+            WidgetGroupNavigationInteractionPolicy
+                .ResolvePositionRailSlots(activeIndex, memberCount);
+
+        Assert.Equal(3, slots.Count);
+        Assert.Equal(expectedFirstIndex, slots[0].MemberIndex);
+        Assert.Equal(
+            expectedActiveSlot,
+            slots.ToList().FindIndex(slot => slot.IsActive));
+    }
+
+    [Fact]
+    public void PositionRail_HidesWhenThereIsNoGroup()
+    {
+        Assert.Empty(
+            WidgetGroupNavigationInteractionPolicy
+                .ResolvePositionRailSlots(activeIndex: 0, memberCount: 1));
     }
 }

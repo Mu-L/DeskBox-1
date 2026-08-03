@@ -103,7 +103,7 @@ public sealed partial class WidgetWindow
     
             var sourcePaths = selectedItems
                 .Select(item => item.Path)
-                .Where(path => !string.IsNullOrWhiteSpace(path) && (File.Exists(path) || Directory.Exists(path)))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(Path.GetFullPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -134,7 +134,7 @@ public sealed partial class WidgetWindow
                 package.Properties["DeskBoxSourceWidgetId"] = ViewModel.Config.Id;
                 package.Properties["DeskBoxSourcePaths"] = sourcePaths;
                 package.Properties["DeskBoxInternalDragToken"] = DeskBoxInternalDragToken;
-                Clipboard.SetContent(package);
+            Clipboard.SetContent(package);
                 Clipboard.Flush();
             }
     
@@ -153,7 +153,7 @@ public sealed partial class WidgetWindow
         {
             var clipboard = Clipboard.GetContent();
             IReadOnlyList<string> sourcePaths = TryGetPackageStringArray(clipboard.Properties, "DeskBoxSourcePaths")
-                .Where(path => !string.IsNullOrWhiteSpace(path) && (File.Exists(path) || Directory.Exists(path)))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(Path.GetFullPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -176,13 +176,16 @@ public sealed partial class WidgetWindow
     
             bool? moveWhenMapped = clipboard.RequestedOperation != DataPackageOperation.Copy;
     
-            await ViewModel.ImportPathsAsync(sourcePaths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
+            IReadOnlyList<string> completedSourcePaths = await ViewModel.ImportPathsAsync(
+                sourcePaths,
+                moveWhenMapped,
+                useShellProgress: moveWhenMapped == true);
     
             if (moveWhenMapped == true)
             {
                 await SyncMoveSourceAsync(
                     TryGetPackageString(clipboard.Properties, "DeskBoxSourceWidgetId"),
-                    TryGetPackageStringArray(clipboard.Properties, "DeskBoxSourcePaths"));
+                    completedSourcePaths);
             }
     
             ClearCutState();

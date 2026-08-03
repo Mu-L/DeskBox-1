@@ -186,6 +186,32 @@ public sealed class WidgetGroupSettingsTests
     }
 
     [Fact]
+    public void ResolveRestorableActiveMemberId_FallsBackWithoutChangingMembership()
+    {
+        var unavailable = CreateWidget("unavailable");
+        var available = CreateWidget("available");
+        var group = new WidgetGroupConfig
+        {
+            MemberIds = [unavailable.Id, available.Id],
+            ActiveMemberId = unavailable.Id
+        };
+        var settings = new AppSettings
+        {
+            Widgets = [unavailable, available],
+            WidgetGroups = [group]
+        };
+
+        string? activeId = WidgetGroupSettings.ResolveRestorableActiveMemberId(
+            settings,
+            group,
+            widget => string.Equals(widget.Id, available.Id, StringComparison.Ordinal));
+
+        Assert.Equal(available.Id, activeId);
+        Assert.Equal([unavailable.Id, available.Id], group.MemberIds);
+        Assert.Equal(unavailable.Id, group.ActiveMemberId);
+    }
+
+    [Fact]
     public void ApplyDefaultPreferences_PreservesWidgetGroupsAsUserLayoutData()
     {
         var group = new WidgetGroupConfig

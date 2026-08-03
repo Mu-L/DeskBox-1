@@ -71,6 +71,67 @@ public sealed class FileServiceTests : IDisposable
     }
 
     [Fact]
+    public void PathsOverlap_MatchesEqualAndAncestorPathsButNotSiblings()
+    {
+        string root = Path.Combine(_tempRoot, "root");
+        string child = Path.Combine(root, "child");
+        string sibling = Path.Combine(_tempRoot, "root-other");
+
+        Assert.True(FileService.PathsOverlap(root, root));
+        Assert.True(FileService.PathsOverlap(root, child));
+        Assert.True(FileService.PathsOverlap(child, root));
+        Assert.False(FileService.PathsOverlap(root, sibling));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteTransferPlanAsync_RejectsDirectoryDestinationInsideSource(bool move)
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(Path.Combine(_tempRoot, "source-folder")).FullName;
+        File.WriteAllText(Path.Combine(sourceDirectory, "file.txt"), "content");
+        string destinationDirectory = Path.Combine(sourceDirectory, "nested", "source-folder");
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecuteTransferPlanAsync(
+                [new FileService.FileTransferPlan(sourceDirectory, destinationDirectory)],
+                move));
+
+        Assert.Contains("itself", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(Path.Combine(sourceDirectory, "nested")));
+        Assert.True(File.Exists(Path.Combine(sourceDirectory, "file.txt")));
+    }
+
+    [Fact]
+    public async Task TransferItemsWithResultAsync_RejectsNestedDestinationBeforeCreatingIt()
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(Path.Combine(_tempRoot, "source-folder")).FullName;
+        string destinationRoot = Path.Combine(sourceDirectory, "mapped-widget");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.TransferItemsWithResultAsync([sourceDirectory], destinationRoot, move: true));
+
+        Assert.False(Directory.Exists(destinationRoot));
+        Assert.True(Directory.Exists(sourceDirectory));
+    }
+
+    [Fact]
+    public async Task RelocateDirectoryAsync_RejectsDirectoryDestinationInsideSource()
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(Path.Combine(_tempRoot, "source-folder")).FullName;
+        string destinationDirectory = Path.Combine(sourceDirectory, "nested");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RelocateDirectoryAsync(sourceDirectory, destinationDirectory));
+
+        Assert.False(Directory.Exists(destinationDirectory));
+        Assert.True(Directory.Exists(sourceDirectory));
+    }
+
+    [Fact]
     public async Task TransferItemsWithResultAsync_MovesFilesToAvailableNames()
     {
         var service = new FileService();

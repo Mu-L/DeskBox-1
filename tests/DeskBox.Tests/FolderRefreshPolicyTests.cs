@@ -1,0 +1,188 @@
+using DeskBox.Services;
+using DeskBox.ViewModels;
+
+namespace DeskBox.Tests;
+
+public sealed class FolderRefreshPolicyTests
+{
+    [Fact]
+    public async Task CompleteParentSnapshot_DistinguishesPresentFromNotFound()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"DeskBox-refresh-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string present = Path.Combine(root, "present.txt");
+            string missing = Path.Combine(root, "missing.txt");
+            await File.WriteAllTextAsync(present, "ready");
+
+            FolderPathSnapshot snapshot =
+                await FileService.CaptureDirectChildSnapshotAsync(root);
+
+            Assert.Equal(FolderSnapshotStatus.Complete, snapshot.Status);
+            Assert.Equal(
+                FolderEntryRefreshStatus.Available,
+                FileService.ClassifyDirectChild(snapshot, present));
+            Assert.Equal(
+                FolderEntryRefreshStatus.NotFound,
+                FileService.ClassifyDirectChild(snapshot, missing));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EmptyParentSnapshot_IsSuccessfulEmptyNotUnavailable()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"DeskBox-empty-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            FolderPathSnapshot snapshot =
+                await FileService.CaptureDirectChildSnapshotAsync(root);
+
+            Assert.Equal(FolderSnapshotStatus.SuccessEmpty, snapshot.Status);
+            Assert.True(FolderSnapshotStatusPolicy.IsSuccessful(snapshot.Status));
+            Assert.Empty(snapshot.Paths);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FolderSnapshotPolicy_RejectsIncompleteStates()
+    {
+        Assert.True(FolderSnapshotStatusPolicy.IsSuccessful(
+            FolderSnapshotStatus.SuccessWithItems));
+        Assert.True(FolderSnapshotStatusPolicy.IsSuccessful(
+            FolderSnapshotStatus.SuccessEmpty));
+        Assert.False(FolderSnapshotStatusPolicy.IsSuccessful(
+            FolderSnapshotStatus.Partial));
+        Assert.False(FolderSnapshotStatusPolicy.IsSuccessful(
+            FolderSnapshotStatus.Unavailable));
+        Assert.False(FolderSnapshotStatusPolicy.IsSuccessful(
+            FolderSnapshotStatus.AccessDenied));
+    }
+
+    [Fact]
+    public async Task UnavailableParentSnapshot_NeverClaimsThatChildWasDeleted()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"DeskBox-offline-{Guid.NewGuid():N}");
+        string child = Path.Combine(root, "retained.txt");
+
+        FolderPathSnapshot snapshot =
+            await FileService.CaptureDirectChildSnapshotAsync(root);
+
+        Assert.Equal(FolderSnapshotStatus.Unavailable, snapshot.Status);
+        Assert.Equal(
+            FolderEntryRefreshStatus.Unavailable,
+            FileService.ClassifyDirectChild(snapshot, child));
+        Assert.False(WidgetViewModel.ShouldRemoveExistingItem(
+            WatcherChangeTypes.Deleted,
+            FolderEntryRefreshStatus.Unavailable));
+    }
+
+    [Fact]
+    public void ShellMoveCompletion_RequiresDestinationAndMissingSource()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"DeskBox-shell-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string source = Path.Combine(root, "source.txt");
+            string destination = Path.Combine(root, "destination.txt");
+            File.WriteAllText(source, "source");
+            File.WriteAllText(destination, "destination");
+
+            Assert.False(FileService.IsCompletedShellMove(source, destination));
+
+            File.Delete(source);
+            Assert.True(FileService.IsCompletedShellMove(source, destination));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(WatcherChangeTypes.Deleted, (int)FolderEntryRefreshStatus.NotFound, true)]
+    [InlineData(WatcherChangeTypes.Changed, (int)FolderEntryRefreshStatus.NotFound, false)]
+    [InlineData(WatcherChangeTypes.Deleted, (int)FolderEntryRefreshStatus.Unavailable, false)]
+    [InlineData(WatcherChangeTypes.Changed, (int)FolderEntryRefreshStatus.Filtered, true)]
+    public void IncrementalRemoval_RequiresExplicitTerminalState(
+        WatcherChangeTypes changeType,
+        int state,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WidgetViewModel.ShouldRemoveExistingItem(
+                changeType,
+                (FolderEntryRefreshStatus)state));
+    }
+
+    [Fact]
+    public void NativeWatcher_CoversFileAndDirectoryMetadataChanges()
+    {
+        NotifyFilters filters = FolderWatcherService.NativeNotifyFilter;
+
+        Assert.True(filters.HasFlag(NotifyFilters.FileName));
+        Assert.True(filters.HasFlag(NotifyFilters.DirectoryName));
+        Assert.True(filters.HasFlag(NotifyFilters.LastWrite));
+        Assert.True(filters.HasFlag(NotifyFilters.Size));
+        Assert.True(filters.HasFlag(NotifyFilters.CreationTime));
+        Assert.True(filters.HasFlag(NotifyFilters.Attributes));
+        Assert.True(FolderWatcherService.NativeBufferSizeBytes >= 32 * 1024);
+    }
+
+    [Fact]
+    public void FolderWatcherHealthSnapshot_PreservesReconnectDiagnostics()
+    {
+        var snapshot = new FolderWatcherHealthSnapshot(
+            "Z:\\Mapped",
+            FolderWatcherHealth.Unavailable,
+            NativeWatcherActive: false,
+            QueryWatcherActive: false,
+            ReconnectPending: true,
+            ReconnectCount: 2,
+            LastEventAt: null,
+            LastError: "offline");
+
+        Assert.Equal(FolderWatcherHealth.Unavailable, snapshot.Status);
+        Assert.True(snapshot.ReconnectPending);
+        Assert.Equal(2, snapshot.ReconnectCount);
+    }
+
+    [Fact]
+    public void IsCurrentWatcherBatch_AcceptsMappedFolderAndRejectsStaleFolder()
+    {
+        string mapped = Path.Combine(Path.GetTempPath(), "DeskBox", "mapped");
+        string stale = Path.Combine(Path.GetTempPath(), "DeskBox", "stale");
+
+        Assert.True(WidgetViewModel.IsCurrentWatcherBatch(
+            new FolderChangeBatch(mapped, [], false),
+            mapped));
+        Assert.False(WidgetViewModel.IsCurrentWatcherBatch(
+            new FolderChangeBatch(stale, [], true),
+            mapped));
+
+        Assert.Equal(
+            7,
+            new FolderChangeBatch(mapped, [], false, Generation: 7).Generation);
+    }
+
+    [Fact]
+    public void IsCurrentWatcherBatch_AcceptsPublicDesktopForCombinedDesktopWidget()
+    {
+        var (userDesktop, publicDesktop) = FileService.GetDesktopPaths();
+
+        Assert.True(WidgetViewModel.IsCurrentWatcherBatch(
+            new FolderChangeBatch(publicDesktop, [], true),
+            userDesktop));
+    }
+}

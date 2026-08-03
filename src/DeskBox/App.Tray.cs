@@ -26,6 +26,17 @@ public partial class App
         var localization = LocalizationService;
         var contextMenu = new MenuFlyout();
         contextMenu.ShouldConstrainToRootBounds = false;
+        var organizeDesktopItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Tray.OrganizeDesktop"),
+            Width = TrayMenuItemWidth,
+            Icon = new FontIcon { Glyph = "\uE74C" }
+        };
+        organizeDesktopItem.Click += async (_, _) =>
+            await RunTraySettingsActionAsync(
+                contextMenu,
+                OpenDesktopOrganizationFromTray);
+
         var mapFolderItem = new MenuFlyoutItem
         {
             Text = localization.T("Common.NewFolderMapping"),
@@ -68,6 +79,8 @@ public partial class App
         exitItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, ExitApplication);
 
         _trayCreateWidgetItems.Clear();
+        contextMenu.Items.Add(organizeDesktopItem);
+        contextMenu.Items.Add(new MenuFlyoutSeparator());
         foreach (var descriptor in new WidgetContentFactory(LocalizationService).GetCreateEntryDescriptors())
         {
             var createItem = CreateTrayCreateWidgetItem(contextMenu, descriptor, localization);
@@ -84,6 +97,7 @@ public partial class App
         contextMenu.Items.Add(new MenuFlyoutSeparator());
         contextMenu.Items.Add(exitItem);
 
+        _trayOrganizeDesktopItem = organizeDesktopItem;
         _trayMapFolderItem = mapFolderItem;
         _trayOpenManagedStorageItem = openManagedStorageItem;
         _trayUpdateItem = updateItem;
@@ -196,6 +210,11 @@ public partial class App
     private void PrepareTrayContextMenu(MenuFlyout contextMenu)
     {
         bool canCreateWidget = WidgetManager is not null;
+        if (_trayOrganizeDesktopItem is not null)
+        {
+            _trayOrganizeDesktopItem.IsEnabled = canCreateWidget;
+        }
+
         foreach (var item in _trayCreateWidgetItems.Values)
         {
             item.IsEnabled = canCreateWidget;
@@ -573,6 +592,12 @@ public partial class App
 
     private void RefreshTrayMenuText()
     {
+        if (_trayOrganizeDesktopItem is not null)
+        {
+            _trayOrganizeDesktopItem.Text = LocalizationService.T(
+                "Tray.OrganizeDesktop");
+        }
+
         if (_trayMapFolderItem is not null)
         {
             _trayMapFolderItem.Text = LocalizationService.T("Common.NewFolderMapping");
@@ -674,7 +699,36 @@ public partial class App
         string? folderPath = FolderPickerService.PickFolder(IntPtr.Zero);
         if (!string.IsNullOrWhiteSpace(folderPath))
         {
-            await WidgetManager.CreateFolderWidgetAsync(folderPath);
+            try
+            {
+                await WidgetManager.CreateFolderWidgetAsync(folderPath);
+            }
+            catch (Exception ex)
+            {
+                string title = LocalizationService.T("Common.NewFolderMapping");
+                if (_nativeNotificationService?.TryShow(title, ex.Message) == true || _trayIcon is null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    _trayIcon.ShowNotification(
+                        title,
+                        ex.Message,
+                        NotificationIcon.Info,
+                        customIconHandle: null,
+                        largeIcon: false,
+                        sound: false,
+                        respectQuietTime: true,
+                        realtime: false,
+                        timeout: TimeSpan.FromSeconds(7));
+                }
+                catch (Exception notificationException)
+                {
+                    Log($"[WidgetMapping] Failed to show path conflict: {notificationException.Message}");
+                }
+            }
         }
     }
 
@@ -683,6 +737,12 @@ public partial class App
         CancelBackgroundMemoryCleanup();
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
         settingsWindow.ShowWindow();
+    }
+
+    private void OpenDesktopOrganizationFromTray()
+    {
+        CancelBackgroundMemoryCleanup();
+        ShowDesktopOrganizationWindow();
     }
 
     private void OpenAboutSettingsFromTray()

@@ -66,6 +66,25 @@ public sealed class DisplayAreaWatcherService : IDisposable
 
     private void PollTimer_Tick(DispatcherQueueTimer sender, object args)
     {
+        PollForChanges();
+    }
+
+    /// <summary>
+    /// Forces an immediate topology check after a resume, unlock, or shell
+    /// restart instead of waiting for the next two-second poll tick.
+    /// </summary>
+    public void RefreshNow()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        PollForChanges();
+    }
+
+    private void PollForChanges()
+    {
         if (_isDisposed)
         {
             return;
@@ -104,7 +123,12 @@ public sealed class DisplayAreaWatcherService : IDisposable
         try
         {
             var areas = Win32Helper.GetMonitorWorkAreaInfos();
-            return string.Join("|", areas.Select(a =>
+            return string.Join("|", areas
+                .OrderBy(a => a.DeviceName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(a => a.Monitor.Left)
+                .ThenBy(a => a.Monitor.Top)
+                .Select(a =>
+                $"{a.DeviceName};{a.IsPrimary};{a.DpiScale:F3};" +
                 $"{a.Monitor.Left},{a.Monitor.Top},{a.Monitor.Right},{a.Monitor.Bottom};" +
                 $"{a.WorkArea.Left},{a.WorkArea.Top},{a.WorkArea.Right},{a.WorkArea.Bottom}"));
         }

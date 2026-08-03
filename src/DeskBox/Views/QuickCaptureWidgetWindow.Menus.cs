@@ -107,6 +107,11 @@ public sealed partial class QuickCaptureWidgetWindow
             App.Current.WidgetManager,
             _localizationService);
 
+        flyout.Items.Add(WidgetSettingsMenuHelper.CreateMenuItem(
+            WidgetKind.QuickCapture,
+            _localizationService,
+            beforeClick: flyout.Hide));
+
         // Turning off a feature widget preserves its content, configuration, and position.
         flyout.Items.Add(new MenuFlyoutSeparator());
         var disableWidget = new MenuFlyoutItem

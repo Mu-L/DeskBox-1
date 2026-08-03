@@ -33,6 +33,8 @@ public sealed partial class FileSurfaceContent :
     IDisposable
 {
     private const int StackDuplicateInputWindowMs = 120;
+    private static readonly TimeSpan ReconciliationFreshnessWindow =
+        TimeSpan.FromSeconds(1);
     private readonly LocalizationService _localizationService;
     private readonly FileService _fileService;
     private readonly SettingsService _settingsService;
@@ -46,6 +48,9 @@ public sealed partial class FileSurfaceContent :
     private bool _isSurfaceReorderDragActive;
     private string[] _surfaceReorderPaths = [];
     private string? _surfaceReorderStackKey;
+    private int _surfaceReorderInsertionIndex = -1;
+    private Windows.Foundation.Point _surfaceReorderLastPosition;
+    private bool _surfaceReorderHasLastPosition;
     private string[] _activeDragSourcePaths = [];
     private bool _activeDragHasStorageItems;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
@@ -56,6 +61,8 @@ public sealed partial class FileSurfaceContent :
     private long _lastStackInputTick;
     private bool _isImportBusy;
     private bool _isDisposed;
+    private DateTime _lastDiskReconciliationUtc = DateTime.MinValue;
+    private int _diskReconciliationQueued;
 
     public FileSurfaceContent(
         WidgetConfig config,
@@ -117,12 +124,14 @@ public sealed partial class FileSurfaceContent :
     public async Task InitializeAsync()
     {
         await ViewModel.InitializeAsync();
+        _lastDiskReconciliationUtc = DateTime.UtcNow;
         UpdateEmptyState();
     }
 
     public async Task RefreshAsync()
     {
         await ViewModel.RefreshFolderContentsAsync();
+        _lastDiskReconciliationUtc = DateTime.UtcNow;
         UpdateEmptyState();
     }
 
@@ -148,6 +157,8 @@ public sealed partial class FileSurfaceContent :
         {
             Root.Focus(FocusState.Programmatic);
         }
+
+        QueueDiskReconciliationIfStale("activated");
     }
 
     public void OnDeactivated()
@@ -187,6 +198,47 @@ public sealed partial class FileSurfaceContent :
         if (visible)
         {
             UpdateEmptyState();
+            QueueDiskReconciliationIfStale("visible");
+        }
+    }
+
+    private void QueueDiskReconciliationIfStale(string reason)
+    {
+        if (_isDisposed ||
+            DateTime.UtcNow - _lastDiskReconciliationUtc <
+                ReconciliationFreshnessWindow ||
+            Interlocked.Exchange(ref _diskReconciliationQueued, 1) != 0)
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    if (_isDisposed)
+                    {
+                        return;
+                    }
+
+                    await RefreshAsync();
+                    App.LogVerbose(
+                        $"[FolderRefresh] Reconciled file surface " +
+                        $"widget={WidgetId} reason={reason}");
+                }
+                catch (Exception ex)
+                {
+                    App.Log(
+                        $"[FolderRefresh] File surface reconciliation failed " +
+                        $"widget={WidgetId} reason={reason}: {ex}");
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _diskReconciliationQueued, 0);
+                }
+            }))
+        {
+            Interlocked.Exchange(ref _diskReconciliationQueued, 0);
         }
     }
 
@@ -348,9 +400,13 @@ public sealed partial class FileSurfaceContent :
 
         _activeDragSourcePaths = [];
         _activeDragHasStorageItems = false;
+        HideSurfaceReorderInsertionIndicator();
         _isSurfaceReorderDragActive = false;
         _surfaceReorderPaths = [];
         _surfaceReorderStackKey = null;
+        _surfaceReorderInsertionIndex = -1;
+        _surfaceReorderLastPosition = default;
+        _surfaceReorderHasLastPosition = false;
         WidgetStackItem? stack =
             e.Items.OfType<WidgetStackItem>().FirstOrDefault();
         if (stack is not null)
@@ -428,18 +484,14 @@ public sealed partial class FileSurfaceContent :
 
         try
         {
-            if (e.DropResult == DataPackageOperation.Move)
+            if ((e.DropResult == DataPackageOperation.Move ||
+                 (e.DropResult == DataPackageOperation.None && hasStorageItems)) &&
+                movedPaths.Length > 0)
             {
-                await ViewModel.HandleItemsMovedOutAsync(movedPaths);
-            }
-            else if (e.DropResult == DataPackageOperation.None &&
-                     hasStorageItems &&
-                     movedPaths.Length > 0)
-            {
-                // Explorer and the desktop commonly report None for an external
-                // Shell/OLE move. Keep the original path snapshot and reconcile
-                // only after the source entries actually disappear; a cancelled
-                // drag or an external copy therefore leaves the surface untouched.
+                // DropResult describes the target's requested operation, not an
+                // item-by-item completion result. Reconcile against a successful
+                // parent enumeration so a partial/cancelled Shell move cannot
+                // remove every original row.
                 _ = ObserveExternalDragOutAsync(
                     movedPaths,
                     _lifetimeCancellation.Token);
@@ -456,7 +508,18 @@ public sealed partial class FileSurfaceContent :
             _pressedStack = null;
             _stackPointerDragStarted = false;
             ClearStackMemberDropTarget();
-            PersistSurfaceReorder();
+            if (_isSurfaceReorderDragActive &&
+                _surfaceReorderHasLastPosition)
+            {
+                // WinUI can complete an item drag without raising Drop. The
+                // last DragOver position is still the release position, so
+                // commit once here instead of losing the reorder.
+                CommitSurfaceReorder(_surfaceReorderLastPosition);
+            }
+            else
+            {
+                PersistSurfaceReorder();
+            }
         }
     }
 
@@ -487,10 +550,9 @@ public sealed partial class FileSurfaceContent :
                 await Task.Delay(delayMs, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
-                string[] missingPaths = remainingPaths
-                    .Where(path => !File.Exists(path) && !Directory.Exists(path))
-                    .ToArray();
-                if (missingPaths.Length > 0)
+                IReadOnlyList<string> missingPaths =
+                    await ViewModel.GetConfirmedMissingPathsAsync(remainingPaths);
+                if (missingPaths.Count > 0)
                 {
                     await ViewModel.HandleItemsMovedOutAsync(missingPaths);
                     foreach (string path in missingPaths)
@@ -505,7 +567,7 @@ public sealed partial class FileSurfaceContent :
                     UpdateEmptyState();
                     App.Log(
                         $"[WidgetSurface] External drag-out reconciled " +
-                        $"id={WidgetId} removed={missingPaths.Length} " +
+                        $"id={WidgetId} removed={missingPaths.Count} " +
                         $"remaining={remainingPaths.Count}");
                 }
 
@@ -835,6 +897,17 @@ public sealed partial class FileSurfaceContent :
 
         if (HasSurfacePathDropData(e.DataView))
         {
+            string[] synchronousPaths = GetPackagePaths(e.DataView);
+            if (IsUnsafeFolderDrop(synchronousPaths, ViewModel.MappedFolderPath))
+            {
+                e.AcceptedOperation = DataPackageOperation.None;
+                e.DragUIOverride.IsGlyphVisible = false;
+                e.DragUIOverride.IsCaptionVisible = true;
+                e.DragUIOverride.Caption = T("Widget.Error.UnsafeFolderTransfer");
+                ApplyDropVisual(FileDropVisualState.None);
+                return;
+            }
+
             e.AcceptedOperation = ResolveSurfaceDropOperation(e.DataView);
             e.DragUIOverride.IsGlyphVisible =
                 e.AcceptedOperation != DataPackageOperation.None;
@@ -853,6 +926,22 @@ public sealed partial class FileSurfaceContent :
         }
     }
 
+    private static bool IsUnsafeFolderDrop(
+        IReadOnlyList<string> sourcePaths,
+        string? destinationFolder)
+    {
+        if (string.IsNullOrWhiteSpace(destinationFolder))
+        {
+            return false;
+        }
+
+        string normalizedDestination = Path.GetFullPath(destinationFolder);
+        return sourcePaths.Any(sourcePath =>
+            !string.IsNullOrWhiteSpace(sourcePath) &&
+            Directory.Exists(sourcePath) &&
+            FileService.IsPathUnderDirectory(normalizedDestination, sourcePath));
+    }
+
     private void Root_DragEnter(object sender, DragEventArgs e)
     {
         ApplyDropVisual(FileDropVisualState.None);
@@ -863,7 +952,15 @@ public sealed partial class FileSurfaceContent :
         ClearStackMemberDropTarget();
         ApplyDropVisual(FileDropVisualState.None);
         ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
-        PersistSurfaceReorder();
+        if (_isSurfaceReorderDragActive &&
+            _surfaceReorderHasLastPosition)
+        {
+            CommitSurfaceReorder(_surfaceReorderLastPosition);
+        }
+        else
+        {
+            PersistSurfaceReorder();
+        }
     }
 
     private async void Root_Drop(object sender, DragEventArgs e)
@@ -910,7 +1007,7 @@ public sealed partial class FileSurfaceContent :
                 }
                 try
                 {
-                    await ViewModel.ImportPathsAsync(
+                    IReadOnlyList<string> completedSourcePaths = await ViewModel.ImportPathsAsync(
                         paths,
                         moveWhenMapped,
                         useShellProgress: moveWhenMapped == true);
@@ -920,7 +1017,7 @@ public sealed partial class FileSurfaceContent :
                     {
                         await manager.NotifyItemsMovedOutAsync(
                             sourceWidgetId,
-                            paths);
+                            completedSourcePaths);
                     }
                 }
                 finally
@@ -974,6 +1071,35 @@ public sealed partial class FileSurfaceContent :
 
         ImportOverlay.Visibility =
             isBusy ? Visibility.Visible : Visibility.Collapsed;
+        ImportProgressRing.IsActive = isBusy;
+        ItemsGrid.IsHitTestVisible = !isBusy;
+        ItemsList.IsHitTestVisible = !isBusy;
+        EmptyState.IsHitTestVisible = !isBusy;
+        ImportBusyChanged?.Invoke(isBusy);
+    }
+
+    internal void SetDesktopOrganizationBusy(bool isBusy)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => SetDesktopOrganizationBusy(isBusy));
+            return;
+        }
+
+        if (_isImportBusy == isBusy)
+        {
+            return;
+        }
+
+        _isImportBusy = isBusy;
+        if (isBusy)
+        {
+            ImportTitleText.Text = T("DesktopOrganization.Busy.Title");
+            ImportDescriptionText.Text = T("DesktopOrganization.Busy.Description");
+            ApplyDropVisual(FileDropVisualState.None);
+        }
+
+        ImportOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
         ImportProgressRing.IsActive = isBusy;
         ItemsGrid.IsHitTestVisible = !isBusy;
         ItemsList.IsHitTestVisible = !isBusy;
@@ -1094,7 +1220,7 @@ public sealed partial class FileSurfaceContent :
             _isSurfaceReorderDragActive = true;
             _surfaceReorderStackKey = stackKey;
             _surfaceReorderPaths = [];
-            MoveSurfaceReorderItem(position);
+            UpdateSurfaceReorderPreview(position);
             return;
         }
 
@@ -1141,7 +1267,7 @@ public sealed partial class FileSurfaceContent :
             _surfaceReorderPaths = paths;
         }
 
-        MoveSurfaceReorderItem(position);
+        UpdateSurfaceReorderPreview(position);
     }
 
     private void HandleSurfaceFinalReorder(
@@ -1155,23 +1281,90 @@ public sealed partial class FileSurfaceContent :
                 _surfaceReorderPaths.Length > 0;
         }
 
-        MoveSurfaceReorderItem(position);
+        CommitSurfaceReorder(position);
     }
 
-    private void MoveSurfaceReorderItem(
+    private void UpdateSurfaceReorderPreview(
+        Windows.Foundation.Point position)
+    {
+        _surfaceReorderLastPosition = position;
+        _surfaceReorderHasLastPosition = true;
+        ListViewBase activeView = GetActiveItemsView();
+        _surfaceReorderInsertionIndex =
+            ReorderDropIndexCalculator.Compute(
+                activeView,
+                position,
+                _surfaceReorderInsertionIndex);
+        UpdateSurfaceReorderInsertionIndicator(position);
+    }
+
+    private void UpdateSurfaceReorderInsertionIndicator(
         Windows.Foundation.Point position)
     {
         ListViewBase activeView = GetActiveItemsView();
-        if (!string.IsNullOrWhiteSpace(
-                _surfaceReorderStackKey))
+        if (!_isSurfaceReorderDragActive ||
+            _surfaceReorderInsertionIndex < 0 ||
+            !ReorderDropIndexCalculator.TryGetInsertionIndicatorPlacement(
+                activeView,
+                SelectionOverlay,
+                _surfaceReorderInsertionIndex,
+                position,
+                out ReorderInsertionIndicatorPlacement placement))
         {
-            int insertionIndex =
-                ComputeSurfaceDropInsertionIndex(
-                    activeView,
-                    position);
+            HideSurfaceReorderInsertionIndicator();
+            return;
+        }
+
+        bool wasVisible =
+            ReorderInsertionIndicator.Visibility == Visibility.Visible;
+        ReorderInsertionIndicator.Width = placement.Bounds.Width;
+        ReorderInsertionIndicator.Height = placement.Bounds.Height;
+        ReorderInsertionLine.Width = placement.IsVertical
+            ? 2
+            : placement.Bounds.Width;
+        ReorderInsertionLine.Height = placement.IsVertical
+            ? placement.Bounds.Height
+            : 2;
+        Canvas.SetLeft(
+            ReorderInsertionIndicator,
+            placement.Bounds.X);
+        Canvas.SetTop(
+            ReorderInsertionIndicator,
+            placement.Bounds.Y);
+        ReorderInsertionIndicator.Opacity = 1;
+        ReorderInsertionIndicator.Visibility = Visibility.Visible;
+        if (!wasVisible)
+        {
+            ReorderInsertionIndicatorAnimator.Start(
+                ReorderInsertionIndicator);
+        }
+    }
+
+    private void HideSurfaceReorderInsertionIndicator()
+    {
+        ReorderInsertionIndicatorAnimator.Stop(
+            ReorderInsertionIndicator);
+        ReorderInsertionIndicator.Visibility = Visibility.Collapsed;
+        ReorderInsertionIndicator.Opacity = 0;
+        ReorderInsertionIndicator.Width = 0;
+        ReorderInsertionIndicator.Height = 0;
+    }
+
+    private void ApplySurfaceReorder(
+        Windows.Foundation.Point position)
+    {
+        ListViewBase activeView = GetActiveItemsView();
+        int targetIndex = ReorderDropIndexCalculator.Compute(
+            activeView,
+            position,
+            _surfaceReorderInsertionIndex);
+        _surfaceReorderInsertionIndex = targetIndex;
+
+        if (!string.IsNullOrWhiteSpace(_surfaceReorderStackKey))
+        {
             ViewModel.MoveStackForReorder(
                 _surfaceReorderStackKey,
-                insertionIndex);
+                targetIndex);
             return;
         }
 
@@ -1198,9 +1391,6 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        int targetIndex = ComputeSurfaceDropInsertionIndex(
-            activeView,
-            position);
         if (ViewModel.FileStacksEnabled)
         {
             ViewModel.MoveVisibleItemForReorder(
@@ -1224,68 +1414,30 @@ public sealed partial class FileSurfaceContent :
             targetIndex);
     }
 
-    private static int ComputeSurfaceDropInsertionIndex(
-        ListViewBase list,
-        Windows.Foundation.Point position)
-    {
-        if (list.Items.Count == 0)
-        {
-            return 0;
-        }
-
-        bool grid = list is GridView;
-        for (int index = 0; index < list.Items.Count; index++)
-        {
-            if (list.ContainerFromIndex(index) is not
-                    FrameworkElement container ||
-                container.ActualWidth <= 0 ||
-                container.ActualHeight <= 0)
-            {
-                continue;
-            }
-
-            Windows.Foundation.Rect bounds =
-                container.TransformToVisual(list).TransformBounds(
-                    new Windows.Foundation.Rect(
-                        0,
-                        0,
-                        container.ActualWidth,
-                        container.ActualHeight));
-            if (grid)
-            {
-                bool aboveRow = position.Y < bounds.Top;
-                bool sameRow =
-                    position.Y >= bounds.Top &&
-                    position.Y < bounds.Bottom;
-                bool leftOfCenter =
-                    position.X < bounds.X + (bounds.Width / 2);
-                if (aboveRow || (sameRow && leftOfCenter))
-                {
-                    return index;
-                }
-            }
-            else if (position.Y <
-                     bounds.Top + (bounds.Height / 2))
-            {
-                return index;
-            }
-        }
-
-        return list.Items.Count;
-    }
-
     private void PersistSurfaceReorder()
     {
-        if (_isSurfaceReorderDragActive &&
-            string.IsNullOrWhiteSpace(
-                _surfaceReorderStackKey))
+        HideSurfaceReorderInsertionIndicator();
+        _isSurfaceReorderDragActive = false;
+        _surfaceReorderPaths = [];
+        _surfaceReorderStackKey = null;
+        _surfaceReorderInsertionIndex = -1;
+    }
+
+    private void CommitSurfaceReorder(
+        Windows.Foundation.Point position)
+    {
+        if (!_isSurfaceReorderDragActive)
+        {
+            return;
+        }
+
+        ApplySurfaceReorder(position);
+        if (string.IsNullOrWhiteSpace(_surfaceReorderStackKey))
         {
             ViewModel.PersistManualOrder();
         }
 
-        _isSurfaceReorderDragActive = false;
-        _surfaceReorderPaths = [];
-        _surfaceReorderStackKey = null;
+        PersistSurfaceReorder();
     }
 
     private void ApplyDropVisual(FileDropVisualState state)
@@ -1561,7 +1713,7 @@ public sealed partial class FileSurfaceContent :
 
         bool move = clipboard.RequestedOperation.HasFlag(
             DataPackageOperation.Move);
-        await ViewModel.ImportPathsAsync(
+        IReadOnlyList<string> completedSourcePaths = await ViewModel.ImportPathsAsync(
             sourcePaths,
             moveWhenMapped: move,
             useShellProgress: move);
@@ -1572,7 +1724,7 @@ public sealed partial class FileSurfaceContent :
         {
             await manager.NotifyItemsMovedOutAsync(
                 sourceWidgetId,
-                sourcePaths);
+                completedSourcePaths);
         }
 
         _cutClipboardPaths = [];
@@ -1689,6 +1841,7 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
+        PersistSurfaceReorder();
         _isDisposed = true;
         _lifetimeCancellation.Cancel();
         _lifetimeCancellation.Dispose();

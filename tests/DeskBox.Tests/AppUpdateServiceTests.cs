@@ -10,6 +10,22 @@ public sealed class AppUpdateServiceTests : IDisposable
 {
     private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), "DeskBox.Tests", Guid.NewGuid().ToString("N"));
 
+    [Fact]
+    public void LocalizedSummary_PrefersEnglishWhenLocaleIsMissing()
+    {
+        var manifest = new AppUpdateManifest
+        {
+            Summary =
+            {
+                ["zh-CN"] = "中文摘要",
+                ["en-US"] = "English summary"
+            }
+        };
+
+        Assert.Equal("English summary", manifest.GetLocalizedSummary("de-DE"));
+        Assert.Equal("中文摘要", manifest.GetLocalizedSummary("zh-CN"));
+    }
+
     [Theory]
     [InlineData("1.2.1", "1.2.2", true)]
     [InlineData("1.2.1", "v1.2.2", true)]
@@ -73,6 +89,7 @@ public sealed class AppUpdateServiceTests : IDisposable
                     {
                       "tag_name": "v1.2.4",
                       "html_url": "https://github.com/Tianyu199509/DeskBox/releases/tag/v1.2.4",
+                      "body": "## Highlights\n- Improved update flow",
                       "assets": [
                         {
                           "name": "DeskBox_Setup_1.2.4_x64.exe",
@@ -103,6 +120,7 @@ public sealed class AppUpdateServiceTests : IDisposable
         Assert.Equal("8ECB3092AE5BD6883F8A75BBEA03D9800251E0C23FDBE1BF4D91FD3A62565561", result.Manifest.Sha256);
         Assert.Equal(23423211, result.Manifest.Size);
         Assert.Equal("https://github.com/Tianyu199509/DeskBox/releases/tag/v1.2.4", result.Manifest.ReleaseNotesUrl);
+        Assert.Equal("## Highlights\n- Improved update flow", result.Manifest.GetReleaseNotesForLocale("en-US"));
     }
 
     [Fact]

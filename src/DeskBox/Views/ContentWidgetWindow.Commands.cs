@@ -262,6 +262,11 @@ public sealed partial class ContentWidgetWindow
             App.Current.WidgetManager,
             App.Current.LocalizationService);
 
+        flyout.Items.Add(WidgetSettingsMenuHelper.CreateMenuItem(
+            _config.WidgetKind,
+            App.Current.LocalizationService,
+            beforeClick: flyout.Hide));
+
         flyout.Items.Add(new MenuFlyoutSeparator());
         var disableWidget = new MenuFlyoutItem
         {
@@ -466,16 +471,6 @@ public sealed partial class ContentWidgetWindow
         WidgetChromeModeNames.SetOverrideMode(_config, mode);
         SettingsService.UpdateWidget(_config);
         ApplyAppearancePreview();
-    }
-
-    private static string GetSettingsMenuTextKey(WidgetKind kind)
-    {
-        return kind switch
-        {
-            WidgetKind.Todo => "Todo.OpenSettings",
-            WidgetKind.Music => "Music.OpenSettings",
-            _ => "Common.Configure"
-        };
     }
 
     private static ToggleMenuFlyoutItem CreateToggleMenuItem(string text, string glyph, bool isChecked, Action<bool> applyValue)

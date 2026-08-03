@@ -37,6 +37,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private readonly SemaphoreSlim _folderRefreshGate = new(1, 1);
     private int _itemHydrationGeneration;
     private int _iconDecodePixelWidth;
+    private bool _isDisposed;
 
     private string _name = string.Empty;
     private ViewMode _viewMode;
@@ -108,6 +109,10 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     }
 
     public bool IsInitialized { get; private set; }
+
+    public FolderWatcherHealthSnapshot FolderWatcherHealth => _folderWatcher.Health;
+
+    public FolderWatcherHealthSnapshot PublicFolderWatcherHealth => _publicFolderWatcher.Health;
 
     public string? MappedFolderPath
     {
@@ -371,10 +376,23 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        Interlocked.Increment(ref _itemHydrationGeneration);
         CleanupStacks();
+        _folderWatcher.FolderChanged -= OnFolderChanged;
+        _folderWatcher.FolderIconChanged -= OnFolderIconChanged;
+        _publicFolderWatcher.FolderChanged -= OnFolderChanged;
+        _publicFolderWatcher.FolderIconChanged -= OnFolderIconChanged;
         _folderWatcher.Dispose();
         _publicFolderWatcher.Dispose();
-        _folderRefreshGate.Dispose();
+        // A debounced file-system callback may already be waiting on this gate.
+        // Do not dispose it underneath that continuation; the view-model is
+        // short-lived after this point and the waiter exits via _isDisposed.
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _localizationService.LanguageChanged -= OnLanguageChanged;
     }

@@ -61,6 +61,65 @@ public sealed class SearchIndexServiceTests : IDisposable
         Assert.False(service.IsScanning);
     }
 
+    [Theory]
+    [InlineData("C:\\foo", "C:\\", true)]
+    [InlineData("C:\\foo\\bar.txt", "C:\\foo", true)]
+    [InlineData("C:\\foobar", "C:\\foo", false)]
+    public void IsSameOrDescendant_UsesBoundaryAwareNormalizedRoots(
+        string candidate,
+        string parent,
+        bool expected)
+    {
+        Assert.Equal(expected, SearchIndexService.IsSameOrDescendant(candidate, parent));
+    }
+
+    [Theory]
+    [InlineData((int)SearchIndexService.RootScanStatus.Completed, true)]
+    [InlineData((int)SearchIndexService.RootScanStatus.Offline, false)]
+    [InlineData((int)SearchIndexService.RootScanStatus.Partial, false)]
+    [InlineData((int)SearchIndexService.RootScanStatus.ScanOnly, false)]
+    [InlineData((int)SearchIndexService.RootScanStatus.CapacityLimited, false)]
+    [InlineData((int)SearchIndexService.RootScanStatus.Canceled, false)]
+    public void WatcherRecovery_ReconcilesOnlyCompletedRoots(
+        int status,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            SearchIndexService.ShouldReconcileRoot((SearchIndexService.RootScanStatus)status));
+    }
+
+    [Theory]
+    [InlineData(4, 4, true, false, true)]
+    [InlineData(4, 5, true, false, false)]
+    [InlineData(4, 4, false, false, false)]
+    [InlineData(4, 4, true, true, false)]
+    public void SearchSessionCurrent_RequiresEpochEnabledAndUncancelled(
+        long expectedEpoch,
+        long currentEpoch,
+        bool indexingEnabled,
+        bool cancellationRequested,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            SearchIndexService.IsSessionCurrent(
+                expectedEpoch,
+                currentEpoch,
+                indexingEnabled,
+                cancellationRequested));
+    }
+
+    [Fact]
+    public void FreshIndexManifest_IdentifiesExplicitlyRemovedRoots()
+    {
+        List<string> removed = SearchIndexService.GetExplicitlyRemovedRoots(
+            [@"C:\Users\A", @"Z:\Mapped", @"z:\mapped"],
+            [@"C:\Users\A", @"D:\Current"]);
+
+        Assert.Equal([@"Z:\Mapped"], removed);
+    }
+
     [Fact]
     public void SaveIndex_MigratesLegacyJsonToCompactBinary_AndPreservesResults()
     {

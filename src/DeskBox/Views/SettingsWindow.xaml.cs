@@ -74,6 +74,7 @@ public sealed partial class SettingsWindow : Window
     private bool _isSettingsRootLoaded;
     private bool _isSelectingCity;
     private bool _isRefreshingBackupSnapshots;
+    private ReleaseNotesWindow? _releaseNotesWindow;
     private string _currentSettingsSection = "General";
     private IReadOnlyDictionary<string, FrameworkElement> _settingsSectionElements = null!;
     private IReadOnlyList<SettingsSearchResult> _settingsSearchResults = Array.Empty<SettingsSearchResult>();
@@ -96,6 +97,7 @@ public sealed partial class SettingsWindow : Window
             ["FileDisplaySettings"] = new("FileDisplaySettings", "Settings.Group.FileLayout.Title", "AppearanceDetail", "AppearanceDetail"),
             ["ManagedStorage"] = new("ManagedStorage", "Settings.ManagedStorage.PageTitle", "AppearanceDetail", "AppearanceDetail"),
             ["FileStackSettings"] = new("FileStackSettings", "Settings.FileStacks.PageTitle", "AppearanceDetail", "AppearanceDetail"),
+            ["DesktopOrganizationSettings"] = new("DesktopOrganizationSettings", "DesktopOrganization.Settings.Title", "AppearanceDetail", "AppearanceDetail"),
             ["QuickCaptureSettings"] = new("QuickCaptureSettings", "Settings.QuickCapture.Title", "FeatureWidgets", "FeatureWidgets"),
             ["TodoSettings"] = new("TodoSettings", "Settings.Todo.Title", "FeatureWidgets", "FeatureWidgets"),
             ["MusicSettings"] = new("MusicSettings", "Settings.Music.Title", "FeatureWidgets", "FeatureWidgets"),
@@ -143,10 +145,7 @@ public sealed partial class SettingsWindow : Window
         CollectResponsiveRows(SettingsRoot);
         SettingsRoot.Loaded += SettingsRoot_Loaded;
 
-        SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop
-        {
-            Kind = MicaKind.BaseAlt
-        };
+        WindowsCompatibilityService.ApplySafeBackdrop(this);
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -256,6 +255,8 @@ public sealed partial class SettingsWindow : Window
         Bindings.StopTracking();
         Localized.UntrackTree(SettingsRoot);
         SettingsRoot.DataContext = null;
+        _releaseNotesWindow?.Close();
+        _releaseNotesWindow = null;
         ClearFeatureWidgetRows();
         ManagedStorageFolderList.Children.Clear();
         ViewModel.Dispose();
@@ -426,6 +427,7 @@ public sealed partial class SettingsWindow : Window
         UpdateActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         UpdateActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
         OneClickUpdateButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        ViewReleaseNotesButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         OpenManualUpdateDownloadButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         GlobalHotkeyActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         GlobalHotkeyCaptureButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;

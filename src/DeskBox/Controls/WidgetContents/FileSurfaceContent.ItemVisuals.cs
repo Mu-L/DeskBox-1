@@ -288,9 +288,9 @@ public sealed partial class FileSurfaceContent
                 .DataPackageOperation.Link
             : Windows.ApplicationModel.DataTransfer
                 .DataPackageOperation.None;
-        _isSurfaceReorderDragActive = false;
-        _surfaceReorderPaths = [];
-        _surfaceReorderStackKey = null;
+        // This is a stack-membership drop, not an ordering drop. Clear the
+        // complete reorder session, including the cached insertion position.
+        PersistSurfaceReorder();
         if (added)
         {
             ClearSelection();

@@ -377,6 +377,8 @@ public sealed partial class WidgetWindow
 
     private void WidgetItemSurface_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
+        ClearReorderSession();
+        _surfaceDragCompletionHandled = false;
         if (_isMigrationBusy)
         {
             args.Cancel = true;
@@ -414,13 +416,15 @@ public sealed partial class WidgetWindow
 
         _surfaceDragCompletionHandled = true;
 
-        // Fallback: if a real-time reorder was active but RootGrid_Drop
-        // didn't fire (event didn't bubble), persist the order now.
-        if (_isReorderDragActive)
+        // Fallback: if RootGrid_Drop didn't fire (event didn't bubble),
+        // commit once at the last DragOver position.
+        if (_isReorderDragActive && _reorderHasLastPosition)
         {
-            _isReorderDragActive = false;
-            _reorderDragPaths = [];
-            ViewModel.PersistManualOrder();
+            CommitReorder(_reorderLastPosition);
+        }
+        else
+        {
+            ClearReorderSession();
         }
 
         await HandleItemDragCompletedAsync(args.DropResult);

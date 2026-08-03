@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.3.5 - 2026-08-03
+
+> Scope note: Desktop organization, automatic organization, and widget groups were not part of 1.3.4. They are new in 1.3.5; the 1.3.4 section below remains the historical release record.
+
+### English
+
+#### New in 1.3.5
+
+- **Desktop organization (new):** A responsive card preview shows the files to move, the selected destination, the items that stay on the Desktop, and the final storage location before anything runs.
+- **Desktop organization controls (new):** Each card has its own organize checkbox and target selector, with readable icon previews, a destination explanation, a non-moving-items panel, and responsive window sizing.
+- **Automatic organization (new):** Growing downloads, temporary/archive work, extraction, and same-path replacements wait for a stable terminal state; 100 MB is the large-file threshold and incomplete baselines are never committed.
+- **Widget groups (new):** File widgets can be merged, scrolled with the title wheel, detached by dragging the title, dissolved, and normalized to the group’s standard or compact presentation with consistent z-order.
+- **File dragging and sorting:** Cross-screen reorder uses a breathing insertion line and commits once on drop; standalone and grouped surfaces share the same virtualization-safe insertion calculation.
+- **Folder widget synchronization:** Structured enumeration distinguishes empty, partial, unavailable, and access-denied folders; offline snapshots stay visible, refreshes preserve manual order, and watcher generations isolate stale mappings.
+- **Search and USN reliability:** Root manifests, partial-scan protection, subtree cleanup, watcher recovery, and incremental USN create/delete/rename/hard-link updates prevent valid results from disappearing during outages or journal gaps.
+- **Path and merge safety:** Junction, symlink, SUBST, UNC-alias, nested-mapping, merge, dissolve, and save-failure paths receive real-identity checks and rollback protection.
+- **Windows compatibility and recovery:** Backdrop fallback, reduced-motion/high-contrast handling, sleep/unlock/RDP recovery, Explorer restart checks, display recovery, and startup z-order normalization improve Windows 10 and Windows 11 behavior.
+- **Release notes, diagnostics, and localization:** Settings opens the latest bilingual Markdown notes in a separate window; watcher/index health is visible; five language resources and reliability tests are synchronized.
+
+### 中文
+
+> 范围说明：1.3.4 不包含桌面整理、自动整理和格子组；这些都是 1.3.5 新增内容。下面的 1.3.4 区域仍保留为历史版本记录。
+
+#### 1.3.5 新增与改进
+
+- **桌面整理（新增）**：使用响应式卡片预览要移动的文件、目标位置、不会移动的项目和最终收纳位置，执行前先看清结果。
+- **整理控制（新增）**：每个卡片单独控制是否整理和目标格子，提供图标预览、收纳位置说明、不会移动项目面板和响应式窗口尺寸。
+- **自动整理（新增）**：下载增长、临时/压缩包处理、解压和同路径替换会等待稳定终态；大文件限制为 100 MB，不完整 baseline 不会提交。
+- **格子组（新增）**：文件格子可以合并、标题滚轮切换、长按标题拖出、解散，并统一采用组的标准/紧凑样式和临时层级。
+- **文件拖动与排序**：跨屏排序使用呼吸式插入线，松开时一次提交；独立格子和组内格子共用虚拟化安全的位置计算。
+- **文件夹格子同步**：结构化枚举区分空目录、部分结果、不可用和无权限；离线保留快照，刷新保留手动排序，watcher 代次隔离旧映射。
+- **搜索与 USN 可靠性**：根目录清单、部分扫描保护、子树清理、watcher 恢复和 USN 创建/删除/重命名/硬链接增量，避免掉线或 journal 断档时误删结果。
+- **路径与合并安全**：补充 junction、符号链接、SUBST、UNC 别名、嵌套映射以及合并/解散保存失败的真实身份检查和回滚保护。
+- **Windows 兼容与恢复**：补齐背景回退、减少动态/高对比度、休眠解锁/RDP、Explorer 重启、显示器恢复和启动层级统一。
+- **更新日志、诊断与多语言**：设置可在独立窗口查看最新双语 Markdown 内容，watcher/索引健康状态更可见，五种语言资源和稳定性测试同步完善。
+
 ## 1.3.4 - 2026-07-29
 
 ### English

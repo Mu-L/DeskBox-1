@@ -58,6 +58,44 @@ public sealed class WidgetManagerStorageCleanupTests : IDisposable
     }
 
     [Fact]
+    public void EnsureFileWidgetPathAvailable_RejectsEqualAndNestedWidgetPaths()
+    {
+        string mappedFolder = Directory.CreateDirectory(Path.Combine(_tempRoot, "mapped", "projects")).FullName;
+        _settingsService.Settings.Widgets.Add(new WidgetConfig
+        {
+            Name = "Projects",
+            WidgetKind = WidgetKind.File,
+            MappedFolderPath = mappedFolder,
+            FollowsDefaultStoragePath = false
+        });
+
+        Assert.Throws<InvalidOperationException>(() =>
+            _widgetManager.EnsureFileWidgetPathAvailable(mappedFolder));
+        Assert.Throws<InvalidOperationException>(() =>
+            _widgetManager.EnsureFileWidgetPathAvailable(Path.Combine(mappedFolder, "nested")));
+        Assert.Throws<InvalidOperationException>(() =>
+            _widgetManager.EnsureFileWidgetPathAvailable(Path.GetDirectoryName(mappedFolder)!));
+
+        _widgetManager.EnsureFileWidgetPathAvailable(Path.Combine(_tempRoot, "mapped", "sibling"));
+    }
+
+    [Fact]
+    public void EnsureFileWidgetPathAvailable_AllowsCurrentWidgetWhenEditing()
+    {
+        string mappedFolder = Directory.CreateDirectory(Path.Combine(_tempRoot, "mapped")).FullName;
+        var widget = new WidgetConfig
+        {
+            Name = "Mapped",
+            WidgetKind = WidgetKind.File,
+            MappedFolderPath = mappedFolder,
+            FollowsDefaultStoragePath = false
+        };
+        _settingsService.Settings.Widgets.Add(widget);
+
+        _widgetManager.EnsureFileWidgetPathAvailable(mappedFolder, widget.Id);
+    }
+
+    [Fact]
     public async Task MoveOrphanManagedStorageFolderContentsToDesktopAsync_MovesContentsAndDeletesEmptyFolder()
     {
         string orphanFolder = Directory.CreateDirectory(Path.Combine(_storageRoot, "Orphan")).FullName;

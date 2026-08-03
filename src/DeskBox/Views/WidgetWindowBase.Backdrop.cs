@@ -62,7 +62,7 @@ public abstract partial class WidgetWindowBase
             if (controllerApplied)
             {
                 backdropType = Win32Helper.DWMSBT_NONE;
-                Win32Helper.DwmSetWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 Win32Helper.DisableAccentPolicy(HWnd);
             }
             else if (materialType is SettingsService.WidgetMaterialTypeSolid)
@@ -70,13 +70,13 @@ public abstract partial class WidgetWindowBase
                 DetachAcrylicControllerTarget();
                 DetachMicaControllerTarget();
                 backdropType = Win32Helper.DWMSBT_NONE;
-                Win32Helper.DwmSetWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 Win32Helper.DisableAccentPolicy(HWnd);
             }
             else
             {
                 backdropType = Win32Helper.DWMSBT_TRANSIENTWINDOW;
-                Win32Helper.DwmSetWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
+                Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 DetachAcrylicControllerTarget();
                 DetachMicaControllerTarget();
                 Win32Helper.ApplyAccentBlur(HWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);

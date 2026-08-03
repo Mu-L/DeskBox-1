@@ -65,11 +65,11 @@ public partial class WidgetViewModel
             "WidgetViewModel.LoadFolderContents",
             $"id={Config.Id} path={folderPath}");
 
-        List<WidgetItem> items;
+        IReadOnlyList<WidgetItem> items;
         var (userDesktop, publicDesktop) = FileService.GetDesktopPaths();
         if (folderPath.Equals(userDesktop, StringComparison.OrdinalIgnoreCase))
         {
-            var userItems = await _fileService.EnumerateDirectoryAsync(
+            FolderEnumerationResult userResult = await _fileService.EnumerateDirectoryForRefreshAsync(
                 userDesktop,
                 hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
                 showImageFilesAsIcons: _showImageFilesAsIcons,
@@ -77,7 +77,7 @@ public partial class WidgetViewModel
                 hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
                 loadIcons: false,
                 loadFolderItemCounts: false);
-            var publicItems = await _fileService.EnumerateDirectoryAsync(
+            FolderEnumerationResult publicResult = await _fileService.EnumerateDirectoryForRefreshAsync(
                 publicDesktop,
                 hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
                 showImageFilesAsIcons: _showImageFilesAsIcons,
@@ -86,7 +86,16 @@ public partial class WidgetViewModel
                 loadIcons: false,
                 loadFolderItemCounts: false);
 
-            items = userItems.Concat(publicItems)
+            if (!FolderSnapshotStatusPolicy.IsSuccessful(userResult.Status) ||
+                !FolderSnapshotStatusPolicy.IsSuccessful(publicResult.Status))
+            {
+                App.Log(
+                    $"[FolderRefresh] Desktop snapshot incomplete; retaining existing items " +
+                    $"user={userResult.Status} public={publicResult.Status}");
+                return;
+            }
+
+            items = userResult.Items.Concat(publicResult.Items)
                 .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .OrderBy(item => !item.IsFolder)
@@ -95,7 +104,7 @@ public partial class WidgetViewModel
         }
         else
         {
-            items = await _fileService.EnumerateDirectoryAsync(
+            FolderEnumerationResult result = await _fileService.EnumerateDirectoryForRefreshAsync(
                 folderPath,
                 hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
                 showImageFilesAsIcons: _showImageFilesAsIcons,
@@ -103,6 +112,14 @@ public partial class WidgetViewModel
                 hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
                 loadIcons: false,
                 loadFolderItemCounts: false);
+            if (!FolderSnapshotStatusPolicy.IsSuccessful(result.Status))
+            {
+                App.Log(
+                    $"[FolderRefresh] Snapshot {result.Status}; retaining existing items for '{folderPath}'");
+                return;
+            }
+
+            items = result.Items;
         }
 
         ApplyPersistedAddedTimes(items);
@@ -124,6 +141,37 @@ public partial class WidgetViewModel
         var refreshedPaths = refreshedItems
             .Select(item => item.Path)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (Config.SortMode == WidgetSortMode.Manual)
+        {
+            // A directory enumeration is naturally name-sorted, but that order
+            // is not user order. Keep the relative order of retained items and
+            // append only genuinely new paths; SortItems() must not be asked to
+            // repair this afterwards.
+            for (int index = Items.Count - 1; index >= 0; index--)
+            {
+                if (!refreshedPaths.Contains(Items[index].Path))
+                {
+                    Items.RemoveAt(index);
+                }
+            }
+
+            foreach (WidgetItem refreshedItem in refreshedItems)
+            {
+                if (existingByPath.TryGetValue(refreshedItem.Path, out WidgetItem? existingItem) &&
+                    Items.Contains(existingItem))
+                {
+                    ApplyRuntimeItemData(existingItem, refreshedItem);
+                }
+                else if (!existingByPath.ContainsKey(refreshedItem.Path))
+                {
+                    Items.Add(refreshedItem);
+                }
+            }
+
+            NormalizeSortOrder();
+            return;
+        }
 
         for (int index = Items.Count - 1; index >= 0; index--)
         {
@@ -297,9 +345,11 @@ public partial class WidgetViewModel
                 int count = await _fileService.CountVisibleChildrenAsync(path);
                 SetFolderItemCount(item, count, path, generation);
             }
-            catch
+            catch (Exception ex)
             {
-                SetFolderItemCount(item, 0, path, generation);
+                // Keep the last known count and leave the item retryable. A
+                // transient UNC/provider failure must not become a cached zero.
+                MarkFolderItemCountUnavailable(item, path, generation, ex);
             }
             processed++;
 
@@ -396,6 +446,38 @@ public partial class WidgetViewModel
                 item.IsFolderItemCountLoaded = true;
             }
         });
+    }
+
+    private void MarkFolderItemCountUnavailable(
+        WidgetItem item,
+        string expectedPath,
+        int generation,
+        Exception exception)
+    {
+        App.LogVerbose(
+            $"[FolderRefresh] Folder count unavailable for '{expectedPath}': " +
+            exception.Message);
+
+        void Apply()
+        {
+            if (!CanApplyHydrationResult(item, expectedPath, generation))
+            {
+                return;
+            }
+
+            // Preserve the previous value and deliberately keep the loaded
+            // flag false so the next hydration generation retries it.
+            item.IsFolderItemCountLoaded = false;
+        }
+
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            Apply();
+        }
+        else
+        {
+            _dispatcherQueue.TryEnqueue(Apply);
+        }
     }
 
     private void SetShellKind(WidgetItem item, string kind, string expectedPath, int generation)

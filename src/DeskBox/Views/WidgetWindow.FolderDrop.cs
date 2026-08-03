@@ -26,17 +26,12 @@ public sealed partial class WidgetWindow
             return;
         }
 
-        // A drag that originated in this widget always means reorder. Let the
-        // root handler own it even when the pointer happens to cross a folder
-        // tile; never reinterpret it as a file transfer into that folder.
-        if (IsSameWidgetInternalDrag(e.DataView))
-        {
-            ClearFolderDropTarget();
-            return;
-        }
-
+        // An internal drag has two explicit destinations: a folder item means
+        // "move into this folder"; any other surface (including blank space)
+        // remains an item reorder handled by the root surface.
         if (!TryGetFolderDropTarget(sender, out var border, out var targetFolder))
         {
+            ClearFolderDropTarget();
             return;
         }
 
@@ -98,12 +93,6 @@ public sealed partial class WidgetWindow
             return;
         }
 
-        if (IsSameWidgetInternalDrag(e.DataView))
-        {
-            ClearFolderDropTarget();
-            return;
-        }
-
         StopDragHighlight();
 
         if (!TryGetFolderDropTarget(sender, out _, out var targetFolder))
@@ -135,7 +124,13 @@ public sealed partial class WidgetWindow
                 return;
             }
 
-            if (IsInvalidFolderDrop(sourcePaths, targetFolder.Path))
+            // Resolve junctions/SUBST/UNC identities away from the UI thread;
+            // the strict check fails closed when Windows cannot resolve a
+            // directory identity.
+            if (await Task.Run(() => IsInvalidFolderDrop(
+                    sourcePaths,
+                    targetFolder.Path,
+                    resolveRealIdentity: true)))
             {
                 ShowStatusToast(_localizationService.T("Widget.CannotMoveToFolder"));
                 return;
@@ -156,7 +151,6 @@ public sealed partial class WidgetWindow
             // Extract all needed data from the DataPackageView before completing
             // the deferral — the DataView becomes invalid after Complete().
             string? syncSourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
-            var syncSourcePaths = TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths");
 
             // Complete the deferral early so the drag glyph disappears immediately.
             deferral.Complete();
@@ -184,7 +178,9 @@ public sealed partial class WidgetWindow
 
                 if (move)
                 {
-                    await SyncMoveSourceAsync(syncSourceWidgetId, syncSourcePaths);
+                    await SyncMoveSourceAsync(
+                        syncSourceWidgetId,
+                        results.Select(result => result.SourcePath).ToArray());
                     ClearRemovedCutPaths();
                 }
 
@@ -220,7 +216,7 @@ public sealed partial class WidgetWindow
         if (sender is Border targetBorder &&
             targetBorder.DataContext is WidgetItem item &&
             item.IsFolder &&
-            Directory.Exists(item.Path))
+            !string.IsNullOrWhiteSpace(item.Path))
         {
             border = targetBorder;
             folder = item;
@@ -267,7 +263,7 @@ public sealed partial class WidgetWindow
         foreach (var border in _interactiveSurfaces.ToArray())
         {
             if (border.DataContext is not WidgetItem { IsFolder: true } folder ||
-                !Directory.Exists(folder.Path) ||
+                string.IsNullOrWhiteSpace(folder.Path) ||
                 border.XamlRoot is null ||
                 border.ActualWidth <= 0 ||
                 border.ActualHeight <= 0)

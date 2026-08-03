@@ -114,8 +114,10 @@ public sealed partial class WidgetWindow
     /// iteration, capped at 5 minutes.  This gives:
     ///   300ms → 600ms → 1.2s → 2.4s → 4.8s → 9.6s → 19s → 38s → 76s → 152s → 300s
     /// Small files are caught within ~300-600ms; large files are caught
-    /// whenever the transfer finishes.  Each check is a single File.Exists
-    /// probe — essentially zero cost.
+    /// whenever the transfer finishes. Each check confirms the parent
+    /// directory is available and enumerates its direct children, so a
+    /// transient network/provider outage cannot be mistaken for a completed
+    /// move.
     /// </summary>
     private async Task RefreshAfterDragOutAsync(string[] draggedPaths)
     {
@@ -133,19 +135,17 @@ public sealed partial class WidgetWindow
                 return;
             }
 
-            bool anyExists = false;
-            foreach (var path in draggedPaths)
+            // A missing path alone is not proof that a move completed: a
+            // disconnected network/Cloud Files parent also makes Exists return
+            // false.  Confirm absence against a complete parent-directory
+            // snapshot so an unavailable source keeps its previous UI item.
+            IReadOnlyList<string> confirmedMissing =
+                await ViewModel.GetConfirmedMissingPathsAsync(draggedPaths);
+            if (confirmedMissing.Count > 0)
             {
-                if (File.Exists(path) || Directory.Exists(path))
-                {
-                    anyExists = true;
-                    break;
-                }
-            }
-
-            if (!anyExists)
-            {
-                App.Log($"[DragComplete] Files gone after ~{delayMs}ms, refreshing.");
+                App.Log(
+                    $"[DragComplete] Confirmed {confirmedMissing.Count} moved source(s) " +
+                    $"after ~{delayMs}ms, refreshing.");
                 await ViewModel.RefreshFolderContentsAsync();
                 ClearRemovedCutPaths();
                 UpdateEmptyState();
@@ -185,7 +185,7 @@ public sealed partial class WidgetWindow
 
         var sourcePaths = draggedItems
             .Select(item => item.Path)
-            .Where(path => !string.IsNullOrWhiteSpace(path) && (File.Exists(path) || Directory.Exists(path)))
+            .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(Path.GetFullPath)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -201,7 +201,11 @@ public sealed partial class WidgetWindow
             DataPackageOperation.Move |
             DataPackageOperation.Link;
 
-        var storageItems = App.Current.FileService.GetStorageItems(sourcePaths);
+        // Do not synchronously probe disconnected UNC roots on the drag-start
+        // UI callback.  Internal DeskBox drags and the path fallback remain
+        // available; local roots can still use native StorageItems for Explorer.
+        var storageItems = App.Current.FileService.GetStorageItems(
+            sourcePaths.Where(path => !path.StartsWith(@"\\", StringComparison.Ordinal)));
         if (storageItems.Count > 0)
         {
             dataPackage.SetStorageItems(storageItems, false);
@@ -392,7 +396,7 @@ public sealed partial class WidgetWindow
         try
         {
             string fullPath = Path.GetFullPath(candidate.Trim().Trim('"'));
-            if (File.Exists(fullPath) || Directory.Exists(fullPath))
+            if (Path.IsPathFullyQualified(fullPath))
             {
                 normalizedPath = fullPath;
                 return true;

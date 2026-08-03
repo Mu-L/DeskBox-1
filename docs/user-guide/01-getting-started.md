@@ -15,12 +15,12 @@ updated: "2026-07-19"
 
 推荐环境
 
-- Windows 11 64 位
+- Windows 10 64 位（21H2 / build 19044 或更高）或 Windows 11 22H2+
 - .NET 10 Desktop Runtime x64
 - Windows App Runtime 2.2 x64
 - 普通 Windows 用户权限
 
-DeskBox 围绕 WinUI 3 和 Windows 11 的窗口、材质、圆角、拖放、通知与媒体会话能力设计。Windows 10 不属于当前推荐环境，部分视觉和交互可能无法完整工作。
+DeskBox 围绕 WinUI 3 的窗口、材质、圆角、拖放、通知与媒体会话能力设计。Windows 10 会将系统不支持的材质、圆角和部分动画降级为兼容表现；文件同步、拖放和核心格子操作仍按 build 19044+ 验证。
 
 DeskBox 不需要以管理员身份运行。不要在快捷方式兼容性设置中勾选「以管理员身份运行此程序」。资源管理器通常以普通权限运行，DeskBox 如果被提升为管理员权限，Windows 可能阻止两者之间的文件拖放。
 
@@ -144,4 +144,3 @@ Microsoft Store 渠道由商店负责安装和更新。两个渠道的核心功�
 - 了解两种文件格子：[文件格子与桌面整理](02-file-widgets.md)
 - 开始记录任务：[待办格子使用指南](03-todo.md)
 - 保存临时内容：[随记格子使用指南](04-quick-capture.md)
-

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace DeskBox.Helpers;
 
@@ -11,6 +12,98 @@ namespace DeskBox.Helpers;
 /// </summary>
 public static partial class Win32Helper
 {
+    private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint FileShareDelete = 0x00000004;
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileForFinalPath(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        IntPtr lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        IntPtr hTemplateFile);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandle(
+        SafeFileHandle hFile,
+        StringBuilder lpszFilePath,
+        uint cchFilePath,
+        uint dwFlags);
+
+    /// <summary>
+    /// Resolves a file or directory through the Windows object manager. This
+    /// collapses junctions, symbolic links, SUBST drives and UNC aliases into
+    /// the same final volume identity where Windows can open the path.
+    /// </summary>
+    public static bool TryGetFinalPath(string path, out string finalPath)
+    {
+        finalPath = string.Empty;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            using SafeFileHandle handle = CreateFileForFinalPath(
+                path,
+                dwDesiredAccess: 0,
+                FileShareRead | FileShareWrite | FileShareDelete,
+                IntPtr.Zero,
+                OpenExisting,
+                FileFlagBackupSemantics,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                return false;
+            }
+
+            var buffer = new StringBuilder(512);
+            uint length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
+            if (length == 0)
+            {
+                return false;
+            }
+
+            if (length >= buffer.Capacity)
+            {
+                buffer = new StringBuilder((int)length + 1);
+                length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
+            }
+
+            if (length == 0)
+            {
+                return false;
+            }
+
+            finalPath = NormalizeFinalPath(buffer.ToString());
+            return !string.IsNullOrWhiteSpace(finalPath);
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or
+            DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false;
+        }
+    }
+
+    private static string NormalizeFinalPath(string path)
+    {
+        if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"\" + path[7..];
+        }
+
+        return path.StartsWith(@"\\?\", StringComparison.Ordinal)
+            ? path[4..]
+            : path;
+    }
+
     [LibraryImport("kernel32.dll")]
     private static partial IntPtr GetCurrentProcess();
 
@@ -409,6 +502,7 @@ public static partial class Win32Helper
     public const int WM_SYSKEYDOWN = 0x0104;
     public const int WM_SYSKEYUP = 0x0105;
     public const int WM_LBUTTONDOWN = 0x0201;
+    public const int WM_MOUSEWHEEL = 0x020A;
     public const int WM_RBUTTONDOWN = 0x0204;
     public const int WM_MBUTTONDOWN = 0x0207;
     public const int WM_XBUTTONDOWN = 0x020B;
@@ -433,6 +527,10 @@ public static partial class Win32Helper
 
     public const int SM_CXSIZEFRAME = 32;
     public const int SM_CYSIZEFRAME = 33;
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ScreenToClient(IntPtr hWnd, ref POINT point);
 
     [LibraryImport("user32.dll")]
     public static partial int GetSystemMetrics(int nIndex);
@@ -719,6 +817,29 @@ public static partial class Win32Helper
     [LibraryImport("dwmapi.dll")]
     public static partial int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int pvAttribute, int cbAttribute);
 
+    /// <summary>
+    /// Version-safe DWM attribute entry point.  Attributes 33, 34 and 38 are
+    /// Windows 11 additions; silently skip them on the Win10 compatibility
+    /// floor instead of relying on an ignored HRESULT at every call site.
+    /// </summary>
+    public static int TrySetDwmWindowAttribute(IntPtr hwnd, int attr, ref int value)
+    {
+        if ((attr is DWMWA_BORDER_COLOR or DWMWA_WINDOW_CORNER_PREFERENCE or DWMWA_SYSTEMBACKDROP_TYPE) &&
+            !Services.WindowsCompatibilityService.SupportsWin11DwmAttributes)
+        {
+            return 0;
+        }
+
+        try
+        {
+            return DwmSetWindowAttribute(hwnd, attr, ref value, sizeof(int));
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
     public const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
     public const int DWMWA_CLOAK = 13;
     public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
@@ -751,7 +872,7 @@ public static partial class Win32Helper
     public static void SetWindowTheme(IntPtr hWnd, bool isDark)
     {
         int darkMode = isDark ? 1 : 0;
-        DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+        TrySetDwmWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode);
     }
 
     public static void ApplyFullWindowFrame(IntPtr hWnd)
@@ -773,7 +894,7 @@ public static partial class Win32Helper
     /// </summary>
     public static void SetWindowBorderColor(IntPtr hWnd, int colorRef)
     {
-        DwmSetWindowAttribute(hWnd, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int));
+        TrySetDwmWindowAttribute(hWnd, DWMWA_BORDER_COLOR, ref colorRef);
     }
 
     public static void ApplyAccentBlur(IntPtr hWnd, Windows.UI.Color tintColor, double opacity, bool enabled)
@@ -967,7 +1088,12 @@ public static partial class Win32Helper
 
     private const uint MonitorInfoPrimary = 0x00000001;
 
-    public readonly record struct MonitorWorkAreaInfo(RECT Monitor, RECT WorkArea, string DeviceName, bool IsPrimary);
+    public readonly record struct MonitorWorkAreaInfo(
+        RECT Monitor,
+        RECT WorkArea,
+        string DeviceName,
+        bool IsPrimary,
+        double DpiScale);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -989,6 +1115,23 @@ public static partial class Win32Helper
         MonitorDpiType dpiType,
         out uint dpiX,
         out uint dpiY);
+
+    private static double GetDpiScaleForMonitor(IntPtr hMonitor)
+    {
+        try
+        {
+            int hr = GetDpiForMonitor(hMonitor, MonitorDpiType.EffectiveDpi, out uint dpiX, out _);
+            return hr == 0 && dpiX > 0 ? dpiX / 96.0 : 1.0;
+        }
+        catch (DllNotFoundException)
+        {
+            return 1.0;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return 1.0;
+        }
+    }
 
     [LibraryImport("user32.dll")]
     private static partial uint GetDpiForWindow(IntPtr hWnd);
@@ -1122,7 +1265,8 @@ public static partial class Win32Helper
                         info.rcMonitor,
                         info.rcWork,
                         info.szDevice ?? string.Empty,
-                        (info.dwFlags & MonitorInfoPrimary) == MonitorInfoPrimary));
+                        (info.dwFlags & MonitorInfoPrimary) == MonitorInfoPrimary,
+                        GetDpiScaleForMonitor(hMonitor)));
                 }
                 else
                 {
@@ -1136,7 +1280,8 @@ public static partial class Win32Helper
                             fallbackInfo.rcMonitor,
                             fallbackInfo.rcWork,
                             string.Empty,
-                            (fallbackInfo.dwFlags & MonitorInfoPrimary) == MonitorInfoPrimary));
+                            (fallbackInfo.dwFlags & MonitorInfoPrimary) == MonitorInfoPrimary,
+                            GetDpiScaleForMonitor(hMonitor)));
                     }
                 }
 

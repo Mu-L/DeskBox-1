@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.3.4-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.4)
+[![最新版本](https://img.shields.io/badge/release-1.3.5-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.5)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -26,10 +26,10 @@ DeskBox 基于 C#、WinUI 3 和 Windows App SDK 构建，在原生 Windows 桌�
 
 ## 下载
 
-在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.4) 下载 DeskBox 1.3.4：
+在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.5) 下载 DeskBox 1.3.5：
 
-- [DeskBox 1.3.4 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.4/DeskBox_Setup_1.3.4_x64.exe)——适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.3.4 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.4/DeskBox_Setup_1.3.4_arm64.exe)——适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.3.5 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.5/DeskBox_Setup_1.3.5_x64.exe)——适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.3.5 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.5/DeskBox_Setup_1.3.5_arm64.exe)——适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -74,6 +74,19 @@ DeskBox 基于 C#、WinUI 3 和 Windows App SDK 构建，在原生 Windows 桌�
 - 可通过托盘和自定义全局快捷键显示、隐藏或临时唤起全部格子。
 - 支持云母/亚克力材质、透明度、边框、DWM 圆角、动画、标题栏、图标与文字大小。
 
+## 1.3.5 更新亮点
+
+- **桌面整理是 1.3.5 新增能力**：使用响应式卡片预览要移动的文件、目标位置、不会移动的项目和最终收纳位置；1.3.4 尚未提供这项功能。
+- **按卡片控制整理**：每个卡片可以单独勾选，并选择新建文件夹或已有格子；面板会解释收纳位置并列出具体不会移动的项目。
+- **自动整理是 1.3.5 新增能力**：下载增长、临时/压缩包处理、解压和同路径替换会等待稳定终态；大文件限制为 100 MB，不完整 baseline 不会提交。
+- **格子组是 1.3.5 新增能力**：文件格子可以合并、标题滚轮切换、长按标题拖出或解散，并使用更安全的层级和嵌套路径规则。
+- **文件格子与映射文件夹保持同步**：目录离线或暂时不可用时保留上次快照，刷新不再破坏手动排序，watcher 代次也会隔离旧路径事件。
+- **搜索索引更可靠**：部分扫描、容量受限、离线或权限不足时不再误删已有结果；USN journal 支持增量应用变化，并提供安全回退与恢复诊断。
+- **拖动与排序更可控**：跨屏排序使用呼吸式插入线，拖动过程中不改动列表；独立格子和组内格子共用位置计算，并区分拖到文件夹项目与空白区域的行为。
+- **Windows 10 与生命周期恢复**：次级窗口背景回退、动画可访问性、休眠/解锁/RDP 恢复、Explorer 重启处理和启动层级统一得到补齐，同时保留 Windows 11 增强效果。
+- **更新日志与诊断**：设置内可在独立窗口查看最新双语 Markdown 更新内容，可靠性诊断可以看到 watcher、索引和恢复状态。
+- **多语言与细节修复**：五种语言资源同步，文件图标、拖动反馈和窗口细节继续优化，并增加新的稳定性自动化测试。
+
 ## 1.3.4 更新亮点
 
 - **资源占用更可控**：关闭功能格子和设置窗口后释放视觉树；音乐与胶囊定时器会正确解绑；缓存增加明确上限；即使格子仍显示在桌面上，满足安全条件时也可执行空闲内存整理。
@@ -88,11 +101,11 @@ DeskBox 基于 C#、WinUI 3 和 Windows App SDK 构建，在原生 Windows 桌�
 - **热键可靠性**：移除低级键盘钩子，改进远程桌面修饰键恢复，搜索快捷键与搜索功能开关联动。
 - **发布打包**：应用与安装器版本统一为 1.3.4；x64 和 ARM64 均采用框架依赖安装包，只检测并下载当前架构缺少的运行时；同时移除旧图片画廊格子。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.4 发布说明](docs/releases/v1.3.4.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.5 发布说明](docs/releases/v1.3.5.md)。
 
 ## 当前界面
 
-以下图片来自 1.3.4 当前构建。
+以下图片用于展示当前 DeskBox 的界面和材质效果。
 
 ### 桌面格子与材质
 
@@ -133,11 +146,11 @@ DeskBox 不要求注册账号，也不依赖云同步。格子配置、待办、
 
 ## 环境要求
 
-- Windows 11 22H2 或更高版本。
+- Windows 10 21H2（build 19044）或更高版本；Windows 11 22H2 或更高版本可获得完整视觉效果。
 - 与安装包匹配的 x64 或 ARM64 处理器。
 - .NET 10 Runtime 与 Windows App Runtime 2.2；缺少时可由安装程序自动安装。
 
-Windows 10 在部分环境中可能可以运行，但不是当前验证目标。
+Windows 10 会自动降级不受系统支持的材质、圆角和部分动画；文件同步、拖放与格子核心功能仍按兼容基线验证。
 
 ## 安装、更新与卸载
 
@@ -201,8 +214,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.3.4_x64.exe
-Output\DeskBox_Setup_1.3.4_arm64.exe
+Output\DeskBox_Setup_1.3.5_x64.exe
+Output\DeskBox_Setup_1.3.5_arm64.exe
 ```
 
 ## 项目结构

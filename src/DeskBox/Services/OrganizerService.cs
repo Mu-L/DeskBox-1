@@ -82,7 +82,9 @@ public sealed class OrganizerService
                 {
                     Name = Path.GetFileName(result.DestinationPath),
                     SourcePath = result.SourcePath,
-                    DestinationPath = result.DestinationPath
+                    DestinationPath = result.DestinationPath,
+                    TargetWidgetId = widget.Id,
+                    TargetWidgetName = widgetName
                 }).ToList(),
                 canUndo: move);
 
@@ -154,7 +156,9 @@ public sealed class OrganizerService
                 {
                     Name = Path.GetFileName(result.DestinationPath),
                     SourcePath = result.SourcePath,
-                    DestinationPath = result.DestinationPath
+                    DestinationPath = result.DestinationPath,
+                    TargetWidgetId = widget.Id,
+                    TargetWidgetName = widgetName
                 }).ToList(),
                 canUndo: true);
 

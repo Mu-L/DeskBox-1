@@ -46,6 +46,7 @@ public sealed partial class SettingsWindow
             ["FileDisplaySettings"] = FileDisplaySettingsSection,
             ["FileStorageSettings"] = FileStorageSettingsSection,
             ["FileStackSettings"] = FileStackSettingsSection,
+            ["DesktopOrganizationSettings"] = DesktopOrganizationSettingsSection,
             ["FeatureWidgets"] = FeatureWidgetsSection,
             ["QuickCaptureSettings"] = QuickCaptureSettingsSection,
             ["TodoSettings"] = TodoSettingsSection,
@@ -490,6 +491,10 @@ public sealed partial class SettingsWindow
         {
             _ = ViewModel.RefreshFileStackRulePreviewFromDiskAsync();
         }
+        if (sectionTag == "DesktopOrganizationSettings")
+        {
+            DesktopOrganizationSettingsSection.Refresh();
+        }
         if (sectionTag == "WidgetGroups")
         {
             ViewModel.RefreshWidgetGroupSettings();
@@ -518,6 +523,7 @@ public sealed partial class SettingsWindow
         if (sectionTag == "CompatibilityDiagnosticsSettings")
         {
             ViewModel.RefreshDragDropPermissionDiagnostic();
+            ViewModel.RefreshRuntimeDiagnostics();
         }
         if (sectionTag == "BackupRestoreSettings")
         {

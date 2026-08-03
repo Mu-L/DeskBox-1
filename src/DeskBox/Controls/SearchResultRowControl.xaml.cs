@@ -19,6 +19,7 @@ public sealed partial class SearchResultRowControl : UserControl
     // hover/selection brush is applied.
     private readonly Brush _defaultBackground;
     private bool _isHovered;
+    private bool _isMultiSelected;
 
     public static readonly DependencyProperty IsSelectedProperty =
         DependencyProperty.Register(
@@ -40,6 +41,18 @@ public sealed partial class SearchResultRowControl : UserControl
     {
         get => (bool)GetValue(IsSelectedProperty);
         set => SetValue(IsSelectedProperty, value);
+    }
+
+    /// <summary>Multi-selection state (rubber-band / Ctrl+click), driven by the popup window.</summary>
+    public bool IsMultiSelected
+    {
+        get => _isMultiSelected;
+        set
+        {
+            _isMultiSelected = value;
+            RefreshBackground();
+            MultiSelectedIcon.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     /// <summary>
@@ -79,7 +92,7 @@ public sealed partial class SearchResultRowControl : UserControl
     /// </summary>
     private void RefreshBackground()
     {
-        RowRoot.Background = IsSelected
+        RowRoot.Background = IsSelected || IsMultiSelected
             ? ResolveThemeBrush("ControlFillColorSecondaryBrush")
             : _isHovered
                 ? ResolveThemeBrush("SubtleFillColorSecondaryBrush")

@@ -58,21 +58,29 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Center"
             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0.5"
             CornerRadius="7"
             IsHitTestVisible="False"
-            Opacity="0" />
+            Opacity="0"
+            RenderTransformOrigin="0.5,0.5">
+            <Border.RenderTransform>
+                <ScaleTransform
+                    x:Name="TitleInteractionChromeTransform"
+                    ScaleX="1"
+                    ScaleY="1" />
+            </Border.RenderTransform>
+        </Border>
         <Button
             x:Name="SelectorButton"
             Height="32"
             MinWidth="0"
-            CanDrag="True"
+            CanDrag="False"
             HorizontalAlignment="Stretch"
             Click="SelectorButton_Click"
             DragStarting="GroupTitle_DragStarting"
             DropCompleted="GroupTitle_DropCompleted"
             KeyDown="SelectorButton_KeyDown"
-            PointerPressed="SelectorButton_PointerPressed"
-            PointerReleased="SelectorButton_PointerReleased"
             Style="{StaticResource GroupTitleSelectorButtonStyle}"
             UseSystemFocusVisuals="True">
             <Border
@@ -99,11 +107,38 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <Grid
-                            x:Name="IdentityViewport"
+                            x:Name="PositionRailViewport"
                             Grid.Column="0"
+                            Width="5"
+                            Height="20"
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            IsHitTestVisible="False">
+                            <StackPanel
+                                x:Name="OutgoingPositionRailLayer"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                IsHitTestVisible="False"
+                                Opacity="0"
+                                Orientation="Vertical"
+                                Spacing="2" />
+                            <StackPanel
+                                x:Name="CurrentPositionRailLayer"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                IsHitTestVisible="False"
+                                Opacity="1"
+                                Orientation="Vertical"
+                                Spacing="2" />
+                        </Grid>
+
+                        <Grid
+                            x:Name="IdentityViewport"
+                            Grid.Column="1"
                             Width="64"
                             Height="26"
                             VerticalAlignment="Center">
@@ -126,12 +161,6 @@
                                     IsHitTestVisible="False"
                                     TextTrimming="CharacterEllipsis"
                                     VerticalAlignment="Center" />
-                                <TextBlock
-                                    x:Name="OutgoingPositionText"
-                                    FontSize="10"
-                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                    IsHitTestVisible="False"
-                                    VerticalAlignment="Center" />
                             </StackPanel>
 
                             <StackPanel
@@ -144,7 +173,15 @@
                                 Spacing="5">
                                 <controls:WidgetTitleIcon
                                     x:Name="CurrentIcon"
-                                    IsHitTestVisible="False" />
+                                    IsHitTestVisible="False"
+                                    RenderTransformOrigin="0.5,0.5">
+                                    <controls:WidgetTitleIcon.RenderTransform>
+                                        <ScaleTransform
+                                            x:Name="CurrentIconScaleTransform"
+                                            ScaleX="1"
+                                            ScaleY="1" />
+                                    </controls:WidgetTitleIcon.RenderTransform>
+                                </controls:WidgetTitleIcon>
                                 <TextBlock
                                     x:Name="CurrentTitle"
                                     MaxWidth="132"
@@ -153,18 +190,13 @@
                                     IsHitTestVisible="False"
                                     TextTrimming="CharacterEllipsis"
                                     VerticalAlignment="Center" />
-                                <TextBlock
-                                    x:Name="CurrentPositionText"
-                                    FontSize="10"
-                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                    IsHitTestVisible="False"
-                                    VerticalAlignment="Center" />
                             </StackPanel>
+
                         </Grid>
 
                         <ProgressRing
                             x:Name="LoadingRing"
-                            Grid.Column="1"
+                            Grid.Column="2"
                             Width="9"
                             Height="9"
                             Margin="5,0,0,0"
@@ -175,15 +207,6 @@
                             Opacity="0" />
                     </Grid>
 
-                    <StackPanel
-                        x:Name="CapsulePositionIndicators"
-                        Height="2"
-                        Margin="7,0,0,1"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Bottom"
-                        IsHitTestVisible="False"
-                        Orientation="Horizontal"
-                        Spacing="2" />
                 </Grid>
             </Border>
         </Button>
@@ -200,5 +223,54 @@
             Visibility="Collapsed"
             PointerEntered="TabsPanel_PointerEntered"
             PointerExited="TabsPanel_PointerExited" />
+
+        <!--
+            Directional wheel feedback lives above both stack and tab title
+            presentations. The accent fades from the approached edge toward
+            the center, so it reads as motion intent without obscuring text.
+        -->
+        <Grid
+            x:Name="WheelDirectionFeedbackLayer"
+            Canvas.ZIndex="2"
+            IsHitTestVisible="False">
+            <Border
+                x:Name="UpWheelFeedback"
+                Height="16"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Top"
+                CornerRadius="7,7,0,0"
+                Opacity="0"
+                RenderTransformOrigin="0.5,0">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" />
+                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0.24" />
+                        <GradientStop Color="Transparent" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="UpWheelFeedbackTransform" ScaleY="1" />
+                </Border.RenderTransform>
+            </Border>
+            <Border
+                x:Name="DownWheelFeedback"
+                Height="16"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Bottom"
+                CornerRadius="0,0,7,7"
+                Opacity="0"
+                RenderTransformOrigin="0.5,1">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0">
+                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" />
+                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0.24" />
+                        <GradientStop Color="Transparent" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="DownWheelFeedbackTransform" ScaleY="1" />
+                </Border.RenderTransform>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

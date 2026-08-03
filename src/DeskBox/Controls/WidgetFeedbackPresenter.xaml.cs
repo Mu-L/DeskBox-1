@@ -205,13 +205,6 @@ public sealed partial class WidgetFeedbackPresenter : UserControl
 
     private static bool AnimationsEnabled()
     {
-        try
-        {
-            return new UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
+        return DeskBox.Services.WindowsCompatibilityService.ShouldAnimate;
     }
 }

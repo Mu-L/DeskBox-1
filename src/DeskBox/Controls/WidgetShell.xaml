@@ -821,13 +821,13 @@
         <Border
             x:Name="GroupDropPreview"
             Grid.RowSpan="2"
-            Margin="4"
-            Padding="16"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
             Canvas.ZIndex="100"
-            Background="{ThemeResource WidgetAccentWashBrush}"
+            Background="Transparent"
             BorderBrush="Transparent"
-            BorderThickness="0"
-            CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
+            BorderThickness="2"
+            CornerRadius="8"
             IsHitTestVisible="False"
             Opacity="0"
             RenderTransformOrigin="0.5,0.5"
@@ -835,22 +835,12 @@
             <Border.RenderTransform>
                 <TranslateTransform x:Name="GroupDropPreviewTransform" />
             </Border.RenderTransform>
-            <StackPanel
+            <FontIcon
+                x:Name="GroupDropPreviewIcon"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Spacing="8">
-                <FontIcon
-                    x:Name="GroupDropPreviewIcon"
-                    HorizontalAlignment="Center"
-                    FontSize="24"
-                    Glyph="&#xE8F1;" />
-                <TextBlock
-                    x:Name="GroupDropPreviewText"
-                    HorizontalAlignment="Center"
-                    FontSize="13"
-                    FontWeight="SemiBold"
-                    TextAlignment="Center" />
-            </StackPanel>
+                FontSize="14"
+                Glyph="&#xE8F1;" />
         </Border>
     </Grid>
 </UserControl>

@@ -58,6 +58,27 @@ public sealed partial class WidgetManager
         }
     }
 
+    private void RaiseVisibleWidgetsTemporarily(string reason)
+    {
+        if (WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            App.LogVerbose($"[ZOrder] BatchTemporaryRaise skipped pinned reason={reason}");
+            return;
+        }
+
+        List<IDesktopWidgetWindow> windows = GetLoadedDesktopWindows()
+            .Where(window => window.Visible)
+            .ToList();
+        foreach (IDesktopWidgetWindow window in windows)
+        {
+            window.RaiseTemporarilyFromManager();
+        }
+
+        App.Log(
+            $"[ZOrder] BatchTemporaryRaise reason={reason} count={windows.Count} " +
+            $"handles={string.Join(',', windows.Select(window => $"0x{window.WindowHandle.ToInt64():X}"))}");
+    }
+
     public void ActivateAllVisibleWidgetsFromTitle(IntPtr activeHwnd)
     {
         if (WidgetLayerService.UsesDesktopPinnedMode())

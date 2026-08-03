@@ -246,4 +246,35 @@ public sealed partial class SettingsWindow
             Win32Helper.OpenFile(ViewModel.UpdateFallbackUrl);
         }
     }
+
+    private void ViewReleaseNotesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.CanViewReleaseNotes || ViewModel.LatestUpdateManifest is not { } manifest)
+        {
+            return;
+        }
+
+        if (_releaseNotesWindow is null)
+        {
+            var releaseNotesWindow = new ReleaseNotesWindow(
+                manifest,
+                ViewModel.AppVersion,
+                _themeService,
+                _localizationService);
+            _releaseNotesWindow = releaseNotesWindow;
+            releaseNotesWindow.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_releaseNotesWindow, releaseNotesWindow))
+                {
+                    _releaseNotesWindow = null;
+                }
+            };
+        }
+        else
+        {
+            _releaseNotesWindow.UpdateManifest(manifest, ViewModel.AppVersion);
+        }
+
+        _releaseNotesWindow.ShowWindow(_hWnd);
+    }
 }

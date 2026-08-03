@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 using DeskBox.Models;
 
@@ -27,6 +28,22 @@ public sealed partial class UsnJournalIndexService : IDisposable
 
     /// <summary>CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 44, METHOD_NEITHER, FILE_ANY_ACCESS)</summary>
     private const uint FsctlEnumUsnData = 0x000900B3;
+    private const uint FsctlReadUsnJournal = 0x000900BB;
+    private const uint FsctlQueryUsnJournal = 0x000900F4;
+
+    private const int ErrorHandleEof = 38;
+    private const int ErrorJournalDeleteInProgress = 1178;
+    private const int ErrorJournalNotActive = 1179;
+    private const int ErrorJournalEntryDeleted = 1181;
+
+    private const uint UsnReasonFileCreate = 0x00000100;
+    private const uint UsnReasonFileDelete = 0x00000200;
+    private const uint UsnReasonRenameOldName = 0x00001000;
+    private const uint UsnReasonRenameNewName = 0x00002000;
+    private const uint UsnReasonHardLinkChange = 0x00010000;
+    private const uint UsnReasonIndexRelevant = 0x0001B307;
+    private const int ErrorMoreData = 234;
+    private static readonly IntPtr InvalidHandleValue = new(-1);
 
     private const int FileAttributeDirectory = 0x10;
 
@@ -42,6 +59,29 @@ public sealed partial class UsnJournalIndexService : IDisposable
         public ulong StartFileReferenceNumber;
         public long LowUsn;
         public long HighUsn;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UsnJournalData
+    {
+        public ulong UsnJournalId;
+        public long FirstUsn;
+        public long NextUsn;
+        public long LowestValidUsn;
+        public long MaxUsn;
+        public ulong MaximumSize;
+        public ulong AllocationDelta;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ReadUsnJournalData
+    {
+        public long StartUsn;
+        public uint ReasonMask;
+        public uint ReturnOnlyOnClose;
+        public ulong Timeout;
+        public ulong BytesToWaitFor;
+        public ulong UsnJournalId;
     }
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
@@ -66,8 +106,47 @@ public sealed partial class UsnJournalIndexService : IDisposable
         out int lpBytesReturned,
         IntPtr lpOverlapped);
 
-    /// <summary>Raw MFT record captured during enumeration.</summary>
-    private readonly record struct RawRecord(ulong Parent, string Name, bool IsDir, long Timestamp);
+    [LibraryImport("kernel32.dll", EntryPoint = "DeviceIoControl", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool QueryDeviceIoControl(
+        SafeFileHandle hDevice,
+        uint dwIoControlCode,
+        IntPtr lpInBuffer,
+        int nInBufferSize,
+        out UsnJournalData lpOutBuffer,
+        int nOutBufferSize,
+        out int lpBytesReturned,
+        IntPtr lpOverlapped);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "DeviceIoControl", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ReadJournalDeviceIoControl(
+        SafeFileHandle hDevice,
+        uint dwIoControlCode,
+        ref ReadUsnJournalData lpInBuffer,
+        int nInBufferSize,
+        IntPtr lpOutBuffer,
+        int nOutBufferSize,
+        out int lpBytesReturned,
+        IntPtr lpOverlapped);
+
+    [DllImport("kernel32.dll", EntryPoint = "FindFirstFileNameW", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindFirstFileName(
+        string lpFileName,
+        uint dwFlags,
+        ref uint stringLength,
+        StringBuilder linkName);
+
+    [DllImport("kernel32.dll", EntryPoint = "FindNextFileNameW", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool FindNextFileName(
+        IntPtr hFindStream,
+        ref uint stringLength,
+        StringBuilder linkName);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool FindClose(IntPtr hFindFile);
 
     /// <summary>Resolved index entry, shape-compatible with the directory-scan index.</summary>
     private sealed record UsnEntry(
@@ -86,6 +165,9 @@ public sealed partial class UsnJournalIndexService : IDisposable
     ];
 
     private readonly ConcurrentDictionary<string, UsnEntry> _index = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, VolumeState> _volumeStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTime> _capacityLimitedVolumes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _indexMutationLock = new();
     private readonly ManualResetEventSlim _pauseGate = new(true);
     private CancellationTokenSource? _scanCts;
     private Task? _scanTask;
@@ -94,6 +176,52 @@ public sealed partial class UsnJournalIndexService : IDisposable
     private volatile bool _isAvailable;
     private bool _isDisposed;
     private int _indexingEnabled;
+    private int _incrementalVolumeCount;
+    private long _sessionEpoch;
+
+    private sealed class VolumeState
+    {
+        public VolumeState(string root, ulong journalId, long nextUsn, UsnJournalChangeReducer reducer, long epoch)
+        {
+            Root = root;
+            JournalId = journalId;
+            NextUsn = nextUsn;
+            Reducer = reducer;
+            Epoch = epoch;
+        }
+
+        public string Root { get; }
+        public ulong JournalId { get; }
+        public long NextUsn { get; set; }
+        public UsnJournalChangeReducer Reducer { get; set; }
+        public long Epoch { get; }
+        // A snapshot is not considered live until the reader has replayed from the
+        // pre-snapshot NextUsn through the journal position observed after the scan.
+        public bool IsSynchronized { get; set; }
+        public bool CapacityExceeded { get; set; }
+        public DateTime NextCapacityRecoveryUtc { get; set; }
+    }
+
+    private enum ReplaceVolumeResult
+    {
+        Success,
+        CapacityExceeded,
+        SessionExpired
+    }
+
+    private enum HardLinkEnrichmentResult
+    {
+        Success,
+        CapacityExceeded,
+        Failed
+    }
+
+    internal enum HardLinkEnumerationAction
+    {
+        Complete,
+        GrowBuffer,
+        Fail
+    }
 
     /// <summary>True once at least one volume was indexed via the USN journal.</summary>
     public bool IsAvailable => _isAvailable;
@@ -102,9 +230,14 @@ public sealed partial class UsnJournalIndexService : IDisposable
 
     public bool IsPaused => Volatile.Read(ref _isPaused) == 1;
 
+    /// <summary>True when every eligible NTFS volume has a live incremental journal cursor.</summary>
+    public bool IsIncrementalSyncing => _isAvailable && Volatile.Read(ref _incrementalVolumeCount) > 0;
+
     public int EntryCount => _index.Count;
 
     public int IndexedCount => _index.Count;
+
+    public int CapacityLimitedVolumeCount => _capacityLimitedVolumes.Count;
 
     public event Action? IndexUpdated;
 
@@ -114,7 +247,7 @@ public sealed partial class UsnJournalIndexService : IDisposable
     /// <summary>Pauses an in-progress scan.</summary>
     public void PauseIndexing()
     {
-        if (IsScanning && !IsPaused)
+        if (Volatile.Read(ref _indexingEnabled) == 1 && !IsPaused)
         {
             Volatile.Write(ref _isPaused, 1);
             _pauseGate.Reset();
@@ -134,25 +267,33 @@ public sealed partial class UsnJournalIndexService : IDisposable
     /// <summary>Starts background enumeration of every fixed NTFS volume.</summary>
     public void StartIndexing()
     {
-        if (_isDisposed || IsScanning)
+        if (_isDisposed || Interlocked.CompareExchange(ref _indexingEnabled, 1, 0) != 0)
         {
             return;
         }
 
-        Volatile.Write(ref _indexingEnabled, 1);
         _scanCts?.Cancel();
         _scanCts?.Dispose();
         _scanCts = new CancellationTokenSource();
         var token = _scanCts.Token;
-        _scanTask = Task.Run(() => EnumerateAllVolumes(token), token);
+        long epoch = Interlocked.Increment(ref _sessionEpoch);
+        _scanTask = Task.Run(() => RunIndexingAsync(epoch, token), token);
     }
 
     public void StopIndexing()
     {
         Volatile.Write(ref _indexingEnabled, 0);
+        Interlocked.Increment(ref _sessionEpoch);
         _scanCts?.Cancel();
-        _index.Clear();
-        _isAvailable = false;
+        lock (_indexMutationLock)
+        {
+            _index.Clear();
+            _volumeStates.Clear();
+            _capacityLimitedVolumes.Clear();
+            _isAvailable = false;
+        }
+        Volatile.Write(ref _incrementalVolumeCount, 0);
+        Interlocked.Exchange(ref _isScanning, 0);
         Volatile.Write(ref _isPaused, 0);
         _pauseGate.Set();
         IndexUpdated?.Invoke();
@@ -212,17 +353,20 @@ public sealed partial class UsnJournalIndexService : IDisposable
             .ToList();
     }
 
-    private void EnumerateAllVolumes(CancellationToken token)
+    private async Task RunIndexingAsync(long epoch, CancellationToken token)
     {
-        if (Volatile.Read(ref _indexingEnabled) == 0 ||
-            Interlocked.CompareExchange(ref _isScanning, 1, 0) != 0)
+        lock (_indexMutationLock)
         {
-            return;
-        }
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
 
+            Interlocked.Exchange(ref _isScanning, 1);
+        }
         try
         {
-            bool anyVolumeIndexed = false;
+            var eligibleRoots = new List<string>();
 
             foreach (string drive in Directory.GetLogicalDrives())
             {
@@ -244,10 +388,7 @@ public sealed partial class UsnJournalIndexService : IDisposable
                         continue;
                     }
 
-                    if (EnumerateVolume(drive, token))
-                    {
-                        anyVolumeIndexed = true;
-                    }
+                    eligibleRoots.Add(drive.TrimEnd('\\'));
                 }
                 catch (Exception ex)
                 {
@@ -255,7 +396,21 @@ public sealed partial class UsnJournalIndexService : IDisposable
                 }
             }
 
-            _isAvailable = anyVolumeIndexed && !_index.IsEmpty;
+            foreach (string root in eligibleRoots)
+            {
+                token.ThrowIfCancellationRequested();
+                VolumeState? state = TryCreateVolumeSnapshot(root, epoch, token);
+                if (state is not null)
+                {
+                    _ = TryCommitVolumeState(root, state, epoch, token);
+                }
+            }
+
+            UpdateAvailability(eligibleRoots.Count, epoch, token);
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
 
             if (_isAvailable)
             {
@@ -265,6 +420,16 @@ public sealed partial class UsnJournalIndexService : IDisposable
             else
             {
                 App.Log("[UsnIndex] USN journal unavailable (not elevated or no NTFS volume). Search falls back to the directory index.");
+            }
+
+            Interlocked.Exchange(ref _isScanning, 0);
+
+            if (eligibleRoots.Count > 0 && !token.IsCancellationRequested)
+            {
+                Task[] monitors = eligibleRoots
+                    .Select(root => MonitorVolumeAsync(root, eligibleRoots.Count, epoch, token))
+                    .ToArray();
+                await Task.WhenAll(monitors).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -277,9 +442,12 @@ public sealed partial class UsnJournalIndexService : IDisposable
         }
         finally
         {
-            Interlocked.Exchange(ref _isScanning, 0);
-            Volatile.Write(ref _isPaused, 0);
-            _pauseGate.Set();
+            if (Interlocked.Read(ref _sessionEpoch) == epoch)
+            {
+                Interlocked.Exchange(ref _isScanning, 0);
+                Volatile.Write(ref _isPaused, 0);
+                _pauseGate.Set();
+            }
         }
     }
 
@@ -288,8 +456,13 @@ public sealed partial class UsnJournalIndexService : IDisposable
     /// paths into the index. Returns false when the volume cannot be opened (the
     /// non-elevated case) so callers know to rely on the fallback index.
     /// </summary>
-    private bool EnumerateVolume(string driveRoot, CancellationToken token)
+    private VolumeState? TryCreateVolumeSnapshot(string driveRoot, long epoch, CancellationToken token)
     {
+        if (!IsCurrentSession(epoch, token))
+        {
+            return null;
+        }
+
         string root = driveRoot.TrimEnd('\\');
         string volumePath = @"\\.\" + root;
 
@@ -300,10 +473,18 @@ public sealed partial class UsnJournalIndexService : IDisposable
             if (handle.IsInvalid)
             {
                 App.Log($"[UsnIndex] Cannot open {volumePath} (elevation required). Skipping volume.");
-                return false;
+                return null;
             }
 
-            var records = new Dictionary<ulong, RawRecord>();
+            if (!TryQueryJournal(handle, out UsnJournalData journal))
+            {
+                App.Log($"[UsnIndex] Cannot query the USN journal for {root}: {Marshal.GetLastWin32Error()}.");
+                return null;
+            }
+
+            var records = new List<UsnJournalRecord>();
+            bool enumerationComplete = false;
+            bool recordsValid = true;
             int bufferSize = 1024 * 1024;
             IntPtr buffer = Marshal.AllocHGlobal(bufferSize);
             try
@@ -312,20 +493,42 @@ public sealed partial class UsnJournalIndexService : IDisposable
                 {
                     StartFileReferenceNumber = 0,
                     LowUsn = 0,
-                    HighUsn = long.MaxValue
+                    HighUsn = journal.NextUsn
                 };
                 int inputSize = Marshal.SizeOf<MftEnumData>();
 
                 while (!token.IsCancellationRequested)
                 {
-                    bool ok = DeviceIoControl(handle, FsctlEnumUsnData, ref med, inputSize, buffer, bufferSize, out int bytesReturned, IntPtr.Zero);
-                    if (!ok || bytesReturned < 8)
+                    _pauseGate.Wait(token);
+                    if (!CanProcessEnumerationBatch(
+                            epoch,
+                            Interlocked.Read(ref _sessionEpoch),
+                            Volatile.Read(ref _indexingEnabled) == 1,
+                            token.IsCancellationRequested,
+                            _pauseGate.IsSet))
                     {
-                        break; // End of journal (or access error) — stop enumerating.
+                        return null;
+                    }
+
+                    bool ok = DeviceIoControl(handle, FsctlEnumUsnData, ref med, inputSize, buffer, bufferSize, out int bytesReturned, IntPtr.Zero);
+                    if (!ok)
+                    {
+                        int error = Marshal.GetLastWin32Error();
+                        enumerationComplete = error == ErrorHandleEof;
+                        break;
+                    }
+
+                    if (bytesReturned < sizeof(long))
+                    {
+                        break;
                     }
 
                     ulong nextFrn = (ulong)Marshal.ReadInt64(buffer, 0);
-                    ParseRecords(buffer, 8, bytesReturned, records);
+                    if (!TryParseSnapshotRecords(buffer, 8, bytesReturned, records))
+                    {
+                        recordsValid = false;
+                        break;
+                    }
 
                     if (nextFrn == med.StartFileReferenceNumber)
                     {
@@ -340,18 +543,50 @@ public sealed partial class UsnJournalIndexService : IDisposable
                 Marshal.FreeHGlobal(buffer);
             }
 
-            if (records.Count == 0)
+            token.ThrowIfCancellationRequested();
+            if (!enumerationComplete || !recordsValid || records.Count == 0)
             {
-                return false;
+                App.Log($"[UsnIndex] Volume {root} returned an incomplete MFT snapshot; keeping USN unavailable.");
+                return null;
             }
 
-            BuildPaths(root, records);
-            return true;
+            var reducer = new UsnJournalChangeReducer(root);
+            reducer.ReplaceSnapshot(records);
+            HardLinkEnrichmentResult hardLinkResult = EnrichSnapshotHardLinks(reducer, root, epoch, token);
+            if (hardLinkResult != HardLinkEnrichmentResult.Success)
+            {
+                if (hardLinkResult == HardLinkEnrichmentResult.CapacityExceeded)
+                {
+                    RegisterCapacityLimitedVolume(root, epoch, token);
+                    App.Log($"[UsnIndex] Hard-link expansion for {root} exceeds the safe capacity; retrying no sooner than 15 minutes.");
+                }
+                else
+                {
+                    App.Log($"[UsnIndex] Hard-link enumeration for {root} was incomplete; keeping USN unavailable.");
+                }
+                return null;
+            }
+
+            var state = new VolumeState(root, journal.UsnJournalId, journal.NextUsn, reducer, epoch);
+            ReplaceVolumeResult replaceResult = ReplaceVolumeEntries(state, epoch, token);
+            if (replaceResult != ReplaceVolumeResult.Success)
+            {
+                if (replaceResult == ReplaceVolumeResult.CapacityExceeded)
+                {
+                    RegisterCapacityLimitedVolume(root, epoch, token);
+                    App.Log($"[UsnIndex] Volume {root} exceeds the safe index capacity. Falling back to the directory index; the next full retry is throttled for 15 minutes.");
+                }
+                return null;
+            }
+
+            ClearCapacityLimitedVolume(root, epoch, token);
+
+            return state;
         }
         catch (Exception ex)
         {
             App.Log($"[UsnIndex] Volume {root} enumeration failed: {ex.Message}");
-            return false;
+            return null;
         }
         finally
         {
@@ -359,8 +594,12 @@ public sealed partial class UsnJournalIndexService : IDisposable
         }
     }
 
-    /// <summary>Parses contiguous USN_RECORD v2 structures from the enumeration buffer.</summary>
-    private static void ParseRecords(IntPtr buffer, int start, int end, Dictionary<ulong, RawRecord> records)
+    /// <summary>Parses contiguous USN_RECORD v2 structures from an MFT enumeration.</summary>
+    internal static bool TryParseSnapshotRecords(
+        IntPtr buffer,
+        int start,
+        int end,
+        ICollection<UsnJournalRecord> records)
     {
         int offset = start;
 
@@ -371,142 +610,1025 @@ public sealed partial class UsnJournalIndexService : IDisposable
         //   60 FileName (variable, UTF-16)
         while (offset + 60 <= end)
         {
-            int recordLength = Marshal.ReadInt32(buffer, offset);
-            if (recordLength <= 0 || offset + recordLength > end)
+            if (!TryReadRecordLayout(buffer, offset, end, out int recordLength, out ushort fileNameLength, out ushort fileNameOffset))
             {
-                break;
+                return false;
             }
 
             ulong frn = (ulong)Marshal.ReadInt64(buffer, offset + 8);
             ulong parentFrn = (ulong)Marshal.ReadInt64(buffer, offset + 16);
             long timestamp = Marshal.ReadInt64(buffer, offset + 32);
             int fileAttributes = Marshal.ReadInt32(buffer, offset + 52);
-            short fileNameLength = Marshal.ReadInt16(buffer, offset + 56);
-            short fileNameOffset = Marshal.ReadInt16(buffer, offset + 58);
-
-            if (fileNameLength > 0 && offset + fileNameOffset + fileNameLength <= end)
+            string name = Marshal.PtrToStringUni(IntPtr.Add(buffer, offset + fileNameOffset), fileNameLength / 2) ?? string.Empty;
+            if (name.Length == 0)
             {
-                string name = Marshal.PtrToStringUni(IntPtr.Add(buffer, offset + fileNameOffset), fileNameLength / 2) ?? string.Empty;
-                if (name.Length > 0)
-                {
-                    bool isDir = (fileAttributes & FileAttributeDirectory) != 0;
-                    records[frn] = new RawRecord(parentFrn, name, isDir, timestamp);
-                }
+                return false;
             }
+
+            bool isDir = (fileAttributes & FileAttributeDirectory) != 0;
+            records.Add(new UsnJournalRecord(frn, parentFrn, name, isDir, timestamp));
 
             offset += recordLength;
         }
+
+        return offset == end;
     }
 
-    /// <summary>
-    /// Reconstructs full paths from the FRN hierarchy and fills the index, skipping
-    /// well-known system directories. Directory paths are memoized so each chain is
-    /// resolved once.
-    /// </summary>
-    private void BuildPaths(string root, Dictionary<ulong, RawRecord> records)
+    private HardLinkEnrichmentResult EnrichSnapshotHardLinks(
+        UsnJournalChangeReducer reducer,
+        string root,
+        long epoch,
+        CancellationToken token)
     {
-        // Memoized full path per directory FRN; the volume root anchors the walk.
-        var directoryPaths = new Dictionary<ulong, string> { [RootFileReferenceNumber] = root };
-
-        string? ResolveDirectoryPath(ulong frn)
+        Dictionary<string, ulong> directoryFrns = reducer.BuildDirectoryPathMap();
+        int estimatedEntryCount = BuildEntries(root, reducer, reducer.Records.Keys).Count;
+        if (estimatedEntryCount > MaxIndexEntries)
         {
-            if (directoryPaths.TryGetValue(frn, out string? cached))
+            return HardLinkEnrichmentResult.CapacityExceeded;
+        }
+        UsnJournalRecord[] files = reducer.Records.Values.Where(record => !record.IsDirectory).ToArray();
+        foreach (UsnJournalRecord file in files)
+        {
+            _pauseGate.Wait(token);
+            if (!CanProcessEnumerationBatch(
+                    epoch,
+                    Interlocked.Read(ref _sessionEpoch),
+                    Volatile.Read(ref _indexingEnabled) == 1,
+                    token.IsCancellationRequested,
+                    _pauseGate.IsSet))
             {
-                return cached;
+                return HardLinkEnrichmentResult.Failed;
             }
 
-            // Walk up until a known ancestor, collecting the unknown chain.
-            var chain = new List<ulong>();
-            var seen = new HashSet<ulong>();
-            ulong current = frn;
-            string basePath;
+            string? knownPath = reducer.ResolvePath(file.FileReferenceNumber);
+            if (knownPath is null)
+            {
+                continue;
+            }
 
+            if (!TryEnumerateHardLinkPaths(knownPath, root, out IReadOnlyList<string> paths, out int error))
+            {
+                if (error is 2 or 3)
+                {
+                    continue; // The journal replay from the pre-snapshot cursor resolves this race.
+                }
+
+                return HardLinkEnrichmentResult.Failed;
+            }
+
+            if (paths.Count == 0)
+            {
+                continue;
+            }
+
+            var links = new List<UsnJournalRecord>(paths.Count);
+            foreach (string path in paths)
+            {
+                int separator = path.LastIndexOf('\\');
+                if (separator <= 0)
+                {
+                    return HardLinkEnrichmentResult.Failed;
+                }
+
+                string directory = path[..separator].TrimEnd('\\');
+                if (!directoryFrns.TryGetValue(directory, out ulong parentFrn))
+                {
+                    return HardLinkEnrichmentResult.Failed;
+                }
+
+                links.Add(file with
+                {
+                    ParentFileReferenceNumber = parentFrn,
+                    Name = path[(separator + 1)..]
+                });
+            }
+
+            int oldIndexableLinkCount = reducer.ResolvePaths(file.FileReferenceNumber)
+                .Count(path => !IsSystemPath(path, root));
+            int newIndexableLinkCount = paths.Count(path => !IsSystemPath(path, root));
+            if (estimatedEntryCount - oldIndexableLinkCount + newIndexableLinkCount > MaxIndexEntries)
+            {
+                return HardLinkEnrichmentResult.CapacityExceeded;
+            }
+
+            estimatedEntryCount += newIndexableLinkCount - oldIndexableLinkCount;
+            reducer.Apply([
+                new UsnJournalChange(UsnJournalChangeKind.ReplaceHardLinks, file, links)
+            ]);
+        }
+
+        return HardLinkEnrichmentResult.Success;
+    }
+
+    private async Task MonitorVolumeAsync(string root, int eligibleVolumeCount, long epoch, CancellationToken token)
+    {
+        int recoveryFailures = 0;
+        while (IsCurrentSession(epoch, token))
+        {
+            try
+            {
+                await MonitorVolumeCoreAsync(root, eligibleVolumeCount, epoch, token).ConfigureAwait(false);
+                return;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                if (!IsCurrentSession(epoch, token))
+                {
+                    return;
+                }
+
+                if (_volumeStates.TryGetValue(root, out VolumeState? state))
+                {
+                    MarkVolumeUnsynchronized(state, eligibleVolumeCount, epoch, token);
+                }
+
+                App.Log($"[UsnIndex] Unexpected monitor failure for {root}: {ex.Message}. Retrying.");
+                await DelayAfterFailureAsync(++recoveryFailures, token).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task MonitorVolumeCoreAsync(string root, int eligibleVolumeCount, long epoch, CancellationToken token)
+    {
+        int failures = 0;
+        while (IsCurrentSession(epoch, token))
+        {
+            _pauseGate.Wait(token);
+            if (!_volumeStates.TryGetValue(root, out VolumeState? state))
+            {
+                if (_capacityLimitedVolumes.TryGetValue(root, out DateTime retryAt) && retryAt > DateTime.UtcNow)
+                {
+                    TimeSpan remaining = retryAt - DateTime.UtcNow;
+                    await Task.Delay(
+                        remaining < TimeSpan.FromMinutes(1) ? remaining : TimeSpan.FromMinutes(1),
+                        token).ConfigureAwait(false);
+                    continue;
+                }
+
+                state = TryCreateVolumeSnapshot(root, epoch, token);
+                if (state is null)
+                {
+                    await DelayAfterFailureAsync(++failures, token).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (!TryCommitVolumeState(root, state, epoch, token))
+                {
+                    return;
+                }
+                failures = 0;
+                UpdateAvailability(eligibleVolumeCount, epoch, token);
+                IndexUpdated?.Invoke();
+            }
+
+            if (state.Epoch != epoch || !IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+
+            if (_capacityLimitedVolumes.TryGetValue(root, out DateTime volumeRetryAt) &&
+                volumeRetryAt > DateTime.UtcNow)
+            {
+                TimeSpan remaining = volumeRetryAt - DateTime.UtcNow;
+                await Task.Delay(
+                    remaining < TimeSpan.FromMinutes(1) ? remaining : TimeSpan.FromMinutes(1),
+                    token).ConfigureAwait(false);
+                continue;
+            }
+
+            if (state.CapacityExceeded && DateTime.UtcNow >= state.NextCapacityRecoveryUtc)
+            {
+                VolumeState? recovered = TryCreateVolumeSnapshot(root, epoch, token);
+                if (recovered is not null && TryCommitVolumeState(root, recovered, epoch, token))
+                {
+                    state = recovered;
+                    UpdateAvailability(eligibleVolumeCount, epoch, token);
+                }
+                else
+                {
+                    state.NextCapacityRecoveryUtc = DateTime.UtcNow.AddMinutes(15);
+                }
+            }
+
+            string volumePath = @"\\.\" + root;
+            using SafeFileHandle handle = CreateFile(
+                volumePath,
+                GenericRead,
+                FileShareRead | FileShareWrite,
+                IntPtr.Zero,
+                OpenExisting,
+                0,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                MarkVolumeUnsynchronized(state, eligibleVolumeCount, epoch, token);
+                await DelayAfterFailureAsync(++failures, token).ConfigureAwait(false);
+                continue;
+            }
+
+            if (!TryQueryJournal(handle, out UsnJournalData journal) ||
+                !IsJournalCursorValid(
+                    state.JournalId,
+                    state.NextUsn,
+                    journal.UsnJournalId,
+                    journal.LowestValidUsn,
+                    journal.NextUsn))
+            {
+                App.Log($"[UsnIndex] Journal cursor for {root} is no longer valid; rebuilding the volume snapshot.");
+                RebuildVolume(root, state, eligibleVolumeCount, epoch, token);
+                await DelayAfterFailureAsync(1, token).ConfigureAwait(false);
+                continue;
+            }
+
+            if (state.NextUsn >= journal.NextUsn)
+            {
+                state.IsSynchronized = !state.CapacityExceeded;
+                UpdateAvailability(eligibleVolumeCount, epoch, token);
+                failures = 0;
+                await Task.Delay(TimeSpan.FromMilliseconds(500), token).ConfigureAwait(false);
+                continue;
+            }
+
+            int bufferSize = 256 * 1024;
+            IntPtr buffer = Marshal.AllocHGlobal(bufferSize);
+            bool delayForRecovery = false;
+            try
+            {
+                var request = new ReadUsnJournalData
+                {
+                    StartUsn = state.NextUsn,
+                    ReasonMask = UsnReasonIndexRelevant,
+                    ReturnOnlyOnClose = 0,
+                    Timeout = 0,
+                    BytesToWaitFor = 0,
+                    UsnJournalId = state.JournalId
+                };
+
+                bool ok = ReadJournalDeviceIoControl(
+                    handle,
+                    FsctlReadUsnJournal,
+                    ref request,
+                    Marshal.SizeOf<ReadUsnJournalData>(),
+                    buffer,
+                    bufferSize,
+                    out int bytesReturned,
+                    IntPtr.Zero);
+
+                if (!ok)
+                {
+                    int error = Marshal.GetLastWin32Error();
+                    if (error is ErrorJournalEntryDeleted or ErrorJournalNotActive or ErrorJournalDeleteInProgress or ErrorHandleEof)
+                    {
+                        MarkVolumeUnsynchronized(state, eligibleVolumeCount, epoch, token);
+                        App.Log($"[UsnIndex] Journal for {root} was reset, truncated, or ended before its queried cursor ({error}); rebuilding.");
+                        RebuildVolume(root, state, eligibleVolumeCount, epoch, token);
+                    }
+                    else
+                    {
+                        MarkVolumeUnsynchronized(state, eligibleVolumeCount, epoch, token);
+                        App.Log($"[UsnIndex] Incremental read failed for {root}: {error}.");
+                    }
+
+                    await DelayAfterFailureAsync(++failures, token).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (bytesReturned >= sizeof(long))
+                {
+                    if (!TryParseJournalBatch(
+                            buffer,
+                            bytesReturned,
+                            state.NextUsn,
+                            out long nextUsn,
+                            out IReadOnlyList<UsnJournalChange> changes))
+                    {
+                        MarkVolumeUnsynchronized(state, eligibleVolumeCount, epoch, token);
+                        App.Log($"[UsnIndex] Malformed or unsupported journal record for {root}; rebuilding without advancing the cursor.");
+                        RebuildVolume(root, state, eligibleVolumeCount, epoch, token);
+                        failures++;
+                        delayForRecovery = true;
+                    }
+                    else if (!TryHydrateHardLinkChanges(
+                                 state,
+                                 changes,
+                                 epoch,
+                                 token,
+                                 out IReadOnlyList<UsnJournalChange> hydratedChanges))
+                    {
+                        MarkVolumeUnsynchronized(state, eligibleVolumeCount, epoch, token);
+                        App.Log($"[UsnIndex] Hard-link refresh failed for {root}; rebuilding without advancing the cursor.");
+                        RebuildVolume(root, state, eligibleVolumeCount, epoch, token);
+                        failures++;
+                        delayForRecovery = true;
+                    }
+                    else
+                    {
+                        bool applied = ApplyIncrementalChanges(state, hydratedChanges, epoch, token);
+                        if (!applied)
+                        {
+                            state.CapacityExceeded = true;
+                            state.NextCapacityRecoveryUtc = DateTime.UtcNow.AddMinutes(15);
+                            App.Log($"[UsnIndex] Incremental capacity was exceeded for {root}; using the directory index and throttling full-volume recovery to 15 minutes.");
+                        }
+
+                        // Even while over capacity, consume the validated journal stream so a
+                        // permanently unindexable create record cannot cause a busy reread loop.
+                        state.NextUsn = nextUsn;
+                        state.IsSynchronized = !state.CapacityExceeded && nextUsn >= journal.NextUsn;
+                        failures = 0;
+                        UpdateAvailability(eligibleVolumeCount, epoch, token);
+                    }
+                }
+                else
+                {
+                    MarkVolumeUnsynchronized(state, eligibleVolumeCount, epoch, token);
+                    App.Log($"[UsnIndex] Truncated journal response for {root}; rebuilding without advancing the cursor.");
+                    RebuildVolume(root, state, eligibleVolumeCount, epoch, token);
+                    failures++;
+                    delayForRecovery = true;
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+
+            if (delayForRecovery)
+            {
+                await DelayAfterFailureAsync(failures, token).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private void RebuildVolume(
+        string root,
+        VolumeState oldState,
+        int eligibleVolumeCount,
+        long epoch,
+        CancellationToken token)
+    {
+        MarkVolumeUnsynchronized(oldState, eligibleVolumeCount, epoch, token);
+        VolumeState? replacement = TryCreateVolumeSnapshot(root, epoch, token);
+        if (replacement is not null && TryCommitVolumeState(root, replacement, epoch, token))
+        {
+            UpdateAvailability(eligibleVolumeCount, epoch, token);
+            IndexUpdated?.Invoke();
+        }
+    }
+
+    private static Task DelayAfterFailureAsync(int failures, CancellationToken token)
+    {
+        int seconds = Math.Min(60, 1 << Math.Min(6, Math.Max(0, failures - 1)));
+        return Task.Delay(TimeSpan.FromSeconds(seconds), token);
+    }
+
+    private static bool TryQueryJournal(SafeFileHandle handle, out UsnJournalData journal)
+    {
+        return QueryDeviceIoControl(
+            handle,
+            FsctlQueryUsnJournal,
+            IntPtr.Zero,
+            0,
+            out journal,
+            Marshal.SizeOf<UsnJournalData>(),
+            out int bytesReturned,
+            IntPtr.Zero) && bytesReturned >= Marshal.SizeOf<UsnJournalData>();
+    }
+
+    internal static bool IsJournalCursorValid(
+        ulong expectedJournalId,
+        long nextUsn,
+        ulong currentJournalId,
+        long lowestValidUsn,
+        long currentNextUsn)
+    {
+        return expectedJournalId == currentJournalId &&
+               nextUsn >= lowestValidUsn &&
+               nextUsn <= currentNextUsn;
+    }
+
+    internal static bool TryParseJournalChanges(
+        IntPtr buffer,
+        int start,
+        int end,
+        out IReadOnlyList<UsnJournalChange> parsedChanges)
+    {
+        var changes = new List<UsnJournalChange>();
+        int offset = start;
+        while (offset + 60 <= end)
+        {
+            if (!TryReadRecordLayout(buffer, offset, end, out int recordLength, out ushort nameLength, out ushort nameOffset))
+            {
+                parsedChanges = [];
+                return false;
+            }
+
+            ulong frn = (ulong)Marshal.ReadInt64(buffer, offset + 8);
+            ulong parentFrn = (ulong)Marshal.ReadInt64(buffer, offset + 16);
+            long timestamp = Marshal.ReadInt64(buffer, offset + 32);
+            uint reason = unchecked((uint)Marshal.ReadInt32(buffer, offset + 40));
+            int attributes = Marshal.ReadInt32(buffer, offset + 52);
+            string name = Marshal.PtrToStringUni(IntPtr.Add(buffer, offset + nameOffset), nameLength / 2) ?? string.Empty;
+            if (name.Length == 0)
+            {
+                parsedChanges = [];
+                return false;
+            }
+
+            UsnJournalChangeKind kind = (reason & UsnReasonHardLinkChange) != 0
+                ? UsnJournalChangeKind.ReplaceHardLinks
+                : (reason & UsnReasonRenameOldName) != 0
+                    ? UsnJournalChangeKind.RenameOld
+                    : (reason & UsnReasonRenameNewName) != 0
+                        ? UsnJournalChangeKind.RenameNew
+                        : (reason & UsnReasonFileDelete) != 0
+                            ? UsnJournalChangeKind.Delete
+                            : UsnJournalChangeKind.Upsert;
+            changes.Add(new UsnJournalChange(
+                kind,
+                new UsnJournalRecord(
+                    frn,
+                    parentFrn,
+                    name,
+                    (attributes & FileAttributeDirectory) != 0,
+                    timestamp),
+                null,
+                reason));
+
+            offset += recordLength;
+        }
+
+        parsedChanges = offset == end ? changes : [];
+        return offset == end;
+    }
+
+    internal static bool TryParseJournalBatch(
+        IntPtr buffer,
+        int bytesReturned,
+        long currentCursor,
+        out long nextCursor,
+        out IReadOnlyList<UsnJournalChange> changes)
+    {
+        nextCursor = currentCursor;
+        changes = [];
+        if (bytesReturned < sizeof(long))
+        {
+            return false;
+        }
+
+        long candidateCursor = Marshal.ReadInt64(buffer, 0);
+        if (candidateCursor < currentCursor ||
+            !TryParseJournalChanges(buffer, sizeof(long), bytesReturned, out changes))
+        {
+            changes = [];
+            return false;
+        }
+
+        nextCursor = candidateCursor;
+        return true;
+    }
+
+    private static bool TryReadRecordLayout(
+        IntPtr buffer,
+        int offset,
+        int end,
+        out int recordLength,
+        out ushort fileNameLength,
+        out ushort fileNameOffset)
+    {
+        recordLength = 0;
+        fileNameLength = 0;
+        fileNameOffset = 0;
+        if (offset < 0 || end < offset || end - offset < 60)
+        {
+            return false;
+        }
+
+        recordLength = Marshal.ReadInt32(buffer, offset);
+        ushort majorVersion = unchecked((ushort)Marshal.ReadInt16(buffer, offset + 4));
+        fileNameLength = unchecked((ushort)Marshal.ReadInt16(buffer, offset + 56));
+        fileNameOffset = unchecked((ushort)Marshal.ReadInt16(buffer, offset + 58));
+        return majorVersion == 2 &&
+               recordLength >= 60 &&
+               recordLength <= end - offset &&
+               fileNameLength > 0 &&
+               (fileNameLength & 1) == 0 &&
+               fileNameOffset >= 60 &&
+               fileNameOffset <= recordLength &&
+               fileNameLength <= recordLength - fileNameOffset;
+    }
+
+    private static bool TryEnumerateHardLinkPaths(
+        string knownPath,
+        string root,
+        out IReadOnlyList<string> paths,
+        out int failureError)
+    {
+        paths = [];
+        failureError = 0;
+        uint capacity = 512;
+        IntPtr handle;
+        StringBuilder buffer;
+        while (true)
+        {
+            buffer = new StringBuilder(checked((int)capacity));
+            uint length = capacity;
+            handle = FindFirstFileName(knownPath, 0, ref length, buffer);
+            if (handle != InvalidHandleValue)
+            {
+                capacity = length;
+                break;
+            }
+
+            int error = Marshal.GetLastWin32Error();
+            if (GetHardLinkEnumerationAction(error, length, capacity, allowComplete: false) !=
+                HardLinkEnumerationAction.GrowBuffer)
+            {
+                failureError = error;
+                return false;
+            }
+
+            capacity = length;
+        }
+
+        try
+        {
+            var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             while (true)
             {
-                if (directoryPaths.TryGetValue(current, out string? known))
+                string linkName = buffer.ToString();
+                if (!string.IsNullOrWhiteSpace(linkName))
                 {
-                    basePath = known;
-                    break;
+                    string fullPath = linkName[0] == '\\'
+                        ? root + linkName
+                        : root + "\\" + linkName;
+                    found.Add(fullPath.TrimEnd('\\'));
                 }
 
-                if (!records.TryGetValue(current, out RawRecord record) || !record.IsDir)
+                uint nextCapacity = Math.Max(512u, capacity);
+                while (true)
                 {
-                    return null; // Broken chain (deleted/reused FRN) — unresolvable.
+                    buffer = new StringBuilder(checked((int)nextCapacity));
+                    uint length = nextCapacity;
+                    if (FindNextFileName(handle, ref length, buffer))
+                    {
+                        capacity = length;
+                        break;
+                    }
+
+                    int error = Marshal.GetLastWin32Error();
+                    HardLinkEnumerationAction action = GetHardLinkEnumerationAction(
+                        error,
+                        length,
+                        nextCapacity,
+                        allowComplete: true);
+                    if (action == HardLinkEnumerationAction.Complete)
+                    {
+                        paths = found.ToArray();
+                        return true;
+                    }
+
+                    if (action != HardLinkEnumerationAction.GrowBuffer)
+                    {
+                        failureError = error;
+                        return false;
+                    }
+
+                    nextCapacity = length;
                 }
-
-                if (!seen.Add(current))
-                {
-                    return null; // Cycle guard.
-                }
-
-                chain.Add(current);
-
-                if (record.Parent == current)
-                {
-                    // Self-parent marks a volume root.
-                    basePath = root;
-                    directoryPaths[current] = root;
-                    chain.RemoveAt(chain.Count - 1);
-                    break;
-                }
-
-                current = record.Parent;
             }
-
-            // Rebuild downward from the known ancestor to the requested directory.
-            string path = basePath;
-            for (int i = chain.Count - 1; i >= 0; i--)
-            {
-                ulong chainFrn = chain[i];
-                path = path + "\\" + records[chainFrn].Name;
-                directoryPaths[chainFrn] = path;
-            }
-
-            return directoryPaths.TryGetValue(frn, out string? resolved) ? resolved : null;
         }
-
-        foreach (var (frn, record) in records)
+        finally
         {
-            if (frn == RootFileReferenceNumber)
+            _ = FindClose(handle);
+        }
+    }
+
+    internal static HardLinkEnumerationAction GetHardLinkEnumerationAction(
+        int error,
+        uint requiredLength,
+        uint currentCapacity,
+        bool allowComplete)
+    {
+        if (allowComplete && error == ErrorHandleEof)
+        {
+            return HardLinkEnumerationAction.Complete;
+        }
+
+        return error == ErrorMoreData && requiredLength > currentCapacity
+            ? HardLinkEnumerationAction.GrowBuffer
+            : HardLinkEnumerationAction.Fail;
+    }
+
+    private bool TryHydrateHardLinkChanges(
+        VolumeState state,
+        IReadOnlyList<UsnJournalChange> changes,
+        long epoch,
+        CancellationToken token,
+        out IReadOnlyList<UsnJournalChange> hydratedChanges)
+    {
+        if (!changes.Any(change => change.Kind == UsnJournalChangeKind.ReplaceHardLinks))
+        {
+            hydratedChanges = changes;
+            return true;
+        }
+
+        var hydrated = new List<UsnJournalChange>(changes.Count);
+        Dictionary<string, ulong> directoryFrns = state.Reducer.BuildDirectoryPathMap();
+        foreach (UsnJournalChange change in changes)
+        {
+            _pauseGate.Wait(token);
+            if (!CanProcessEnumerationBatch(
+                    epoch,
+                    Interlocked.Read(ref _sessionEpoch),
+                    Volatile.Read(ref _indexingEnabled) == 1,
+                    token.IsCancellationRequested,
+                    _pauseGate.IsSet) ||
+                state.Epoch != epoch)
             {
+                hydratedChanges = [];
+                return false;
+            }
+
+            if (change.Kind != UsnJournalChangeKind.ReplaceHardLinks)
+            {
+                hydrated.Add(change);
                 continue;
             }
 
-            if (_index.Count >= MaxIndexEntries)
+            if (change.Record.IsDirectory)
             {
-                break;
+                hydratedChanges = [];
+                return false;
             }
 
-            string? parentPath = ResolveDirectoryPath(record.Parent);
-            if (parentPath is null)
+            var candidates = state.Reducer.ResolvePaths(change.Record.FileReferenceNumber).ToList();
+            string? eventParent = state.Reducer.ResolvePath(change.Record.ParentFileReferenceNumber);
+            if (eventParent is not null)
             {
-                continue; // Orphaned entry (parent chain could not be resolved).
+                candidates.Add(eventParent + "\\" + change.Record.Name);
             }
 
-            string fullPath = parentPath + "\\" + record.Name;
-            if (IsSystemPath(fullPath, root))
+            IReadOnlyList<string>? paths = null;
+            int lastError = 0;
+            foreach (string candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                continue;
+                if (TryEnumerateHardLinkPaths(candidate, state.Root, out IReadOnlyList<string> found, out lastError))
+                {
+                    paths = found;
+                    break;
+                }
             }
 
-            if (Volatile.Read(ref _indexingEnabled) == 0)
+            if (paths is null)
             {
-                break;
+                if ((change.Reason & UsnReasonFileDelete) != 0 && lastError is 2 or 3)
+                {
+                    paths = [];
+                }
+                else
+                {
+                    hydratedChanges = [];
+                    return false;
+                }
             }
 
-            _index[fullPath] = new UsnEntry(
-                record.Name,
-                parentPath,
-                fullPath,
-                record.IsDir,
-                TimestampToDateTime(record.Timestamp));
-
-            // Report progress every 5000 entries.
-            if (_index.Count % 5000 == 0)
+            var links = new List<UsnJournalRecord>(paths.Count);
+            foreach (string path in paths)
             {
-                ProgressChanged?.Invoke(_index.Count);
+                int separator = path.LastIndexOf('\\');
+                if (separator <= 0)
+                {
+                    hydratedChanges = [];
+                    return false;
+                }
+
+                string directory = path[..separator].TrimEnd('\\');
+                if (!directoryFrns.TryGetValue(directory, out ulong parentFrn))
+                {
+                    hydratedChanges = [];
+                    return false;
+                }
+
+                links.Add(change.Record with
+                {
+                    ParentFileReferenceNumber = parentFrn,
+                    Name = path[(separator + 1)..]
+                });
+            }
+
+            hydrated.Add(change with { ReplacementLinks = links });
+        }
+
+        hydratedChanges = hydrated;
+        return true;
+    }
+
+    private ReplaceVolumeResult ReplaceVolumeEntries(VolumeState state, long epoch, CancellationToken token)
+    {
+        List<UsnEntry> entries = BuildEntries(state.Root, state.Reducer, state.Reducer.Records.Keys);
+        lock (_indexMutationLock)
+        {
+            if (!IsCurrentSession(epoch, token))
+            {
+                return ReplaceVolumeResult.SessionExpired;
+            }
+
+            int otherVolumeCount = _index.Count(pair => !IsSameOrDescendant(pair.Key, state.Root));
+            if (otherVolumeCount + entries.Count > MaxIndexEntries)
+            {
+                return ReplaceVolumeResult.CapacityExceeded;
+            }
+
+            RemovePathAndDescendants(state.Root);
+            foreach (UsnEntry entry in entries)
+            {
+                _index[entry.FullPath] = entry;
             }
         }
+
+        ProgressChanged?.Invoke(_index.Count);
+        return ReplaceVolumeResult.Success;
+    }
+
+    private bool ApplyIncrementalChanges(
+        VolumeState state,
+        IReadOnlyList<UsnJournalChange> changes,
+        long epoch,
+        CancellationToken token)
+    {
+        if (!IsCurrentSession(epoch, token))
+        {
+            return true;
+        }
+
+        if (changes.Count == 0)
+        {
+            return true;
+        }
+
+        UsnJournalChangeReducer reducer = state.Reducer;
+        UsnJournalChangeReducer.Checkpoint checkpoint = reducer.CreateCheckpoint(changes);
+        bool committed = false;
+        try
+        {
+            UsnJournalChangeImpact impact = reducer.Apply(changes);
+            if (!impact.Changed)
+            {
+                committed = true;
+                return true;
+            }
+
+            var rebuildFrns = new HashSet<ulong>(impact.UpsertFileReferenceNumbers);
+            foreach (ulong directoryFrn in impact.RebuildDirectoryReferenceNumbers)
+            {
+                rebuildFrns.UnionWith(reducer.EnumerateSubtreeFrns(directoryFrn));
+            }
+
+            List<UsnEntry> additions = BuildEntries(state.Root, reducer, rebuildFrns);
+            lock (_indexMutationLock)
+            {
+                if (!IsCurrentSession(epoch, token))
+                {
+                    return true;
+                }
+
+                var removedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string candidatePath in _index.Keys)
+                {
+                    if (impact.RemovedPaths.Any(path => IsSameOrDescendant(candidatePath, path)))
+                    {
+                        removedKeys.Add(candidatePath);
+                    }
+                }
+
+                int newPathCount = additions
+                    .Select(entry => entry.FullPath)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count(path => removedKeys.Contains(path) || !_index.ContainsKey(path));
+                if (!IsProjectedEntryCountWithinCapacity(
+                        _index.Count,
+                        removedKeys.Count,
+                        newPathCount,
+                        MaxIndexEntries))
+                {
+                    return false;
+                }
+
+                foreach (string removedKey in removedKeys)
+                {
+                    _index.TryRemove(removedKey, out _);
+                }
+
+                foreach (UsnEntry entry in additions)
+                {
+                    _index[entry.FullPath] = entry;
+                }
+            }
+
+            committed = true;
+            IndexUpdated?.Invoke();
+            return true;
+        }
+        finally
+        {
+            if (!committed)
+            {
+                reducer.Restore(checkpoint);
+            }
+        }
+    }
+
+    private static List<UsnEntry> BuildEntries(
+        string root,
+        UsnJournalChangeReducer reducer,
+        IEnumerable<ulong> frns)
+    {
+        var entries = new List<UsnEntry>();
+        foreach (ulong frn in frns)
+        {
+            if (frn == RootFileReferenceNumber ||
+                !reducer.Records.TryGetValue(frn, out UsnJournalRecord record))
+            {
+                continue;
+            }
+
+            foreach (string fullPath in reducer.ResolvePaths(frn))
+            {
+                if (IsSystemPath(fullPath, root))
+                {
+                    continue;
+                }
+
+                int separator = fullPath.LastIndexOf('\\');
+                string directoryPath = separator > 0 ? fullPath[..separator] : root;
+                string fileName = separator >= 0 ? fullPath[(separator + 1)..] : record.Name;
+                entries.Add(new UsnEntry(
+                    fileName,
+                    directoryPath,
+                    fullPath,
+                    record.IsDirectory,
+                    TimestampToDateTime(record.Timestamp)));
+            }
+        }
+
+        return entries;
+    }
+
+    private void RemovePathAndDescendants(string path)
+    {
+        foreach (string candidate in _index.Keys)
+        {
+            if (IsSameOrDescendant(candidate, path))
+            {
+                _index.TryRemove(candidate, out _);
+            }
+        }
+    }
+
+    private static bool IsSameOrDescendant(string candidate, string parent)
+    {
+        return candidate.Equals(parent, StringComparison.OrdinalIgnoreCase) ||
+               (candidate.Length > parent.Length &&
+                candidate.StartsWith(parent, StringComparison.OrdinalIgnoreCase) &&
+                candidate[parent.Length] == '\\');
+    }
+
+    internal static bool IsProjectedEntryCountWithinCapacity(
+        int currentCount,
+        int removedCount,
+        int newPathCount,
+        int maximumCount)
+    {
+        if (currentCount < 0 || removedCount < 0 || newPathCount < 0 || maximumCount < 0 ||
+            removedCount > currentCount)
+        {
+            return false;
+        }
+
+        return (long)currentCount - removedCount + newPathCount <= maximumCount;
+    }
+
+    private void MarkVolumeUnsynchronized(
+        VolumeState state,
+        int eligibleVolumeCount,
+        long epoch,
+        CancellationToken token)
+    {
+        if (!IsCurrentSession(epoch, token))
+        {
+            return;
+        }
+
+        state.IsSynchronized = false;
+        UpdateAvailability(eligibleVolumeCount, epoch, token);
+    }
+
+    private void UpdateAvailability(
+        int eligibleVolumeCount,
+        long epoch,
+        CancellationToken token)
+    {
+        bool availabilityChanged;
+        lock (_indexMutationLock)
+        {
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+
+            bool wasAvailable = _isAvailable;
+            int synchronized = _volumeStates.Values.Count(state => state.Epoch == epoch && state.IsSynchronized);
+            Volatile.Write(ref _incrementalVolumeCount, synchronized);
+            _isAvailable = eligibleVolumeCount > 0 &&
+                           synchronized == eligibleVolumeCount &&
+                           !_index.IsEmpty;
+            availabilityChanged = wasAvailable != _isAvailable;
+        }
+
+        if (availabilityChanged)
+        {
+            IndexUpdated?.Invoke();
+        }
+    }
+
+    private bool TryCommitVolumeState(
+        string root,
+        VolumeState state,
+        long epoch,
+        CancellationToken token)
+    {
+        lock (_indexMutationLock)
+        {
+            if (!IsCurrentSession(epoch, token) || state.Epoch != epoch)
+            {
+                return false;
+            }
+
+            _volumeStates[root] = state;
+            _capacityLimitedVolumes.TryRemove(root, out _);
+            return true;
+        }
+    }
+
+    private void RegisterCapacityLimitedVolume(string root, long epoch, CancellationToken token)
+    {
+        lock (_indexMutationLock)
+        {
+            if (IsCurrentSession(epoch, token))
+            {
+                _capacityLimitedVolumes[root] = DateTime.UtcNow.AddMinutes(15);
+            }
+        }
+    }
+
+    private void ClearCapacityLimitedVolume(string root, long epoch, CancellationToken token)
+    {
+        lock (_indexMutationLock)
+        {
+            if (IsCurrentSession(epoch, token))
+            {
+                _capacityLimitedVolumes.TryRemove(root, out _);
+            }
+        }
+    }
+
+    private bool IsCurrentSession(long epoch, CancellationToken token)
+    {
+        return IsSessionCurrent(
+            epoch,
+            Interlocked.Read(ref _sessionEpoch),
+            Volatile.Read(ref _indexingEnabled) == 1,
+            token.IsCancellationRequested);
+    }
+
+    internal static bool IsSessionCurrent(
+        long expectedEpoch,
+        long currentEpoch,
+        bool indexingEnabled,
+        bool cancellationRequested)
+    {
+        return indexingEnabled &&
+               !cancellationRequested &&
+               expectedEpoch == currentEpoch;
+    }
+
+    internal static bool CanProcessEnumerationBatch(
+        long expectedEpoch,
+        long currentEpoch,
+        bool indexingEnabled,
+        bool cancellationRequested,
+        bool pauseGateSet)
+    {
+        return pauseGateSet && IsSessionCurrent(
+            expectedEpoch,
+            currentEpoch,
+            indexingEnabled,
+            cancellationRequested);
     }
 
     /// <summary>True when the path lives under a top-level system directory of the volume.</summary>
@@ -548,18 +1670,10 @@ public sealed partial class UsnJournalIndexService : IDisposable
         _isDisposed = true;
         StopIndexing();
         _scanCts?.Dispose();
-        if (_scanTask is { IsCompleted: false } scanTask)
-        {
-            _ = scanTask.ContinueWith(
-                _ => _pauseGate.Dispose(),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-        }
-        else
-        {
-            _pauseGate.Dispose();
-        }
+        // A previous Stop/Start session can still be unwinding a synchronous
+        // DeviceIoControl call after the latest task has changed. Do not dispose the
+        // shared gate here; session epochs prevent stale writes and leaving this small
+        // process-lifetime primitive to GC avoids an ObjectDisposedException race.
         _index.Clear();
     }
 

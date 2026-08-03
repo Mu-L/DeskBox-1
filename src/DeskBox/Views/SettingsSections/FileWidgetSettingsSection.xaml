@@ -59,6 +59,21 @@
                 </Grid>
             </Border>
 
+            <Border Style="{StaticResource SettingsGroupStyle}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
+                    <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="DesktopOrganizationSettings">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE74C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="DesktopOrganization.Settings.Title" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="DesktopOrganization.Settings.EntryDescription" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <FontIcon Grid.Column="1" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
         </StackPanel>
     </StackPanel>
 </UserControl>

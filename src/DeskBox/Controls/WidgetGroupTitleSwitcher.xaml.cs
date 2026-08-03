@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.UI;
 
@@ -21,6 +22,8 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
 {
     private const string DetachDragFormat =
         "DeskBox.WidgetGroup.MemberDetach.v1";
+    private const int DetachLongPressMilliseconds = 460;
+    private const double DetachLongPressMovementTolerance = 12;
     private const double MaximumTitleWidth = 132;
     private const double IdentitySpacing = 5;
 
@@ -32,6 +35,14 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
     private CancellationTokenSource? _tabHoverSwitchCancellation;
     private bool _isRebuildingTabs;
     private string? _draggingMemberId;
+    private string? _pendingDetachMemberId;
+    private UIElement? _detachLongPressSource;
+    private Microsoft.UI.Input.PointerPoint? _detachLongPressPoint;
+    private Windows.Foundation.Point _detachLongPressStartPosition;
+    private CancellationTokenSource? _detachLongPressCancellation;
+    private Storyboard? _detachHoldStoryboard;
+    private bool _isDetachLongPressArmed;
+    private bool _isStartingDetachDrag;
     private DateTimeOffset _suppressGroupTitleClickUntil;
 
     public static readonly DependencyProperty DisplayModeProperty =
@@ -94,6 +105,7 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
     public WidgetGroupTitleSwitcher()
     {
         InitializeComponent();
+        RegisterSelectorPointerHandlers();
         RegisterKeyboardAccelerators();
         CurrentTitle.RegisterPropertyChangedCallback(
             TextBlock.FontSizeProperty,
@@ -107,6 +119,7 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
             });
         ApplyDisplayMode();
         ApplyNavigationStyle();
+        Unloaded += (_, _) => CancelDetachLongPress();
         Visibility = Visibility.Collapsed;
     }
 
@@ -115,6 +128,10 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
     public event EventHandler<WidgetGroupMemberEventArgs>? RemoveMemberRequested;
 
     public event EventHandler<WidgetGroupMemberEventArgs>? DetachMemberRequested;
+
+    public event EventHandler<WidgetGroupMemberEventArgs>? DetachDragStarted;
+
+    public event EventHandler<WidgetGroupMemberEventArgs>? DetachDragCompleted;
 
     public event EventHandler<WidgetGroupReorderEventArgs>? ReorderRequested;
 
@@ -168,6 +185,30 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
 
     public string? ActiveMemberId => _presentation?.ActiveMemberId;
 
+    private void RegisterSelectorPointerHandlers()
+    {
+        SelectorButton.AddHandler(
+            UIElement.PointerPressedEvent,
+            new PointerEventHandler(SelectorButton_PointerPressed),
+            handledEventsToo: true);
+        SelectorButton.AddHandler(
+            UIElement.PointerMovedEvent,
+            new PointerEventHandler(GroupTitle_PointerMoved),
+            handledEventsToo: true);
+        SelectorButton.AddHandler(
+            UIElement.PointerReleasedEvent,
+            new PointerEventHandler(SelectorButton_PointerReleased),
+            handledEventsToo: true);
+        SelectorButton.AddHandler(
+            UIElement.PointerCanceledEvent,
+            new PointerEventHandler(GroupTitle_PointerCanceled),
+            handledEventsToo: true);
+        SelectorButton.AddHandler(
+            UIElement.PointerCaptureLostEvent,
+            new PointerEventHandler(GroupTitle_PointerCaptureLost),
+            handledEventsToo: true);
+    }
+
     /// <summary>
     /// Applies an already-committed group presentation. Pass
     /// <paramref name="animateIdentity"/> only when the host has atomically
@@ -188,19 +229,20 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
         {
             ClosePicker();
             CancelIdentityAnimation();
+            CancelWheelFeedback();
             _displayedIdentity = null;
             SetIdentity(
                 CurrentIcon,
                 CurrentTitle,
-                CurrentPositionText,
                 null);
             SetIdentity(
                 OutgoingIcon,
                 OutgoingTitle,
-                OutgoingPositionText,
                 null);
             TabsPanel.Children.Clear();
-            CapsulePositionIndicators.Children.Clear();
+            SetPositionRail(CurrentPositionRailLayer, null);
+            SetPositionRail(OutgoingPositionRailLayer, null);
+            PositionRailViewport.Visibility = Visibility.Collapsed;
             LoadingRing.IsActive = false;
             LoadingRing.Opacity = 0;
             _isPointerOverSelector = false;
@@ -215,8 +257,10 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
         IsEnabled = presentation!.Members.Count > 1;
         _displayedIdentity = next;
         SelectorButton.Tag = next.WidgetId;
+        PositionRailViewport.Visibility = next.Count > 1
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         ApplyNavigationStyle();
-        UpdateCapsulePositionIndicators(presentation);
 
         bool identityChanged =
             previous is not null &&
@@ -234,13 +278,15 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
             SetIdentity(
                 CurrentIcon,
                 CurrentTitle,
-                CurrentPositionText,
                 next);
             SetIdentity(
                 OutgoingIcon,
                 OutgoingTitle,
-                OutgoingPositionText,
                 null);
+            SetPositionRail(CurrentPositionRailLayer, next);
+            SetPositionRail(OutgoingPositionRailLayer, null);
+            CurrentPositionRailLayer.Opacity = 1;
+            OutgoingPositionRailLayer.Opacity = 0;
             CurrentIdentityLayer.Opacity = 1;
             OutgoingIdentityLayer.Opacity = 0;
             ApplyDisplayMode();
@@ -337,7 +383,9 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
             WidgetGroupNavigationStyles.Tabs,
             StringComparison.Ordinal);
         SelectorButton.Visibility = Visibility.Visible;
-        SelectorButton.CanDrag = !useTabs;
+        // Detach drags are started explicitly after the long-press threshold;
+        // leaving native CanDrag enabled would reintroduce eager drag starts.
+        SelectorButton.CanDrag = false;
         CapsuleSurface.Visibility = useTabs
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -387,7 +435,6 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
             SetIdentity(
                 CurrentIcon,
                 CurrentTitle,
-                CurrentPositionText,
                 identity);
             UpdateIdentityViewportWidth(identity);
         }
@@ -434,22 +481,11 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
                 MaximumTitleWidth);
         }
 
-        CurrentPositionText.Text =
-            $"{identity.Index + 1}/{identity.Count}";
-        CurrentPositionText.Measure(
-            new Windows.Foundation.Size(40, 28));
-        double positionWidth = Math.Clamp(
-            Math.Ceiling(CurrentPositionText.DesiredSize.Width),
-            18,
-            40);
-        bool hasIdentity = showIcon || showText;
         return Math.Max(
             12,
             iconWidth +
             textWidth +
-            positionWidth +
-            (showIcon && showText ? IdentitySpacing : 0) +
-            (hasIdentity ? IdentitySpacing : 0));
+            (showIcon && showText ? IdentitySpacing : 0));
     }
 
     private void UpdateIdentityViewportWidth(IdentitySnapshot identity)
@@ -457,26 +493,34 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
         IdentityViewport.Width = MeasureIdentityWidth(identity);
     }
 
-    private void UpdateCapsulePositionIndicators(
-        WidgetGroupPresentation presentation)
+    private static void SetPositionRail(
+        StackPanel host,
+        IdentitySnapshot? identity)
     {
-        CapsulePositionIndicators.Children.Clear();
-        foreach (WidgetGroupMemberPresentation member in presentation.Members)
+        host.Children.Clear();
+        if (identity is null)
         {
-            bool active = string.Equals(
-                member.WidgetId,
-                presentation.ActiveMemberId,
-                StringComparison.Ordinal);
-            CapsulePositionIndicators.Children.Add(new Border
+            return;
+        }
+
+        IReadOnlyList<WidgetGroupPositionRailSlot> slots =
+            WidgetGroupNavigationInteractionPolicy.ResolvePositionRailSlots(
+                identity.Index,
+                identity.Count);
+        foreach (WidgetGroupPositionRailSlot slot in slots)
+        {
+            bool active = slot.IsActive;
+            host.Children.Add(new Border
             {
-                Width = 4,
-                Height = 2,
+                Width = 3,
+                Height = active ? 7 : 3,
+                HorizontalAlignment = HorizontalAlignment.Center,
                 Background = ResolveThemeBrush(
                     "AccentFillColorDefaultBrush",
                     new SolidColorBrush(Colors.DeepSkyBlue)),
-                CornerRadius = new CornerRadius(1),
+                CornerRadius = new CornerRadius(1.5),
                 IsHitTestVisible = false,
-                Opacity = active ? 0.92 : 0.28
+                Opacity = active ? 0.94 : 0.3
             });
         }
     }
@@ -586,7 +630,7 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
             var tab = new Button
             {
                 MinWidth = 0,
-                CanDrag = true,
+                CanDrag = false,
                 Padding = new Thickness(0),
                 Background = new SolidColorBrush(Colors.Transparent),
                 BorderThickness = new Thickness(0),
@@ -597,6 +641,26 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
             };
             tab.DragStarting += GroupTitle_DragStarting;
             tab.DropCompleted += GroupTitle_DropCompleted;
+            tab.AddHandler(
+                UIElement.PointerPressedEvent,
+                new PointerEventHandler(GroupTitle_PointerPressed),
+                handledEventsToo: true);
+            tab.AddHandler(
+                UIElement.PointerMovedEvent,
+                new PointerEventHandler(GroupTitle_PointerMoved),
+                handledEventsToo: true);
+            tab.AddHandler(
+                UIElement.PointerReleasedEvent,
+                new PointerEventHandler(GroupTitle_PointerReleased),
+                handledEventsToo: true);
+            tab.AddHandler(
+                UIElement.PointerCanceledEvent,
+                new PointerEventHandler(GroupTitle_PointerCanceled),
+                handledEventsToo: true);
+            tab.AddHandler(
+                UIElement.PointerCaptureLostEvent,
+                new PointerEventHandler(GroupTitle_PointerCaptureLost),
+                handledEventsToo: true);
             string memberId = member.WidgetId;
             tab.Click += (_, _) =>
             {
@@ -723,25 +787,297 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
         string? memberId =
             (sender as FrameworkElement)?.Tag as string ??
             _presentation?.ActiveMemberId;
-        if (string.IsNullOrWhiteSpace(memberId) ||
+        if (!_isStartingDetachDrag ||
+            string.IsNullOrWhiteSpace(memberId) ||
             _presentation is null ||
-            _presentation.Members.Count < 2)
+            _presentation.Members.Count < 2 ||
+            !string.Equals(
+                memberId,
+                _presentation.ActiveMemberId,
+                StringComparison.Ordinal))
         {
             e.Cancel = true;
             return;
         }
 
         _draggingMemberId = memberId;
+        DetachDragStarted?.Invoke(
+            this,
+            new WidgetGroupMemberEventArgs(memberId));
         _suppressGroupTitleClickUntil =
             DateTimeOffset.UtcNow.AddMilliseconds(500);
         CancelAllHoverSwitches();
         e.Data.SetData(DetachDragFormat, memberId);
         e.Data.RequestedOperation = DataPackageOperation.Move;
-        e.Data.Properties.Title = T("Widget.Group.DetachDragHint");
+        string detachHint = T("Widget.Group.DetachDragHint");
+        e.Data.Properties.Title = detachHint;
         e.AllowedOperations = DataPackageOperation.Move;
         Root.Opacity = 0.72;
         DetachScaleTransform.ScaleX = 0.985;
         DetachScaleTransform.ScaleY = 0.985;
+    }
+
+    private void GroupTitle_PointerPressed(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (sender is UIElement source)
+        {
+            BeginDetachLongPress(source, e);
+        }
+    }
+
+    private void GroupTitle_PointerMoved(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (_isStartingDetachDrag ||
+            sender is not UIElement source ||
+            !ReferenceEquals(source, _detachLongPressSource))
+        {
+            return;
+        }
+
+        Microsoft.UI.Input.PointerPoint point = e.GetCurrentPoint(source);
+        if (!point.Properties.IsLeftButtonPressed)
+        {
+            CancelDetachLongPress();
+            return;
+        }
+
+        _detachLongPressPoint = point;
+        if (_isDetachLongPressArmed)
+        {
+            e.Handled = true;
+            _ = StartDetachDragAsync(source, point);
+            return;
+        }
+
+        double deltaX =
+            point.Position.X - _detachLongPressStartPosition.X;
+        double deltaY =
+            point.Position.Y - _detachLongPressStartPosition.Y;
+        double toleranceSquared =
+            DetachLongPressMovementTolerance *
+            DetachLongPressMovementTolerance;
+        if ((deltaX * deltaX) + (deltaY * deltaY) > toleranceSquared)
+        {
+            CancelDetachLongPress();
+        }
+    }
+
+    private void GroupTitle_PointerReleased(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (!_isStartingDetachDrag)
+        {
+            CancelDetachLongPress();
+        }
+    }
+
+    private void GroupTitle_PointerCanceled(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (!_isStartingDetachDrag)
+        {
+            CancelDetachLongPress();
+        }
+    }
+
+    private void GroupTitle_PointerCaptureLost(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (!_isStartingDetachDrag)
+        {
+            CancelDetachLongPress(releasePointerCapture: false);
+        }
+    }
+
+    private void BeginDetachLongPress(
+        UIElement source,
+        PointerRoutedEventArgs e)
+    {
+        Microsoft.UI.Input.PointerPoint point = e.GetCurrentPoint(source);
+        string? memberId =
+            (source as FrameworkElement)?.Tag as string ??
+            _presentation?.ActiveMemberId;
+        if (!point.Properties.IsLeftButtonPressed ||
+            _isStartingDetachDrag ||
+            _presentation is null ||
+            _presentation.Members.Count < 2 ||
+            string.IsNullOrWhiteSpace(memberId) ||
+            !string.Equals(
+                memberId,
+                _presentation.ActiveMemberId,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        CancelDetachLongPress();
+        CancelWheelFeedback();
+        _pendingDetachMemberId = memberId;
+        _detachLongPressSource = source;
+        _detachLongPressPoint = point;
+        _detachLongPressStartPosition = point.Position;
+        _detachLongPressCancellation = new CancellationTokenSource();
+        source.CapturePointer(e.Pointer);
+        StartDetachHoldVisual();
+        _ = ArmDetachDragAfterLongPressAsync(
+            source,
+            memberId,
+            _detachLongPressCancellation.Token);
+    }
+
+    private async Task ArmDetachDragAfterLongPressAsync(
+        UIElement source,
+        string memberId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(
+                DetachLongPressMilliseconds,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (cancellationToken.IsCancellationRequested ||
+            !ReferenceEquals(source, _detachLongPressSource) ||
+            !string.Equals(
+                memberId,
+                _pendingDetachMemberId,
+                StringComparison.Ordinal) ||
+            _detachLongPressPoint is null)
+        {
+            return;
+        }
+
+        _isDetachLongPressArmed = true;
+        _detachHoldStoryboard?.Stop();
+        _detachHoldStoryboard = null;
+        Root.Opacity = 0.78;
+        DetachScaleTransform.ScaleX = 0.98;
+        DetachScaleTransform.ScaleY = 0.98;
+    }
+
+    private async Task StartDetachDragAsync(
+        UIElement source,
+        Microsoft.UI.Input.PointerPoint pointerPoint)
+    {
+        if (_isStartingDetachDrag ||
+            !_isDetachLongPressArmed ||
+            !ReferenceEquals(source, _detachLongPressSource) ||
+            string.IsNullOrWhiteSpace(_pendingDetachMemberId))
+        {
+            return;
+        }
+
+        string memberId = _pendingDetachMemberId;
+        _isDetachLongPressArmed = false;
+        _isStartingDetachDrag = true;
+        _suppressGroupTitleClickUntil =
+            DateTimeOffset.UtcNow.AddMilliseconds(750);
+        _detachHoldStoryboard?.Stop();
+        _detachHoldStoryboard = null;
+        try
+        {
+            await source.StartDragAsync(pointerPoint);
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[WidgetGroup] Failed to start long-press detach drag " +
+                $"id={memberId}: {ex}");
+        }
+        finally
+        {
+            _isStartingDetachDrag = false;
+            ClearDetachLongPressState();
+            RestoreDetachDragVisual();
+        }
+    }
+
+    private void StartDetachHoldVisual()
+    {
+        _detachHoldStoryboard?.Stop();
+        _detachHoldStoryboard = null;
+        if (!AreSystemAnimationsEnabled() || XamlRoot is null)
+        {
+            return;
+        }
+
+        var storyboard = new Storyboard();
+        AddAnimation(Root, nameof(UIElement.Opacity), 1, 0.86);
+        AddAnimation(
+            DetachScaleTransform,
+            nameof(ScaleTransform.ScaleX),
+            1,
+            0.985);
+        AddAnimation(
+            DetachScaleTransform,
+            nameof(ScaleTransform.ScaleY),
+            1,
+            0.985);
+        _detachHoldStoryboard = storyboard;
+        storyboard.Begin();
+
+        void AddAnimation(
+            DependencyObject target,
+            string property,
+            double from,
+            double to)
+        {
+            var animation = new DoubleAnimation
+            {
+                From = from,
+                To = to,
+                Duration = TimeSpan.FromMilliseconds(
+                    DetachLongPressMilliseconds),
+                EasingFunction = new CubicEase
+                {
+                    EasingMode = EasingMode.EaseInOut
+                }
+            };
+            Storyboard.SetTarget(animation, target);
+            Storyboard.SetTargetProperty(animation, property);
+            storyboard.Children.Add(animation);
+        }
+    }
+
+    private void CancelDetachLongPress(bool releasePointerCapture = true)
+    {
+        if (_isStartingDetachDrag)
+        {
+            return;
+        }
+
+        UIElement? source = _detachLongPressSource;
+        _detachLongPressCancellation?.Cancel();
+        ClearDetachLongPressState();
+        if (releasePointerCapture)
+        {
+            source?.ReleasePointerCaptures();
+        }
+        RestoreDetachDragVisual();
+    }
+
+    private void ClearDetachLongPressState()
+    {
+        _detachLongPressCancellation?.Dispose();
+        _detachLongPressCancellation = null;
+        _detachLongPressSource = null;
+        _detachLongPressPoint = null;
+        _pendingDetachMemberId = null;
+        _isDetachLongPressArmed = false;
+        _detachHoldStoryboard?.Stop();
+        _detachHoldStoryboard = null;
     }
 
     private void GroupTitle_DropCompleted(
@@ -758,10 +1094,19 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
                 this,
                 new WidgetGroupMemberEventArgs(memberId));
         }
+
+        if (!string.IsNullOrWhiteSpace(memberId))
+        {
+            DetachDragCompleted?.Invoke(
+                this,
+                new WidgetGroupMemberEventArgs(memberId));
+        }
     }
 
     private void RestoreDetachDragVisual()
     {
+        _detachHoldStoryboard?.Stop();
+        _detachHoldStoryboard = null;
         Root.Opacity = 1;
         DetachScaleTransform.ScaleX = 1;
         DetachScaleTransform.ScaleY = 1;
@@ -1046,7 +1391,6 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
     private static void SetIdentity(
         WidgetTitleIcon icon,
         TextBlock title,
-        TextBlock position,
         IdentitySnapshot? identity)
     {
         icon.Glyph = identity?.Glyph ?? string.Empty;
@@ -1054,9 +1398,6 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
             WidgetTitleIconKindNames.Default;
         icon.LabelText = identity?.Name ?? string.Empty;
         title.Text = identity?.Name ?? string.Empty;
-        position.Text = identity is null
-            ? string.Empty
-            : $"{identity.Index + 1}/{identity.Count}";
     }
 
     private static string T(string key)

@@ -29,6 +29,8 @@ public sealed class SearchIndexService : IDisposable
     private static readonly TimeSpan PersistedIndexFreshness = TimeSpan.FromMinutes(15);
     private const int CompactIndexMagic = 0x58494244; // "DBIX"
     private const int CompactIndexVersion = 1;
+    private const int WatcherBufferSizeBytes = 64 * 1024;
+    private static readonly TimeSpan WatcherRecoveryDelay = TimeSpan.FromMilliseconds(750);
 
     private readonly SettingsService _settingsService;
     private readonly ReaderWriterLockSlim _indexLock = new(LockRecursionPolicy.NoRecursion);
@@ -36,16 +38,24 @@ public sealed class SearchIndexService : IDisposable
     private readonly object _saveLock = new();
     private readonly object _saveScheduleLock = new();
     private readonly object _watchersLock = new();
+    private readonly object _scanWatcherChangesLock = new();
+    private readonly object _watcherRecoveryLock = new();
+    private readonly object _scanStateLock = new();
+    private readonly object _sessionStateLock = new();
     private Dictionary<string, IndexedFileEntry> _index = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, string> _directoryPool = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PendingIndexChange> _pendingChanges =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly List<FileSystemWatcher> _watchers = [];
+    private readonly Dictionary<string, WatcherFailureState> _watcherCreationFailures =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<PendingWatcherChange> _scanWatcherChanges = [];
     private readonly string _storePath;
     private readonly string _dirtyMarkerPath;
     private readonly ManualResetEventSlim _pauseGate = new(true);
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _saveCts;
+    private CancellationTokenSource? _watcherRecoveryCts;
     private Task? _scanTask;
     private bool _isDisposed;
     private int _isScanning;
@@ -54,10 +64,20 @@ public sealed class SearchIndexService : IDisposable
     private int _indexingEnabled;
     private int _scannedCount;
     private int _scanGeneration;
+    private long _sessionEpoch;
     private bool _forceFullScan;
+    private bool _scanWatcherChangesOverflowed;
     private bool _isIndexResident;
     private int _persistedEntryCount;
     private DateTime? _lastScanTime;
+    private int _watcherRecoveryCount;
+    private DateTime? _lastWatcherRecoveryTime;
+    private int _watcherRetryScheduled;
+    private int _offlineRootCount;
+    private int _partialRootCount;
+    private int _scanOnlyRootCount;
+    private int _lastScanCapacityLimited;
+    private readonly string _rootsManifestPath;
 
     public SearchIndexService(SettingsService settingsService)
         : this(
@@ -75,6 +95,7 @@ public sealed class SearchIndexService : IDisposable
         _settingsService = settingsService;
         _storePath = storePath;
         _dirtyMarkerPath = storePath + ".dirty";
+        _rootsManifestPath = storePath + ".roots";
     }
 
     public bool IsScanning => Volatile.Read(ref _isScanning) == 1;
@@ -91,6 +112,38 @@ public sealed class SearchIndexService : IDisposable
 
     /// <summary>When the last full scan completed.</summary>
     public DateTime? LastScanTime => _lastScanTime;
+
+    public int WatcherCount
+    {
+        get
+        {
+            lock (_watchersLock)
+            {
+                return _watchers.Count;
+            }
+        }
+    }
+
+    public int WatcherRecoveryCount => Volatile.Read(ref _watcherRecoveryCount);
+    public DateTime? LastWatcherRecoveryTime => _lastWatcherRecoveryTime;
+    public int OfflineRootCount => Volatile.Read(ref _offlineRootCount);
+    public int PartialRootCount => Volatile.Read(ref _partialRootCount);
+    public int ScanOnlyRootCount => Volatile.Read(ref _scanOnlyRootCount);
+    public bool LastScanCapacityLimited => Volatile.Read(ref _lastScanCapacityLimited) == 1;
+
+    /// <summary>Number of roots whose watcher could not be created.</summary>
+    public int WatcherCreationFailureCount
+    {
+        get
+        {
+            lock (_watchersLock)
+            {
+                return _watcherCreationFailures.Count;
+            }
+        }
+    }
+
+    private readonly HashSet<string> _lastScanRoots = new(StringComparer.OrdinalIgnoreCase);
 
     public event Action? IndexUpdated;
 
@@ -205,6 +258,8 @@ public sealed class SearchIndexService : IDisposable
             {
                 return false;
             }
+
+            LoadRootManifest();
 
             bool hadPendingChanges;
             _indexLock.EnterWriteLock();
@@ -635,14 +690,31 @@ public sealed class SearchIndexService : IDisposable
     /// </summary>
     public void StartIndexing()
     {
-        if (_isDisposed ||
-            IsScanning ||
-            !_settingsService.Settings.SearchCustomIndexerEnabled)
+        if (_isDisposed || !_settingsService.Settings.SearchCustomIndexerEnabled)
         {
             return;
         }
 
-        Volatile.Write(ref _indexingEnabled, 1);
+        CancellationToken token;
+        long epoch;
+        lock (_sessionStateLock)
+        {
+            if (_isDisposed ||
+                !_settingsService.Settings.SearchCustomIndexerEnabled ||
+                Interlocked.CompareExchange(ref _indexingEnabled, 1, 0) != 0)
+            {
+                return;
+            }
+
+            _scanCts?.Cancel();
+            _scanCts?.Dispose();
+            _scanCts = new CancellationTokenSource();
+            token = _scanCts.Token;
+            epoch = Interlocked.Increment(ref _sessionEpoch);
+            Volatile.Write(ref _isPaused, 0);
+            _pauseGate.Set();
+        }
+
         if (_forceFullScan)
         {
             ResetResidentIndex();
@@ -654,27 +726,30 @@ public sealed class SearchIndexService : IDisposable
 
         EnsureEmptyResidentIndex();
         int residentCount = GetResidentEntryCount();
+        bool watchersAlreadyArmed = false;
         if (!_forceFullScan &&
             residentCount > 0 &&
             TryGetFreshPersistedIndexTime(out DateTime persistedAt))
         {
-            var (userDirs, _) = GetScanDirectories();
-            SetupWatchers(userDirs);
+            var (userDirs, driveRoots) = GetScanDirectories();
+            var currentRoots = userDirs.Concat(driveRoots)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            RemoveExplicitlyRemovedRoots(currentRoots, epoch, token);
+            ClearScanWatcherChanges();
+            SetupWatchers(userDirs, epoch, token);
+            watchersAlreadyArmed = true;
             _lastScanTime = persistedAt;
             IndexUpdated?.Invoke();
             App.Log(
                 $"[SearchIndex] Reusing fresh persisted index with {residentCount} entries; " +
-                "full startup scan skipped.");
-            return;
+                "watchers armed and background reconciliation scheduled.");
         }
 
         _forceFullScan = false;
-        _scanCts?.Cancel();
-        _scanCts?.Dispose();
-        _scanCts = new CancellationTokenSource();
-        var token = _scanCts.Token;
-
-        _scanTask = Task.Run(() => ScanDirectoriesAsync(token), token);
+        _scanTask = Task.Run(
+            () => ScanDirectoriesAsync(epoch, token, watchersAlreadyArmed),
+            token);
     }
 
     private bool TryGetFreshPersistedIndexTime(out DateTime persistedAt)
@@ -702,15 +777,25 @@ public sealed class SearchIndexService : IDisposable
     /// </summary>
     public void StopIndexing()
     {
-        Volatile.Write(ref _indexingEnabled, 0);
-        _scanCts?.Cancel();
+        lock (_sessionStateLock)
+        {
+            Volatile.Write(ref _indexingEnabled, 0);
+            Interlocked.Increment(ref _sessionEpoch);
+            _scanCts?.Cancel();
+            Volatile.Write(ref _watcherRetryScheduled, 0);
+            Interlocked.Exchange(ref _isScanning, 0);
+            Volatile.Write(ref _isPaused, 0);
+            _pauseGate.Set();
+        }
+        lock (_watcherRecoveryLock)
+        {
+            _watcherRecoveryCts?.Cancel();
+        }
         CancelScheduledSave();
         ClearWatchers();
         ClearIndexForStop();
         Volatile.Write(ref _scannedCount, 0);
         _lastScanTime = null;
-        Volatile.Write(ref _isPaused, 0);
-        _pauseGate.Set();
         IndexUpdated?.Invoke();
     }
 
@@ -860,12 +945,18 @@ public sealed class SearchIndexService : IDisposable
         }
     }
 
-    private async Task ScanDirectoriesAsync(CancellationToken token)
+    private async Task ScanDirectoriesAsync(
+        long epoch,
+        CancellationToken token,
+        bool watchersAlreadyArmed)
     {
-        if (Volatile.Read(ref _indexingEnabled) == 0 ||
-            Interlocked.CompareExchange(ref _isScanning, 1, 0) != 0)
+        lock (_sessionStateLock)
         {
-            return;
+            if (!IsCurrentSession(epoch, token) ||
+                Interlocked.CompareExchange(ref _isScanning, 1, 0) != 0)
+            {
+                return;
+            }
         }
 
         Volatile.Write(ref _scannedCount, 0);
@@ -873,51 +964,145 @@ public sealed class SearchIndexService : IDisposable
         try
         {
             var (userDirs, driveRoots) = GetScanDirectories();
+            var allRoots = userDirs.Concat(driveRoots)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            // A root removed from settings is an explicit deletion scope. Keep
+            // this separate from scan outcomes so an offline/partial current root
+            // never causes data loss, while removed roots are cleaned promptly.
+            RemoveExplicitlyRemovedRoots(allRoots, epoch, token);
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+            lock (_scanStateLock)
+            {
+                if (!IsCurrentSession(epoch, token))
+                {
+                    return;
+                }
+
+                _lastScanRoots.Clear();
+                foreach (string root in allRoots)
+                {
+                    _lastScanRoots.Add(root);
+                }
+            }
             int scanGeneration = Interlocked.Increment(ref _scanGeneration);
 
+            // Arm watchers before the first directory is enumerated. Events
+            // that arrive during the scan are queued and applied after the
+            // generation reconciliation, closing the startup/rebuild race.
+            if (!watchersAlreadyArmed)
+            {
+                ClearScanWatcherChanges();
+                SetupWatchers(userDirs, epoch, token);
+            }
+
             // User directories: full-depth scan (these are the primary search targets).
+            var scanOutcomes = new List<RootScanOutcome>(allRoots.Count);
             foreach (string directory in userDirs)
             {
-                if (token.IsCancellationRequested || GetResidentEntryCount() >= MaxIndexEntries)
+                if (!IsCurrentSession(epoch, token))
                 {
+                    scanOutcomes.Add(new RootScanOutcome(directory, RootScanStatus.Canceled));
                     break;
+                }
+
+                if (GetResidentEntryCount() >= MaxIndexEntries)
+                {
+                    scanOutcomes.Add(new RootScanOutcome(directory, RootScanStatus.CapacityLimited));
+                    continue;
                 }
 
                 if (!Directory.Exists(directory))
                 {
+                    scanOutcomes.Add(new RootScanOutcome(directory, RootScanStatus.Offline));
                     continue;
                 }
 
-                await Task.Run(
-                    () => ScanDirectoryRecursive(directory, scanGeneration, token, maxDepth: int.MaxValue),
+                RootScanOutcome outcome = await Task.Run(
+                    () => ScanDirectoryRecursive(
+                        directory,
+                        scanGeneration,
+                        epoch,
+                        token,
+                        maxDepth: int.MaxValue),
                     token);
+                scanOutcomes.Add(outcome);
             }
 
             // Drive roots: shallow scan (broad coverage without indexing millions of files).
             foreach (string drive in driveRoots)
             {
-                if (token.IsCancellationRequested || GetResidentEntryCount() >= MaxIndexEntries)
+                if (!IsCurrentSession(epoch, token))
                 {
+                    scanOutcomes.Add(new RootScanOutcome(drive, RootScanStatus.Canceled));
                     break;
+                }
+
+                if (GetResidentEntryCount() >= MaxIndexEntries)
+                {
+                    scanOutcomes.Add(new RootScanOutcome(drive, RootScanStatus.CapacityLimited));
+                    continue;
                 }
 
                 if (!Directory.Exists(drive))
                 {
+                    scanOutcomes.Add(new RootScanOutcome(drive, RootScanStatus.Offline));
                     continue;
                 }
 
-                await Task.Run(
-                    () => ScanDirectoryRecursive(drive, scanGeneration, token, maxDepth: DriveRootMaxDepth),
+                RootScanOutcome outcome = await Task.Run(
+                    () => ScanDirectoryRecursive(
+                        drive,
+                        scanGeneration,
+                        epoch,
+                        token,
+                        maxDepth: DriveRootMaxDepth),
                     token);
+                scanOutcomes.Add(outcome);
             }
 
-            if (!token.IsCancellationRequested)
+            if (IsCurrentSession(epoch, token))
             {
-                var allRoots = new List<string>(userDirs);
-                allRoots.AddRange(driveRoots);
-                ReconcileIndex(allRoots, scanGeneration);
-                SetupWatchers(userDirs); // Only watch user directories (drive roots generate too many events)
+                Volatile.Write(
+                    ref _offlineRootCount,
+                    scanOutcomes.Count(outcome => outcome.Status == RootScanStatus.Offline));
+                Volatile.Write(
+                    ref _partialRootCount,
+                    scanOutcomes.Count(outcome => outcome.Status == RootScanStatus.Partial));
+                Volatile.Write(
+                    ref _scanOnlyRootCount,
+                    scanOutcomes.Count(outcome => outcome.Status == RootScanStatus.ScanOnly));
+                Volatile.Write(
+                    ref _lastScanCapacityLimited,
+                    scanOutcomes.Any(outcome => outcome.Status == RootScanStatus.CapacityLimited) ? 1 : 0);
+                ReconcileIndex(
+                    scanOutcomes
+                        .Where(outcome => outcome.Status == RootScanStatus.Completed)
+                        .Select(outcome => outcome.Root)
+                        .ToList(),
+                    scanGeneration,
+                    epoch,
+                    token);
+                ApplyScanWatcherChanges(scanGeneration, epoch, token);
+                if (!IsCurrentSession(epoch, token))
+                {
+                    return;
+                }
                 SaveIndex();
+                string[] rootManifestSnapshot;
+                lock (_scanStateLock)
+                {
+                    if (!IsCurrentSession(epoch, token))
+                    {
+                        return;
+                    }
+
+                    rootManifestSnapshot = _lastScanRoots.ToArray();
+                }
+                SaveRootManifest(rootManifestSnapshot);
                 _lastScanTime = DateTime.Now;
                 IndexUpdated?.Invoke();
                 App.Log($"[SearchIndex] Indexing complete. {GetResidentEntryCount()} entries.");
@@ -933,10 +1118,58 @@ public sealed class SearchIndexService : IDisposable
         }
         finally
         {
-            Interlocked.Exchange(ref _isScanning, 0);
-            Volatile.Write(ref _isPaused, 0);
-            _pauseGate.Set();
+            lock (_sessionStateLock)
+            {
+                if (Interlocked.Read(ref _sessionEpoch) == epoch)
+                {
+                    Interlocked.Exchange(ref _isScanning, 0);
+                    Volatile.Write(ref _isPaused, 0);
+                    _pauseGate.Set();
+                }
+            }
         }
+    }
+
+    private void RemoveExplicitlyRemovedRoots(
+        IReadOnlyCollection<string> currentRoots,
+        long epoch,
+        CancellationToken token)
+    {
+        if (!IsCurrentSession(epoch, token))
+        {
+            return;
+        }
+
+        List<string> removedRoots;
+        lock (_scanStateLock)
+        {
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+
+            removedRoots = GetExplicitlyRemovedRoots(_lastScanRoots, currentRoots);
+        }
+        foreach (string removedRoot in removedRoots)
+        {
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+
+            RemoveEntriesUnderPath(removedRoot, epoch, token);
+        }
+    }
+
+    internal static List<string> GetExplicitlyRemovedRoots(
+        IEnumerable<string> previousRoots,
+        IEnumerable<string> currentRoots)
+    {
+        var current = new HashSet<string>(currentRoots, StringComparer.OrdinalIgnoreCase);
+        return previousRoots
+            .Where(previous => !current.Contains(previous))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>
@@ -944,13 +1177,27 @@ public sealed class SearchIndexService : IDisposable
     /// in the latest scan (i.e., they were deleted or moved). Entries outside the
     /// current scan roots are left untouched.
     /// </summary>
-    private void ReconcileIndex(List<string> scannedRoots, int scanGeneration)
+    private void ReconcileIndex(
+        List<string> scannedRoots,
+        int scanGeneration,
+        long epoch,
+        CancellationToken token)
     {
+        if (!IsCurrentSession(epoch, token))
+        {
+            return;
+        }
+
         var staleKeys = new List<string>();
 
         _indexLock.EnterWriteLock();
         try
         {
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+
             foreach (var (path, entry) in _index)
             {
                 if (entry.ScanGeneration == scanGeneration)
@@ -959,7 +1206,7 @@ public sealed class SearchIndexService : IDisposable
                 }
 
                 bool underScannedRoot = scannedRoots.Any(root =>
-                    path.StartsWith(root, StringComparison.OrdinalIgnoreCase));
+                    IsSameOrDescendant(path, root));
 
                 if (underScannedRoot)
                 {
@@ -983,15 +1230,45 @@ public sealed class SearchIndexService : IDisposable
         }
     }
 
-    private void ScanDirectoryRecursive(
+    private RootScanOutcome ScanDirectoryRecursive(
         string rootPath,
         int scanGeneration,
+        long epoch,
         CancellationToken token,
         int maxDepth = int.MaxValue)
     {
+        if (!IsCurrentSession(epoch, token))
+        {
+            return new RootScanOutcome(rootPath, RootScanStatus.Canceled);
+        }
+
+        if (!Directory.Exists(rootPath))
+        {
+            return new RootScanOutcome(rootPath, RootScanStatus.Offline);
+        }
+
+        try
+        {
+            if ((File.GetAttributes(rootPath) & FileAttributes.ReparsePoint) != 0)
+            {
+                // Never traverse links/junctions. They can escape the configured
+                // root or form cycles, and are intentionally not indexed.
+                return new RootScanOutcome(rootPath, RootScanStatus.Partial);
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new RootScanOutcome(rootPath, RootScanStatus.Partial);
+        }
+        catch (IOException)
+        {
+            return new RootScanOutcome(rootPath, RootScanStatus.Partial);
+        }
+
         var queue = new Queue<(string Path, int Depth)>();
         queue.Enqueue((rootPath, 0));
         int progressCounter = 0;
+        bool hadErrors = false;
 
         var skipDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -1004,9 +1281,13 @@ public sealed class SearchIndexService : IDisposable
 
         while (queue.Count > 0)
         {
-            if (token.IsCancellationRequested || GetResidentEntryCount() >= MaxIndexEntries)
+            if (!IsCurrentSession(epoch, token) || GetResidentEntryCount() >= MaxIndexEntries)
             {
-                return;
+                return new RootScanOutcome(
+                    rootPath,
+                    !IsCurrentSession(epoch, token)
+                        ? RootScanStatus.Canceled
+                        : RootScanStatus.CapacityLimited);
             }
 
             // Honor pause: block until resumed or cancelled.
@@ -1016,14 +1297,40 @@ public sealed class SearchIndexService : IDisposable
 
             try
             {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+
                 foreach (string file in Directory.EnumerateFiles(current))
                 {
-                    if (token.IsCancellationRequested || GetResidentEntryCount() >= MaxIndexEntries)
+                    if (!IsCurrentSession(epoch, token) || GetResidentEntryCount() >= MaxIndexEntries)
                     {
-                        return;
+                        return new RootScanOutcome(
+                            rootPath,
+                            !IsCurrentSession(epoch, token)
+                                ? RootScanStatus.Canceled
+                                : RootScanStatus.CapacityLimited);
                     }
 
-                    TryAddEntry(file, isDirectory: false, scanGeneration);
+                    IndexEntryResult addResult = TryAddEntryCore(
+                        file,
+                        isDirectory: false,
+                        scanGeneration,
+                        epoch,
+                        token);
+                    if (addResult.Status == IndexEntryStatus.SessionExpired)
+                    {
+                        return new RootScanOutcome(rootPath, RootScanStatus.Canceled);
+                    }
+                    if (addResult.Status == IndexEntryStatus.CapacityLimited)
+                    {
+                        return new RootScanOutcome(rootPath, RootScanStatus.CapacityLimited);
+                    }
+                    if (addResult.Status == IndexEntryStatus.Failed)
+                    {
+                        hadErrors = true;
+                    }
 
                     // Report progress every 200 files to avoid flooding the UI thread.
                     if (++progressCounter % 200 == 0)
@@ -1039,6 +1346,24 @@ public sealed class SearchIndexService : IDisposable
                 {
                     foreach (string dir in Directory.EnumerateDirectories(current))
                     {
+                        try
+                        {
+                            if ((File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0)
+                            {
+                                continue;
+                            }
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            hadErrors = true;
+                            continue;
+                        }
+                        catch (IOException)
+                        {
+                            hadErrors = true;
+                            continue;
+                        }
+
                         string dirName = Path.GetFileName(dir);
                         if (skipDirectories.Contains(dirName) ||
                             (dirName.StartsWith('.') && dirName.Length > 1))
@@ -1046,7 +1371,24 @@ public sealed class SearchIndexService : IDisposable
                             continue;
                         }
 
-                        TryAddEntry(dir, isDirectory: true, scanGeneration);
+                        IndexEntryResult addResult = TryAddEntryCore(
+                            dir,
+                            isDirectory: true,
+                            scanGeneration,
+                            epoch,
+                            token);
+                        if (addResult.Status == IndexEntryStatus.SessionExpired)
+                        {
+                            return new RootScanOutcome(rootPath, RootScanStatus.Canceled);
+                        }
+                        if (addResult.Status == IndexEntryStatus.CapacityLimited)
+                        {
+                            return new RootScanOutcome(rootPath, RootScanStatus.CapacityLimited);
+                        }
+                        if (addResult.Status == IndexEntryStatus.Failed)
+                        {
+                            hadErrors = true;
+                        }
                         queue.Enqueue((dir, depth + 1));
                     }
                 }
@@ -1054,19 +1396,105 @@ public sealed class SearchIndexService : IDisposable
             catch (UnauthorizedAccessException)
             {
                 // Skip directories we can't access
+                hadErrors = true;
             }
             catch (IOException)
             {
                 // Skip directories with I/O errors
+                hadErrors = true;
             }
+        }
+
+        // Fixed-drive fallback scans are intentionally shallow. They provide
+        // broad discovery but do not cover the entire root, so they must never
+        // be used as an authoritative stale-entry reconciliation scope.
+        if (maxDepth != int.MaxValue)
+        {
+            return new RootScanOutcome(
+                rootPath,
+                hadErrors ? RootScanStatus.Partial : RootScanStatus.ScanOnly);
+        }
+
+        return new RootScanOutcome(
+            rootPath,
+            hadErrors ? RootScanStatus.Partial : RootScanStatus.Completed);
+    }
+
+    private void LoadRootManifest()
+    {
+        try
+        {
+            if (!File.Exists(_rootsManifestPath))
+            {
+                return;
+            }
+
+            string json = File.ReadAllText(_rootsManifestPath);
+            RootManifest? manifest = JsonSerializer.Deserialize<RootManifest>(json, s_jsonOptions);
+            if (manifest?.Roots is not { Count: > 0 })
+            {
+                return;
+            }
+
+            lock (_scanStateLock)
+            {
+                _lastScanRoots.Clear();
+                foreach (string root in NormalizeRoots(manifest.Roots))
+                {
+                    _lastScanRoots.Add(root);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SearchIndex] Failed to load root manifest: {ex.Message}");
+        }
+    }
+
+    private void SaveRootManifest(IEnumerable<string> roots)
+    {
+        try
+        {
+            string? directory = Path.GetDirectoryName(_rootsManifestPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            string tempPath = _rootsManifestPath + ".tmp";
+            string json = JsonSerializer.Serialize(
+                new RootManifest { Roots = NormalizeRoots(roots) },
+                s_jsonOptions);
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, _rootsManifestPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SearchIndex] Failed to save root manifest: {ex.Message}");
         }
     }
 
     private bool TryAddEntry(string path, bool isDirectory, int? scanGeneration = null)
     {
-        if (Volatile.Read(ref _indexingEnabled) == 0)
+        return TryAddEntryCore(
+            path,
+            isDirectory,
+            scanGeneration,
+            sessionEpoch: null,
+            CancellationToken.None).ResidentMutation;
+    }
+
+    private IndexEntryResult TryAddEntryCore(
+        string path,
+        bool isDirectory,
+        int? scanGeneration,
+        long? sessionEpoch,
+        CancellationToken token)
+    {
+        if (Volatile.Read(ref _indexingEnabled) == 0 ||
+            (sessionEpoch is long epoch && !IsCurrentSession(epoch, token)))
         {
-            return false;
+            return new IndexEntryResult(IndexEntryStatus.SessionExpired, ResidentMutation: false);
         }
 
         try
@@ -1079,13 +1507,19 @@ public sealed class SearchIndexService : IDisposable
             _indexLock.EnterWriteLock();
             try
             {
+                if (Volatile.Read(ref _indexingEnabled) == 0 ||
+                    (sessionEpoch is long lockedEpoch && !IsCurrentSession(lockedEpoch, token)))
+                {
+                    return new IndexEntryResult(IndexEntryStatus.SessionExpired, ResidentMutation: false);
+                }
+
                 residentMutation = IsIndexResident;
                 if (residentMutation)
                 {
                     if (_index.Count >= MaxIndexEntries &&
                         !_index.ContainsKey(path))
                     {
-                        return true;
+                        return new IndexEntryResult(IndexEntryStatus.CapacityLimited, ResidentMutation: false);
                     }
 
                     _index[path] = CreateIndexedEntry(
@@ -1114,12 +1548,14 @@ public sealed class SearchIndexService : IDisposable
                 MarkIndexDirty();
             }
 
-            return residentMutation;
+            return new IndexEntryResult(IndexEntryStatus.Added, residentMutation);
         }
         catch
         {
-            // Skip entries we can't stat
-            return false;
+            // The caller performing a scan must retain the previous entry by
+            // marking its root partial. Event handlers simply ignore the item
+            // and wait for the next watcher/lifecycle reconciliation pass.
+            return new IndexEntryResult(IndexEntryStatus.Failed, ResidentMutation: false);
         }
     }
 
@@ -1231,7 +1667,9 @@ public sealed class SearchIndexService : IDisposable
                 Path.Combine(userProfile, "DeskBox")
             ];
 
-            userDirs.AddRange(defaultDirs.Where(Directory.Exists));
+            // Keep configured roots even while temporarily offline. Their scan
+            // outcome is recorded as Offline, which preserves prior entries.
+            userDirs.AddRange(defaultDirs);
         }
 
         // Applications and files explicitly surfaced by DeskBox should be searchable
@@ -1239,8 +1677,7 @@ public sealed class SearchIndexService : IDisposable
         foreach (var widget in _settingsService.Settings.Widgets
                      .Where(widget => widget.WidgetKind == WidgetKind.File && !widget.IsDisabled))
         {
-            if (!string.IsNullOrWhiteSpace(widget.MappedFolderPath) &&
-                Directory.Exists(widget.MappedFolderPath))
+            if (!string.IsNullOrWhiteSpace(widget.MappedFolderPath))
             {
                 userDirs.Add(widget.MappedFolderPath);
             }
@@ -1248,7 +1685,7 @@ public sealed class SearchIndexService : IDisposable
             foreach (string parent in widget.Items
                          .Select(item => Path.GetDirectoryName(item.Path))
                          .OfType<string>()
-                         .Where(path => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path)))
+                         .Where(path => !string.IsNullOrWhiteSpace(path)))
             {
                 userDirs.Add(parent);
             }
@@ -1259,14 +1696,13 @@ public sealed class SearchIndexService : IDisposable
             Environment.GetFolderPath(Environment.SpecialFolder.Programs),
             Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms)
         ];
-        userDirs.AddRange(applicationRoots.Where(path =>
-            !string.IsNullOrWhiteSpace(path) && Directory.Exists(path)));
+        userDirs.AddRange(applicationRoots.Where(path => !string.IsNullOrWhiteSpace(path)));
 
         // Custom paths from settings (full-depth scan)
         var customPaths = _settingsService.Settings.SearchCustomIndexPaths;
         if (customPaths is { Count: > 0 })
         {
-            userDirs.AddRange(customPaths.Where(Directory.Exists));
+            userDirs.AddRange(customPaths.Where(path => !string.IsNullOrWhiteSpace(path)));
         }
 
         // Broad fallback coverage: add every fixed drive root (shallow scan).
@@ -1289,16 +1725,49 @@ public sealed class SearchIndexService : IDisposable
             }
         }
 
-        return (userDirs.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-                driveRoots.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+        return (NormalizeRoots(userDirs), NormalizeRoots(driveRoots));
     }
 
-    private void SetupWatchers(List<string> directories)
+    private static List<string> NormalizeRoots(IEnumerable<string> roots)
+    {
+        return roots
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeRoot)
+            .Where(path => path is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string? NormalizeRoot(string path)
+    {
+        try
+        {
+            string fullPath = Path.GetFullPath(path);
+            string pathRoot = Path.GetPathRoot(fullPath) ?? string.Empty;
+            if (!string.Equals(fullPath, pathRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                fullPath = Path.TrimEndingDirectorySeparator(fullPath);
+            }
+
+            return fullPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void SetupWatchers(
+        List<string> directories,
+        long epoch,
+        CancellationToken token)
     {
         lock (_watchersLock)
         {
             ClearWatchersCore();
-            if (_isDisposed || Volatile.Read(ref _indexingEnabled) == 0)
+            _watcherCreationFailures.Clear();
+            if (_isDisposed || !IsCurrentSession(epoch, token))
             {
                 return;
             }
@@ -1307,37 +1776,314 @@ public sealed class SearchIndexService : IDisposable
             {
                 try
                 {
-                    var watcher = new FileSystemWatcher(dir)
-                    {
-                        IncludeSubdirectories = true,
-                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName |
-                                       NotifyFilters.LastWrite,
-                        EnableRaisingEvents = true
-                    };
-
-                    watcher.Created += OnFileSystemChanged;
-                    watcher.Deleted += OnFileSystemChanged;
-                    watcher.Renamed += OnFileSystemRenamed;
-                    _watchers.Add(watcher);
+                    AddWatcherCore(dir);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Skip directories where watching fails
+                    RecordWatcherCreationFailure(dir, ex);
+                }
+            }
+
+            if (_watcherCreationFailures.Count > 0)
+            {
+                ScheduleFailedWatcherRetry(epoch, token);
+            }
+        }
+    }
+
+    private void AddWatcherCore(string dir)
+    {
+        var watcher = new FileSystemWatcher(dir)
+        {
+            IncludeSubdirectories = true,
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName |
+                           NotifyFilters.LastWrite,
+            InternalBufferSize = WatcherBufferSizeBytes,
+            EnableRaisingEvents = false
+        };
+
+        try
+        {
+            watcher.Created += OnFileSystemChanged;
+            watcher.Deleted += OnFileSystemChanged;
+            watcher.Renamed += OnFileSystemRenamed;
+            watcher.Error += OnWatcherError;
+            _watchers.Add(watcher);
+            // Subscribe before enabling events. Otherwise a very fast create/rename
+            // during startup can be lost permanently.
+            watcher.EnableRaisingEvents = true;
+            _watcherCreationFailures.Remove(dir);
+        }
+        catch
+        {
+            _watchers.Remove(watcher);
+            watcher.Dispose();
+            throw;
+        }
+    }
+
+    private void RecordWatcherCreationFailure(string path, Exception exception)
+    {
+        string normalized = NormalizeRoot(path) ?? path;
+        if (_watcherCreationFailures.TryGetValue(normalized, out WatcherFailureState? prior))
+        {
+            _watcherCreationFailures[normalized] = prior with
+            {
+                Attempts = prior.Attempts + 1,
+                LastError = exception.Message,
+                LastAttempt = DateTime.Now
+            };
+        }
+        else
+        {
+            _watcherCreationFailures[normalized] = new WatcherFailureState(
+                1,
+                exception.Message,
+                DateTime.Now);
+        }
+
+        App.Log($"[SearchIndex] Watcher creation failed for '{normalized}': {exception.Message}");
+    }
+
+    private void RetryFailedWatchers(long epoch, CancellationToken token)
+    {
+        lock (_watchersLock)
+        {
+            if (_watcherCreationFailures.Count == 0 ||
+                _isDisposed ||
+                !IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+
+            foreach (string path in _watcherCreationFailures.Keys.ToList())
+            {
+                if (!Directory.Exists(path))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    AddWatcherCore(path);
+                }
+                catch (Exception ex)
+                {
+                    RecordWatcherCreationFailure(path, ex);
                 }
             }
         }
     }
 
+    private void ScheduleFailedWatcherRetry(long epoch, CancellationToken sessionToken)
+    {
+        if (Interlocked.Exchange(ref _watcherRetryScheduled, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            int attempt = 0;
+            try
+            {
+                while (!_isDisposed &&
+                       IsCurrentSession(epoch, sessionToken))
+                {
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(Math.Min(30, 2 * Math.Pow(2, attempt++))),
+                        sessionToken);
+                    RetryFailedWatchers(epoch, sessionToken);
+                    lock (_watchersLock)
+                    {
+                        if (_watcherCreationFailures.Count == 0)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                Volatile.Write(ref _watcherRetryScheduled, 0);
+            }
+        });
+    }
+
+    private void OnWatcherError(object sender, ErrorEventArgs e)
+    {
+        if (!IsActiveWatcher(sender))
+        {
+            return;
+        }
+
+        App.Log($"[SearchIndex] File-system watcher fault: {e.GetException().Message}");
+        string? affectedRoot = sender is FileSystemWatcher watcher ? watcher.Path : null;
+        ScheduleWatcherRecovery("watcher-error", affectedRoot);
+    }
+
+    /// <summary>
+    /// Reconciles the index after resume, unlock, or an Explorer restart. The
+    /// same debounced path is used for buffer overflow errors so only one
+    /// recovery scan can be in flight.
+    /// </summary>
+    public void RecoverAfterLifecycleChange(string reason)
+    {
+        if (_isDisposed || Volatile.Read(ref _indexingEnabled) == 0)
+        {
+            return;
+        }
+
+        App.Log($"[SearchIndex] Lifecycle recovery requested: {reason}");
+        ScheduleWatcherRecovery($"lifecycle:{reason}");
+    }
+
+    private void ScheduleWatcherRecovery(string reason, string? affectedRoot = null)
+    {
+        if (_isDisposed || Volatile.Read(ref _indexingEnabled) == 0)
+        {
+            return;
+        }
+
+        lock (_watcherRecoveryLock)
+        {
+            _watcherRecoveryCts?.Cancel();
+            _watcherRecoveryCts?.Dispose();
+            _watcherRecoveryCts = new CancellationTokenSource();
+            CancellationToken token = _watcherRecoveryCts.Token;
+            long epoch = Interlocked.Read(ref _sessionEpoch);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(WatcherRecoveryDelay, token);
+                    if (_isDisposed || !IsCurrentSession(epoch, token))
+                    {
+                        return;
+                    }
+
+                    Task? scanTask = _scanTask;
+                    if (scanTask is not null)
+                    {
+                        try
+                        {
+                            await scanTask.WaitAsync(token);
+                        }
+                        catch (OperationCanceledException) when (token.IsCancellationRequested)
+                        {
+                            return;
+                        }
+                        catch
+                        {
+                            // A failed scan does not prevent the recovery pass.
+                        }
+                    }
+
+                    if (!_isDisposed && IsCurrentSession(epoch, token))
+                    {
+                        Interlocked.Increment(ref _watcherRecoveryCount);
+                        _lastWatcherRecoveryTime = DateTime.Now;
+                        RetryFailedWatchers(epoch, token);
+                        if (string.Equals(reason, "watcher-error", StringComparison.Ordinal) &&
+                            !string.IsNullOrWhiteSpace(affectedRoot) &&
+                            Directory.Exists(affectedRoot) &&
+                            IsIndexResident)
+                        {
+                            int recoveryGeneration = Interlocked.Increment(ref _scanGeneration);
+                            App.Log($"[SearchIndex] Reconciling watcher root after overflow: {affectedRoot}");
+                            RootScanOutcome outcome = await Task.Run(
+                                () => ScanDirectoryRecursive(
+                                    affectedRoot,
+                                    recoveryGeneration,
+                                    epoch,
+                                    token,
+                                    maxDepth: int.MaxValue),
+                                token);
+                            if (!IsCurrentSession(epoch, token))
+                            {
+                                return;
+                            }
+
+                            if (ShouldReconcileRoot(outcome.Status))
+                            {
+                                ReconcileIndex(
+                                    [affectedRoot],
+                                    recoveryGeneration,
+                                    epoch,
+                                    token);
+                            }
+                            else
+                            {
+                                App.Log(
+                                    $"[SearchIndex] Watcher recovery for '{affectedRoot}' " +
+                                    $"finished as {outcome.Status}; retaining previous entries.");
+                            }
+                            SaveIndex();
+                            IndexUpdated?.Invoke();
+                        }
+                        else
+                        {
+                            // Lifecycle recovery and an overflow whose root is
+                            // currently offline must never clear the resident
+                            // index first.  Run the normal status-aware scan so
+                            // Completed roots reconcile while Offline/Partial/
+                            // CapacityLimited roots retain their last results.
+                            App.Log(
+                                $"[SearchIndex] Running non-destructive reconciliation after {reason}.");
+                            await ScanDirectoriesAsync(
+                                epoch,
+                                token,
+                                watchersAlreadyArmed: true);
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    App.Log($"[SearchIndex] Watcher recovery failed: {ex.Message}");
+                }
+            }, token);
+        }
+    }
+
     private void OnFileSystemChanged(object sender, FileSystemEventArgs e)
     {
-        bool residentMutation;
-        if (e.ChangeType == WatcherChangeTypes.Deleted)
+        if (!IsActiveWatcher(sender))
         {
-            residentMutation = RemoveEntry(e.FullPath);
+            return;
+        }
+
+        if (IsScanning)
+        {
+            QueueScanWatcherChange(new PendingWatcherChange(
+                e.ChangeType,
+                e.FullPath,
+                OldFullPath: null));
+            return;
+        }
+
+        ApplyFileSystemChange(e.ChangeType, e.FullPath);
+    }
+
+    private void ApplyFileSystemChange(WatcherChangeTypes changeType, string fullPath)
+    {
+        bool residentMutation;
+        if (changeType == WatcherChangeTypes.Deleted)
+        {
+            // A directory delete produces one event for the directory, not
+            // necessarily one event for every descendant. Remove the entire
+            // indexed subtree so stale search results cannot survive.
+            residentMutation = RemoveEntriesUnderPath(fullPath);
         }
         else
         {
-            residentMutation = TryAddEntry(e.FullPath, Directory.Exists(e.FullPath));
+            residentMutation = TryAddEntry(fullPath, Directory.Exists(fullPath));
         }
 
         if (residentMutation)
@@ -1350,14 +2096,279 @@ public sealed class SearchIndexService : IDisposable
 
     private void OnFileSystemRenamed(object sender, RenamedEventArgs e)
     {
-        bool residentMutation = RemoveEntry(e.OldFullPath);
-        residentMutation |= TryAddEntry(e.FullPath, Directory.Exists(e.FullPath));
+        if (!IsActiveWatcher(sender))
+        {
+            return;
+        }
+
+        if (IsScanning)
+        {
+            QueueScanWatcherChange(new PendingWatcherChange(
+                WatcherChangeTypes.Renamed,
+                e.FullPath,
+                e.OldFullPath));
+            return;
+        }
+
+        ApplyFileSystemRenamed(e.FullPath, e.OldFullPath);
+    }
+
+    private void ApplyFileSystemRenamed(string fullPath, string oldFullPath)
+    {
+        bool residentMutation = RemoveEntriesUnderPath(oldFullPath);
+        residentMutation |= TryAddEntry(fullPath, Directory.Exists(fullPath));
+        if (Directory.Exists(fullPath))
+        {
+            long epoch = Interlocked.Read(ref _sessionEpoch);
+            CancellationToken token = _scanCts?.Token ?? CancellationToken.None;
+            int scanGeneration = Volatile.Read(ref _scanGeneration);
+            // Recursive watchers do not reliably replay all children when a
+            // directory is renamed. Reconcile the new subtree explicitly.
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    RootScanOutcome outcome = ScanDirectoryRecursive(
+                        fullPath,
+                        scanGeneration,
+                        epoch,
+                        token,
+                        maxDepth: int.MaxValue);
+                    if (!IsCurrentSession(epoch, token))
+                    {
+                        return;
+                    }
+
+                    if (outcome.Status != RootScanStatus.Completed)
+                    {
+                        App.Log(
+                            $"[SearchIndex] Renamed subtree scan for '{fullPath}' " +
+                            $"finished as {outcome.Status}; retaining observed entries only.");
+                    }
+                    IndexUpdated?.Invoke();
+                    ScheduleSave();
+                }
+                catch (Exception ex)
+                {
+                    App.Log($"[SearchIndex] Renamed subtree reconciliation failed: {ex.Message}");
+                }
+            });
+        }
         if (residentMutation)
         {
             ScheduleSave();
         }
 
         IndexUpdated?.Invoke();
+    }
+
+    private void ClearScanWatcherChanges()
+    {
+        lock (_scanWatcherChangesLock)
+        {
+            _scanWatcherChanges.Clear();
+            _scanWatcherChangesOverflowed = false;
+        }
+    }
+
+    private void QueueScanWatcherChange(PendingWatcherChange change)
+    {
+        lock (_scanWatcherChangesLock)
+        {
+            if (_scanWatcherChangesOverflowed)
+            {
+                return;
+            }
+
+            if (_scanWatcherChanges.Count >= 8192)
+            {
+                _scanWatcherChangesOverflowed = true;
+                _scanWatcherChanges.Clear();
+                App.Log("[SearchIndex] Startup scan watcher queue overflowed; scheduling reconciliation.");
+                return;
+            }
+
+            _scanWatcherChanges.Add(change);
+        }
+    }
+
+    private void ApplyScanWatcherChanges(
+        int scanGeneration,
+        long epoch,
+        CancellationToken token)
+    {
+        if (!IsCurrentSession(epoch, token))
+        {
+            return;
+        }
+
+        List<PendingWatcherChange> changes;
+        bool overflowed;
+        lock (_scanWatcherChangesLock)
+        {
+            changes = _scanWatcherChanges.ToList();
+            overflowed = _scanWatcherChangesOverflowed;
+            _scanWatcherChanges.Clear();
+            _scanWatcherChangesOverflowed = false;
+        }
+
+        foreach (PendingWatcherChange change in changes)
+        {
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+
+            if (change.ChangeType == WatcherChangeTypes.Renamed &&
+                !string.IsNullOrWhiteSpace(change.OldFullPath))
+            {
+                ApplyFileSystemRenamed(change.FullPath, change.OldFullPath);
+            }
+            else
+            {
+                ApplyFileSystemChange(change.ChangeType, change.FullPath);
+            }
+        }
+
+        if (overflowed)
+        {
+            // The queue itself cannot be replayed, so the already-installed
+            // watchers will report an Error event and trigger root recovery.
+            // Keep a generation marker in the log for postmortem diagnostics.
+            App.Log($"[SearchIndex] Startup scan changes exceeded the queue at generation {scanGeneration}.");
+            ScheduleWatcherRecovery("startup-scan-overflow");
+        }
+    }
+
+    private bool RemoveEntriesUnderPath(
+        string path,
+        long? sessionEpoch = null,
+        CancellationToken token = default)
+    {
+        if (sessionEpoch is long epoch && !IsCurrentSession(epoch, token))
+        {
+            return false;
+        }
+
+        string normalizedPath;
+        try
+        {
+            normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        }
+        catch
+        {
+            return false;
+        }
+
+        bool residentMutation;
+        _indexLock.EnterWriteLock();
+        try
+        {
+            if (sessionEpoch is long lockedEpoch && !IsCurrentSession(lockedEpoch, token))
+            {
+                return false;
+            }
+
+            residentMutation = IsIndexResident;
+            List<string> matchingPaths = (residentMutation
+                    ? _index.Keys.ToList()
+                    : _pendingChanges.Keys.ToList())
+                .Where(candidate => IsSameOrDescendant(candidate, normalizedPath))
+                .ToList();
+
+            if (residentMutation)
+            {
+                foreach (string matchingPath in matchingPaths)
+                {
+                    _index.Remove(matchingPath);
+                }
+            }
+            else
+            {
+                foreach (string matchingPath in matchingPaths)
+                {
+                    _pendingChanges[matchingPath] = new PendingIndexChange(
+                        IsDeleted: true,
+                        IsDirectory: false,
+                        LastModified: DateTime.MinValue,
+                        ScanGeneration: Volatile.Read(ref _scanGeneration));
+                }
+
+                if (matchingPaths.Count == 0)
+                {
+                    _pendingChanges[normalizedPath] = new PendingIndexChange(
+                        IsDeleted: true,
+                        IsDirectory: true,
+                        LastModified: DateTime.MinValue,
+                        ScanGeneration: Volatile.Read(ref _scanGeneration));
+                }
+            }
+
+            if (matchingPaths.Count == 0 && residentMutation)
+            {
+                // Keep the original mutation semantics: a missing exact key
+                // is not a persistence change.
+                return false;
+            }
+        }
+        finally
+        {
+            _indexLock.ExitWriteLock();
+        }
+
+        if (!residentMutation)
+        {
+            MarkIndexDirty();
+        }
+
+        return true;
+    }
+
+    internal static bool IsSameOrDescendant(string candidate, string parent)
+    {
+        string? normalizedCandidate = NormalizeRoot(candidate);
+        string? normalizedParent = NormalizeRoot(parent);
+        if (normalizedCandidate is null || normalizedParent is null)
+        {
+            return false;
+        }
+
+        if (string.Equals(normalizedCandidate, normalizedParent, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        string prefix = normalizedParent.EndsWith(
+            Path.DirectorySeparatorChar.ToString(),
+            StringComparison.Ordinal)
+            ? normalizedParent
+            : normalizedParent + Path.DirectorySeparatorChar;
+        return normalizedCandidate.StartsWith(
+            prefix,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsCurrentSession(long epoch, CancellationToken token)
+    {
+        return IsSessionCurrent(
+            epoch,
+            Interlocked.Read(ref _sessionEpoch),
+            Volatile.Read(ref _indexingEnabled) == 1,
+            token.IsCancellationRequested);
+    }
+
+    internal static bool IsSessionCurrent(
+        long expectedEpoch,
+        long currentEpoch,
+        bool indexingEnabled,
+        bool cancellationRequested)
+    {
+        return expectedEpoch == currentEpoch && indexingEnabled && !cancellationRequested;
+    }
+
+    internal static bool ShouldReconcileRoot(RootScanStatus status)
+    {
+        return status == RootScanStatus.Completed;
     }
 
     internal static double ComputeRelevance(string fileName, string query)
@@ -1542,10 +2553,22 @@ public sealed class SearchIndexService : IDisposable
         foreach (var watcher in _watchers)
         {
             watcher.EnableRaisingEvents = false;
+            watcher.Created -= OnFileSystemChanged;
+            watcher.Deleted -= OnFileSystemChanged;
+            watcher.Renamed -= OnFileSystemRenamed;
+            watcher.Error -= OnWatcherError;
             watcher.Dispose();
         }
 
         _watchers.Clear();
+    }
+
+    private bool IsActiveWatcher(object sender)
+    {
+        lock (_watchersLock)
+        {
+            return sender is FileSystemWatcher watcher && _watchers.Contains(watcher);
+        }
     }
 
     public void Dispose()
@@ -1557,6 +2580,12 @@ public sealed class SearchIndexService : IDisposable
 
         _isDisposed = true;
         StopIndexing();
+        lock (_watcherRecoveryLock)
+        {
+            _watcherRecoveryCts?.Cancel();
+            _watcherRecoveryCts?.Dispose();
+            _watcherRecoveryCts = null;
+        }
         _scanCts?.Dispose();
         if (_scanTask is { IsCompleted: false } scanTask)
         {
@@ -1582,6 +2611,42 @@ public sealed class SearchIndexService : IDisposable
         bool IsDirectory,
         DateTime LastModified,
         int ScanGeneration);
+
+    private readonly record struct PendingWatcherChange(
+        WatcherChangeTypes ChangeType,
+        string FullPath,
+        string? OldFullPath);
+
+    private readonly record struct RootScanOutcome(
+        string Root,
+        RootScanStatus Status);
+
+    internal enum RootScanStatus
+    {
+        Completed,
+        Offline,
+        Partial,
+        ScanOnly,
+        CapacityLimited,
+        Canceled
+    }
+
+    private readonly record struct IndexEntryResult(
+        IndexEntryStatus Status,
+        bool ResidentMutation);
+
+    private enum IndexEntryStatus
+    {
+        Added,
+        Failed,
+        CapacityLimited,
+        SessionExpired
+    }
+
+    private sealed record WatcherFailureState(
+        int Attempts,
+        string LastError,
+        DateTime LastAttempt);
 
     private readonly record struct IndexedFileEntry(
         string DirectoryPath,
@@ -1610,5 +2675,10 @@ public sealed class SearchIndexService : IDisposable
             public bool IsDirectory { get; set; }
             public DateTime LastModified { get; set; }
         }
+    }
+
+    private sealed class RootManifest
+    {
+        public List<string> Roots { get; set; } = [];
     }
 }

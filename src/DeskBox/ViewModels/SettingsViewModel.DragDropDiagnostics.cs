@@ -49,7 +49,7 @@ public partial class SettingsViewModel
     {
         try
         {
-            _dragDropPermissionDiagnostic = DragDropPermissionService.Diagnose();
+            _dragDropPermissionDiagnostic = DragDropPermissionService.Diagnose(_localizationService);
             App.Log(
                 "[DragDropPermission] " +
                 $"issue={_dragDropPermissionDiagnostic.Issue} severity={_dragDropPermissionDiagnostic.Severity} " +

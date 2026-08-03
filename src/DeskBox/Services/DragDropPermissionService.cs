@@ -75,7 +75,7 @@ public static class DragDropPermissionService
         "WIN8RTM"
     ];
 
-    public static DragDropPermissionDiagnostic Diagnose()
+    public static DragDropPermissionDiagnostic Diagnose(LocalizationService? localizationService = null)
     {
         string currentExePath = GetCurrentExePath();
         ProcessTokenSnapshot currentToken = GetCurrentProcessTokenSnapshot();
@@ -83,7 +83,7 @@ public static class DragDropPermissionService
         UacPolicySnapshot uacPolicy = GetUacPolicySnapshot();
         List<AppCompatEntry> appCompatEntries = GetRelevantAppCompatEntries(currentExePath);
         string? startupValue = StartupService.GetRunValue();
-        List<ShortcutProbe> shortcutProbes = GetShortcutProbes(currentExePath);
+        List<ShortcutProbe> shortcutProbes = GetShortcutProbes(currentExePath, localizationService);
 
         bool isUacDisabled = uacPolicy.EnableLua == 0;
         bool hasAppCompatIssue = appCompatEntries.Any(entry => ContainsIncompatibleAppCompatToken(entry.Value));
@@ -107,32 +107,32 @@ public static class DragDropPermissionService
         if (isUacDisabled)
         {
             issue = DragDropDiagnosticIssue.UacDisabled;
-            summary = "Windows 安全通知已设为“从不通知”";
-            detail = "这不一定会导致拖拽失败；如果 DeskBox 和资源管理器权限一致，拖拽仍可能正常。若其他电脑出现拖不进格子的情况，请打开 Windows 安全通知设置，把左侧滑块调到默认档位，点击确定并重启电脑后再测试。";
+            summary = Text(localizationService, "Settings.DragDropPermission.Summary.UacDisabled");
+            detail = Text(localizationService, "Settings.DragDropPermission.Detail.UacDisabled");
         }
         else if (permissionMismatch)
         {
             issue = DragDropDiagnosticIssue.PermissionMismatch;
-            summary = "DeskBox 正在以管理员权限运行";
-            detail = "资源管理器通常是普通权限，管理员权限的 DeskBox 可能无法接收来自桌面或资源管理器的拖拽。可以使用一键修复清理 DeskBox 的管理员运行标记、启动项和快捷方式，然后重新启动 DeskBox。";
+            summary = Text(localizationService, "Settings.DragDropPermission.Summary.PermissionMismatch");
+            detail = Text(localizationService, "Settings.DragDropPermission.Detail.PermissionMismatch");
         }
         else if (hasAppCompatIssue)
         {
             issue = DragDropDiagnosticIssue.AppCompatIssue;
-            summary = "检测到 DeskBox 兼容性设置异常";
-            detail = "兼容模式或“以管理员身份运行”可能会影响 WinUI 3 拖拽。可以使用一键修复清理这些只针对 DeskBox 的兼容性标记。";
+            summary = Text(localizationService, "Settings.DragDropPermission.Summary.AppCompatIssue");
+            detail = Text(localizationService, "Settings.DragDropPermission.Detail.AppCompatIssue");
         }
         else if (hasStartupIssue || hasShortcutIssue)
         {
             issue = DragDropDiagnosticIssue.StartupShortcutIssue;
-            summary = "检测到启动入口可能指向旧版本";
-            detail = "开机启动项或快捷方式可能仍指向旧路径，或者带有异常参数。可以使用一键修复重写当前用户的 DeskBox 启动入口。";
+            summary = Text(localizationService, "Settings.DragDropPermission.Summary.StartupShortcutIssue");
+            detail = Text(localizationService, "Settings.DragDropPermission.Detail.StartupShortcutIssue");
         }
         else
         {
             issue = DragDropDiagnosticIssue.None;
-            summary = "拖拽运行环境看起来正常";
-            detail = "当前没有发现管理员权限、UAC、兼容性标记或启动入口异常。如果仍然无法拖拽，请使用添加按钮或复制文件后按 Ctrl+V，并把日志发给开发者继续排查。";
+            summary = Text(localizationService, "Settings.DragDropPermission.Summary.Ok");
+            detail = Text(localizationService, "Settings.DragDropPermission.Detail.Ok");
         }
 
         return new DragDropPermissionDiagnostic(
@@ -140,12 +140,12 @@ public static class DragDropPermissionService
             issue,
             summary,
             detail,
-            FormatProcessToken("DeskBox", currentToken),
-            FormatProcessToken("Explorer", explorerToken),
-            FormatUacPolicy(uacPolicy),
-            FormatAppCompatStatus(appCompatEntries),
-            FormatStartupStatus(startupValue, currentExePath),
-            FormatShortcutStatus(shortcutProbes),
+            FormatProcessToken("DeskBox", currentToken, localizationService),
+            FormatProcessToken("Explorer", explorerToken, localizationService),
+            FormatUacPolicy(uacPolicy, localizationService),
+            FormatAppCompatStatus(appCompatEntries, localizationService),
+            FormatStartupStatus(startupValue, currentExePath, localizationService),
+            FormatShortcutStatus(shortcutProbes, localizationService),
             currentToken.IsElevated == true,
             explorerToken.IsElevated == true,
             isUacDisabled,
@@ -456,30 +456,30 @@ public static class DragDropPermissionService
                IncompatibleAppCompatTokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string FormatAppCompatStatus(List<AppCompatEntry> entries)
+    private static string FormatAppCompatStatus(List<AppCompatEntry> entries, LocalizationService? localizationService)
     {
         if (entries.Count == 0)
         {
-            return "未发现 DeskBox 兼容性标记";
+            return Text(localizationService, "Settings.DragDropPermission.Status.NoAppCompatFlags");
         }
 
         return string.Join(Environment.NewLine, entries.Select(entry =>
             $"{entry.RootName}: {entry.Value} ({entry.ExePath})"));
     }
 
-    private static string FormatStartupStatus(string? startupValue, string currentExePath)
+    private static string FormatStartupStatus(string? startupValue, string currentExePath, LocalizationService? localizationService)
     {
         if (string.IsNullOrWhiteSpace(startupValue))
         {
-            return "未启用开机启动";
+            return Text(localizationService, "Settings.DragDropPermission.Status.StartupDisabled");
         }
 
         return IsStartupValueSuspicious(startupValue, currentExePath)
-            ? $"需要检查：{startupValue}"
-            : $"正常：{startupValue}";
+            ? Format(localizationService, "Settings.DragDropPermission.Status.Check", startupValue)
+            : Format(localizationService, "Settings.DragDropPermission.Status.Normal", startupValue);
     }
 
-    private static List<ShortcutProbe> GetShortcutProbes(string currentExePath)
+    private static List<ShortcutProbe> GetShortcutProbes(string currentExePath, LocalizationService? localizationService)
     {
         var probes = new List<ShortcutProbe>();
         foreach (var shortcut in GetKnownShortcutDefinitions())
@@ -491,7 +491,7 @@ public static class DragDropPermissionService
             }
 
             bool hasIssue = false;
-            string reason = "存在";
+            string reason = Text(localizationService, "Settings.DragDropPermission.Status.Present");
             try
             {
                 if (TryReadShortcut(shortcutPath, out string? targetPath, out string? arguments))
@@ -500,19 +500,19 @@ public static class DragDropPermissionService
                         !string.Equals(Path.GetFullPath(targetPath), Path.GetFullPath(currentExePath), StringComparison.OrdinalIgnoreCase) ||
                         !string.Equals(arguments?.Trim() ?? string.Empty, shortcut.Arguments.Trim(), StringComparison.OrdinalIgnoreCase);
                     reason = hasIssue
-                        ? $"目标：{targetPath} {arguments}".Trim()
-                        : "目标正常";
+                        ? Format(localizationService, "Settings.DragDropPermission.Status.Target", $"{targetPath} {arguments}".Trim())
+                        : Text(localizationService, "Settings.DragDropPermission.Status.TargetNormal");
                 }
                 else
                 {
                     hasIssue = true;
-                    reason = "无法读取快捷方式目标";
+                    reason = Text(localizationService, "Settings.DragDropPermission.Status.ShortcutTargetUnreadable");
                 }
             }
             catch (Exception ex)
             {
                 hasIssue = true;
-                reason = $"无法检查：{ex.Message}";
+                reason = Format(localizationService, "Settings.DragDropPermission.Status.CheckFailed", ex.Message);
             }
 
             probes.Add(new ShortcutProbe(shortcutPath, hasIssue, reason));
@@ -537,15 +537,18 @@ public static class DragDropPermissionService
         ];
     }
 
-    private static string FormatShortcutStatus(List<ShortcutProbe> probes)
+    private static string FormatShortcutStatus(List<ShortcutProbe> probes, LocalizationService? localizationService)
     {
         if (probes.Count == 0)
         {
-            return "未发现当前用户快捷方式";
+            return Text(localizationService, "Settings.DragDropPermission.Status.NoShortcuts");
         }
 
         return string.Join(Environment.NewLine, probes.Select(probe =>
-            $"{(probe.HasIssue ? "需要检查" : "正常")}：{probe.Path} ({probe.Reason})"));
+            Format(localizationService,
+                probe.HasIssue ? "Settings.DragDropPermission.Status.CheckPath" : "Settings.DragDropPermission.Status.NormalPath",
+                probe.Path,
+                probe.Reason)));
     }
 
     private static bool TryReadShortcut(string shortcutPath, out string targetPath, out string arguments)
@@ -657,12 +660,25 @@ public static class DragDropPermissionService
         return new ProcessTokenSnapshot(processId, processName, isAdminRole, isElevated, integrity, null);
     }
 
-    private static string FormatProcessToken(string label, ProcessTokenSnapshot snapshot)
+    private static string FormatProcessToken(string label, ProcessTokenSnapshot snapshot, LocalizationService? localizationService)
     {
-        string elevated = snapshot.IsElevated is null ? "未知" : snapshot.IsElevated.Value ? "管理员" : "普通";
-        string adminRole = snapshot.IsAdminRole is null ? string.Empty : snapshot.IsAdminRole.Value ? "，管理员组用户" : "，非管理员组用户";
-        string error = string.IsNullOrWhiteSpace(snapshot.Error) ? string.Empty : $"，{snapshot.Error}";
-        return $"{label}：{elevated}，完整性 {snapshot.IntegrityLevel}{adminRole}{error}";
+        string elevated = snapshot.IsElevated is null
+            ? Text(localizationService, "Settings.DragDropPermission.Status.Unknown")
+            : snapshot.IsElevated.Value
+                ? Text(localizationService, "Settings.DragDropPermission.Status.Administrator")
+                : Text(localizationService, "Settings.DragDropPermission.Status.Standard");
+        string adminRole = snapshot.IsAdminRole is null
+            ? string.Empty
+            : snapshot.IsAdminRole.Value
+                ? Text(localizationService, "Settings.DragDropPermission.Status.AdminGroup")
+                : Text(localizationService, "Settings.DragDropPermission.Status.NonAdminGroup");
+        string error = string.IsNullOrWhiteSpace(snapshot.Error)
+            ? string.Empty
+            : Format(localizationService, "Settings.DragDropPermission.Status.ErrorSuffix", snapshot.Error);
+        string integrity = string.Equals(snapshot.IntegrityLevel, "unknown", StringComparison.OrdinalIgnoreCase)
+            ? Text(localizationService, "Settings.DragDropPermission.Status.UnknownValue")
+            : snapshot.IntegrityLevel;
+        return Format(localizationService, "Settings.DragDropPermission.Status.Process", label, elevated, integrity, adminRole, error);
     }
 
     private static UacPolicySnapshot GetUacPolicySnapshot()
@@ -693,26 +709,36 @@ public static class DragDropPermissionService
         };
     }
 
-    private static string FormatUacPolicy(UacPolicySnapshot policy)
+    private static string FormatUacPolicy(UacPolicySnapshot policy, LocalizationService? localizationService)
     {
         if (!string.IsNullOrWhiteSpace(policy.Error))
         {
-            return $"无法读取：{policy.Error}";
+            return Format(localizationService, "Settings.DragDropPermission.Status.ReadFailed", policy.Error);
         }
 
         string enableLua = policy.EnableLua switch
         {
-            0 => "从不通知（EnableLUA=0）",
-            1 => "已开启（EnableLUA=1）",
-            _ => "未知"
+            0 => Text(localizationService, "Settings.DragDropPermission.Status.UacNeverNotify"),
+            1 => Text(localizationService, "Settings.DragDropPermission.Status.UacEnabled"),
+            _ => Text(localizationService, "Settings.DragDropPermission.Status.Unknown")
         };
 
-        return $"{enableLua}，ConsentPromptBehaviorAdmin={FormatNullable(policy.ConsentPromptBehaviorAdmin)}，PromptOnSecureDesktop={FormatNullable(policy.PromptOnSecureDesktop)}";
+        return Format(localizationService, "Settings.DragDropPermission.Status.UacDetails", enableLua, FormatNullable(policy.ConsentPromptBehaviorAdmin, localizationService), FormatNullable(policy.PromptOnSecureDesktop, localizationService));
     }
 
-    private static string FormatNullable(int? value)
+    private static string FormatNullable(int? value, LocalizationService? localizationService)
     {
-        return value?.ToString() ?? "unknown";
+        return value?.ToString() ?? Text(localizationService, "Settings.DragDropPermission.Status.UnknownValue");
+    }
+
+    private static string Text(LocalizationService? localizationService, string key)
+    {
+        return localizationService?.T(key) ?? LocalizationService.DefaultText(key);
+    }
+
+    private static string Format(LocalizationService? localizationService, string key, params object[] args)
+    {
+        return localizationService?.Format(key, args) ?? LocalizationService.DefaultFormat(key, args);
     }
 
     private static bool TryGetTokenElevation(IntPtr processHandle, out bool isElevated)

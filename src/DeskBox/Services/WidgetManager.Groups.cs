@@ -1140,12 +1140,16 @@ public sealed partial class WidgetManager
 
     public async Task<bool> RemoveWidgetFromGroupAsync(
         string widgetId,
-        bool revealStandalone)
+        bool revealStandalone,
+        PointInt32? detachedPosition = null)
     {
         if (!HasUiThreadAccess())
         {
             return await RunOnUiThreadAsync(
-                () => RemoveWidgetFromGroupAsync(widgetId, revealStandalone));
+                () => RemoveWidgetFromGroupAsync(
+                    widgetId,
+                    revealStandalone,
+                    detachedPosition));
         }
 
         WidgetGroupConfig? pendingGroup = WidgetGroupSettings.FindByMember(
@@ -1168,6 +1172,8 @@ public sealed partial class WidgetManager
                 return false;
             }
 
+            WidgetGroupMutationSnapshot rollbackSnapshot =
+                WidgetGroupMutationSnapshot.Capture(this, group);
             int removedIndex = group.MemberIds.IndexOf(widgetId);
             bool removedWasActive = string.Equals(
                 group.ActiveMemberId,
@@ -1176,7 +1182,11 @@ public sealed partial class WidgetManager
             List<string> previousMembers = group.MemberIds.ToList();
             group.MemberIds.Remove(widgetId);
 
-            PlaceDetachedMember(removedConfig, group, Math.Max(1, removedIndex + 1));
+            PlaceDetachedMember(
+                removedConfig,
+                group,
+                Math.Max(1, removedIndex + 1),
+                detachedPosition);
             removedConfig.IsVisible = revealStandalone && group.IsVisible;
 
             WidgetGroupConfig? survivingGroup = group.MemberIds.Count >= 2 ? group : null;
@@ -1209,7 +1219,27 @@ public sealed partial class WidgetManager
                 TransferCapsuleIdentity(widgetId, remainingMemberId);
             }
 
-            await _settingsService.SaveAsync();
+            bool persisted;
+            try
+            {
+                persisted = await _settingsService.SaveCheckedAsync();
+            }
+            catch
+            {
+                rollbackSnapshot.Restore(this);
+                throw;
+            }
+
+            if (!persisted)
+            {
+                rollbackSnapshot.Restore(this);
+                App.Log(
+                    $"[WidgetGroup] Rolled back detach because settings save failed " +
+                    $"group={group.Id} member={widgetId}");
+                RaiseWidgetGroupsChanged();
+                ApplyCapsuleArrangementIfChanged(force: true);
+                return false;
+            }
 
             foreach (string memberId in previousMembers)
             {
@@ -1236,6 +1266,12 @@ public sealed partial class WidgetManager
             if (removedConfig.IsVisible)
             {
                 await ShowStandaloneWindowAsync(removedConfig);
+                if (detachedPosition.HasValue)
+                {
+                    GetLoadedWindow(removedConfig.Id)?.RaiseTemporarilyFromManager();
+                    App.LogVerbose(
+                        $"[WidgetGroup] Detached member raised temporarily member={removedConfig.Id}");
+                }
             }
 
             App.Log(
@@ -1283,6 +1319,8 @@ public sealed partial class WidgetManager
                 .Where(config => config is not null)
                 .Cast<WidgetConfig>()
                 .ToList();
+            WidgetGroupMutationSnapshot rollbackSnapshot =
+                WidgetGroupMutationSnapshot.Capture(this, group);
             for (int index = 0; index < members.Count; index++)
             {
                 ApplyGroupLayoutToMember(group, members[index]);
@@ -1294,7 +1332,27 @@ public sealed partial class WidgetManager
             }
 
             _settingsService.Settings.WidgetGroups.Remove(group);
-            await _settingsService.SaveAsync();
+            bool persisted;
+            try
+            {
+                persisted = await _settingsService.SaveCheckedAsync();
+            }
+            catch
+            {
+                rollbackSnapshot.Restore(this);
+                throw;
+            }
+
+            if (!persisted)
+            {
+                rollbackSnapshot.Restore(this);
+                App.Log(
+                    $"[WidgetGroup] Rolled back dissolve because settings save failed " +
+                    $"group={group.Id}");
+                RaiseWidgetGroupsChanged();
+                ApplyCapsuleArrangementIfChanged(force: true);
+                return false;
+            }
 
             foreach (WidgetConfig member in members)
             {
@@ -1453,9 +1511,15 @@ public sealed partial class WidgetManager
         _settingsService.SaveDebounced(notifySubscribers: false);
     }
 
-    public void UpdateWidgetGroupDragPreview(string sourceWidgetId, RectInt32 sourceBounds)
+    public void UpdateWidgetGroupDragPreview(string sourceWidgetId)
     {
         if (!IsWidgetGroupingEnabled)
+        {
+            ClearGroupDragPreview();
+            return;
+        }
+
+        if (!Win32Helper.GetCursorPos(out Win32Helper.POINT cursor))
         {
             ClearGroupDragPreview();
             return;
@@ -1477,14 +1541,15 @@ public sealed partial class WidgetManager
                 !string.Equals(window.Config.Id, sourceWidgetId, StringComparison.Ordinal) &&
                 (sourceGroup is null ||
                  WidgetGroupSettings.FindByMember(_settingsService.Settings, window.Config.Id)?.Id != sourceGroup.Id))
-            .Select(window => (Window: window, Bounds: GetNativeBounds(window.WindowHandle)))
+            .Select(window =>
+                (Window: window, Bounds: window.GetGroupMergeTitleScreenBounds()))
             .Where(candidate =>
-                candidate.Bounds is { } bounds &&
-                ContainsPoint(
-                    Inset(bounds, 0.12),
-                    sourceBounds.X + sourceBounds.Width / 2,
-                    sourceBounds.Y + sourceBounds.Height / 2))
-            .OrderBy(candidate => candidate.Bounds!.Value.Width * candidate.Bounds.Value.Height)
+                WidgetGroupDropHitTestPolicy.Contains(
+                    candidate.Bounds,
+                    cursor.X,
+                    cursor.Y))
+            .OrderBy(candidate =>
+                (long)candidate.Bounds!.Value.Width * candidate.Bounds.Value.Height)
             .Select(candidate => candidate.Window.Config.Id)
             .FirstOrDefault();
 
@@ -1535,7 +1600,9 @@ public sealed partial class WidgetManager
         string? targetId = string.Equals(
             _groupDragSourceId,
             sourceWidgetId,
-            StringComparison.Ordinal) && _groupDragDropReady
+            StringComparison.Ordinal) &&
+            _groupDragDropReady &&
+            IsGroupDragTargetUnderCursor()
             ? _groupDragTargetId
             : null;
         ClearGroupDragPreview();
@@ -1691,11 +1758,20 @@ public sealed partial class WidgetManager
     private static void PlaceDetachedMember(
         WidgetConfig member,
         WidgetGroupConfig group,
-        int cascadeIndex)
+        int cascadeIndex,
+        PointInt32? detachedPosition = null)
     {
-        double offset = Math.Clamp(cascadeIndex, 1, 5) * 24;
-        member.X = group.X + offset;
-        member.Y = group.Y + offset;
+        if (detachedPosition is { } position)
+        {
+            member.X = position.X;
+            member.Y = position.Y;
+        }
+        else
+        {
+            double offset = Math.Clamp(cascadeIndex, 1, 5) * 24;
+            member.X = group.X + offset;
+            member.Y = group.Y + offset;
+        }
         member.PositionAnchor = null;
         member.PositionMarginX = 0;
         member.PositionMarginY = 0;
@@ -1857,23 +1933,49 @@ public sealed partial class WidgetManager
                         config,
                         _settingsService.Settings))
                 .ToList();
-            foreach (string unavailableMemberId in unavailableMemberIds)
+
+            // Session availability is transient (for example a feature may
+            // still be warming up, or a mapped location may be unavailable).
+            // It must never mutate the persisted group topology. Removing a
+            // member here can dissolve a valid group during startup and make
+            // it appear as if the user's group was deleted. Keep the member
+            // ids and let RestoreWidgetsAsync create whichever member is
+            // currently available; the next lifecycle pass can restore the
+            // original active member without data loss.
+            if (unavailableMemberIds.Count > 0)
             {
-                if (FindConfig(unavailableMemberId) is { } unavailableConfig)
-                {
-                    PlaceDetachedMember(
-                        unavailableConfig,
-                        group,
-                        Math.Max(1, group.MemberIds.IndexOf(unavailableMemberId) + 1));
-                    unavailableConfig.IsVisible = false;
-                }
-                group.MemberIds.Remove(unavailableMemberId);
-                changed = true;
+                App.Log(
+                    $"[WidgetGroup] Preserving unavailable members during runtime normalization " +
+                    $"group={group.Id} members={string.Join(',', unavailableMemberIds)}");
             }
 
-            if (!group.MemberIds.Contains(group.ActiveMemberId, StringComparer.Ordinal))
+            string? restorableActiveId = WidgetGroupSettings.ResolveRestorableActiveMemberId(
+                _settingsService.Settings,
+                group,
+                config =>
+                    !IsDeleted(config.Id) &&
+                    !config.IsDisabled &&
+                    _widgetRegistry.IsAvailableForSession(
+                        config,
+                        _settingsService.Settings));
+            List<string> availableMemberIds = group.MemberIds
+                .Where(memberId => string.Equals(memberId, restorableActiveId, StringComparison.Ordinal) ||
+                    FindConfig(memberId) is { } config &&
+                    !IsDeleted(config.Id) &&
+                    !config.IsDisabled &&
+                    _widgetRegistry.IsAvailableForSession(
+                        config,
+                        _settingsService.Settings))
+                .ToList();
+
+            if (!group.MemberIds.Contains(group.ActiveMemberId, StringComparer.Ordinal) ||
+                (restorableActiveId is not null &&
+                 !string.Equals(group.ActiveMemberId, restorableActiveId, StringComparison.Ordinal)))
             {
-                group.ActiveMemberId = group.MemberIds.FirstOrDefault() ?? string.Empty;
+                group.ActiveMemberId = restorableActiveId ??
+                    availableMemberIds.FirstOrDefault() ??
+                    group.MemberIds.FirstOrDefault() ??
+                    string.Empty;
                 if (!string.IsNullOrWhiteSpace(group.ActiveMemberId))
                 {
                     TransferCapsuleIdentity(previousActiveId, group.ActiveMemberId);
@@ -1881,6 +1983,10 @@ public sealed partial class WidgetManager
                 changed = true;
             }
 
+            // WidgetGroupSettings.Normalize has already removed truly missing
+            // or deleted members. A group with fewer than two persisted
+            // members is therefore a real invalid group and may be dissolved;
+            // a temporarily unavailable member must not reach this branch.
             if (group.MemberIds.Count < 2)
             {
                 _settingsService.Settings.WidgetGroups.Remove(group);
@@ -1895,7 +2001,10 @@ public sealed partial class WidgetManager
             }
 
             ApplyGroupLayoutToMembers(group);
-            changed |= NormalizeCapsuleIdentityForGroup(group);
+            if (availableMemberIds.Count > 0)
+            {
+                changed |= NormalizeCapsuleIdentityForGroup(group);
+            }
         }
 
         if (changed)
@@ -1911,15 +2020,28 @@ public sealed partial class WidgetManager
         timer.Interval = TimeSpan.FromMilliseconds(360);
         timer.Tick += (_, _) =>
         {
-            if (_groupDragTargetId is null)
+            if (_groupDragTargetId is not { } targetId ||
+                !IsGroupDragTargetUnderCursor())
             {
+                ClearGroupDragPreview();
                 return;
             }
 
             _groupDragDropReady = true;
-            GetLoadedWindow(_groupDragTargetId)?.SetGroupDropPreview(visible: true, ready: true);
+            GetLoadedWindow(targetId)?.SetGroupDropPreview(visible: true, ready: true);
         };
         return timer;
+    }
+
+    private bool IsGroupDragTargetUnderCursor()
+    {
+        return _groupDragTargetId is { } targetId &&
+               Win32Helper.GetCursorPos(out Win32Helper.POINT cursor) &&
+               GetLoadedWindow(targetId) is { Visible: true } targetWindow &&
+               WidgetGroupDropHitTestPolicy.Contains(
+                   targetWindow.GetGroupMergeTitleScreenBounds(),
+                   cursor.X,
+                   cursor.Y);
     }
 
     private void ClearGroupDragPreview()
@@ -1932,39 +2054,6 @@ public sealed partial class WidgetManager
         _groupDragSourceId = null;
         _groupDragTargetId = null;
         _groupDragDropReady = false;
-    }
-
-    private static RectInt32? GetNativeBounds(IntPtr hwnd)
-    {
-        if (hwnd == IntPtr.Zero || !Win32Helper.GetWindowRect(hwnd, out var rect))
-        {
-            return null;
-        }
-
-        return new RectInt32(
-            rect.Left,
-            rect.Top,
-            Math.Max(1, rect.Right - rect.Left),
-            Math.Max(1, rect.Bottom - rect.Top));
-    }
-
-    private static RectInt32 Inset(RectInt32 bounds, double ratio)
-    {
-        int horizontal = (int)Math.Round(bounds.Width * ratio);
-        int vertical = (int)Math.Round(bounds.Height * ratio);
-        return new RectInt32(
-            bounds.X + horizontal,
-            bounds.Y + vertical,
-            Math.Max(1, bounds.Width - (horizontal * 2)),
-            Math.Max(1, bounds.Height - (vertical * 2)));
-    }
-
-    private static bool ContainsPoint(RectInt32 bounds, int x, int y)
-    {
-        return x >= bounds.X &&
-               x < bounds.X + bounds.Width &&
-               y >= bounds.Y &&
-               y < bounds.Y + bounds.Height;
     }
 
     private void CaptureWidgetGroupTransientState(
@@ -2112,6 +2201,177 @@ public sealed partial class WidgetManager
         if (_lastCapsuleBarBounds.Remove(previousWidgetId, out RectInt32 bounds))
         {
             _lastCapsuleBarBounds[targetWidgetId] = bounds;
+        }
+    }
+
+    /// <summary>
+    /// Captures the in-memory state touched by detach/dissolve before the
+    /// settings file is written.  Those operations retire windows only after a
+    /// successful save, so restoring these values is sufficient to make a
+    /// failed persistence attempt transactionally invisible to the UI.
+    /// </summary>
+    private sealed class WidgetGroupMutationSnapshot
+    {
+        private readonly WidgetGroupConfig _group;
+        private readonly int _groupIndex;
+        private readonly List<string> _memberIds;
+        private readonly string _activeMemberId;
+        private readonly List<MemberState> _members;
+        private readonly List<string> _capsuleBarOrder;
+        private readonly Dictionary<string, WidgetCompactPlacement> _freePlacements;
+        private readonly Dictionary<string, RectInt32> _capsuleBounds;
+
+        private WidgetGroupMutationSnapshot(
+            WidgetGroupConfig group,
+            int groupIndex,
+            List<MemberState> members,
+            List<string> capsuleBarOrder,
+            Dictionary<string, WidgetCompactPlacement> freePlacements,
+            Dictionary<string, RectInt32> capsuleBounds)
+        {
+            _group = group;
+            _groupIndex = groupIndex;
+            _memberIds = group.MemberIds.ToList();
+            _activeMemberId = group.ActiveMemberId;
+            _members = members;
+            _capsuleBarOrder = capsuleBarOrder;
+            _freePlacements = freePlacements;
+            _capsuleBounds = capsuleBounds;
+        }
+
+        public static WidgetGroupMutationSnapshot Capture(
+            WidgetManager manager,
+            WidgetGroupConfig group)
+        {
+            AppSettings settings = manager._settingsService.Settings;
+            var members = group.MemberIds
+                .Select(manager.FindConfig)
+                .Where(config => config is not null)
+                .Select(config => new MemberState(config!))
+                .ToList();
+
+            return new WidgetGroupMutationSnapshot(
+                group,
+                settings.WidgetGroups.IndexOf(group),
+                members,
+                settings.WidgetCapsuleBarOrder.ToList(),
+                settings.WidgetCapsuleFreePlacements.ToDictionary(
+                    entry => entry.Key,
+                    entry => CloneCompactPlacement(entry.Value)!,
+                    StringComparer.Ordinal),
+                manager._lastCapsuleBarBounds.ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value,
+                    StringComparer.Ordinal));
+        }
+
+        public void Restore(WidgetManager manager)
+        {
+            AppSettings settings = manager._settingsService.Settings;
+            settings.WidgetGroups.RemoveAll(group => ReferenceEquals(group, _group));
+            int insertIndex = Math.Clamp(
+                _groupIndex < 0 ? settings.WidgetGroups.Count : _groupIndex,
+                0,
+                settings.WidgetGroups.Count);
+            settings.WidgetGroups.Insert(insertIndex, _group);
+
+            _group.MemberIds.Clear();
+            _group.MemberIds.AddRange(_memberIds);
+            _group.ActiveMemberId = _activeMemberId;
+
+            foreach (MemberState member in _members)
+            {
+                member.Restore();
+            }
+
+            settings.WidgetCapsuleBarOrder.Clear();
+            settings.WidgetCapsuleBarOrder.AddRange(_capsuleBarOrder);
+            settings.WidgetCapsuleFreePlacements.Clear();
+            foreach (var placement in _freePlacements)
+            {
+                settings.WidgetCapsuleFreePlacements[placement.Key] =
+                    CloneCompactPlacement(placement.Value)!;
+            }
+
+            manager._lastCapsuleBarBounds.Clear();
+            foreach (var bounds in _capsuleBounds)
+            {
+                manager._lastCapsuleBarBounds[bounds.Key] = bounds.Value;
+            }
+        }
+
+        private sealed class MemberState
+        {
+            private readonly WidgetConfig _config;
+            private readonly double _x;
+            private readonly double _y;
+            private readonly string? _positionAnchor;
+            private readonly double _positionMarginX;
+            private readonly double _positionMarginY;
+            private readonly string? _positionMonitorKey;
+            private readonly string? _positionMonitorDeviceName;
+            private readonly bool? _positionMonitorWasPrimary;
+            private readonly int _boundsCoordinateVersion;
+            private readonly double _width;
+            private readonly double _height;
+            private readonly bool _isVisible;
+            private readonly bool _isPositionLocked;
+            private readonly bool _isSizeLocked;
+            private readonly bool _isCollapsed;
+            private readonly WidgetCompactPlacement? _compactPlacement;
+            private readonly double? _compactWidth;
+            private readonly Dictionary<string, string> _metadata;
+
+            public MemberState(WidgetConfig config)
+            {
+                _config = config;
+                _x = config.X;
+                _y = config.Y;
+                _positionAnchor = config.PositionAnchor;
+                _positionMarginX = config.PositionMarginX;
+                _positionMarginY = config.PositionMarginY;
+                _positionMonitorKey = config.PositionMonitorKey;
+                _positionMonitorDeviceName = config.PositionMonitorDeviceName;
+                _positionMonitorWasPrimary = config.PositionMonitorWasPrimary;
+                _boundsCoordinateVersion = config.BoundsCoordinateVersion;
+                _width = config.Width;
+                _height = config.Height;
+                _isVisible = config.IsVisible;
+                _isPositionLocked = config.IsPositionLocked;
+                _isSizeLocked = config.IsSizeLocked;
+                _isCollapsed = config.IsCollapsed;
+                _compactPlacement = CloneCompactPlacement(config.CompactPlacement);
+                _compactWidth = config.CompactWidth;
+                _metadata = new Dictionary<string, string>(
+                    config.Metadata,
+                    StringComparer.Ordinal);
+            }
+
+            public void Restore()
+            {
+                _config.X = _x;
+                _config.Y = _y;
+                _config.PositionAnchor = _positionAnchor;
+                _config.PositionMarginX = _positionMarginX;
+                _config.PositionMarginY = _positionMarginY;
+                _config.PositionMonitorKey = _positionMonitorKey;
+                _config.PositionMonitorDeviceName = _positionMonitorDeviceName;
+                _config.PositionMonitorWasPrimary = _positionMonitorWasPrimary;
+                _config.BoundsCoordinateVersion = _boundsCoordinateVersion;
+                _config.Width = _width;
+                _config.Height = _height;
+                _config.IsVisible = _isVisible;
+                _config.IsPositionLocked = _isPositionLocked;
+                _config.IsSizeLocked = _isSizeLocked;
+                _config.IsCollapsed = _isCollapsed;
+                _config.CompactPlacement = CloneCompactPlacement(_compactPlacement);
+                _config.CompactWidth = _compactWidth;
+                _config.Metadata.Clear();
+                foreach (var metadata in _metadata)
+                {
+                    _config.Metadata[metadata.Key] = metadata.Value;
+                }
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 using DeskBox.ViewModels;
 using DeskBox.Models;
+using DeskBox.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
@@ -390,14 +391,7 @@ public sealed partial class WeatherWidgetContent : UserControl
 
     private static bool AreSystemAnimationsEnabled()
     {
-        try
-        {
-            return new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
+        return WindowsCompatibilityService.ShouldAnimate;
     }
 }
 

@@ -684,8 +684,18 @@ public sealed partial class WidgetWindow
 
         return paths
             .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Select(Path.GetFullPath)
-            .Where(path => File.Exists(path) || Directory.Exists(path))
+            .Select(path =>
+            {
+                try
+                {
+                    return Path.GetFullPath(path);
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            })
+            .Where(Path.IsPathFullyQualified)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }

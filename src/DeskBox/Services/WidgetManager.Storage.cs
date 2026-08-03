@@ -206,8 +206,6 @@ public sealed partial class WidgetManager
             return new ManagedStorageMigrationResult(0, oldRootPath, normalizedNewRootPath);
         }
 
-        Directory.CreateDirectory(normalizedNewRootPath);
-
         var affectedWidgets = _settingsService.Settings.Widgets
             .Where(widget => widget.WidgetKind == WidgetKind.File && widget.FollowsDefaultStoragePath && !IsDeleted(widget.Id))
             .Select(widget =>
@@ -229,6 +227,19 @@ public sealed partial class WidgetManager
                 };
             })
             .ToList();
+
+        foreach (var widgetPlan in affectedWidgets)
+        {
+            EnsureFileWidgetPathAvailable(widgetPlan.DestinationFolder, widgetPlan.Widget.Id);
+            if (FileService.IsPathUnderDirectoryResolved(widgetPlan.DestinationFolder, widgetPlan.SourceFolder))
+            {
+                throw new InvalidOperationException(_localizationService.Format(
+                    "Widget.Error.FileWidgetPathConflict",
+                    widgetPlan.Widget.Name));
+            }
+        }
+
+        Directory.CreateDirectory(normalizedNewRootPath);
 
         var completedMoves = new List<(string SourceFolder, string DestinationFolder)>(affectedWidgets.Count);
         var originalWidgetStorage = affectedWidgets.ToDictionary(

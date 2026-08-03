@@ -53,6 +53,17 @@ public abstract partial class WidgetWindowBase
         StartTopMostSafetyTimer();
     }
 
+    public void RaiseTemporarilyFromManager()
+    {
+        if (!Visible || IsClosing)
+        {
+            return;
+        }
+
+        LastElevateForInteractionUtc = DateTime.UtcNow;
+        HoldTemporaryTopMost();
+    }
+
     protected void StartTopMostSafetyTimer()
     {
         if (!Win32Helper.IsWindowTopMost(HWnd))
@@ -224,8 +235,7 @@ public abstract partial class WidgetWindowBase
             if (!IsCompactBoundsStateActive)
             {
                 App.Current?.WidgetManager?.UpdateWidgetGroupDragPreview(
-                    Config.Id,
-                    snappedBounds);
+                    Config.Id);
             }
         }
         e.Handled = true;

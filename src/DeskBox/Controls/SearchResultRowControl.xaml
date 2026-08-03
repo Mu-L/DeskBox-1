@@ -16,7 +16,8 @@
         synced by the popup window via RefreshIconVisuals because the icon arrives
         lazily and is not observable.
     -->
-    <Grid x:Name="RowRoot" Padding="2,5,10,5" Margin="2,1" CornerRadius="7" Background="Transparent">
+    <Grid x:Name="RowRoot" Padding="2,5,10,5" Margin="2,1" CornerRadius="7" Background="Transparent"
+          IsTabStop="False">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="5"/>
             <ColumnDefinition Width="34"/>
@@ -29,7 +30,7 @@
                    Fill="{ThemeResource AccentFillColorDefaultBrush}"
                    Visibility="Collapsed" VerticalAlignment="Stretch"
                    HorizontalAlignment="Left" Margin="0,7,0,7"/>
-        <Grid Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
+        <Grid x:Name="IconColumn" Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0" IsTabStop="False">
             <Border x:Name="GlyphBlock" Width="28" Height="28" CornerRadius="7"
                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -40,6 +41,14 @@
             <Image x:Name="FileIcon" Source="{Binding Icon}" Width="26" Height="26"
                    Visibility="Collapsed"
                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <Border x:Name="MultiSelectedIcon" Width="16" Height="16" CornerRadius="8"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-2,0"
+                    Visibility="Collapsed" IsHitTestVisible="False">
+                <FontIcon Glyph="&#xE73E;" FontSize="9"
+                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
         </Grid>
         <StackPanel Grid.Column="2" VerticalAlignment="Center">
             <TextBlock x:Name="TitleText" Text="{Binding Title}" FontSize="14"

@@ -53,6 +53,11 @@ public sealed class SearchEngineService : IDisposable
     public DateTime? LastScanTime => _indexService.LastScanTime;
     public bool IsCustomIndexResident => _indexService.IsIndexResident;
 
+    public bool IsUsnIndexAvailable => _usnIndexService?.IsAvailable == true;
+    public bool IsUsnIndexScanning => _usnIndexService?.IsScanning == true;
+    public bool IsUsnIndexIncrementalSyncing =>
+        _usnIndexService?.IsIncrementalSyncing == true;
+
     public event Action? IndexUpdated;
 
     /// <summary>Raised periodically during indexing with the current total entry count.</summary>
@@ -171,16 +176,22 @@ public sealed class SearchEngineService : IDisposable
             providerTasks.Add(_windowsIndexService.SearchAsync(query, maxResults, cancellationToken));
         }
 
-        // Layer 3: File index. Prefer the USN journal full-disk index when it is
-        // available (elevated); otherwise fall back to the directory-scan index, which
-        // now covers every fixed drive so coverage stays broad without admin.
+        // Layer 3: File indexes. The USN journal is fast and broad when available,
+        // but it can be incomplete while a volume is offline, capped, or being
+        // refreshed. Always query the directory index as well so a stale/partial
+        // USN snapshot is never the sole authority; the ranker de-duplicates paths.
         if (settings.SearchCustomIndexerEnabled)
         {
-            providerTasks.Add(_usnIndexService is { IsAvailable: true }
-                ? Task.Run(
-                    () => _usnIndexService.Search(query, maxResults, cancellationToken),
-                    cancellationToken)
-                : SearchCustomIndexAsync(query, maxResults, cancellationToken));
+            if (_usnIndexService is { IsAvailable: true })
+            {
+                providerTasks.Add(Task.Run<IReadOnlyList<SearchResultItem>>(
+                    () => _usnIndexService.Search(query, maxResults, cancellationToken)
+                        .Where(item => PathExists(item.DetailPath))
+                        .ToList(),
+                    cancellationToken));
+            }
+
+            providerTasks.Add(SearchCustomIndexAsync(query, maxResults, cancellationToken));
         }
 
         IReadOnlyList<SearchResultItem>[] providerResults = await Task.WhenAll(providerTasks);
@@ -220,6 +231,23 @@ public sealed class SearchEngineService : IDisposable
         return await Task.Run(
             () => _indexService.Search(query, maxResults, cancellationToken),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool PathExists(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            return File.Exists(path) || Directory.Exists(path);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

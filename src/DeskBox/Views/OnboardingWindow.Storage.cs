@@ -108,6 +108,7 @@ public sealed partial class OnboardingWindow
         _settingsService.Settings.DefaultManagedStorageRootPath = normalizedPath;
         _settingsService.SaveDebounced();
         Step4PathText.Text = normalizedPath;
+        InvalidateDesktopOrganizationPlan();
     }
 
     private async void Step4PinToggle_Toggled(object sender, RoutedEventArgs e)
@@ -146,6 +147,6 @@ public sealed partial class OnboardingWindow
     }
 
     // ════════════════════════════════════════════════════════════
-    //  Step 5: Ready Summary
+    //  Step 4: Daily Use (continued)
     // ════════════════════════════════════════════════════════════
 }

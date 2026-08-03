@@ -271,6 +271,6 @@ public sealed partial class OnboardingWindow
     }
 
     // ════════════════════════════════════════════════════════════
-    //  Step 5: Ready Summary
+    //  Step 4: Daily Use (continued)
     // ════════════════════════════════════════════════════════════
 }

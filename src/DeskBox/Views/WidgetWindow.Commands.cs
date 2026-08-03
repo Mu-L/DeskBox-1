@@ -259,8 +259,7 @@ public sealed partial class WidgetWindow
             if (!IsCompactBoundsStateActive)
             {
                 App.Current?.WidgetManager?.UpdateWidgetGroupDragPreview(
-                    ViewModel.Config.Id,
-                    snappedBounds);
+                    ViewModel.Config.Id);
             }
         }
         e.Handled = true;
@@ -376,6 +375,12 @@ public sealed partial class WidgetWindow
             {
                 await app.WidgetManager.CreateFolderWidgetAsync(folderPath);
             }
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync(
+                _localizationService.T("Common.NewFolderMapping"),
+                ex.Message);
         }
         finally
         {

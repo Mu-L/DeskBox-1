@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.3.4-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.4)
+[![Latest release](https://img.shields.io/badge/release-1.3.5-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.5)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -26,10 +26,10 @@ DeskBox adds native-feeling WinUI 3 widgets to the Windows desktop without repla
 
 ## Download
 
-Download DeskBox 1.3.4 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.4):
+Download DeskBox 1.3.5 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.5):
 
-- [DeskBox 1.3.4 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.4/DeskBox_Setup_1.3.4_x64.exe) — most Intel and AMD PCs.
-- [DeskBox 1.3.4 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.4/DeskBox_Setup_1.3.4_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.3.5 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.5/DeskBox_Setup_1.3.5_x64.exe) — most Intel and AMD PCs.
+- [DeskBox 1.3.5 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.5/DeskBox_Setup_1.3.5_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
@@ -74,7 +74,20 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Raise or hide all widgets from the tray or a configurable global hotkey.
 - Customize Mica/acrylic materials, opacity, borders, DWM corners, animation, title bars, icon size, and text size.
 
-## What is new in 1.3.4
+## What is new in 1.3.5
+
+- **Desktop organization is new in 1.3.5:** a responsive card preview shows the files that will move, the selected destination, the files that stay on the Desktop, and the final storage location before anything runs. This capability was not present in 1.3.4.
+- **Per-card organization controls:** each card can be enabled independently and can target a new folder or an existing widget, with an explanation of the destination and a concrete list of items that will not move.
+- **Automatic organization is new in 1.3.5:** growing downloads, temporary/archive work, extraction, and same-path replacements wait for a stable terminal state; the large-file threshold is 100 MB and incomplete baselines are not committed.
+- **Widget groups are new in 1.3.5:** file widgets can be merged, switched with the title wheel, detached by holding the title, or dissolved while keeping safer z-order and nested-path rules.
+- **File and mapped-folder widgets stay in sync:** unavailable or offline folders keep their last known snapshot, refreshes preserve manual ordering, and watcher generations prevent stale events from entering a newly mapped path.
+- **Search indexing is more resilient:** partial, capped, offline, or permission-limited scans no longer erase valid results; USN journal changes can be applied incrementally with safe fallback and recovery diagnostics.
+- **Drag and reorder interactions are more predictable:** cross-screen reorder uses a breathing insertion line without mutating the list during DragOver; standalone and grouped surfaces share the same insertion calculation and file-to-folder versus blank-area rules.
+- **Windows 10 and lifecycle recovery:** secondary-window backdrop fallback, animation accessibility checks, sleep/unlock/RDP recovery, Explorer restart handling, and startup z-order normalization improve compatibility without changing the Windows 11 experience.
+- **Release notes and diagnostics:** Settings can open the latest bilingual Markdown release notes in a separate window, and reliability diagnostics expose watcher, index, and recovery state.
+- **Smaller polish and compatibility fixes:** localized strings were synchronized across five languages, file icons and drag feedback were refined, and automated coverage was expanded for the new reliability paths.
+
+## What was new in 1.3.4
 
 - **More predictable resource use:** disabled feature widgets and closed Settings release their visual trees, music and capsule timers detach correctly, caches are bounded, and guarded idle maintenance can reclaim memory even while visible widgets remain on the desktop.
 - **Search opens first:** the popup shell is prewarmed, repeated widget clicks only open or focus it, and the native window paints before recommendations, icons, or an idle-unloaded index reload. Search results also keep a visible fallback icon.
@@ -88,11 +101,11 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - **Hotkey reliability:** low-level keyboard hooks were removed, RDP modifier-key recovery was improved, and the search hotkey follows the search feature switch.
 - **Release packaging:** application and installer versions are aligned to 1.3.4; framework-dependent x64 and ARM64 installers detect and download only missing architecture-matched runtimes. The legacy image-gallery widget has also been removed.
 
-Read the full [changelog](CHANGELOG.md) or the [1.3.4 release notes](docs/releases/v1.3.4.md).
+Read the full [changelog](CHANGELOG.md) or the [1.3.5 release notes](docs/releases/v1.3.5.md).
 
 ## Current interface
 
-These screenshots come from the 1.3.4 build.
+These screenshots are representative of the current DeskBox interface.
 
 ### Desktop widgets and materials
 
@@ -133,11 +146,11 @@ Capsule privacy mode hides selected text in the collapsed presentation; it is a 
 
 ## System requirements
 
-- Windows 11 version 22H2 or later.
+- Windows 10 version 21H2 (build 19044) or later; Windows 11 version 22H2 or later for the full visual treatment.
 - x64 or ARM64 processor matching the installer.
 - .NET 10 Runtime and Windows App Runtime 2.2; setup can install either dependency when missing.
 
-Windows 10 may work in some environments, but it is not a validated target.
+On Windows 10, unsupported materials, rounded corners, and some animations automatically fall back to compatible visuals; file sync, drag-and-drop, and core widget behavior are validated against the compatibility floor.
 
 ## Installation, updates, and removal
 
@@ -201,8 +214,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.3.4_x64.exe
-Output\DeskBox_Setup_1.3.4_arm64.exe
+Output\DeskBox_Setup_1.3.5_x64.exe
+Output\DeskBox_Setup_1.3.5_arm64.exe
 ```
 
 ## Project layout

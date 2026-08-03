@@ -487,6 +487,11 @@ public sealed partial class WidgetWindow
             App.Current.WidgetManager,
             _localizationService);
 
+        flyout.Items.Add(WidgetSettingsMenuHelper.CreateMenuItem(
+            WidgetKind.File,
+            _localizationService,
+            beforeClick: flyout.Hide));
+
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(CreateDeleteWidgetMenuItem());
 

@@ -198,6 +198,6 @@ public sealed partial class OnboardingWindow
     }
 
     // ════════════════════════════════════════════════════════════
-    //  Step 4: Feature Widgets
+    //  Step 3: Appearance (continued)
     // ════════════════════════════════════════════════════════════
 }

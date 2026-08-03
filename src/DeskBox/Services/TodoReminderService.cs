@@ -466,7 +466,7 @@ public sealed class TodoReminderService : IDisposable
             : localDueDate.ToString("yyyy/M/d HH:mm:ss");
     }
 
-    private static string NormalizeNotificationText(string? text)
+    private string NormalizeNotificationText(string? text)
     {
         string normalized = string.Join(
             " ",
@@ -477,7 +477,7 @@ public sealed class TodoReminderService : IDisposable
 
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            return "Task";
+            return _localizationService.T("Todo.Reminder.Untitled");
         }
 
         const int maxLength = 48;

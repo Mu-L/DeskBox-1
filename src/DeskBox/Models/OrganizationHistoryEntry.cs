@@ -25,6 +25,9 @@ public class OrganizationHistoryEntry
 
     public List<OrganizationHistoryItem> Items { get; set; } = [];
 
+    /// <summary>All widget destinations participating in a desktop batch.</summary>
+    public List<OrganizationHistoryTarget> Targets { get; set; } = [];
+
     [JsonIgnore]
     public bool IsFailed => !string.IsNullOrWhiteSpace(ErrorMessage);
 
@@ -128,10 +131,26 @@ public class OrganizationHistoryItem
     public string SourcePath { get; set; } = string.Empty;
 
     public string DestinationPath { get; set; } = string.Empty;
+
+    public string TargetWidgetId { get; set; } = string.Empty;
+
+    public string TargetWidgetName { get; set; } = string.Empty;
+}
+
+public sealed class OrganizationHistoryTarget
+{
+    public string WidgetId { get; set; } = string.Empty;
+
+    public string WidgetName { get; set; } = string.Empty;
+
+    public string DirectoryPath { get; set; } = string.Empty;
+
+    public bool WasCreated { get; set; }
 }
 
 public static class OrganizationActionType
 {
     public const string ManagedDrop = "ManagedDrop";
     public const string MoveBackToDesktop = "MoveBackToDesktop";
+    public const string DesktopOrganization = "DesktopOrganization";
 }

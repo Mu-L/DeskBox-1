@@ -41,6 +41,9 @@ public sealed partial class WidgetWindow
     private bool _isReorderDragActive;
     private string[] _reorderDragPaths = [];
     private string? _reorderStackKey;
+    private int _reorderInsertionIndex = -1;
+    private Windows.Foundation.Point _reorderLastPosition;
+    private bool _reorderHasLastPosition;
     private DataPackageView? _pendingDropDataView;
 
     // ── Drop poll (compensates for WinUI 3 Drop not firing) ──
@@ -155,6 +158,20 @@ public sealed partial class WidgetWindow
         }
 
         bool movesIntoFolder = !string.IsNullOrEmpty(ViewModel.MappedFolderPath);
+
+        var synchronousSourcePaths = TryGetPackageStringArray(
+            e.DataView.Properties,
+            "DeskBoxSourcePaths");
+        if (movesIntoFolder &&
+            IsInvalidFolderDrop(synchronousSourcePaths, ViewModel.MappedFolderPath!))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = false;
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.DragUIOverride.Caption = _localizationService.T("Widget.Error.UnsafeFolderTransfer");
+            LogDropDiagnostic("RootDragOverUnsafeFolder", e.DataView, e.AcceptedOperation, movesIntoFolder);
+            return;
+        }
 
         // Same-widget internal drag: real-time reordering.
         // All sort modes allow drag reorder — dragging switches to Manual mode
@@ -273,18 +290,16 @@ private void RootGrid_DragLeave(object sender, DragEventArgs e)
     StopDragHighlight();
     _lastRootDragDiagnosticSignature = null;
 
-    // Persist any real-time reordering that was done during DragOver.
-    if (_isReorderDragActive)
+    // WinUI can finish an internal drag with DragLeave instead of Drop. Use
+    // the last realized pointer position as the commit point; the collection
+    // stayed stable during DragOver, so this is a single final mutation.
+    if (_isReorderDragActive && _reorderHasLastPosition)
     {
-        bool reorderedStack =
-            !string.IsNullOrWhiteSpace(_reorderStackKey);
-        _isReorderDragActive = false;
-        _reorderDragPaths = [];
-        _reorderStackKey = null;
-        if (!reorderedStack)
-        {
-            ViewModel.PersistManualOrder();
-        }
+        CommitReorder(_reorderLastPosition);
+    }
+    else
+    {
+        ClearReorderSession();
     }
 }
 
@@ -326,18 +341,21 @@ StopDragHighlight();
 
             if (IsSameWidgetInternalDrag(e.DataView))
             {
-                HandleFinalReorder(
-                    e.DataView.Properties,
-                    e.GetPosition(GetDropTargetControl()));
-                if (string.IsNullOrWhiteSpace(
-                        _reorderStackKey))
+                Windows.Foundation.Point dropPosition =
+                    e.GetPosition(GetDropTargetControl());
+                HandleFinalReorder(e.DataView.Properties, dropPosition);
+                if (_isReorderDragActive)
                 {
-                    ViewModel.PersistManualOrder();
+                    if (!string.IsNullOrWhiteSpace(_reorderStackKey))
+                    {
+                        ClearReorderSession();
+                    }
+                    else
+                    {
+                        ViewModel.PersistManualOrder();
+                        ClearReorderSession();
+                    }
                 }
-
-                _isReorderDragActive = false;
-                _reorderDragPaths = [];
-                _reorderStackKey = null;
                 return;
             }
 
@@ -387,7 +405,6 @@ StopDragHighlight();
             // Extract all needed data from the DataPackageView before completing
             // the deferral — the DataView becomes invalid after Complete().
             string? syncSourceWidgetId = TryGetPackageString(e.DataView.Properties, "DeskBoxSourceWidgetId");
-            var syncSourcePaths = TryGetPackageStringArray(e.DataView.Properties, "DeskBoxSourcePaths");
 
             // Complete the deferral early so the drag glyph disappears immediately.
             // The actual file transfer continues in the background with a visual overlay.
@@ -403,11 +420,14 @@ StopDragHighlight();
             }
             try
             {
-                await ViewModel.ImportPathsAsync(paths, moveWhenMapped, useShellProgress: moveWhenMapped == true);
+                IReadOnlyList<string> completedSourcePaths = await ViewModel.ImportPathsAsync(
+                    paths,
+                    moveWhenMapped,
+                    useShellProgress: moveWhenMapped == true);
 
                 if (moveWhenMapped == true)
                 {
-                    await SyncMoveSourceAsync(syncSourceWidgetId, syncSourcePaths);
+                    await SyncMoveSourceAsync(syncSourceWidgetId, completedSourcePaths);
                 }
 
                 ClearCutState();
@@ -444,7 +464,10 @@ StopDragHighlight();
         return DeskBoxDragData.ShouldShowImportOverlay(paths);
     }
 
-    private static bool IsInvalidFolderDrop(IReadOnlyList<string> sourcePaths, string destinationFolder)
+    private static bool IsInvalidFolderDrop(
+        IReadOnlyList<string> sourcePaths,
+        string destinationFolder,
+        bool resolveRealIdentity = false)
     {
         if (string.IsNullOrWhiteSpace(destinationFolder) || sourcePaths.Count == 0)
         {
@@ -465,8 +488,10 @@ StopDragHighlight();
                 return true;
             }
 
-            if (Directory.Exists(normalizedSource) &&
-                FileService.IsPathUnderDirectory(normalizedDestination, normalizedSource))
+            bool isNested = resolveRealIdentity
+                ? FileService.IsPathUnderDirectoryResolved(normalizedDestination, normalizedSource)
+                : FileService.IsPathUnderDirectory(normalizedDestination, normalizedSource);
+            if (isNested)
             {
                 return true;
             }
@@ -489,7 +514,7 @@ StopDragHighlight();
         var draggedItems = ViewModel.Items
             .Where(item =>
                 pathSet.Contains(Path.GetFullPath(item.Path)) &&
-                (File.Exists(item.Path) || Directory.Exists(item.Path)))
+                !string.IsNullOrWhiteSpace(item.Path))
             .ToList();
         if (draggedItems.Count == 0)
         {
@@ -590,9 +615,9 @@ StopDragHighlight();
     }
 
     /// <summary>
-    /// Performs real-time reordering during DragOver.  Moves the dragged
-    /// item to the insertion index so other items shift to make room.
-    /// Switches to Manual mode on first call.
+    /// Updates the reorder preview during DragOver without changing the
+    /// bound collection. Keeping the source order stable prevents
+    /// virtualization and scroll anchoring from fighting the pointer.
     /// </summary>
     private void HandleRealTimeReorder(
         DataPackagePropertySetView properties,
@@ -606,11 +631,7 @@ StopDragHighlight();
             _isReorderDragActive = true;
             _reorderStackKey = stackKey;
             _reorderDragPaths = [];
-            ViewModel.MoveStackForReorder(
-                stackKey,
-                ComputeDropInsertionIndex(
-                    GetDropTargetControl(),
-                    position));
+            UpdateReorderPreview(position);
             return;
         }
 
@@ -652,41 +673,71 @@ StopDragHighlight();
             _reorderStackKey = null;
         }
 
-        int currentIndex = ViewModel.FileStacksEnabled
-            ? ViewModel.VisibleItems
-                .ToList()
-                .FindIndex(item => ReferenceEquals(item, draggedItem))
-            : ViewModel.Items.IndexOf(draggedItem);
-        if (currentIndex < 0)
+        UpdateReorderPreview(position);
+    }
+
+    private void UpdateReorderPreview(Windows.Foundation.Point position)
+    {
+        _reorderLastPosition = position;
+        _reorderHasLastPosition = true;
+        _reorderInsertionIndex = ReorderDropIndexCalculator.Compute(
+            GetDropTargetControl() as ListViewBase ?? ItemsListView,
+            position,
+            _reorderInsertionIndex);
+        UpdateReorderInsertionIndicator(position);
+    }
+
+    private void UpdateReorderInsertionIndicator(
+        Windows.Foundation.Point position)
+    {
+        ListViewBase activeView =
+            GetDropTargetControl() as ListViewBase ?? ItemsListView;
+        if (!_isReorderDragActive ||
+            _reorderInsertionIndex < 0 ||
+            !ReorderDropIndexCalculator.TryGetInsertionIndicatorPlacement(
+                activeView,
+                SelectionOverlay,
+                _reorderInsertionIndex,
+                position,
+                out ReorderInsertionIndicatorPlacement placement))
         {
+            HideReorderInsertionIndicator();
             return;
         }
 
-        int targetIndex = ComputeDropInsertionIndex(GetDropTargetControl(), position);
-
-        if (ViewModel.FileStacksEnabled)
+        bool wasVisible =
+            ReorderInsertionIndicator.Visibility == Visibility.Visible;
+        ReorderInsertionIndicator.Width = placement.Bounds.Width;
+        ReorderInsertionIndicator.Height = placement.Bounds.Height;
+        ReorderInsertionLine.Width = placement.IsVertical
+            ? 2
+            : placement.Bounds.Width;
+        ReorderInsertionLine.Height = placement.IsVertical
+            ? placement.Bounds.Height
+            : 2;
+        Canvas.SetLeft(
+            ReorderInsertionIndicator,
+            placement.Bounds.X);
+        Canvas.SetTop(
+            ReorderInsertionIndicator,
+            placement.Bounds.Y);
+        ReorderInsertionIndicator.Opacity = 1;
+        ReorderInsertionIndicator.Visibility = Visibility.Visible;
+        if (!wasVisible)
         {
-            ViewModel.MoveVisibleItemForReorder(
-                draggedItem,
-                targetIndex);
-            return;
+            ReorderInsertionIndicatorAnimator.Start(
+                ReorderInsertionIndicator);
         }
+    }
 
-        // Move(oldIndex, newIndex) places the item at newIndex. Account for
-        // the source slot only for the ungrouped Items collection.
-        if (targetIndex > currentIndex)
-        {
-            targetIndex--;
-        }
-
-        if (targetIndex == currentIndex || targetIndex < 0)
-        {
-            return;
-        }
-
-        ViewModel.MoveItemForReorder(
-            draggedItem,
-            targetIndex);
+    private void HideReorderInsertionIndicator()
+    {
+        ReorderInsertionIndicatorAnimator.Stop(
+            ReorderInsertionIndicator);
+        ReorderInsertionIndicator.Visibility = Visibility.Collapsed;
+        ReorderInsertionIndicator.Opacity = 0;
+        ReorderInsertionIndicator.Width = 0;
+        ReorderInsertionIndicator.Height = 0;
     }
 
     /// <summary>
@@ -696,28 +747,34 @@ StopDragHighlight();
         DataPackagePropertySetView properties,
         Windows.Foundation.Point dropPosition)
     {
+        HideReorderInsertionIndicator();
         string? stackKey = TryGetPackageString(
             properties,
             DeskBoxDragData.StackReorderKeyProperty);
         if (!string.IsNullOrWhiteSpace(stackKey))
         {
             _reorderStackKey = stackKey;
+            _isReorderDragActive = true;
+            _reorderLastPosition = dropPosition;
+            _reorderHasLastPosition = true;
+            _reorderInsertionIndex = ReorderDropIndexCalculator.Compute(
+                GetDropTargetControl() as ListViewBase ?? ItemsListView,
+                dropPosition,
+                _reorderInsertionIndex);
             ViewModel.MoveStackForReorder(
                 stackKey,
-                ComputeDropInsertionIndex(
-                    GetDropTargetControl(),
-                    dropPosition));
+                _reorderInsertionIndex);
             return;
         }
 
-        HandleFinalReorder(
+        ApplyFinalReorder(
             TryGetPackageStringArray(
                 properties,
                 DeskBoxDragData.SourcePathsProperty),
             dropPosition);
     }
 
-    private void HandleFinalReorder(
+    private void ApplyFinalReorder(
         IReadOnlyList<string> dragPaths,
         Windows.Foundation.Point dropPosition)
     {
@@ -738,10 +795,22 @@ StopDragHighlight();
             return;
         }
 
-        if (ViewModel.FileStacksEnabled &&
-            !ViewModel.PrepareVisibleItemReorder(draggedItem))
+        if (!_isReorderDragActive)
         {
-            return;
+            if (ViewModel.FileStacksEnabled)
+            {
+                if (!ViewModel.PrepareVisibleItemReorder(draggedItem))
+                {
+                    return;
+                }
+            }
+            else if (ViewModel.Config.SortMode != WidgetSortMode.Manual)
+            {
+                ViewModel.SetSortMode(WidgetSortMode.Manual);
+            }
+
+            _isReorderDragActive = true;
+            _reorderDragPaths = dragPaths.ToArray();
         }
 
         int currentIndex = ViewModel.FileStacksEnabled
@@ -754,7 +823,11 @@ StopDragHighlight();
             return;
         }
 
-        int targetIndex = ComputeDropInsertionIndex(GetDropTargetControl(), dropPosition);
+        int targetIndex = ReorderDropIndexCalculator.Compute(
+            GetDropTargetControl() as ListViewBase ?? ItemsListView,
+            dropPosition,
+            _reorderInsertionIndex);
+        _reorderInsertionIndex = targetIndex;
 
         if (ViewModel.FileStacksEnabled)
         {
@@ -777,6 +850,45 @@ StopDragHighlight();
         ViewModel.MoveItemForReorder(
             draggedItem,
             targetIndex);
+    }
+
+    private void CommitReorder(Windows.Foundation.Point position)
+    {
+        if (!_isReorderDragActive)
+        {
+            return;
+        }
+
+        _reorderLastPosition = position;
+        _reorderHasLastPosition = true;
+        if (!string.IsNullOrWhiteSpace(_reorderStackKey))
+        {
+            _reorderInsertionIndex = ReorderDropIndexCalculator.Compute(
+                GetDropTargetControl() as ListViewBase ?? ItemsListView,
+                position,
+                _reorderInsertionIndex);
+            ViewModel.MoveStackForReorder(
+                _reorderStackKey,
+                _reorderInsertionIndex);
+        }
+        else
+        {
+            ApplyFinalReorder(_reorderDragPaths, position);
+            ViewModel.PersistManualOrder();
+        }
+
+        ClearReorderSession();
+    }
+
+    private void ClearReorderSession()
+    {
+        HideReorderInsertionIndicator();
+        _isReorderDragActive = false;
+        _reorderDragPaths = [];
+        _reorderStackKey = null;
+        _reorderInsertionIndex = -1;
+        _reorderLastPosition = default;
+        _reorderHasLastPosition = false;
     }
 
     // ── Drop poll (background thread) ─────────────────────────
@@ -1148,60 +1260,6 @@ StopDragHighlight();
         // Not over a folder — import into the widget root.
         App.Log($"[DropDiagnostic] Manual drop → root import, mapped='{ViewModel.MappedFolderPath}'");
         await ImportNativeDropPathsAsync(paths);
-    }
-
-    /// <summary>
-    /// Computes the insertion index at the given position within the
-    /// GridView or ListView.  Handles gaps between items correctly.
-    /// For GridView: considers both row (Y) and column (X) position.
-    /// For ListView: considers row (Y) position only.
-    /// </summary>
-    private int ComputeDropInsertionIndex(UIElement control, Windows.Foundation.Point position)
-    {
-        if (control is not ListViewBase listControl || listControl.Items.Count == 0)
-        {
-            return 0;
-        }
-
-        bool isGridView = control is GridView;
-
-        for (int i = 0; i < listControl.Items.Count; i++)
-        {
-            var container = listControl.ContainerFromIndex(i) as FrameworkElement;
-            if (container is null || container.ActualHeight <= 0)
-            {
-                continue;
-            }
-
-            var transform = container.TransformToVisual(control);
-            var rect = transform.TransformBounds(new Windows.Foundation.Rect(
-                0, 0, container.ActualWidth, container.ActualHeight));
-
-            if (isGridView)
-            {
-                // Determine if the pointer is "before" this item.
-                // "Before" = above the item's row, or in the same row and
-                // to the left of the item's horizontal center.
-                bool aboveRow = position.Y < rect.Top;
-                bool sameRow = position.Y >= rect.Top && position.Y < rect.Bottom;
-                bool leftOfCenter = position.X < (rect.X + rect.Width / 2);
-
-                if (aboveRow || (sameRow && leftOfCenter))
-                {
-                    return i;
-                }
-            }
-            else
-            {
-                // ListView: check if pointer is above the vertical midpoint.
-                if (position.Y < (rect.Top + rect.Height / 2))
-                {
-                    return i;
-                }
-            }
-        }
-
-        return listControl.Items.Count;
     }
 
 }

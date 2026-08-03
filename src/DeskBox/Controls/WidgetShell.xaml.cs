@@ -145,7 +145,7 @@ public sealed partial class WidgetShell : UserControl
     private Storyboard? _compactLiveStoryboard;
     private Storyboard? _compactUpdateStoryboard;
     private Storyboard? _compactReorderHandleStoryboard;
-    private Storyboard? _groupDropPreviewStoryboard;
+    private ScalarKeyFrameAnimation? _groupDropBreathingAnimation;
     private DispatcherQueueTimer? _compactMarqueeDelayTimer;
     private Storyboard? _compactMarqueeStoryboard;
     private TranslateTransform? _compactMarqueeTransform;
@@ -239,6 +239,8 @@ public sealed partial class WidgetShell : UserControl
     public event EventHandler<WidgetGroupMemberEventArgs>? GroupMemberInvoked;
     public event EventHandler<WidgetGroupMemberEventArgs>? GroupMemberRemoveRequested;
     public event EventHandler<WidgetGroupMemberEventArgs>? GroupMemberDetachRequested;
+    public event EventHandler<WidgetGroupMemberEventArgs>? GroupMemberDetachDragStarted;
+    public event EventHandler<WidgetGroupMemberEventArgs>? GroupMemberDetachDragCompleted;
     public event EventHandler<WidgetGroupReorderEventArgs>? GroupMemberReorderRequested;
     public event EventHandler? GroupDissolveRequested;
     public event EventHandler? GroupPickerOpened;
@@ -250,6 +252,8 @@ public sealed partial class WidgetShell : UserControl
         GroupTitleSwitcher.MemberInvoked += (_, e) => GroupMemberInvoked?.Invoke(this, e);
         GroupTitleSwitcher.RemoveMemberRequested += (_, e) => GroupMemberRemoveRequested?.Invoke(this, e);
         GroupTitleSwitcher.DetachMemberRequested += (_, e) => GroupMemberDetachRequested?.Invoke(this, e);
+        GroupTitleSwitcher.DetachDragStarted += (_, e) => GroupMemberDetachDragStarted?.Invoke(this, e);
+        GroupTitleSwitcher.DetachDragCompleted += (_, e) => GroupMemberDetachDragCompleted?.Invoke(this, e);
         GroupTitleSwitcher.ReorderRequested += (_, e) => GroupMemberReorderRequested?.Invoke(this, e);
         GroupTitleSwitcher.DissolveRequested += (_, _) => GroupDissolveRequested?.Invoke(this, EventArgs.Empty);
         GroupTitleSwitcher.PickerOpened += (_, _) => GroupPickerOpened?.Invoke(this, EventArgs.Empty);
@@ -285,7 +289,7 @@ public sealed partial class WidgetShell : UserControl
             StopCompactVinylRotation();
             _compactLiveStoryboard?.Stop();
             _compactUpdateStoryboard?.Stop();
-            _groupDropPreviewStoryboard?.Stop();
+            StopGroupDropPreviewBreathing();
             StopContentDropHighlight();
         };
     }
@@ -399,6 +403,42 @@ public sealed partial class WidgetShell : UserControl
     public FrameworkElement DragHandleElement => _isCollapsed ? CollapsedChromeLayer : OverlayDragHandle;
     public FrameworkElement GroupNavigationElement => GroupTitleSwitcher;
 
+    public FrameworkElement? GroupMergeTitleTargetElement
+    {
+        get
+        {
+            if (ChromeMode == WidgetChromeMode.Hidden)
+            {
+                return null;
+            }
+
+            if (_isCollapsed)
+            {
+                return CompactIdentityHost.Visibility == Visibility.Visible &&
+                       CompactIdentityHost.ActualWidth > 0 &&
+                       CompactIdentityHost.ActualHeight > 0
+                    ? CompactIdentityHost
+                    : null;
+            }
+
+            if (ChromeMode == WidgetChromeMode.Overlay)
+            {
+                return OverlayDragHandle.Visibility == Visibility.Visible &&
+                       OverlayDragHandle.Opacity > 0.01 &&
+                       OverlayDragHandle.ActualWidth > 0 &&
+                       OverlayDragHandle.ActualHeight > 0
+                    ? OverlayDragHandle
+                    : null;
+            }
+
+            return TitleBarGrid.Visibility == Visibility.Visible &&
+                   TitleBarGrid.ActualWidth > 0 &&
+                   TitleBarGrid.ActualHeight > 0
+                ? TitleBarGrid
+                : null;
+        }
+    }
+
     public bool IsOverlayChromeMode => ChromeMode is WidgetChromeMode.Overlay or WidgetChromeMode.Hidden;
 
     public bool IsCollapsed => _isCollapsed;
@@ -455,91 +495,111 @@ public sealed partial class WidgetShell : UserControl
         bool ready,
         string? messageKey = null)
     {
-        bool blocked =
-            !ready &&
-            !string.IsNullOrWhiteSpace(messageKey);
-        GroupDropPreviewIcon.Glyph = blocked ? "\uE7BA" : "\uE8F1";
-        string resolvedMessageKey = messageKey ??
-            (ready ? "Widget.Group.DropReady" : "Widget.Group.DropWaiting");
-        GroupDropPreviewText.Text = App.Current?.LocalizationService.T(
-            resolvedMessageKey)
-            ?? LocalizationService.DefaultText(
-                resolvedMessageKey);
-
-        _groupDropPreviewStoryboard?.Stop();
-        _groupDropPreviewStoryboard = null;
-        double targetOpacity = visible
-            ? ready
-                ? 0.96
-                : blocked
-                    ? 0.88
-                    : 0.76
-            : 0;
-        if (!IsLoaded || !SystemAnimationsEnabled())
+        StopGroupDropPreviewBreathing();
+        if (!visible || !TryPlaceGroupDropPreviewOverTitle())
         {
-            GroupDropPreview.Visibility =
-                visible ? Visibility.Visible : Visibility.Collapsed;
-            GroupDropPreview.Opacity = targetOpacity;
+            GroupDropPreview.Visibility = Visibility.Collapsed;
+            GroupDropPreview.Opacity = 0;
             GroupDropPreviewTransform.Y = 0;
             return;
         }
 
-        if (visible)
+        bool blocked =
+            !ready &&
+            !string.IsNullOrWhiteSpace(messageKey);
+        GroupDropPreviewIcon.Glyph = blocked ? "\uE7BA" : "\uE8F1";
+        ApplyGroupDropPreviewAppearance(ready, blocked);
+        GroupDropPreview.Visibility = Visibility.Visible;
+        GroupDropPreview.Opacity = 1;
+        GroupDropPreviewTransform.Y = 0;
+        StartGroupDropPreviewBreathing(ready);
+    }
+
+    private bool TryPlaceGroupDropPreviewOverTitle()
+    {
+        FrameworkElement? target = GroupMergeTitleTargetElement;
+        if (target is null)
         {
-            bool entering =
-                GroupDropPreview.Visibility != Visibility.Visible ||
-                GroupDropPreview.Opacity < 0.01;
-            GroupDropPreview.Visibility = Visibility.Visible;
-            if (entering)
-            {
-                GroupDropPreview.Opacity = 0;
-                GroupDropPreviewTransform.Y = 2;
-            }
+            return false;
         }
 
-        int durationMs = visible
-            ? WidgetMotion.TransitionMilliseconds
-            : WidgetMotion.FeedbackMilliseconds;
-        var easing = new CubicEase
+        try
         {
-            EasingMode = visible ? EasingMode.EaseOut : EasingMode.EaseIn
-        };
-        var opacityAnimation = new DoubleAnimation
-        {
-            To = targetOpacity,
-            Duration = TimeSpan.FromMilliseconds(durationMs),
-            EasingFunction = easing
-        };
-        var offsetAnimation = new DoubleAnimation
-        {
-            To = visible ? 0 : 1,
-            Duration = TimeSpan.FromMilliseconds(durationMs),
-            EasingFunction = easing
-        };
-        Storyboard.SetTarget(opacityAnimation, GroupDropPreview);
-        Storyboard.SetTargetProperty(opacityAnimation, nameof(Opacity));
-        Storyboard.SetTarget(offsetAnimation, GroupDropPreviewTransform);
-        Storyboard.SetTargetProperty(
-            offsetAnimation,
-            nameof(TranslateTransform.Y));
-
-        var storyboard = new Storyboard();
-        storyboard.Children.Add(opacityAnimation);
-        storyboard.Children.Add(offsetAnimation);
-        if (!visible)
-        {
-            storyboard.Completed += (_, _) =>
-            {
-                if (ReferenceEquals(_groupDropPreviewStoryboard, storyboard))
-                {
-                    GroupDropPreview.Visibility = Visibility.Collapsed;
-                    GroupDropPreviewTransform.Y = 0;
-                    _groupDropPreviewStoryboard = null;
-                }
-            };
+            Windows.Foundation.Point topLeft = target.TransformToVisual(ShellRoot)
+                .TransformPoint(new Windows.Foundation.Point(0, 0));
+            GroupDropPreview.Margin = new Thickness(topLeft.X, topLeft.Y, 0, 0);
+            GroupDropPreview.Width = target.ActualWidth;
+            GroupDropPreview.Height = target.ActualHeight;
+            return GroupDropPreview.Width > 0 && GroupDropPreview.Height > 0;
         }
-        _groupDropPreviewStoryboard = storyboard;
-        storyboard.Begin();
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void ApplyGroupDropPreviewAppearance(bool ready, bool blocked)
+    {
+        Color accent =
+            App.Current?.ThemeService?.GetEffectiveAccentColor() ??
+            AccentColorHelper.DefaultAccentColor;
+        byte borderAlpha = ready ? (byte)0xF0 : blocked ? (byte)0xA8 : (byte)0xD0;
+        GroupDropPreview.Background = new SolidColorBrush(Colors.Transparent);
+        GroupDropPreview.BorderBrush = new SolidColorBrush(Color.FromArgb(
+            borderAlpha,
+            accent.R,
+            accent.G,
+            accent.B));
+        var foreground = new SolidColorBrush(Color.FromArgb(
+            0xFF,
+            accent.R,
+            accent.G,
+            accent.B));
+        GroupDropPreviewIcon.Foreground = foreground;
+
+        if (WindowsCompatibilityService.IsHighContrast)
+        {
+            GroupDropPreview.Background = new SolidColorBrush(Colors.Transparent);
+        }
+    }
+
+    private void StartGroupDropPreviewBreathing(bool ready)
+    {
+        Visual visual = ElementCompositionPreview.GetElementVisual(
+            GroupDropPreview);
+        visual.StopAnimation("Opacity");
+        if (!SystemAnimationsEnabled())
+        {
+            visual.Opacity = WindowsCompatibilityService.IsHighContrast
+                ? 1
+                : ready
+                    ? 1
+                    : 0.72f;
+            return;
+        }
+
+        ScalarKeyFrameAnimation animation =
+            visual.Compositor.CreateScalarKeyFrameAnimation();
+        animation.Duration = TimeSpan.FromMilliseconds(1500);
+        animation.IterationBehavior = AnimationIterationBehavior.Forever;
+        CubicBezierEasingFunction easing =
+            visual.Compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.42f, 0),
+                new Vector2(0.58f, 1));
+        animation.InsertKeyFrame(0, ready ? 0.42f : 0.3f);
+        animation.InsertKeyFrame(0.5f, ready ? 1 : 0.78f, easing);
+        animation.InsertKeyFrame(1, ready ? 0.42f : 0.3f, easing);
+        _groupDropBreathingAnimation = animation;
+        visual.StartAnimation("Opacity", animation);
+    }
+
+    private void StopGroupDropPreviewBreathing()
+    {
+        Visual visual = ElementCompositionPreview.GetElementVisual(
+            GroupDropPreview);
+        visual.StopAnimation("Opacity");
+        visual.Opacity = 0;
+        _groupDropBreathingAnimation = null;
     }
 
     public void SetCompactReorderEnabled(bool enabled)
@@ -3281,14 +3341,7 @@ public sealed partial class WidgetShell : UserControl
 
     private static bool SystemAnimationsEnabled()
     {
-        try
-        {
-            return new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
+        return WindowsCompatibilityService.ShouldAnimate;
     }
 
     private void CollapseButton_Click(object sender, RoutedEventArgs e) => CollapseRequested?.Invoke(this, e);
@@ -3774,6 +3827,40 @@ public sealed partial class WidgetShell : UserControl
         PointerRoutedEventArgs e)
     {
         GroupTitleSwitcher.HandleTitleBarPointerWheel(TitleBarGrid, e);
+    }
+
+    internal bool IsPointOverGroupTitleBar(
+        FrameworkElement coordinateSpace,
+        Windows.Foundation.Point point)
+    {
+        if (_groupPresentation is null ||
+            GroupTitleSwitcher.Visibility != Visibility.Visible ||
+            TitleBarGrid.ActualWidth <= 0 ||
+            TitleBarGrid.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            Windows.Foundation.Rect bounds = TitleBarGrid
+                .TransformToVisual(coordinateSpace)
+                .TransformBounds(new Windows.Foundation.Rect(
+                    0,
+                    0,
+                    TitleBarGrid.ActualWidth,
+                    TitleBarGrid.ActualHeight));
+            return bounds.Contains(point);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    internal bool HandleNativeGroupTitleWheel(int delta)
+    {
+        return GroupTitleSwitcher.HandleNativeWheel(delta);
     }
 
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)

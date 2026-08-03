@@ -80,6 +80,7 @@ public partial class App : Application
     private Window? _trayWindow;
     private MenuFlyout? _trayContextMenu;
     private bool _traySecondWindowSyncLogged;
+    private MenuFlyoutItem? _trayOrganizeDesktopItem;
     private MenuFlyoutItem? _trayMapFolderItem;
     private readonly Dictionary<WidgetKind, MenuFlyoutItem> _trayCreateWidgetItems = [];
     private MenuFlyoutItem? _trayOpenManagedStorageItem;
@@ -91,6 +92,7 @@ public partial class App : Application
     private NativeAppNotificationService? _nativeNotificationService;
     private TodoReminderService? _todoReminderService;
     private DisplayAreaWatcherService? _displayAreaWatcher;
+    private AppLifecycleRecoveryWatcher? _lifecycleRecoveryWatcher;
     private SearchIndexService? _searchIndexService;
     private SearchEngineService? _searchEngineService;
     private UsnJournalIndexService? _usnIndexService;
@@ -112,6 +114,7 @@ public partial class App : Application
     private bool _hasUpdateAvailable;
     private bool _updateNotificationShown;
     private string _availableUpdateVersion = string.Empty;
+    private int _externalStateRecoveryScheduled;
 
     public static new App Current => (App)Application.Current;
 
@@ -134,6 +137,8 @@ public partial class App : Application
     public GlobalHotkeyService? GlobalHotkeyService { get; private set; }
     public SearchHotkeyService? SearchHotkeyService => _searchHotkeyService;
     public SearchEngineService? SearchEngineService => _searchEngineService;
+    public SearchIndexService? SearchIndexService => _searchIndexService;
+    public AppDiagnosticsService? DiagnosticsService => _diagnosticsService;
     internal SearchHistoryService? SearchHistoryService => _searchHistoryService;
     public SearchResultActionService? SearchActionService => _searchActionService;
     internal bool IsSearchPopupCreated => _searchPopupWindow is not null;
@@ -145,6 +150,7 @@ public partial class App : Application
     public NativeAppNotificationService? NativeNotificationService => _nativeNotificationService;
     public DisplayAreaWatcherService? DisplayAreaWatcher => _displayAreaWatcher;
     public TodoReminderService? TodoReminderService => _todoReminderService;
+    public DesktopAutoOrganizationWatcher? DesktopAutoOrganizationWatcher { get; private set; }
     public SettingsWindow? SettingsWindowInstance => _settingsWindow;
 
     public static bool IsVerboseLoggingEnabled => EnableVerboseLogging;
@@ -840,6 +846,7 @@ public partial class App : Application
 
             // Parallel: independent UI setup
             CreateTrayIcon();
+            InitializeLifecycleRecoveryWatcher();
             RegisterActivationListener();
 
             await themeTask;
@@ -876,6 +883,13 @@ public partial class App : Application
             WidgetManager.TrayLayerStateChanged += UpdateTrayLayerStateText;
 
             // Phase 3: Restore widgets
+            int recoveredDesktopItems = await new DesktopOrganizationTransaction(
+                SettingsService,
+                FileService).RecoverPendingAsync();
+            if (recoveredDesktopItems > 0)
+            {
+                Log($"[DesktopOrganization] Recovered {recoveredDesktopItems} items from an interrupted transaction.");
+            }
             WidgetManager.SyncStorageFolderEntries();
             await WidgetManager.RestoreWidgetsAsync();
 
@@ -891,6 +905,13 @@ public partial class App : Application
             {
                 await WidgetManager.CreateManagedWidgetAsync(LocalizationService.T("Widget.DefaultDesktopName"));
             }
+
+            DesktopAutoOrganizationWatcher = new DesktopAutoOrganizationWatcher(
+                SettingsService,
+                OrganizerService,
+                WidgetManager);
+            DesktopAutoOrganizationWatcher.ItemOrganized += ShowDesktopAutoOrganizationNotification;
+            DesktopAutoOrganizationWatcher.Start();
 
             if (!IsStartupMode && !SettingsService.Settings.HasCompletedOnboarding)
             {
@@ -921,7 +942,10 @@ public partial class App : Application
             _ = JumpListService.ConfigureAsync(LocalizationService);
 
             // Handle Jump List activation on first launch (not second instance)
-            string? firstLaunchJumpArg = JumpListService.TryGetJumpListArgument(args.Arguments);
+            string? firstLaunchJumpArg =
+                JumpListService.TryGetJumpListArgument(args.Arguments) ??
+                JumpListService.TryGetJumpListArgument(
+                    string.Join(' ', Environment.GetCommandLineArgs()));
             if (firstLaunchJumpArg is not null)
             {
                 _ = JumpListService.HandleActivationAsync(firstLaunchJumpArg);
@@ -962,6 +986,48 @@ public partial class App : Application
     }
 
     private AppDiagnosticsService? _diagnosticsService;
+
+    private void InitializeLifecycleRecoveryWatcher()
+    {
+        if (_trayWindow is null)
+        {
+            return;
+        }
+
+        try
+        {
+            IntPtr trayHwnd = WindowNative.GetWindowHandle(_trayWindow);
+            if (trayHwnd != IntPtr.Zero)
+            {
+                _lifecycleRecoveryWatcher = new AppLifecycleRecoveryWatcher(
+                    trayHwnd,
+                    UiDispatcherQueue,
+                    OnLifecycleRecoveryRequested);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Lifecycle] Recovery watcher initialization failed: {ex.Message}");
+        }
+    }
+
+    private void OnLifecycleRecoveryRequested(string reason)
+    {
+        Log($"[Lifecycle] Recovery signal received: {reason}");
+        _diagnosticsService?.RecordLifecycleEvent(reason, _searchIndexService);
+        WidgetLayerService.InvalidateDesktopIconViewCache();
+        _displayAreaWatcher?.RefreshNow();
+
+        bool requiresExternalRecovery =
+            reason.Contains("resume", StringComparison.OrdinalIgnoreCase) ||
+            reason.Contains("session-", StringComparison.OrdinalIgnoreCase) ||
+            reason.Contains("explorer-restart", StringComparison.OrdinalIgnoreCase);
+        if (requiresExternalRecovery)
+        {
+            ScheduleExternalStateRecovery();
+            _searchIndexService?.RecoverAfterLifecycleChange(reason);
+        }
+    }
 
     private void ScheduleBackgroundUpdateCheck()
     {
@@ -1075,9 +1141,86 @@ public partial class App : Application
                                      string.Equals(view, "today", StringComparison.OrdinalIgnoreCase);
             _ = ShowTodoWidgetFromNotificationAsync(widgetId, itemId, preferTodayFilter);
         }
+        else if (notificationArguments.TryGetValue("type", out string? notificationType) &&
+                 string.Equals(
+                     notificationType,
+                     "desktop-organization",
+                     StringComparison.OrdinalIgnoreCase))
+        {
+            if (notificationArguments.TryGetValue("action", out string? action) &&
+                string.Equals(action, "undo", StringComparison.OrdinalIgnoreCase) &&
+                notificationArguments.TryGetValue("historyId", out string? historyId))
+            {
+                _ = UndoDesktopOrganizationFromNotificationAsync(historyId);
+                return;
+            }
+
+            _ = RaiseTrayWidgetsAsync();
+        }
         else
         {
             _ = RaiseTrayWidgetsAsync();
+        }
+    }
+
+    private void ShowDesktopAutoOrganizationNotification(
+        DesktopAutoOrganizationCompleted completed)
+    {
+        if (UiDispatcherQueue is { HasThreadAccess: false } dispatcherQueue)
+        {
+            dispatcherQueue.TryEnqueue(() =>
+                ShowDesktopAutoOrganizationNotification(completed));
+            return;
+        }
+
+        _nativeNotificationService?.TryShow(
+            LocalizationService.T("DesktopOrganization.Notification.Title"),
+            LocalizationService.Format(
+                "DesktopOrganization.Notification.Body",
+                completed.FileName,
+                completed.TargetWidgetName),
+            new Dictionary<string, string>
+            {
+                ["type"] = "desktop-organization",
+                ["historyId"] = completed.HistoryId
+            },
+            [
+                new NativeAppNotificationAction(
+                    LocalizationService.T("DesktopOrganization.Notification.Undo"),
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = "desktop-organization",
+                        ["action"] = "undo",
+                        ["historyId"] = completed.HistoryId
+                    })
+            ],
+            options: new NativeAppNotificationOptions(
+                Tag: "desktop-auto-organization",
+                Group: "desktop-organization"));
+    }
+
+    private async Task UndoDesktopOrganizationFromNotificationAsync(string historyId)
+    {
+        try
+        {
+            OrganizationHistoryEntry? history = SettingsService.Settings.RecentOrganizationHistory
+                .FirstOrDefault(entry =>
+                    string.Equals(entry.Id, historyId, StringComparison.Ordinal));
+            await OrganizerService.UndoAsync(historyId);
+            if (WidgetManager is not null && history is not null)
+            {
+                foreach (string widgetId in history.Items
+                             .Select(item => item.TargetWidgetId)
+                             .Where(id => !string.IsNullOrWhiteSpace(id))
+                             .Distinct(StringComparer.Ordinal))
+                {
+                    await WidgetManager.RefreshFileWidgetAsync(widgetId);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[DesktopAutoOrganization] Notification undo failed: {ex}");
         }
     }
 
@@ -1585,6 +1728,7 @@ public partial class App : Application
     private async Task HandleExternalActivationAsync()
     {
         Log("HandleExternalActivationAsync invoked");
+        ScheduleExternalStateRecovery();
 
         string? nativeNotificationActivationArguments = TakePendingNativeNotificationActivationArguments();
         if (!string.IsNullOrWhiteSpace(nativeNotificationActivationArguments))
@@ -1662,6 +1806,79 @@ public partial class App : Application
         {
             Log($"[DataBackup] Restore result notification failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// A second-instance activation is also a useful lifecycle signal: it is
+    /// commonly produced when the user returns after lock, sleep, Explorer
+    /// restart, or a mapped-drive reconnection. Reconcile lightweight external
+    /// state without rebuilding the whole application on every activation.
+    /// </summary>
+    private void ScheduleExternalStateRecovery()
+    {
+        if (Interlocked.Exchange(ref _externalStateRecoveryScheduled, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(650).ConfigureAwait(false);
+                UiDispatcherQueue?.TryEnqueue(() => _ = RecoverExternalStateAsync());
+            }
+            catch (Exception ex)
+            {
+                Log($"[Lifecycle] External state recovery scheduling failed: {ex.Message}");
+                Volatile.Write(ref _externalStateRecoveryScheduled, 0);
+            }
+        });
+    }
+
+    private async Task RecoverExternalStateAsync()
+    {
+        try
+        {
+            QuickCaptureClipboardService?.CaptureCurrent();
+
+            if (WidgetManager is not null)
+            {
+                string[] fileWidgetIds = SettingsService.Settings.Widgets
+                    .Where(widget => widget.WidgetKind == WidgetKind.File &&
+                                     !widget.IsDisabled &&
+                                     !SettingsService.Settings.DeletedWidgetIds.Contains(widget.Id))
+                    .Select(widget => widget.Id)
+                    .ToArray();
+
+                foreach (string widgetId in fileWidgetIds)
+                {
+                    await WidgetManager.RefreshFileWidgetAsync(widgetId);
+                }
+            }
+
+            Log("[Lifecycle] External state recovery completed.");
+        }
+        catch (Exception ex)
+        {
+            Log($"[Lifecycle] External state recovery failed: {ex.Message}");
+        }
+        finally
+        {
+            Volatile.Write(ref _externalStateRecoveryScheduled, 0);
+        }
+    }
+
+    /// <summary>
+    /// Runs an explicit external-state reconciliation from the diagnostics
+    /// page. Unlike the debounced lifecycle path this method is awaitable so
+    /// the UI can report when file widgets have finished refreshing.
+    /// </summary>
+    public async Task ForceExternalStateRecoveryAsync()
+    {
+        await RecoverExternalStateAsync();
+        _displayAreaWatcher?.RefreshNow();
+        _searchIndexService?.RecoverAfterLifecycleChange("manual");
     }
 
     private void OnLanguageChanged()
@@ -2127,9 +2344,18 @@ public partial class App : Application
         // and access half-closed window objects.
         _displayAreaWatcher?.Dispose();
         _displayAreaWatcher = null;
+        _lifecycleRecoveryWatcher?.Dispose();
+        _lifecycleRecoveryWatcher = null;
 
         _diagnosticsService?.Dispose();
         _diagnosticsService = null;
+        if (DesktopAutoOrganizationWatcher is not null)
+        {
+            DesktopAutoOrganizationWatcher.ItemOrganized -=
+                ShowDesktopAutoOrganizationNotification;
+            DesktopAutoOrganizationWatcher.Dispose();
+        }
+        DesktopAutoOrganizationWatcher = null;
         await SettingsService.SaveAsync();
         _nativeNotificationService?.Dispose();
         _nativeNotificationService = null;
@@ -2162,6 +2388,8 @@ public partial class App : Application
 
         _singleInstanceMutex?.Dispose();
         _singleInstanceMutex = null;
+        _desktopOrganizationWindow?.CloseForShutdown();
+        _desktopOrganizationWindow = null;
         _settingsWindow?.CloseForShutdown();
         _settingsWindow = null;
         _onboardingWindow?.Close();
@@ -2773,7 +3001,7 @@ public partial class App : Application
                 break;
 
             case "open-settings":
-                ShowSettings();
+                ShowSettings("SearchSettings");
                 break;
 
             case "toggle-widgets":

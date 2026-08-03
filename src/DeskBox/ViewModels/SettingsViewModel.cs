@@ -57,6 +57,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private bool _isDisposed;
     private CancellationTokenSource? _updateOperationCts;
     private AppUpdateManifest? _availableUpdateManifest;
+    private AppUpdateManifest? _latestUpdateManifest;
     private string? _downloadedUpdateInstallerPath;
     private bool _showManualUpdateFallback;
     private ImageSource? _donationWechatImageSource;

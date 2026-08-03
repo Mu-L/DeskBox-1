@@ -294,7 +294,7 @@ public abstract partial class WidgetWindowBase
             _ => Win32Helper.DWMWCP_ROUND
         };
 
-        Win32Helper.DwmSetWindowAttribute(HWnd, Win32Helper.DWMWA_WINDOW_CORNER_PREFERENCE, ref cornerPreference, sizeof(int));
+        Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_WINDOW_CORNER_PREFERENCE, ref cornerPreference);
     }
 
     protected void ApplyDwmBorderStyle(bool isDark)

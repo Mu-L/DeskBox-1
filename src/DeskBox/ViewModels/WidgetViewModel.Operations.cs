@@ -13,14 +13,19 @@ public partial class WidgetViewModel
 {
     public async Task InitializeAsync()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
         IsLoading = true;
         try
         {
             EnsureFolderBackedConfig();
             MappedFolderPath = Config.MappedFolderPath;
-await LoadFolderContentsAsync(MappedFolderPath!);
-await ConfigureFolderWatchersAsync(MappedFolderPath);
-            IsInitialized = true;
+            await ConfigureFolderWatchersAsync(MappedFolderPath);
+            await ReloadFolderContentsAsync(MappedFolderPath!);
+            IsInitialized = !_isDisposed;
         }
         finally
         {
@@ -37,7 +42,7 @@ await ConfigureFolderWatchersAsync(MappedFolderPath);
         await ImportPathsAsync(paths);
     }
 
-    public async Task ImportPathsAsync(
+    public async Task<IReadOnlyList<string>> ImportPathsAsync(
         IEnumerable<string> paths,
         bool? moveWhenMapped = null,
         bool useShellProgress = false)
@@ -49,7 +54,7 @@ await ConfigureFolderWatchersAsync(MappedFolderPath);
 
         if (normalizedPaths.Count == 0)
         {
-            return;
+            return [];
         }
 
         EnsureFolderBackedConfig();
@@ -73,6 +78,37 @@ await ConfigureFolderWatchersAsync(MappedFolderPath);
             RecordFileAddedAt(destinationPath, DateTimeOffset.Now);
             await UpsertFolderItemAsync(destinationPath);
         }
+
+        return historyEntry.Items
+            .Select(item => Path.GetFullPath(item.SourcePath))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    internal async Task<IReadOnlyList<string>> GetConfirmedMissingPathsAsync(
+        IEnumerable<string> paths)
+    {
+        var confirmedMissing = new List<string>();
+        foreach (IGrouping<string, string> group in paths
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Where(path => !string.IsNullOrWhiteSpace(Path.GetDirectoryName(path)))
+                     .GroupBy(path => Path.GetDirectoryName(path)!, StringComparer.OrdinalIgnoreCase))
+        {
+            FolderPathSnapshot snapshot =
+                await FileService.CaptureDirectChildSnapshotAsync(group.Key);
+            if (!FolderSnapshotStatusPolicy.IsSuccessful(snapshot.Status))
+            {
+                continue;
+            }
+
+            confirmedMissing.AddRange(group.Where(path =>
+                FileService.ClassifyDirectChild(snapshot, path) ==
+                FolderEntryRefreshStatus.NotFound));
+        }
+
+        return confirmedMissing;
     }
 
     /// <summary>
@@ -179,8 +215,10 @@ await ConfigureFolderWatchersAsync(MappedFolderPath);
         MappedFolderPath = Config.MappedFolderPath;
         OnPropertyChanged(nameof(FollowsDefaultStoragePath));
 
-await LoadFolderContentsAsync(MappedFolderPath!, clearIconCacheBeforeHydration: true);
-await ConfigureFolderWatchersAsync(MappedFolderPath);
+        await ConfigureFolderWatchersAsync(MappedFolderPath);
+        await ReloadFolderContentsAsync(
+            MappedFolderPath!,
+            clearIconCacheBeforeHydration: true);
         UpdateDependentProperties();
     }
 
@@ -194,7 +232,23 @@ await ConfigureFolderWatchersAsync(MappedFolderPath);
     /// </summary>
     public async Task RefreshFolderContentsAsync()
     {
-        if (string.IsNullOrEmpty(MappedFolderPath))
+        if (_isDisposed || string.IsNullOrEmpty(MappedFolderPath))
+        {
+            return;
+        }
+
+        await ReloadFolderContentsAsync(MappedFolderPath);
+        if (!_isDisposed)
+        {
+            UpdateDependentProperties();
+        }
+    }
+
+    private async Task ReloadFolderContentsAsync(
+        string expectedFolderPath,
+        bool clearIconCacheBeforeHydration = false)
+    {
+        if (_isDisposed)
         {
             return;
         }
@@ -202,13 +256,19 @@ await ConfigureFolderWatchersAsync(MappedFolderPath);
         await _folderRefreshGate.WaitAsync();
         try
         {
-            if (string.IsNullOrEmpty(MappedFolderPath))
+            if (_isDisposed ||
+                string.IsNullOrEmpty(MappedFolderPath) ||
+                !string.Equals(
+                    Path.GetFullPath(MappedFolderPath),
+                    Path.GetFullPath(expectedFolderPath),
+                    StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            await LoadFolderContentsAsync(MappedFolderPath);
-            UpdateDependentProperties();
+            await LoadFolderContentsAsync(
+                MappedFolderPath,
+                clearIconCacheBeforeHydration);
         }
         finally
         {
@@ -224,6 +284,25 @@ await ConfigureFolderWatchersAsync(MappedFolderPath);
         }
 
         string normalizedPath = Path.GetFullPath(folderPath);
+        if (App.Current?.WidgetManager is { } pathWidgetManager)
+        {
+            pathWidgetManager.EnsureFileWidgetPathAvailable(normalizedPath, Config.Id);
+        }
+        else
+        {
+            WidgetConfig? conflict = _settingsService.Settings.Widgets.FirstOrDefault(widget =>
+                widget.WidgetKind == WidgetKind.File &&
+                !string.Equals(widget.Id, Config.Id, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(widget.MappedFolderPath) &&
+                FileService.PathsOverlap(normalizedPath, widget.MappedFolderPath));
+            if (conflict is not null)
+            {
+                throw new InvalidOperationException(_localizationService.Format(
+                    "Widget.Error.FileWidgetPathConflict",
+                    conflict.Name));
+            }
+        }
+
         Directory.CreateDirectory(normalizedPath);
 
         Config.WidgetKind = WidgetKind.File;
@@ -242,8 +321,8 @@ await ConfigureFolderWatchersAsync(MappedFolderPath);
         }
 
         _settingsService.UpdateWidget(Config);
-await LoadFolderContentsAsync(normalizedPath);
-await ConfigureFolderWatchersAsync(normalizedPath);
+        await ConfigureFolderWatchersAsync(normalizedPath);
+        await ReloadFolderContentsAsync(normalizedPath);
         UpdateDependentProperties();
     }
 

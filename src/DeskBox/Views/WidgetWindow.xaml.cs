@@ -542,6 +542,28 @@ public sealed partial class WidgetWindow :
         ResizeGrid.IsHitTestVisible = !isBusy;
     }
 
+    public void SetDesktopOrganizationBusy(bool isBusy)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => SetDesktopOrganizationBusy(isBusy));
+            return;
+        }
+
+        _isMigrationBusy = isBusy;
+        if (isBusy)
+        {
+            MigrationTitleText.Text = _localizationService.T(
+                "DesktopOrganization.Busy.Title");
+            MigrationDescriptionText.Text = _localizationService.T(
+                "DesktopOrganization.Busy.Description");
+            StopDragHighlight();
+        }
+        MigrationOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+        MigrationProgressRing.IsActive = isBusy;
+        ResizeGrid.IsHitTestVisible = !isBusy;
+    }
+
     private void ElevateForInteraction()
     {
         if (App.Current.WidgetManager is { WidgetsRaisedFromTray: true })

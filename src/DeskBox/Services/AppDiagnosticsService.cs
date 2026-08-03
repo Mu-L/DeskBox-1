@@ -12,6 +12,9 @@ public sealed class AppDiagnosticsService : IDisposable
     private System.Threading.Timer? _uiWatchdogTimer;
     private volatile bool _uiHeartbeatReceived;
     private int _watchdogMissCount;
+    private int _lifecycleEventCount;
+    private DateTimeOffset? _lastLifecycleEventAt;
+    private string _lastLifecycleReason = string.Empty;
     private readonly DispatcherQueue _dispatcherQueue;
     private bool _isDisposed;
 
@@ -27,6 +30,54 @@ public sealed class AppDiagnosticsService : IDisposable
     {
         ScheduleMemoryDiagnostics();
         StartUiThreadWatchdog();
+    }
+
+    public int LifecycleEventCount => Volatile.Read(ref _lifecycleEventCount);
+    public DateTimeOffset? LastLifecycleEventAt => _lastLifecycleEventAt;
+    public string LastLifecycleReason => _lastLifecycleReason;
+
+    public AppRuntimeHealthSnapshot GetRuntimeHealthSnapshot(
+        SearchIndexService? searchIndex,
+        SearchEngineService? searchEngine = null,
+        IEnumerable<FolderWatcherHealthSnapshot>? folderWatchers = null)
+    {
+        var folderHealth = folderWatchers?.ToList() ?? [];
+        return new AppRuntimeHealthSnapshot(
+            LifecycleEventCount,
+            LastLifecycleEventAt,
+            LastLifecycleReason,
+            searchIndex?.WatcherCount ?? 0,
+            searchIndex?.WatcherRecoveryCount ?? 0,
+            searchIndex?.LastWatcherRecoveryTime,
+            searchIndex?.IndexedCount ?? 0,
+            searchIndex?.IsScanning == true,
+            searchIndex?.LastScanTime,
+            searchIndex?.WatcherCreationFailureCount ?? 0,
+            searchIndex?.OfflineRootCount ?? 0,
+            searchIndex?.PartialRootCount ?? 0,
+            searchIndex?.LastScanCapacityLimited == true,
+            searchEngine?.IsUsnIndexAvailable == true,
+            searchEngine?.IsUsnIndexScanning == true,
+            searchEngine?.IsUsnIndexIncrementalSyncing == true,
+            folderHealth.Count(item => item.Status == FolderWatcherHealth.Unavailable),
+            folderHealth.Count(item => item.Status == FolderWatcherHealth.Degraded),
+            folderHealth.Count(item => item.Status == FolderWatcherHealth.AccessDenied));
+    }
+
+    /// <summary>
+    /// Records a lifecycle recovery signal alongside the regular watchdog
+    /// diagnostics so field logs show whether external-state recovery ran.
+    /// </summary>
+    public void RecordLifecycleEvent(string reason, SearchIndexService? searchIndex)
+    {
+        int count = Interlocked.Increment(ref _lifecycleEventCount);
+        _lastLifecycleEventAt = DateTimeOffset.Now;
+        _lastLifecycleReason = reason;
+        App.Log(
+            $"[Diagnostics] Lifecycle recovery #{count} reason={reason} " +
+            $"searchWatchers={searchIndex?.WatcherCount ?? 0} " +
+            $"searchRecoveries={searchIndex?.WatcherRecoveryCount ?? 0} " +
+            $"lastSearchRecovery={searchIndex?.LastWatcherRecoveryTime?.ToString("O") ?? "none"}");
     }
 
     /// <summary>
@@ -131,3 +182,24 @@ public sealed class AppDiagnosticsService : IDisposable
         _uiWatchdogTimer = null;
     }
 }
+
+public sealed record AppRuntimeHealthSnapshot(
+    int LifecycleEventCount,
+    DateTimeOffset? LastLifecycleEventAt,
+    string LastLifecycleReason,
+    int SearchWatcherCount,
+    int SearchWatcherRecoveryCount,
+    DateTime? LastSearchWatcherRecoveryTime,
+    int IndexedEntryCount,
+    bool IsSearchScanning,
+    DateTime? LastSearchScanTime,
+    int FailedSearchWatcherCount = 0,
+    int OfflineSearchRootCount = 0,
+    int PartialSearchRootCount = 0,
+    bool SearchScanCapacityLimited = false,
+    bool IsUsnIndexAvailable = false,
+    bool IsUsnIndexScanning = false,
+    bool IsUsnIndexIncrementalSyncing = false,
+    int OfflineFolderCount = 0,
+    int DegradedFolderCount = 0,
+    int AccessDeniedFolderCount = 0);

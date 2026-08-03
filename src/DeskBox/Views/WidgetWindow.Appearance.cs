@@ -59,7 +59,7 @@ public sealed partial class WidgetWindow
             _ => Win32Helper.DWMWCP_ROUND
         };
 
-        Win32Helper.DwmSetWindowAttribute(_hWnd, Win32Helper.DWMWA_WINDOW_CORNER_PREFERENCE, ref cornerPreference, sizeof(int));
+        Win32Helper.TrySetDwmWindowAttribute(_hWnd, Win32Helper.DWMWA_WINDOW_CORNER_PREFERENCE, ref cornerPreference);
     }
 
     protected override Windows.UI.Color BuildNativeBackdropTintColor(bool isDark)

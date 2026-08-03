@@ -73,6 +73,7 @@ internal interface IDesktopWidgetWindow
     WidgetTrayBatchAnimationEntry? BeginSharedTrayHideAnimation();
     void ActivateRaisedFromTrayBatch();
     void EnsureRaisedFromTrayTopMost();
+    void RaiseTemporarilyFromManager();
     void ForceRestoreDesktopLayerFromManager();
     void RestoreDesktopLayerFromManager();
     Task WaitForFirstPresentedFrameAsync(CancellationToken cancellationToken);
@@ -80,6 +81,7 @@ internal interface IDesktopWidgetWindow
         bool visible,
         bool ready,
         string? messageKey = null);
+    Windows.Graphics.RectInt32? GetGroupMergeTitleScreenBounds();
     void HideWindow();
     void CloseWindow();
 }
@@ -571,8 +573,25 @@ public sealed partial class WidgetManager
             await Task.Yield();
         }
 
+        // A grouped widget owns one persistent content surface.  Restoring
+        // only the active member above is normally sufficient, but the host
+        // can still be hidden or positioned by WinUI after its content tree
+        // finishes loading.  Re-show each persisted visible group once the
+        // complete restore pass has settled so a group cannot silently lose
+        // its surface during startup.
+        await RestoreVisibleWidgetGroupsAsync();
+
+        // Window creation can temporarily apply compact/capsule geometry
+        // before the surface host has finished loading. Reconcile every
+        // restored host once more from the persisted placement so a grouped
+        // surface cannot remain stranded just outside the current work area.
+        RestoreLoadedWidgetBoundsAfterStartup();
+
+        QueueDeferredStartupWidgetBoundsReconciliation();
+
         if (configs.Count > 0)
         {
+            RaiseVisibleWidgetsTemporarily("startup-restore");
             _sessionManager.MarkDesktopResting("restore-widgets");
         }
     }
@@ -651,12 +670,20 @@ public sealed partial class WidgetManager
     /// </summary>
     public async Task<WidgetWindow> CreateFolderWidgetAsync(string folderPath)
     {
-        var folderName = Path.GetFileName(folderPath);
+        string normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folderPath));
+        EnsureFileWidgetPathAvailable(normalizedPath);
+
+        string folderName = Path.GetFileName(normalizedPath);
+        if (string.IsNullOrWhiteSpace(folderName))
+        {
+            folderName = normalizedPath;
+        }
+
         var config = new WidgetConfig
         {
             Name = folderName,
             WidgetKind = WidgetKind.File,
-            MappedFolderPath = folderPath,
+            MappedFolderPath = normalizedPath,
             BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
             Width = _settingsService.Settings.DefaultWidgetWidth,
             Height = _settingsService.Settings.DefaultWidgetHeight
@@ -667,6 +694,26 @@ public sealed partial class WidgetManager
         await _settingsService.SaveAsync();
 
         return await CreateWidgetFromConfigAsync(config, revealAfterCreate: true);
+    }
+
+    public void EnsureFileWidgetPathAvailable(string folderPath, string? excludedWidgetId = null)
+    {
+        string normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folderPath));
+        WidgetConfig? conflict = _settingsService.Settings.Widgets.FirstOrDefault(widget =>
+            widget.WidgetKind == WidgetKind.File &&
+            !IsDeleted(widget.Id) &&
+            !string.Equals(widget.Id, excludedWidgetId, StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(widget.MappedFolderPath) &&
+            FileService.PathsOverlap(normalizedPath, widget.MappedFolderPath));
+
+        if (conflict is null)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(_localizationService.Format(
+            "Widget.Error.FileWidgetPathConflict",
+            conflict.Name));
     }
 
     /// <summary>
@@ -1156,6 +1203,78 @@ public sealed partial class WidgetManager
         }
     }
 
+    private void RestoreLoadedWidgetBoundsAfterStartup()
+    {
+        var windows = _widgets.Values
+            .Select(entry => (IDesktopWidgetWindow)entry.Window)
+            .Concat(_quickCaptureWidgets.Values.Select(entry => (IDesktopWidgetWindow)entry.Window))
+            .Concat(_contentWidgets.Values.Select(window => (IDesktopWidgetWindow)window))
+            .Distinct()
+            .ToList();
+
+        foreach (IDesktopWidgetWindow window in windows)
+        {
+            try
+            {
+                window.RestoreBoundsForCurrentTopology();
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[WidgetManager] Startup bounds reconciliation failed " +
+                    $"widget={window.Config.Id}: {ex}");
+            }
+        }
+    }
+
+    private async Task RestoreVisibleWidgetGroupsAsync()
+    {
+        foreach (WidgetGroupConfig group in _settingsService.Settings.WidgetGroups.ToList())
+        {
+            if (!group.IsVisible ||
+                FindConfig(group.ActiveMemberId) is not { } config ||
+                IsDeleted(config.Id) ||
+                config.IsDisabled ||
+                !_widgetRegistry.IsAvailableForSession(
+                    config,
+                    _settingsService.Settings))
+            {
+                continue;
+            }
+
+            try
+            {
+                await ShowGroupActiveWindowAsync(group);
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[WidgetGroup] Visible group restore failed " +
+                    $"group={group.Id} active={group.ActiveMemberId}: {ex}");
+            }
+        }
+    }
+
+    private void QueueDeferredStartupWidgetBoundsReconciliation()
+    {
+        App.UiDispatcherQueue?.TryEnqueue(async () =>
+        {
+            try
+            {
+                // Let RootElement.Loaded and the first composition/layout pass
+                // complete before the final native bounds reconciliation.
+                await Task.Yield();
+                await Task.Delay(120);
+                await RestoreVisibleWidgetGroupsAsync();
+                RestoreLoadedWidgetBoundsAfterStartup();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Deferred startup bounds reconciliation failed: {ex}");
+            }
+        });
+    }
+
     private bool IsSessionCandidate(WidgetConfig widget)
     {
         return !widget.IsDisabled &&
@@ -1399,6 +1518,62 @@ public sealed partial class WidgetManager
             widget.WidgetKind == WidgetKind.File &&
             widget.FollowsDefaultStoragePath &&
             !IsDeleted(widget.Id));
+    }
+
+    public async Task RefreshFileWidgetAsync(string widgetId)
+    {
+        if (!HasUiThreadAccess())
+        {
+            await RunOnUiThreadAsync(() => RefreshFileWidgetAsync(widgetId));
+            return;
+        }
+
+        if (_widgets.TryGetValue(widgetId, out var fileEntry))
+        {
+            await fileEntry.ViewModel.RefreshFromConfigAsync();
+            return;
+        }
+
+        ContentWidgetWindow? contentWindow = _contentWidgets.Values
+            .Distinct()
+            .FirstOrDefault(window =>
+                window.CurrentContent is FileSurfaceContent surface &&
+                string.Equals(surface.WidgetId, widgetId, StringComparison.Ordinal));
+        if (contentWindow?.CurrentContent is FileSurfaceContent fileSurface)
+        {
+            await fileSurface.ViewModel.RefreshFromConfigAsync();
+        }
+    }
+
+    public void SetDesktopOrganizationBusy(
+        IEnumerable<string> widgetIds,
+        bool isBusy)
+    {
+        if (!HasUiThreadAccess())
+        {
+            App.UiDispatcherQueue?.TryEnqueue(() =>
+                SetDesktopOrganizationBusy(widgetIds.ToArray(), isBusy));
+            return;
+        }
+
+        foreach (string widgetId in widgetIds.Distinct(StringComparer.Ordinal))
+        {
+            if (_widgets.TryGetValue(widgetId, out var fileEntry))
+            {
+                fileEntry.Window.SetDesktopOrganizationBusy(isBusy);
+                continue;
+            }
+
+            ContentWidgetWindow? contentWindow = _contentWidgets.Values
+                .Distinct()
+                .FirstOrDefault(window =>
+                    window.CurrentContent is FileSurfaceContent surface &&
+                    string.Equals(surface.WidgetId, widgetId, StringComparison.Ordinal));
+            if (contentWindow?.CurrentContent is FileSurfaceContent fileSurface)
+            {
+                fileSurface.SetDesktopOrganizationBusy(isBusy);
+            }
+        }
     }
 
     private WidgetConfig? FindConfig(string widgetId)

@@ -8,11 +8,52 @@ using System.Collections.Concurrent;
 
 namespace DeskBox.Services;
 
+internal enum FolderSnapshotStatus
+{
+    SuccessWithItems,
+    SuccessEmpty,
+    Partial,
+    Unavailable,
+    AccessDenied,
+
+    // Kept as a source-compatible alias for callers that only need to express
+    // a successful (possibly non-empty) snapshot. New code should use the two
+    // explicit success states above.
+    Complete = SuccessWithItems
+}
+
+internal enum FolderEntryRefreshStatus
+{
+    Available,
+    NotFound,
+    Filtered,
+    Unavailable,
+    AccessDenied
+}
+
+internal sealed record FolderPathSnapshot(
+    FolderSnapshotStatus Status,
+    IReadOnlySet<string> Paths);
+
+internal sealed record FolderEnumerationResult(
+    FolderSnapshotStatus Status,
+    IReadOnlyList<WidgetItem> Items);
+
+internal static class FolderSnapshotStatusPolicy
+{
+    public static bool IsSuccessful(FolderSnapshotStatus status) =>
+        status is FolderSnapshotStatus.SuccessWithItems or
+            FolderSnapshotStatus.SuccessEmpty;
+}
+
 /// <summary>
 /// Provides file system operations: enumerate files, resolve shortcuts, get icons.
 /// </summary>
 public sealed class FileService
 {
+    private const string UnsafeFolderTransferFallbackMessage =
+        "A folder cannot be copied or moved into itself or one of its subfolders.";
+    private readonly LocalizationService? _localizationService;
     private static readonly ConcurrentDictionary<string, string> s_shellKindCache =
         new(StringComparer.OrdinalIgnoreCase);
     private sealed record TransferOperation(string SourcePath, string DestinationPath);
@@ -38,6 +79,11 @@ public sealed class FileService
     private const ushort FofNoConfirmation = 0x0010;
     private const ushort FofNoErrorUi = 0x0400;
     private const ushort FofSilent = 0x0004;
+
+    public FileService(LocalizationService? localizationService = null)
+    {
+        _localizationService = localizationService;
+    }
 
     /// <summary>
     /// Enumerate all files and folders in a directory and create WidgetItem models.
@@ -76,6 +122,176 @@ public sealed class FileService
         }
 
         return items;
+    }
+
+    internal async Task<FolderEnumerationResult> EnumerateDirectoryForRefreshAsync(
+        string directoryPath,
+        bool hideShortcutArrowOverlay = false,
+        bool showImageFilesAsIcons = false,
+        bool showFileExtensions = false,
+        bool hideShortcutExtensionWhenShowingFileExtensions = true,
+        bool loadIcons = false,
+        bool loadFolderItemCounts = false)
+    {
+        FolderPathSnapshot before = await CaptureDirectChildSnapshotAsync(directoryPath);
+        if (!FolderSnapshotStatusPolicy.IsSuccessful(before.Status))
+        {
+            return new FolderEnumerationResult(before.Status, []);
+        }
+
+        var entries = new List<FileSystemEntrySnapshot>();
+        bool partial = false;
+        foreach (string path in before.Paths)
+        {
+            FolderEntryRefreshStatus state = ClassifyDirectChild(before, path);
+            if (state is FolderEntryRefreshStatus.Unavailable or
+                FolderEntryRefreshStatus.AccessDenied ||
+                state == FolderEntryRefreshStatus.NotFound)
+            {
+                partial = true;
+                continue;
+            }
+
+            if (state == FolderEntryRefreshStatus.Filtered)
+            {
+                continue;
+            }
+
+            FileSystemEntrySnapshot? entry = TryCreateEntrySnapshot(path, loadFolderItemCounts);
+            if (entry is null)
+            {
+                // The entry changed between the root snapshot and metadata read.
+                // Treat that as an incomplete view instead of silently deleting it.
+                partial = true;
+                continue;
+            }
+
+            entries.Add(entry);
+        }
+
+        FolderPathSnapshot after = await CaptureDirectChildSnapshotAsync(directoryPath);
+        if (!FolderSnapshotStatusPolicy.IsSuccessful(after.Status) ||
+            !before.Paths.SetEquals(after.Paths))
+        {
+            partial = true;
+        }
+
+        var items = new List<WidgetItem>(entries.Count);
+        int sortOrder = 0;
+        foreach (FileSystemEntrySnapshot entry in entries
+                     .OrderBy(entry => !entry.IsFolder)
+                     .ThenBy(entry => entry.Name, NaturalStringComparer.CurrentCultureIgnoreCase))
+        {
+            WidgetItem item = await CreateWidgetItemAsync(
+                entry,
+                hideShortcutArrowOverlay,
+                showImageFilesAsIcons,
+                showFileExtensions,
+                hideShortcutExtensionWhenShowingFileExtensions,
+                loadIcons);
+            item.SortOrder = sortOrder++;
+            items.Add(item);
+        }
+
+        FolderSnapshotStatus status = partial
+            ? FolderSnapshotStatus.Partial
+            : items.Count == 0
+                ? FolderSnapshotStatus.SuccessEmpty
+                : FolderSnapshotStatus.SuccessWithItems;
+        return new FolderEnumerationResult(
+            status,
+            items);
+    }
+
+    internal static Task<FolderPathSnapshot> CaptureDirectChildSnapshotAsync(string directoryPath)
+    {
+        return Task.Run(() =>
+        {
+            try
+            {
+                string normalizedRoot = Path.GetFullPath(directoryPath);
+                var paths = Directory.EnumerateFileSystemEntries(normalizedRoot)
+                    .Select(Path.GetFullPath)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return new FolderPathSnapshot(
+                    paths.Count == 0
+                        ? FolderSnapshotStatus.SuccessEmpty
+                        : FolderSnapshotStatus.SuccessWithItems,
+                    paths);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return new FolderPathSnapshot(
+                    FolderSnapshotStatus.AccessDenied,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            }
+            catch (System.Security.SecurityException)
+            {
+                return new FolderPathSnapshot(
+                    FolderSnapshotStatus.AccessDenied,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or NotSupportedException)
+            {
+                return new FolderPathSnapshot(
+                    FolderSnapshotStatus.Unavailable,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            }
+        });
+    }
+
+    internal static FolderEntryRefreshStatus ClassifyDirectChild(
+        FolderPathSnapshot snapshot,
+        string path)
+    {
+        if (!FolderSnapshotStatusPolicy.IsSuccessful(snapshot.Status))
+        {
+            return FolderEntryRefreshStatus.Unavailable;
+        }
+
+        string normalizedPath;
+        try
+        {
+            normalizedPath = Path.GetFullPath(path);
+        }
+        catch
+        {
+            return FolderEntryRefreshStatus.Unavailable;
+        }
+
+        if (!snapshot.Paths.Contains(normalizedPath))
+        {
+            return FolderEntryRefreshStatus.NotFound;
+        }
+
+        try
+        {
+            string name = Path.GetFileName(normalizedPath);
+            System.IO.FileAttributes attributes = File.GetAttributes(normalizedPath);
+            if (name.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase) ||
+                (attributes & System.IO.FileAttributes.Hidden) != 0 ||
+                (Path.GetExtension(normalizedPath).Equals(".url", StringComparison.OrdinalIgnoreCase) &&
+                 IsDeadSteamShortcut(normalizedPath)))
+            {
+                return FolderEntryRefreshStatus.Filtered;
+            }
+
+            return FolderEntryRefreshStatus.Available;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return FolderEntryRefreshStatus.AccessDenied;
+        }
+        catch (System.Security.SecurityException)
+        {
+            return FolderEntryRefreshStatus.AccessDenied;
+        }
+        catch (IOException)
+        {
+            // A path that was present in a complete parent enumeration but cannot
+            // now be read is a race/provider failure, not proof of deletion.
+            return FolderEntryRefreshStatus.Unavailable;
+        }
     }
 
     /// <summary>
@@ -713,24 +929,35 @@ public sealed class FileService
     /// </summary>
     public async Task<IReadOnlyList<FileTransferResult>> TransferItemsWithResultAsync(IEnumerable<string> sourcePaths, string destinationFolder, bool move)
     {
-        string normalizedDestinationFolder = Path.GetFullPath(destinationFolder);
-        if (!Directory.Exists(normalizedDestinationFolder))
+        // Directory.Exists/File.Exists can block for a disconnected UNC or
+        // network provider. Keep all planning and probing off the UI thread.
+        var plans = await Task.Run(() =>
         {
-            Directory.CreateDirectory(normalizedDestinationFolder);
-        }
+            string normalizedDestinationFolder = Path.GetFullPath(destinationFolder);
+            var normalizedSourcePaths = sourcePaths
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(Path.GetFullPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-        var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var plans = sourcePaths
-            .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Where(path =>
-                (File.Exists(path) || Directory.Exists(path)) &&
-                !string.Equals(Path.GetDirectoryName(path), normalizedDestinationFolder, StringComparison.OrdinalIgnoreCase))
-            .Select(path => new FileTransferPlan(
-                path,
-                GetAvailablePath(Path.Combine(normalizedDestinationFolder, Path.GetFileName(path)), reservedPaths)))
-            .ToList();
+            EnsureSafeDirectoryTransfers(normalizedSourcePaths.Select(path =>
+                new TransferOperation(path, normalizedDestinationFolder)));
+
+            if (!Directory.Exists(normalizedDestinationFolder))
+            {
+                Directory.CreateDirectory(normalizedDestinationFolder);
+            }
+
+            var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            return normalizedSourcePaths
+                .Where(path =>
+                    (File.Exists(path) || Directory.Exists(path)) &&
+                    !string.Equals(Path.GetDirectoryName(path), normalizedDestinationFolder, StringComparison.OrdinalIgnoreCase))
+                .Select(path => new FileTransferPlan(
+                    path,
+                    GetAvailablePath(Path.Combine(normalizedDestinationFolder, Path.GetFileName(path)), reservedPaths)))
+                .ToList();
+        });
 
         return await ExecuteTransferPlanAsync(plans, move);
     }
@@ -743,15 +970,21 @@ public sealed class FileService
         bool move,
         bool useShellProgress = false)
     {
-        var operations = plans
-            .Where(plan => !string.IsNullOrWhiteSpace(plan.SourcePath) && !string.IsNullOrWhiteSpace(plan.DestinationPath))
-            .Select(plan => new TransferOperation(
-                Path.GetFullPath(plan.SourcePath),
-                Path.GetFullPath(plan.DestinationPath)))
-            .Where(operation =>
-                (File.Exists(operation.SourcePath) || Directory.Exists(operation.SourcePath)) &&
-                !string.Equals(operation.SourcePath, operation.DestinationPath, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var operations = await Task.Run(() =>
+        {
+            var plannedOperations = plans
+                .Where(plan => !string.IsNullOrWhiteSpace(plan.SourcePath) && !string.IsNullOrWhiteSpace(plan.DestinationPath))
+                .Select(plan => new TransferOperation(
+                    Path.GetFullPath(plan.SourcePath),
+                    Path.GetFullPath(plan.DestinationPath)))
+                .Where(operation =>
+                    (File.Exists(operation.SourcePath) || Directory.Exists(operation.SourcePath)) &&
+                    !string.Equals(operation.SourcePath, operation.DestinationPath, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            EnsureSafeDirectoryTransfers(plannedOperations);
+            return plannedOperations;
+        });
 
         if (move && useShellProgress)
         {
@@ -763,13 +996,21 @@ public sealed class FileService
         {
             foreach (var operation in operations)
             {
+                // Re-resolve both paths immediately before the filesystem
+                // operation. This closes the common check-then-replace window
+                // where a junction or SUBST alias is swapped during a drag.
+                await Task.Run(() => EnsureSafeDirectoryTransfers([operation]));
                 if (move)
                 {
-                    await MoveEntryAsync(operation.SourcePath, operation.DestinationPath);
+                    await Task.Run(() => MoveEntryAsync(
+                        operation.SourcePath,
+                        operation.DestinationPath));
                 }
                 else
                 {
-                    await CopyEntryAsync(operation.SourcePath, operation.DestinationPath);
+                    await Task.Run(() => CopyEntryAsync(
+                        operation.SourcePath,
+                        operation.DestinationPath));
                 }
 
                 completedOperations.Add(operation);
@@ -786,7 +1027,7 @@ public sealed class FileService
             .ToList();
     }
 
-    private static async Task<IReadOnlyList<FileTransferResult>> ExecuteShellMovePlanAsync(IReadOnlyList<TransferOperation> operations)
+    private async Task<IReadOnlyList<FileTransferResult>> ExecuteShellMovePlanAsync(IReadOnlyList<TransferOperation> operations)
     {
         if (operations.Count == 0)
         {
@@ -795,19 +1036,33 @@ public sealed class FileService
 
         foreach (var operation in operations)
         {
+            await Task.Run(() => EnsureSafeDirectoryTransfers([operation]));
             string? destinationDirectory = Path.GetDirectoryName(operation.DestinationPath);
             if (!string.IsNullOrWhiteSpace(destinationDirectory))
             {
-                Directory.CreateDirectory(destinationDirectory);
+                await Task.Run(() => Directory.CreateDirectory(destinationDirectory));
             }
         }
 
-        await Task.Run(() => MoveEntriesWithShellProgress(operations));
+        await Task.Run(() =>
+        {
+            EnsureSafeDirectoryTransfers(operations);
+            MoveEntriesWithShellProgress(operations);
+        });
 
-        return operations
-            .Where(operation => File.Exists(operation.DestinationPath) || Directory.Exists(operation.DestinationPath))
+        return await Task.Run(() => operations
+            .Where(operation => IsCompletedShellMove(
+                operation.SourcePath,
+                operation.DestinationPath))
             .Select(operation => new FileTransferResult(operation.SourcePath, operation.DestinationPath))
-            .ToList();
+            .ToList());
+    }
+
+    internal static bool IsCompletedShellMove(string sourcePath, string destinationPath)
+    {
+        return (File.Exists(destinationPath) || Directory.Exists(destinationPath)) &&
+               !File.Exists(sourcePath) &&
+               !Directory.Exists(sourcePath);
     }
 
     /// <summary>
@@ -834,6 +1089,8 @@ public sealed class FileService
         {
             return;
         }
+
+        EnsureSafeDirectoryTransfers([new TransferOperation(normalizedSource, normalizedDestination)]);
 
         await MoveEntryAsync(normalizedSource, normalizedDestination);
     }
@@ -1001,6 +1258,8 @@ public sealed class FileService
             return;
         }
 
+        EnsureSafeDirectoryTransfers([new TransferOperation(normalizedSource, normalizedDestination)]);
+
         if (!Directory.Exists(normalizedSource))
         {
             Directory.CreateDirectory(normalizedDestination);
@@ -1081,18 +1340,174 @@ public sealed class FileService
 
     public static bool IsPathUnderDirectory(string candidatePath, string directoryPath)
     {
-        string normalizedCandidate = Path.GetFullPath(candidatePath)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        string normalizedDirectory = Path.GetFullPath(directoryPath)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string normalizedCandidate = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidatePath));
+        string normalizedDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directoryPath));
 
         if (string.Equals(normalizedCandidate, normalizedDirectory, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        string prefix = normalizedDirectory + Path.DirectorySeparatorChar;
+        string prefix = normalizedDirectory.EndsWith(Path.DirectorySeparatorChar) ||
+                        normalizedDirectory.EndsWith(Path.AltDirectorySeparatorChar)
+            ? normalizedDirectory
+            : normalizedDirectory + Path.DirectorySeparatorChar;
         return normalizedCandidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool PathsOverlap(string firstPath, string secondPath)
+    {
+        if (!TryResolvePathIdentity(firstPath, out string first) ||
+            !TryResolvePathIdentity(secondPath, out string second))
+        {
+            // This predicate is also used for validating not-yet-created
+            // mapping roots.  Keep its historical lexical behavior for paths
+            // whose provider cannot expose an identity; actual directory
+            // transfers use IsPathUnderDirectoryResolved below, which fails
+            // closed instead.
+            try
+            {
+                return IsPathUnderDirectory(firstPath, secondPath) ||
+                       IsPathUnderDirectory(secondPath, firstPath);
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        return IsPathUnderDirectory(first, second) ||
+               IsPathUnderDirectory(second, first);
+    }
+
+    public static bool IsPathUnderDirectoryResolved(string candidatePath, string directoryPath)
+    {
+        if (!TryResolvePathIdentity(candidatePath, out string candidate) ||
+            !TryResolvePathIdentity(directoryPath, out string directory))
+        {
+            // Fail closed for directory safety checks.  Returning false here
+            // would allow an operation whose real filesystem identity could
+            // not be verified.
+            return true;
+        }
+
+        return IsPathUnderDirectory(
+            candidate,
+            directory);
+    }
+
+    /// <summary>
+    /// Resolves existing junctions and symbolic-link directories before doing
+    /// overlap checks.  A lexical comparison alone treats a junction target as
+    /// unrelated, which can let a mapped widget point into another mapped
+    /// widget and recreate the recursive nesting bug.
+    /// <para>
+    /// The final destination may not exist yet, so only existing path segments
+    /// are resolved; the non-existing suffix is preserved for the normal
+    /// separator-aware comparison.
+    /// </para>
+    /// </summary>
+    private static bool TryResolvePathIdentity(string path, out string resolvedPath)
+    {
+        resolvedPath = string.Empty;
+        string fullPath;
+        try
+        {
+            fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+
+        if ((Directory.Exists(fullPath) || File.Exists(fullPath)) &&
+            Win32Helper.TryGetFinalPath(fullPath, out string finalPath))
+        {
+            resolvedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(finalPath));
+            return true;
+        }
+
+        string? root = Path.GetPathRoot(fullPath);
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return false;
+        }
+
+        string current = root;
+        string remainder = fullPath[root.Length..];
+        string[] segments = remainder.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        for (int index = 0; index < segments.Length; index++)
+        {
+            string candidate = Path.Combine(current, segments[index]);
+            bool exists = Directory.Exists(candidate) || File.Exists(candidate);
+            if (!exists)
+            {
+                // The rest is a not-yet-created destination suffix.  The
+                // existing prefix has already had every reparse point
+                // resolved, so appending the suffix is identity-safe.
+                for (int suffixIndex = index; suffixIndex < segments.Length; suffixIndex++)
+                {
+                    current = Path.Combine(current, segments[suffixIndex]);
+                }
+
+                resolvedPath = Path.TrimEndingDirectorySeparator(
+                    Path.GetFullPath(current));
+                return true;
+            }
+
+            try
+            {
+                FileSystemInfo info = Directory.Exists(candidate)
+                    ? new DirectoryInfo(candidate)
+                    : new FileInfo(candidate);
+                if ((info.Attributes & System.IO.FileAttributes.ReparsePoint) != 0)
+                {
+                    FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: true);
+                    if (target is null)
+                    {
+                        return false;
+                    }
+
+                    current = target.FullName;
+                }
+                else
+                {
+                    current = candidate;
+                }
+            }
+            catch (Exception ex) when (
+                ex is IOException or UnauthorizedAccessException or
+                PlatformNotSupportedException)
+            {
+                return false;
+            }
+        }
+
+        resolvedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(current));
+        return true;
+    }
+
+    private void EnsureSafeDirectoryTransfers(IEnumerable<TransferOperation> operations)
+    {
+        foreach (var operation in operations)
+        {
+            if (!Directory.Exists(operation.SourcePath))
+            {
+                continue;
+            }
+
+            // IsPathUnderDirectoryResolved deliberately returns true when an
+            // identity cannot be verified, so a directory transfer never
+            // falls back to a lexical-only safety decision.
+            if (IsPathUnderDirectoryResolved(operation.DestinationPath, operation.SourcePath))
+            {
+                throw new InvalidOperationException(
+                    _localizationService?.T("Widget.Error.UnsafeFolderTransfer") ??
+                    UnsafeFolderTransferFallbackMessage);
+            }
+        }
     }
 
     private static async Task RollbackTransfersAsync(IEnumerable<TransferOperation> completedOperations, bool move)
@@ -1103,11 +1518,13 @@ public sealed class FileService
             {
                 if (move)
                 {
-                    await MoveEntryAsync(operation.DestinationPath, operation.SourcePath);
+                    await Task.Run(() => MoveEntryAsync(
+                        operation.DestinationPath,
+                        operation.SourcePath));
                 }
                 else
                 {
-                    await DeleteEntryAsync(operation.DestinationPath);
+                    await Task.Run(() => DeleteEntryAsync(operation.DestinationPath));
                 }
             }
             catch (Exception ex)

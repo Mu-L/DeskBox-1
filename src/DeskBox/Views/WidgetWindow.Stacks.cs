@@ -153,6 +153,7 @@ public sealed partial class WidgetWindow
         UIElement sender,
         DragStartingEventArgs e)
     {
+        ClearReorderSession();
         if (_isMigrationBusy ||
             sender is not Border
             {
@@ -251,9 +252,10 @@ public sealed partial class WidgetWindow
         e.AcceptedOperation = added
             ? DataPackageOperation.Link
             : DataPackageOperation.None;
-        _isReorderDragActive = false;
-        _reorderDragPaths = [];
-        _reorderStackKey = null;
+        // This drop is a stack-membership operation, not a reorder. Clear the
+        // complete reorder session so a later DragLeave/DropCompleted cannot
+        // commit a stale insertion point from the previous pointer movement.
+        ClearReorderSession();
         if (added)
         {
             ClearItemSelection();
@@ -264,9 +266,7 @@ public sealed partial class WidgetWindow
         UIElement sender,
         DropCompletedEventArgs e)
     {
-        _isReorderDragActive = false;
-        _reorderDragPaths = [];
-        _reorderStackKey = null;
+        ClearReorderSession();
         _pressedStackKey = null;
         _stackPointerDragStarted = false;
         ClearStackMemberDropTarget();
@@ -1568,14 +1568,7 @@ public sealed partial class WidgetWindow
 
     private static bool SystemStackAnimationsEnabled()
     {
-        try
-        {
-            return new UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
+        return DeskBox.Services.WindowsCompatibilityService.ShouldAnimate;
     }
 
     private sealed class StackRestingOffset(Vector3 value)

@@ -1176,14 +1176,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private static bool AreSystemAnimationsEnabled()
     {
-        try
-        {
-            return new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
+        return WindowsCompatibilityService.ShouldAnimate;
     }
 
     private double MeasureTitleWidth()

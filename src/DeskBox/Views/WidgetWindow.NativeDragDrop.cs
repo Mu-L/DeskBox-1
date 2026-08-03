@@ -355,7 +355,7 @@ public sealed partial class WidgetWindow
         foreach (var surface in _interactiveSurfaces.ToArray())
         {
             if (surface.DataContext is not WidgetItem { IsFolder: true } item ||
-                !Directory.Exists(item.Path) ||
+                string.IsNullOrWhiteSpace(item.Path) ||
                 surface.XamlRoot is null ||
                 surface.ActualWidth <= 0 ||
                 surface.ActualHeight <= 0)
