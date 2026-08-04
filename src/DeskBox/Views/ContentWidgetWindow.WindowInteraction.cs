@@ -23,6 +23,11 @@ namespace DeskBox.Views;
 
 public sealed partial class ContentWidgetWindow
 {
+    private static readonly TimeSpan GroupKeyboardSwitchCooldown =
+        TimeSpan.FromMilliseconds(450);
+    private bool _groupKeyboardTabGestureActive;
+    private DateTimeOffset _lastGroupKeyboardSwitchAt;
+
     private void RootGrid_DragOver(object sender, DragEventArgs e)
     {
         if (!IsCompactBoundsStateActive || CurrentContent is not TodoWidgetContentAdapter todo)
@@ -64,6 +69,38 @@ public sealed partial class ContentWidgetWindow
         finally
         {
             deferral.Complete();
+        }
+    }
+
+    private void RootGrid_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Tab ||
+            !Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
+        {
+            return;
+        }
+
+        if (_groupKeyboardTabGestureActive ||
+            DateTimeOffset.UtcNow - _lastGroupKeyboardSwitchAt <
+            GroupKeyboardSwitchCooldown)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (ContentWidgetShell.TryHandleGroupKeyboardNavigation(e))
+        {
+            _groupKeyboardTabGestureActive = true;
+            _lastGroupKeyboardSwitchAt = DateTimeOffset.UtcNow;
+            e.Handled = true;
+        }
+    }
+
+    private void RootGrid_PreviewKeyUp(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Tab)
+        {
+            _groupKeyboardTabGestureActive = false;
         }
     }
 
@@ -248,10 +285,14 @@ public sealed partial class ContentWidgetWindow
     {
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
+            _groupKeyboardTabGestureActive = false;
             _contentHost.OnDeactivated();
             if (Visible && !IsAtDesktopLayer &&
-                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
+                !IsRaisedFromManager &&
+                App.Current.WidgetManager is not { WidgetsRaisedFromTray: true } &&
+                (DateTime.UtcNow - LastElevateForInteractionUtc).TotalMilliseconds > 300)
             {
+                App.Log($"[ZOrder] Content Deactivated→QueueRestore hwnd=0x{HWnd.ToInt64():X}");
                 QueueRestoreDesktopLayerIfForegroundLeavesDeskBox();
             }
             return;
@@ -265,13 +306,35 @@ public sealed partial class ContentWidgetWindow
         DispatcherQueue.TryEnqueue(async () =>
         {
             await Task.Delay(80);
-            if (!Visible || IsAtDesktopLayer || ShouldDeferDesktopLayerRestore())
+            if (!Visible ||
+                IsAtDesktopLayer ||
+                IsRaisedFromManager ||
+                ShouldDeferDesktopLayerRestore() ||
+                (DateTime.UtcNow - LastElevateForInteractionUtc).TotalMilliseconds <= 300)
             {
                 return;
             }
 
-            App.Log($"[ZOrder] Content Deactivated->Restore hwnd=0x{HWnd.ToInt64():X}");
-            RestoreDesktopLayer(force: true);
+            IntPtr foregroundWindow = Win32Helper.GetForegroundWindow();
+            if (App.Current.IsDeskBoxWindow(foregroundWindow))
+            {
+                RestoreDesktopLayerWhenIdle = false;
+                return;
+            }
+
+            RestoreDesktopLayerWhenIdle = true;
+            if (App.Current.WidgetManager is { } widgetManager)
+            {
+                if (!widgetManager.RequestRestoreRaisedWidgetsToDesktopLayer(
+                        "content-window-deactivated"))
+                {
+                    RestoreDesktopLayer(force: true);
+                }
+            }
+            else
+            {
+                RestoreDesktopLayer(force: true);
+            }
         });
     }
 
@@ -282,18 +345,29 @@ public sealed partial class ContentWidgetWindow
         AppWindow.Show();
         Win32Helper.ShowWindow(HWnd, Win32Helper.SW_SHOWNOACTIVATE);
         Visible = true;
-        _config.IsVisible = true;
-        if (persistVisibility)
-        {
-            SettingsService.SaveDebounced();
-        }
+        UpdatePersistedVisibility(isVisible: true, persistVisibility);
 
         ApplyBackdropPreference();
         _contentHost.OnWindowVisibilityChanged(true);
     }
 
+    private void UpdatePersistedVisibility(bool isVisible, bool persistVisibility)
+    {
+        _config.IsVisible = isVisible;
+        bool groupVisibilityHandled =
+            App.Current?.WidgetManager?.SetWidgetGroupVisibility(
+                _config,
+                isVisible,
+                persistVisibility) == true;
+        if (persistVisibility && !groupVisibilityHandled)
+        {
+            SettingsService.SaveDebounced();
+        }
+    }
+
     private void PushToBottom()
     {
+        IsRaisedFromManager = false;
         IsAtDesktopLayer = true;
         WidgetLayerService.MoveToDesktopBottom(HWnd);
         App.LogVerbose($"[ZOrder] Content PushToBottom hwnd=0x{HWnd.ToInt64():X}");

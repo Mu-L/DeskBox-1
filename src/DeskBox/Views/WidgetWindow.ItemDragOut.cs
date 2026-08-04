@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 using WinRT.Interop;
 
 namespace DeskBox.Views;
@@ -291,14 +292,51 @@ public sealed partial class WidgetWindow
             try
             {
                 var items = await dataView.GetStorageItemsAsync();
-                sourcePaths = items
-                    .Select(item => item.Path)
-                    .Where(path => !string.IsNullOrWhiteSpace(path))
-                    .Select(Path.GetFullPath)
+                var resolvedPaths = new List<string>();
+                string? virtualDropDirectory = null;
+                int materializedCount = 0;
+                foreach (IStorageItem item in items)
+                {
+                    if (!string.IsNullOrWhiteSpace(item.Path) &&
+                        (File.Exists(item.Path) || Directory.Exists(item.Path)))
+                    {
+                        resolvedPaths.Add(Path.GetFullPath(item.Path));
+                        continue;
+                    }
+
+                    if (item is not StorageFile virtualFile)
+                    {
+                        continue;
+                    }
+
+                    // Chromium exposes dragged images as StorageFile objects
+                    // whose Path is blank. Reading that stream is the only way
+                    // to obtain the actual image; falling through to the page
+                    // URL downloads HTML and leaves a non-previewable file.
+                    virtualDropDirectory ??= Path.Combine(
+                        Path.GetTempPath(),
+                        "DeskBox",
+                        "VirtualDrops",
+                        Guid.NewGuid().ToString("N"));
+                    string? materializedPath =
+                        await DeskBoxDragData.MaterializeStorageFileAsync(
+                            virtualFile,
+                            virtualDropDirectory);
+                    if (string.IsNullOrWhiteSpace(materializedPath))
+                    {
+                        continue;
+                    }
+
+                    resolvedPaths.Add(materializedPath);
+                    materializedCount++;
+                }
+
+                sourcePaths = resolvedPaths
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
                 App.Log(
                     $"[DropDiagnostic] GetStorageItemsAsync count={items.Count} pathCount={sourcePaths.Length} " +
+                    $"materializedCount={materializedCount} " +
                     $"formats={FormatDataPackageFormats(dataView.AvailableFormats)}");
                 if (sourcePaths.Length > 0)
                 {
@@ -330,7 +368,7 @@ public sealed partial class WidgetWindow
             {
                 pathList.Add(normalizedPath);
             }
-            else if (TryNormalizeUrl(candidate, out string downloadedPath))
+            else if (await TryNormalizeUrlAsync(candidate) is { } downloadedPath)
             {
                 pathList.Add(downloadedPath);
             }
@@ -345,19 +383,18 @@ public sealed partial class WidgetWindow
     /// and returns the path. Used for browser drag-drop of images/files
     /// that don't have local file paths.
     /// </summary>
-    private static bool TryNormalizeUrl(string candidate, out string downloadedPath)
+    private static async Task<string?> TryNormalizeUrlAsync(string candidate)
     {
-        downloadedPath = string.Empty;
         string trimmed = candidate.Trim().Trim('"');
 
         if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
         {
-            return false;
+            return null;
         }
 
         if (uri.Scheme is not ("http" or "https"))
         {
-            return false;
+            return null;
         }
 
         try
@@ -375,17 +412,18 @@ public sealed partial class WidgetWindow
 
             using var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(30);
-            var bytes = httpClient.GetByteArrayAsync(uri).GetAwaiter().GetResult();
-            File.WriteAllBytes(destPath, bytes);
+            byte[] bytes = await httpClient.GetByteArrayAsync(uri);
+            await File.WriteAllBytesAsync(destPath, bytes);
+            destPath = VirtualDropFileNameResolver.AddMissingExtensionFromContent(
+                destPath);
 
             App.Log($"[DropDiagnostic] Downloaded url='{uri}' -> '{destPath}' ({bytes.Length} bytes)");
-            downloadedPath = destPath;
-            return true;
+            return destPath;
         }
         catch (Exception ex)
         {
             App.Log($"[DropDiagnostic] URL download failed for '{uri}': {ex.Message}");
-            return false;
+            return null;
         }
     }
 
@@ -396,7 +434,8 @@ public sealed partial class WidgetWindow
         try
         {
             string fullPath = Path.GetFullPath(candidate.Trim().Trim('"'));
-            if (Path.IsPathFullyQualified(fullPath))
+            if (Path.IsPathFullyQualified(fullPath) &&
+                (File.Exists(fullPath) || Directory.Exists(fullPath)))
             {
                 normalizedPath = fullPath;
                 return true;

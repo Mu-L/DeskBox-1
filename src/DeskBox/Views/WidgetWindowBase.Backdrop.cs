@@ -21,6 +21,13 @@ namespace DeskBox.Views;
 
 public abstract partial class WidgetWindowBase
 {
+    private readonly record struct BackdropSignature(
+        bool IsDark,
+        string MaterialType,
+        double SurfaceOpacity,
+        Windows.UI.Color TintColor,
+        double MaterialIntensity);
+
     protected void ApplyBackdropPreference()
     {
         if (HWnd == IntPtr.Zero || IsClosing)
@@ -32,6 +39,18 @@ public abstract partial class WidgetWindowBase
         double surfaceOpacity = Math.Clamp(WidgetOpacity, 0.0, 1.0);
         var tintColor = BuildNativeBackdropTintColor(isDark);
         string materialType = SettingsService.Settings.WidgetMaterialType;
+        var signature = new BackdropSignature(
+            isDark,
+            materialType,
+            Math.Round(surfaceOpacity, 3),
+            tintColor,
+            Math.Round(SettingsService.Settings.WidgetMaterialIntensity, 3));
+
+        if (CanReuseAppliedBackdrop(signature))
+        {
+            ApplySurfaceStyle();
+            return;
+        }
 
         try
         {
@@ -88,17 +107,33 @@ public abstract partial class WidgetWindowBase
                 $"dwmBackdropType={backdropType} " +
                 $"acrylicController={AcrylicController is not null} micaController={MicaController is not null}");
 
+            _lastAppliedBackdropSignature = signature;
             ScheduleInactiveBackdropControllerCleanup(materialType);
         }
         catch (Exception ex)
         {
             App.Log($"ApplyBackdropPreference fallback: {ex}");
+            _lastAppliedBackdropSignature = null;
             DisposeAcrylicController();
             DisposeMicaController();
             Win32Helper.ApplyAccentBlur(HWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
         }
 
         ApplySurfaceStyle();
+    }
+
+    private bool CanReuseAppliedBackdrop(BackdropSignature signature)
+    {
+        if (_lastAppliedBackdropSignature != signature)
+        {
+            return false;
+        }
+
+        return SettingsService.IsMicaMaterial(signature.MaterialType)
+            ? MicaController is not null && MicaControllerAttached
+            : SettingsService.IsAcrylicMaterial(signature.MaterialType)
+                ? AcrylicController is { IsClosed: false } && AcrylicControllerAttached
+                : false;
     }
 
     protected static SolidColorBrush GetOrUpdateSolidColorBrush(Brush? current, Windows.UI.Color color)
@@ -335,6 +370,7 @@ public abstract partial class WidgetWindowBase
 
     protected void DisposeMicaController()
     {
+        _lastAppliedBackdropSignature = null;
         if (MicaController is null)
         {
             return;
@@ -498,6 +534,7 @@ public abstract partial class WidgetWindowBase
 
     protected void DisposeAcrylicController()
     {
+        _lastAppliedBackdropSignature = null;
         if (AcrylicController is null)
         {
             return;

@@ -1955,4 +1955,9 @@
     ,"Settings.DragDropPermission.Status.UacNeverNotify": "Never notify (EnableLUA=0)"
     ,"Settings.DragDropPermission.Status.UacEnabled": "Enabled (EnableLUA=1)"
     ,"Settings.DragDropPermission.Status.UacDetails": "{0}, ConsentPromptBehaviorAdmin={1}, PromptOnSecureDesktop={2}"
+    ,"Settings.Update.PreUpdateBackupFailedTitle": "Couldn't create an update recovery point"
+    ,"Settings.Update.PreUpdateBackupFailedBody": "DeskBox didn't start the update so it can protect your current settings. Try again later, or export a backup before installing the update manually."
+    ,"Settings.Update.PreUpdateBackupFailedBodyWithError": "DeskBox didn't start the update so it can protect your current settings.\n\n{0}"
+    ,"Settings.Recovery.AvailableTitle": "DeskBox recovery data is available"
+    ,"Settings.Recovery.AvailableBody": "A preserved recovery snapshot was found. Restore your previous widget layout and appearance from Settings > Backup & Restore > Local snapshots."
 }

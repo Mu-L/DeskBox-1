@@ -1954,5 +1954,10 @@
     "Settings.DragDropPermission.Status.ReadFailed": "読み取れません：{0}",
     "Settings.DragDropPermission.Status.UacNeverNotify": "通知しない（EnableLUA=0）",
     "Settings.DragDropPermission.Status.UacEnabled": "有効（EnableLUA=1）",
-    "Settings.DragDropPermission.Status.UacDetails": "{0}、ConsentPromptBehaviorAdmin={1}、PromptOnSecureDesktop={2}"
+    "Settings.DragDropPermission.Status.UacDetails": "{0}、ConsentPromptBehaviorAdmin={1}、PromptOnSecureDesktop={2}",
+    "Settings.Update.PreUpdateBackupFailedTitle": "更新用の復元ポイントを作成できませんでした",
+    "Settings.Update.PreUpdateBackupFailedBody": "現在の設定を保護するため、DeskBox は更新を開始しませんでした。後でもう一度試すか、バックアップをエクスポートしてから手動で更新してください。",
+    "Settings.Update.PreUpdateBackupFailedBodyWithError": "現在の設定を保護するため、DeskBox は更新を開始しませんでした。\n\n{0}",
+    "Settings.Recovery.AvailableTitle": "DeskBox の復元データが見つかりました",
+    "Settings.Recovery.AvailableBody": "保存済みの復元スナップショットが見つかりました。設定 > バックアップと復元 > ローカル スナップショットから以前のウィジェット配置と外観を復元できます。"
 }

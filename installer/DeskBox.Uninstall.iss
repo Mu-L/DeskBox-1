@@ -3,11 +3,7 @@ const
   DeskBoxProcessName = 'DeskBox.exe';
   DeskBoxDataSettingsPath = '{localappdata}\DeskBox\data\settings.json';
   DeskBoxDefaultManagedStorageRootPath = '{%USERPROFILE}\DeskBox';
-  DeskBoxLocalAppDataRoot = '{localappdata}\DeskBox';
   DeskBoxStartupRunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
-
-var
-  ShouldRemoveLocalAppData: Boolean;
 
 function TrimString(Value: string): string;
 begin
@@ -200,23 +196,6 @@ begin
   Result := MsgBox(MessageText, mbConfirmation, MB_YESNO) = IDYES;
 end;
 
-function ConfirmRemoveLocalAppData: Boolean;
-var
-  AppDataRoot: string;
-  MessageText: string;
-begin
-  Result := False;
-  AppDataRoot := ExpandConstant(DeskBoxLocalAppDataRoot);
-
-  if not DirExists(AppDataRoot) then
-    Exit;
-
-  MessageText :=
-    Format(ExpandConstant('{cm:ConfirmRemoveAppData}'), [AppDataRoot]);
-
-  Result := MsgBox(MessageText, mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
-end;
-
 procedure StopDeskBoxProcess;
 var
   ResultCode: Integer;
@@ -257,20 +236,6 @@ begin
   end;
 end;
 
-procedure RemoveLocalAppDataRoot;
-var
-  AppDataRoot: string;
-begin
-  AppDataRoot := ExpandConstant(DeskBoxLocalAppDataRoot);
-  if DirExists(AppDataRoot) then
-  begin
-    if DelTree(AppDataRoot, True, True, True) then
-      Log('DeskBox uninstall removed local app data directory: ' + AppDataRoot)
-    else
-      Log('DeskBox uninstall failed to remove local app data directory: ' + AppDataRoot);
-  end;
-end;
-
 procedure RemoveTaskbarPinnedShortcut;
 var
   Path: string;
@@ -303,10 +268,6 @@ end;
 function InitializeUninstall: Boolean;
 begin
   Result := ConfirmManagedStoragePreserved;
-  if Result then
-    ShouldRemoveLocalAppData := ConfirmRemoveLocalAppData
-  else
-    ShouldRemoveLocalAppData := False;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -319,9 +280,6 @@ begin
     RemoveStartupRegistryEntry;
     RemoveTaskbarPinnedShortcut;
     RemoveAppCompatFlag;
-    if ShouldRemoveLocalAppData then
-      RemoveLocalAppDataRoot
-    else
-      Log('DeskBox uninstall kept local app data directory.');
+    Log('DeskBox uninstall kept local app data directory and recovery snapshots.');
   end;
 end;

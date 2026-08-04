@@ -48,6 +48,8 @@ public sealed partial class TodoWidgetContent : UserControl
     private Button? _pressedColorFilterButton;
     private bool _isStartingColorFilterDrag;
     private bool _colorFilterHandledEventsRegistered;
+    private bool _isResponsiveLayoutTransitionActive;
+    private bool _segmentedLayoutRefreshPending;
     private DateTimeOffset _suppressColorFilterClickUntil;
     private double _detailTitleResizeStartY;
     private double _detailTitleResizeStartHeight;
@@ -169,8 +171,46 @@ public sealed partial class TodoWidgetContent : UserControl
         ApplySegmentedLayout();
     }
 
+    internal void BeginResponsiveLayoutTransition(
+        double targetContentWidth,
+        double targetContentHeight,
+        bool isCollapsing)
+    {
+        _isResponsiveLayoutTransitionActive = true;
+    }
+
+    internal void CompleteResponsiveLayoutTransition(
+        double finalContentWidth,
+        double finalContentHeight)
+    {
+        FinishResponsiveLayoutTransition();
+    }
+
+    internal void CancelResponsiveLayoutTransition()
+    {
+        FinishResponsiveLayoutTransition();
+    }
+
+    private void FinishResponsiveLayoutTransition()
+    {
+        bool shouldRefresh = _segmentedLayoutRefreshPending ||
+            TodoFilterSegmented.ActualWidth > 0;
+        _isResponsiveLayoutTransitionActive = false;
+        _segmentedLayoutRefreshPending = false;
+        if (shouldRefresh)
+        {
+            ApplySegmentedLayout();
+        }
+    }
+
     private void ApplySegmentedLayout()
     {
+        if (_isResponsiveLayoutTransitionActive)
+        {
+            _segmentedLayoutRefreshPending = true;
+            return;
+        }
+
         if (ViewModel?.TabStyle == SettingsService.WidgetTabStyleButton)
         {
             WidgetSegmentedLayoutHelper.ApplyEqualItemWidths(TodoFilterSegmented);

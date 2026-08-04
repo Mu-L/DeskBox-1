@@ -50,7 +50,8 @@ public sealed partial class WidgetManager
     /// </summary>
     private async Task PromoteGroupToUnifiedSurfaceHostAsync(
         WidgetGroupConfig group,
-        Func<Task>? beforeRetireAsync = null)
+        Func<Task>? beforeRetireAsync = null,
+        bool preserveRaisedLayer = false)
     {
         IDesktopWidgetWindow? loaded = GetLoadedWindow(group.ActiveMemberId);
         if (loaded is ContentWidgetWindow ||
@@ -69,6 +70,10 @@ public sealed partial class WidgetManager
             return;
         }
 
+        bool showCandidateRaised = preserveRaisedLayer ||
+                                   ShouldPreserveRaisedWidgetLayer(
+                                       group.ActiveMemberId);
+
         // CreateContentWidgetFromConfigAsync registers the new Surface host,
         // so retiring by member id afterwards could resolve to the new window;
         // retain and retire the exact legacy instance in the commit callback.
@@ -84,7 +89,7 @@ public sealed partial class WidgetManager
                         return;
                     }
 
-                    if (_widgetsRaisedFromTray)
+                    if (showCandidateRaised)
                     {
                         candidate.ShowPreparedRaisedFromTray(
                             persistVisibility: false);
@@ -96,6 +101,11 @@ public sealed partial class WidgetManager
                     }
 
                     candidate.CompleteTrayShowWithoutAnimation();
+                    if (showCandidateRaised && !_widgetsRaisedFromTray)
+                    {
+                        candidate.RaiseTemporarilyFromManager();
+                    }
+
                     using var frameTimeout = new CancellationTokenSource(
                         WidgetGroupFirstFrameTimeout);
                     await candidate.WaitForFirstPresentedFrameAsync(

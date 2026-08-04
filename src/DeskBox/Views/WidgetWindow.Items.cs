@@ -82,6 +82,17 @@ public sealed partial class WidgetWindow
         UpdateInteractiveSurfaces();
     }
 
+    protected override void OnCompactVisualStateChanged(bool collapsed)
+    {
+        if (IsCompactTransitionActive || !_interactiveSurfaceRefreshDeferred)
+        {
+            return;
+        }
+
+        _interactiveSurfaceRefreshDeferred = false;
+        UpdateInteractiveSurfaces();
+    }
+
     public void RevealSavedItem(string itemPath)
     {
         if (string.IsNullOrWhiteSpace(itemPath))

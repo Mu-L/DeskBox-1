@@ -54,6 +54,7 @@ internal interface IDesktopWidgetWindow
     WidgetConfig Config { get; }
     IntPtr WindowHandle { get; }
     bool Visible { get; }
+    bool IsRaisedAboveDesktopLayer { get; }
     bool IsCompactArrangementActive { get; }
     Windows.Foundation.Rect AnimationBounds { get; }
     Windows.Foundation.Rect RestingAnimationBounds { get; }
@@ -593,6 +594,7 @@ public sealed partial class WidgetManager
         {
             RaiseVisibleWidgetsTemporarily("startup-restore");
             _sessionManager.MarkDesktopResting("restore-widgets");
+            QueueVisibleGroupedFileIconRecoveryAfterStartup();
         }
     }
 
@@ -1242,6 +1244,24 @@ public sealed partial class WidgetManager
                 continue;
             }
 
+            // This runs both during initial restoration and during the deferred
+            // bounds pass. Re-showing an already-visible group sends its surface
+            // through the desktop-layer show path, which would undo the temporary
+            // foreground raise applied after startup. Only re-show a group when
+            // its native host has actually been hidden or lost.
+            IDesktopWidgetWindow? existingWindow = GetLoadedWindow(group.ActiveMemberId);
+            if (existingWindow is { Visible: true } &&
+                existingWindow.WindowHandle != IntPtr.Zero &&
+                Win32Helper.IsWindowVisible(existingWindow.WindowHandle))
+            {
+                existingWindow.RestoreBoundsForCurrentTopology();
+                App.Log(
+                    $"[WidgetGroup] Kept visible group surface during restore: " +
+                    $"group={group.Id}, active={group.ActiveMemberId}, " +
+                    $"hwnd=0x{existingWindow.WindowHandle.ToInt64():X}");
+                continue;
+            }
+
             try
             {
                 await ShowGroupActiveWindowAsync(group);
@@ -1271,6 +1291,64 @@ public sealed partial class WidgetManager
             catch (Exception ex)
             {
                 App.Log($"[WidgetManager] Deferred startup bounds reconciliation failed: {ex}");
+            }
+        });
+    }
+
+    private void QueueVisibleGroupedFileIconRecoveryAfterStartup()
+    {
+        App.UiDispatcherQueue?.TryEnqueue(async () =>
+        {
+            try
+            {
+                // A persistent group surface can be shown without activation
+                // while the startup layer handoff is still settling. In that
+                // window, the initial asynchronous icon hydration can be
+                // interrupted and leave every item on its fallback glyph.
+                // Match the existing manual refresh once, but only for a
+                // visible grouped file surface that still has no loaded icons.
+                await Task.Delay(900);
+
+                foreach (WidgetGroupConfig group in _settingsService.Settings.WidgetGroups.ToList())
+                {
+                    if (!group.IsVisible ||
+                        FindConfig(group.ActiveMemberId) is not { WidgetKind: WidgetKind.File } config ||
+                        IsDeleted(config.Id) ||
+                        config.IsDisabled ||
+                        !_widgetRegistry.IsAvailableForSession(
+                            config,
+                            _settingsService.Settings))
+                    {
+                        continue;
+                    }
+
+                    if (GetLoadedWindow(group.ActiveMemberId) is not ContentWidgetWindow window ||
+                        !window.Visible ||
+                        window.CurrentContent is not FileSurfaceContent fileSurface ||
+                        !string.Equals(
+                            fileSurface.WidgetId,
+                            group.ActiveMemberId,
+                            StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    int itemCount = fileSurface.ViewModel.Items.Count;
+                    if (itemCount == 0 ||
+                        fileSurface.ViewModel.Items.Any(item => item.Icon is not null))
+                    {
+                        continue;
+                    }
+
+                    await fileSurface.RefreshAsync();
+                    App.Log(
+                        $"[StartupIconRecovery] Refreshed visible grouped file surface " +
+                        $"group={group.Id} widget={fileSurface.WidgetId} items={itemCount}");
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Startup grouped file icon recovery failed: {ex}");
             }
         });
     }

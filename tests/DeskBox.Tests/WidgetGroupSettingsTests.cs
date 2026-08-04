@@ -318,6 +318,38 @@ public sealed class WidgetGroupSettingsTests
         Assert.False(WidgetGroupSettings.Normalize(settings));
     }
 
+    [Fact]
+    public void Normalize_SynchronizesMemberVisibilityWithTheVisibleGroupSurface()
+    {
+        var first = CreateWidget("first");
+        var second = CreateWidget("second");
+        first.IsVisible = true;
+        second.IsVisible = false;
+        var settings = new AppSettings
+        {
+            Widgets = [first, second],
+            WidgetGroups =
+            [
+                new WidgetGroupConfig
+                {
+                    SurfaceId = "surface",
+                    MemberIds = [first.Id, second.Id],
+                    ActiveMemberId = second.Id,
+                    IsVisible = true
+                }
+            ]
+        };
+
+        Assert.True(WidgetGroupSettings.Normalize(settings));
+        Assert.All(settings.Widgets, widget => Assert.True(widget.IsVisible));
+        Assert.False(WidgetGroupSettings.Normalize(settings));
+
+        settings.WidgetGroups[0].IsVisible = false;
+
+        Assert.True(WidgetGroupSettings.Normalize(settings));
+        Assert.All(settings.Widgets, widget => Assert.False(widget.IsVisible));
+    }
+
     [Theory]
     [InlineData(WidgetGroupNavigationStyles.Auto)]
     [InlineData(WidgetGroupNavigationStyles.Tabs)]

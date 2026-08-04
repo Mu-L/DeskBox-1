@@ -1955,4 +1955,9 @@
     ,"Settings.DragDropPermission.Status.UacNeverNotify": "从不通知（EnableLUA=0）"
     ,"Settings.DragDropPermission.Status.UacEnabled": "已开启（EnableLUA=1）"
     ,"Settings.DragDropPermission.Status.UacDetails": "{0}，ConsentPromptBehaviorAdmin={1}，PromptOnSecureDesktop={2}"
+    ,"Settings.Update.PreUpdateBackupFailedTitle": "无法创建更新恢复点"
+    ,"Settings.Update.PreUpdateBackupFailedBody": "为保护当前设置，DeskBox 未启动更新。请稍后重试，或先导出备份后手动安装更新。"
+    ,"Settings.Update.PreUpdateBackupFailedBodyWithError": "为保护当前设置，DeskBox 未启动更新。\n\n{0}"
+    ,"Settings.Recovery.AvailableTitle": "发现可恢复的 DeskBox 数据"
+    ,"Settings.Recovery.AvailableBody": "检测到已保留的恢复快照。可在“设置 > 备份与恢复 > 本机快照”中恢复之前的格子布局和样式。"
 }

@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -19,6 +20,10 @@ public static class DeskBoxDragData
         "DeskBoxStackReorderKey";
     public const string SourceTodo = "todo";
     public const string SourceQuickCapture = "quick-capture";
+    private static readonly HttpClient s_virtualDropHttpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(30)
+    };
 
     public static void SetText(DataPackage dataPackage, string? text, string source)
     {
@@ -98,6 +103,17 @@ public static class DeskBoxDragData
         }
 
         return dataView.AvailableFormats.Any(IsLikelyFileTransferFormat);
+    }
+
+    /// <summary>
+    /// Returns whether a package can yield importable file data. Browser drags
+    /// commonly expose a virtual file, a bitmap, or only an HTTP(S) URL in text.
+    /// </summary>
+    public static bool HasImportableFileData(DataPackageView dataView)
+    {
+        return HasDroppedFiles(dataView) ||
+               dataView.Contains(StandardDataFormats.Text) ||
+               dataView.Contains(StandardDataFormats.WebLink);
     }
 
     /// <summary>
@@ -182,6 +198,17 @@ public static class DeskBoxDragData
                 IReadOnlyList<IStorageItem> storageItems = await dataView.GetStorageItemsAsync();
                 foreach (IStorageItem storageItem in storageItems)
                 {
+                    if (storageItem is StorageFolder storageFolder &&
+                        !string.IsNullOrWhiteSpace(storageFolder.Path) &&
+                        Directory.Exists(storageFolder.Path))
+                    {
+                        files.Add(new DroppedFilePath(
+                            Path.GetFullPath(storageFolder.Path),
+                            storageFolder.Name,
+                            ForceManagedCopy: false));
+                        continue;
+                    }
+
                     if (storageItem is not StorageFile storageFile)
                     {
                         skippedCount++;
@@ -233,6 +260,32 @@ public static class DeskBoxDragData
             {
                 skippedCount++;
                 App.Log($"[DragDrop] Failed to read dropped bitmap: {ex.Message}");
+            }
+        }
+
+        // A browser may expose an image as FileContents/FileGroupDescriptorW,
+        // but some sites only provide the resource URL. Materialize that URL as
+        // a managed temporary file so the normal import pipeline can copy it.
+        if (files.Count == 0)
+        {
+            string? webUrl = await TryGetDroppedWebUrlAsync(dataView);
+            if (!string.IsNullOrWhiteSpace(webUrl))
+            {
+                temporaryDirectory ??= CreateTemporaryDropDirectory();
+                string? materializedPath = await MaterializeWebUrlAsync(
+                    webUrl,
+                    temporaryDirectory);
+                if (materializedPath is null)
+                {
+                    skippedCount++;
+                }
+                else
+                {
+                    files.Add(new DroppedFilePath(
+                        materializedPath,
+                        Path.GetFileName(materializedPath),
+                        ForceManagedCopy: true));
+                }
             }
         }
 
@@ -328,10 +381,92 @@ public static class DeskBoxDragData
                format.Contains("StorageItem", StringComparison.OrdinalIgnoreCase) ||
                format.Contains("FileGroupDescriptor", StringComparison.OrdinalIgnoreCase) ||
                format.Contains("FileDrop", StringComparison.OrdinalIgnoreCase) ||
-               format.Contains("FileName", StringComparison.OrdinalIgnoreCase);
+                format.Contains("FileName", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<string?> MaterializeStorageFileAsync(
+    private static async Task<string?> TryGetDroppedWebUrlAsync(DataPackageView dataView)
+    {
+        if (dataView.Contains(StandardDataFormats.WebLink))
+        {
+            try
+            {
+                Uri? link = await dataView.GetWebLinkAsync();
+                if (IsHttpUrl(link?.AbsoluteUri))
+                {
+                    return link!.AbsoluteUri;
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[DragDrop] Failed to read dropped web link: {ex.Message}");
+            }
+        }
+
+        if (!dataView.Contains(StandardDataFormats.Text))
+        {
+            return null;
+        }
+
+        try
+        {
+            string text = await dataView.GetTextAsync();
+            return text.Split(
+                    ["\r\n", "\n"],
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault(IsHttpUrl);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[DragDrop] Failed to read dropped text: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static bool IsHttpUrl(string? value)
+    {
+        return Uri.TryCreate(value?.Trim().Trim('"'), UriKind.Absolute, out Uri? uri) &&
+               uri.Scheme is "http" or "https";
+    }
+
+    private static async Task<string?> MaterializeWebUrlAsync(
+        string url,
+        string temporaryDirectory)
+    {
+        if (!Uri.TryCreate(url.Trim().Trim('"'), UriKind.Absolute, out Uri? uri) ||
+            uri.Scheme is not ("http" or "https"))
+        {
+            return null;
+        }
+
+        try
+        {
+            string fileName = FileService.SanitizeFileSystemName(
+                Path.GetFileName(uri.LocalPath));
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                fileName = "Dropped web resource";
+            }
+
+            string destinationPath = FileService.GetAvailablePath(
+                Path.Combine(temporaryDirectory, fileName));
+            byte[] bytes = await s_virtualDropHttpClient.GetByteArrayAsync(uri);
+            await File.WriteAllBytesAsync(destinationPath, bytes);
+            destinationPath =
+                VirtualDropFileNameResolver.AddMissingExtensionFromContent(
+                    destinationPath);
+            App.Log(
+                $"[DragDrop] Materialized web drop url='{uri}' " +
+                $"path='{destinationPath}' bytes={bytes.Length}");
+            return destinationPath;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[DragDrop] Failed to materialize web drop '{uri}': {ex.Message}");
+            return null;
+        }
+    }
+
+    internal static async Task<string?> MaterializeStorageFileAsync(
         StorageFile storageFile,
         string temporaryDirectory)
     {
@@ -363,15 +498,19 @@ public static class DeskBoxDragData
             Path.Combine(temporaryDirectory, fileName));
         source.Seek(0);
         using Stream sourceStream = source.AsStreamForRead();
-        await using var destination = new FileStream(
-            destinationPath,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            bufferSize: 81920,
-            useAsync: true);
-        await sourceStream.CopyToAsync(destination);
-        return destinationPath;
+        await using (var destination = new FileStream(
+                         destinationPath,
+                         FileMode.CreateNew,
+                         FileAccess.Write,
+                         FileShare.None,
+                         bufferSize: 81920,
+                         useAsync: true))
+        {
+            await sourceStream.CopyToAsync(destination);
+        }
+
+        return VirtualDropFileNameResolver.AddMissingExtensionFromContent(
+            destinationPath);
     }
 
     private static string CreateTemporaryDropDirectory()

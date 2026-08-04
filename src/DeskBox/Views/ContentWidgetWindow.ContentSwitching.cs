@@ -90,6 +90,91 @@ public sealed partial class ContentWidgetWindow
             forward);
     }
 
+    internal IWidgetContent? TakeCachedGroupContent(string widgetId)
+    {
+        if (string.IsNullOrWhiteSpace(widgetId) ||
+            !_cachedGroupContents.Remove(widgetId, out IWidgetContent? content))
+        {
+            return null;
+        }
+
+        RemoveCachedGroupContentOrderEntry(widgetId);
+        App.LogVerbose($"[WidgetGroup] Reusing cached content member={widgetId}");
+        return content;
+    }
+
+    private bool TryRetainGroupContent(IWidgetContent content)
+    {
+        if (IsClosing ||
+            content is not IWidgetGroupContentCacheable ||
+            string.IsNullOrWhiteSpace(content.WidgetId))
+        {
+            return false;
+        }
+
+        if (_cachedGroupContents.Remove(content.WidgetId, out IWidgetContent? replaced))
+        {
+            RemoveCachedGroupContentOrderEntry(content.WidgetId);
+            DisposeCachedGroupContent(replaced);
+        }
+
+        while (_cachedGroupContents.Count >= CachedGroupContentCapacity &&
+               _cachedGroupContentOrder.First is { } oldest)
+        {
+            _cachedGroupContentOrder.RemoveFirst();
+            if (_cachedGroupContents.Remove(oldest.Value, out IWidgetContent? evicted))
+            {
+                DisposeCachedGroupContent(evicted);
+            }
+        }
+
+        _cachedGroupContents[content.WidgetId] = content;
+        _cachedGroupContentOrder.AddLast(content.WidgetId);
+        App.LogVerbose($"[WidgetGroup] Cached inactive content member={content.WidgetId}");
+        return true;
+    }
+
+    private void DisposeCachedGroupContents()
+    {
+        foreach (IWidgetContent content in _cachedGroupContents.Values.ToArray())
+        {
+            DisposeCachedGroupContent(content);
+        }
+
+        _cachedGroupContents.Clear();
+        _cachedGroupContentOrder.Clear();
+    }
+
+    private void RemoveCachedGroupContentOrderEntry(string widgetId)
+    {
+        LinkedListNode<string>? node = _cachedGroupContentOrder.First;
+        while (node is not null)
+        {
+            LinkedListNode<string>? next = node.Next;
+            if (string.Equals(node.Value, widgetId, StringComparison.Ordinal))
+            {
+                _cachedGroupContentOrder.Remove(node);
+                return;
+            }
+
+            node = next;
+        }
+    }
+
+    private static void DisposeCachedGroupContent(IWidgetContent content)
+    {
+        try
+        {
+            (content as IDisposable)?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[WidgetGroup] Cached content cleanup failed " +
+                $"member={content.WidgetId}: {ex}");
+        }
+    }
+
     internal sealed class ContentWidgetSwitchPreparation : IDisposable
     {
         private readonly ContentWidgetWindow _owner;

@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -27,6 +28,8 @@ namespace DeskBox.Controls.WidgetContents;
 public sealed partial class FileSurfaceContent :
     UserControl,
     IWidgetContent,
+    ICancellableWidgetContent,
+    IWidgetGroupContentCacheable,
     IWidgetAddActionContent,
     IWidgetFeedbackSource,
     IWidgetTransientStateContent,
@@ -61,6 +64,8 @@ public sealed partial class FileSurfaceContent :
     private long _lastStackInputTick;
     private bool _isImportBusy;
     private bool _isDisposed;
+    private bool _isReadyForReuse;
+    private bool _hasBeenWindowVisible;
     private DateTime _lastDiskReconciliationUtc = DateTime.MinValue;
     private int _diskReconciliationQueued;
 
@@ -84,6 +89,14 @@ public sealed partial class FileSurfaceContent :
             dispatcherQueue);
 
         InitializeComponent();
+        ItemsGrid.AddHandler(
+            UIElement.PreviewKeyDownEvent,
+            new KeyEventHandler(ItemsView_PreviewKeyDown),
+            handledEventsToo: true);
+        ItemsList.AddHandler(
+            UIElement.PreviewKeyDownEvent,
+            new KeyEventHandler(ItemsView_PreviewKeyDown),
+            handledEventsToo: true);
         Root.DataContext = ViewModel;
         Root.IsTabStop = true;
         EmptyAddButtonText.Text = T("Widget.AddFile");
@@ -121,9 +134,19 @@ public sealed partial class FileSurfaceContent :
 
     public FrameworkElement View => this;
 
-    public async Task InitializeAsync()
+    public bool IsReadyForReuse => _isReadyForReuse && !_isDisposed;
+
+    public Task InitializeAsync()
     {
-        await ViewModel.InitializeAsync();
+        return InitializeAsync(CancellationToken.None);
+    }
+
+    public async Task InitializeAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await ViewModel.InitializeAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        _isReadyForReuse = true;
         _lastDiskReconciliationUtc = DateTime.UtcNow;
         UpdateEmptyState();
     }
@@ -163,6 +186,10 @@ public sealed partial class FileSurfaceContent :
 
     public void OnDeactivated()
     {
+        // File hydration and folder watchers follow the actual window visibility,
+        // rather than foreground activation. Desktop-layer groups intentionally
+        // use SW_SHOWNOACTIVATE, so treating their initial inactive state as a
+        // deactivation would cancel the first icon hydration pass.
     }
 
     public object? CaptureTransientState()
@@ -197,8 +224,20 @@ public sealed partial class FileSurfaceContent :
     {
         if (visible)
         {
+            _hasBeenWindowVisible = true;
+            ViewModel.ResumeBackgroundActivity();
             UpdateEmptyState();
             QueueDiskReconciliationIfStale("visible");
+            return;
+        }
+
+        // Content is attached before its host is shown, and the host reports its
+        // initial hidden state during that attach. Do not cancel the initial
+        // hydration in that case; only a real visible -> hidden transition
+        // suspends the file surface.
+        if (_hasBeenWindowVisible)
+        {
+            ViewModel.SuspendBackgroundActivity();
         }
     }
 
@@ -984,8 +1023,13 @@ public sealed partial class FileSurfaceContent :
         var deferral = e.GetDeferral();
         try
         {
-            string[] paths = await GetSurfaceDropPathsAsync(e.DataView);
-            if (paths.Length > 0)
+            using DroppedFileBatch batch = await GetSurfaceDropFilesAsync(e.DataView);
+            IReadOnlyList<DroppedFilePath> droppedFiles = batch.Files;
+            string[] paths = droppedFiles
+                .Select(file => file.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (droppedFiles.Count > 0)
             {
                 DataPackageOperation accepted =
                     e.AcceptedOperation == DataPackageOperation.None
@@ -1007,10 +1051,10 @@ public sealed partial class FileSurfaceContent :
                 }
                 try
                 {
-                    IReadOnlyList<string> completedSourcePaths = await ViewModel.ImportPathsAsync(
-                        paths,
-                        moveWhenMapped,
-                        useShellProgress: moveWhenMapped == true);
+                    IReadOnlyList<string> completedSourcePaths =
+                        await ImportDroppedFilesAsync(
+                            droppedFiles,
+                            moveWhenMapped);
                     if (moveWhenMapped == true &&
                         sourceWidgetId is { Length: > 0 } &&
                         App.Current?.WidgetManager is { } manager)
@@ -1033,7 +1077,7 @@ public sealed partial class FileSurfaceContent :
                         moveWhenMapped == true
                             ? "Widget.MovedCount"
                             : "Widget.PastedCount",
-                        paths.Length),
+                        droppedFiles.Count),
                     WidgetFeedbackSeverity.Success,
                     "file-drop"));
             }
@@ -1130,8 +1174,8 @@ public sealed partial class FileSurfaceContent :
 
     private static bool HasSurfacePathDropData(DataPackageView dataView)
     {
-        return dataView.Contains(StandardDataFormats.StorageItems) ||
-               GetPackagePaths(dataView).Length > 0;
+        return GetPackagePaths(dataView).Length > 0 ||
+               DeskBoxDragData.HasImportableFileData(dataView);
     }
 
     private DataPackageOperation ResolveSurfaceDropOperation(
@@ -1188,24 +1232,160 @@ public sealed partial class FileSurfaceContent :
             operationText);
     }
 
-    private static async Task<string[]> GetSurfaceDropPathsAsync(
+    private static async Task<DroppedFileBatch> GetSurfaceDropFilesAsync(
         DataPackageView dataView)
     {
         string[] paths = GetPackagePaths(dataView);
-        if (paths.Length > 0 ||
-            !dataView.Contains(StandardDataFormats.StorageItems))
+        if (paths.Length > 0)
         {
-            return paths;
+            DroppedFilePath[] files = paths
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path =>
+                {
+                    try
+                    {
+                        return Path.GetFullPath(path);
+                    }
+                    catch
+                    {
+                        return string.Empty;
+                    }
+                })
+                .Where(path => File.Exists(path) || Directory.Exists(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(path => new DroppedFilePath(
+                    path,
+                    Path.GetFileName(path),
+                    ForceManagedCopy: false))
+                .ToArray();
+            return new DroppedFileBatch(files, temporaryDirectory: null, skippedCount: 0);
         }
 
-        IReadOnlyList<IStorageItem> items =
-            await dataView.GetStorageItemsAsync();
-        return items
-            .Select(item => item.Path)
-            .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Select(Path.GetFullPath)
+        return await DeskBoxDragData.TryGetDroppedFilesAsync(dataView);
+    }
+
+    private async Task<IReadOnlyList<string>> ImportDroppedFilesAsync(
+        IReadOnlyList<DroppedFilePath> droppedFiles,
+        bool? moveWhenMapped)
+    {
+        var movedSourcePaths = new List<string>();
+        string[] regularPaths = droppedFiles
+            .Where(file => !file.ForceManagedCopy)
+            .Select(file => file.Path)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        if (regularPaths.Length > 0)
+        {
+            IReadOnlyList<string> completed = await ViewModel.ImportPathsAsync(
+                regularPaths,
+                moveWhenMapped,
+                useShellProgress: moveWhenMapped == true);
+            if (moveWhenMapped == true)
+            {
+                movedSourcePaths.AddRange(completed);
+            }
+        }
+
+        string[] managedCopyPaths = droppedFiles
+            .Where(file => file.ForceManagedCopy)
+            .Select(file => file.Path)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (managedCopyPaths.Length > 0)
+        {
+            // Virtual browser files and URL downloads live in a temporary
+            // directory owned by DroppedFileBatch. They must always be copied.
+            await ViewModel.ImportPathsAsync(
+                managedCopyPaths,
+                moveWhenMapped: false,
+                useShellProgress: false);
+        }
+
+        return movedSourcePaths;
+    }
+
+    /// <summary>
+    /// Imports a file payload received by the owning surface window's native
+    /// drag-drop bridge. Grouped file content has no HWND of its own, so this
+    /// mirrors the regular surface import pipeline after the host extracts the
+    /// native OLE or WM_DROPFILES payload.
+    /// </summary>
+    internal async Task<bool> ImportNativeDroppedFilesAsync(
+        IReadOnlyList<string> paths,
+        bool containsTemporaryFiles)
+    {
+        if (_isDisposed || _isImportBusy)
+        {
+            return false;
+        }
+
+        DroppedFilePath[] droppedFiles = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path =>
+            {
+                try
+                {
+                    return Path.GetFullPath(path);
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            })
+            .Where(path => File.Exists(path) || Directory.Exists(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(path => new DroppedFilePath(
+                path,
+                Path.GetFileName(path),
+                ForceManagedCopy: containsTemporaryFiles))
+            .ToArray();
+        if (droppedFiles.Length == 0)
+        {
+            return false;
+        }
+
+        bool mapped = !string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath);
+        bool? moveWhenMapped = mapped
+            ? containsTemporaryFiles || Win32Helper.IsKeyPressed(VirtualKey.Control)
+                ? false
+                : true
+            : null;
+        bool showOverlay = DeskBoxDragData.ShouldShowImportOverlay(
+            droppedFiles.Select(file => file.Path).ToArray());
+        if (showOverlay)
+        {
+            SetImportBusy(true);
+        }
+
+        try
+        {
+            await ImportDroppedFilesAsync(droppedFiles, moveWhenMapped);
+            ShowFeedback(new(
+                _localizationService.Format(
+                    moveWhenMapped == true
+                        ? "Widget.MovedCount"
+                        : "Widget.PastedCount",
+                    droppedFiles.Length),
+                WidgetFeedbackSeverity.Success,
+                "native-file-drop"));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[WidgetSurface] Native file drop failed id={WidgetId}: {ex}");
+            ShowFeedback(new(
+                ex.Message,
+                WidgetFeedbackSeverity.Error,
+                "native-file-drop-error"));
+            return false;
+        }
+        finally
+        {
+            if (showOverlay)
+            {
+                SetImportBusy(false);
+            }
+        }
     }
 
     private void HandleSurfaceRealTimeReorder(
@@ -1460,6 +1640,16 @@ public sealed partial class FileSurfaceContent :
 
     private async void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (await TryHandleSpacePreviewAsync(e))
+        {
+            return;
+        }
+
+        if (e.Handled)
+        {
+            return;
+        }
+
         CoreVirtualKeyStates controlState =
             InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
         bool control = controlState.HasFlag(CoreVirtualKeyStates.Down);
@@ -1533,21 +1723,60 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        if (e.Key == VirtualKey.Space &&
-            GetSelectedItems().FirstOrDefault() is { } previewTarget &&
-            s_quickLookService.CanPreview(previewTarget.Path))
-        {
-            e.Handled = true;
-            await s_quickLookService.TryToggleAsync(
-                previewTarget.Path);
-            return;
-        }
-
         if (e.Key == VirtualKey.F5)
         {
             e.Handled = true;
             await RunAsync(RefreshAsync);
         }
+    }
+
+    private async void ItemsView_PreviewKeyDown(
+        object sender,
+        KeyRoutedEventArgs e)
+    {
+        await TryHandleSpacePreviewAsync(e);
+    }
+
+    private async Task<bool> TryHandleSpacePreviewAsync(KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Space ||
+            IsTextInputSource(e.OriginalSource))
+        {
+            return false;
+        }
+
+        IReadOnlyList<WidgetItem> selectedItems = GetSelectedItems();
+        if (selectedItems.Count == 0 ||
+            selectedItems.Any(item => item is WidgetStackItem))
+        {
+            return false;
+        }
+
+        // Match the standalone file widget: ListView/GridView handles Space
+        // for selection and otherwise swallows the key before normal KeyDown.
+        e.Handled = true;
+        WidgetItem previewTarget = selectedItems[0];
+        if (s_quickLookService.CanPreview(previewTarget.Path))
+        {
+            await s_quickLookService.TryToggleAsync(previewTarget.Path);
+        }
+
+        return true;
+    }
+
+    private static bool IsTextInputSource(object originalSource)
+    {
+        for (DependencyObject? current = originalSource as DependencyObject;
+             current is not null;
+             current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is TextBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private ListViewBase GetActiveItemsView()
@@ -1843,6 +2072,7 @@ public sealed partial class FileSurfaceContent :
 
         PersistSurfaceReorder();
         _isDisposed = true;
+        _isReadyForReuse = false;
         _lifetimeCancellation.Cancel();
         _lifetimeCancellation.Dispose();
         if (_isImportBusy)

@@ -47,6 +47,20 @@ public sealed class WidgetGroupSwitchRequestCoordinatorTests
     }
 
     [Fact]
+    public void Begin_SameTarget_CancelsThePreviousRequest()
+    {
+        var coordinator = new WidgetGroupSwitchRequestCoordinator();
+        WidgetGroupSwitchRequest first = coordinator.Begin("surface", "member-a");
+
+        WidgetGroupSwitchRequest second = coordinator.Begin("surface", "member-a");
+
+        Assert.True(first.CancellationToken.IsCancellationRequested);
+        Assert.False(coordinator.IsCurrent(first));
+        Assert.False(second.CancellationToken.IsCancellationRequested);
+        Assert.True(coordinator.IsCurrent(second));
+    }
+
+    [Fact]
     public void CompletingSupersededRequest_DoesNotRemoveLatestRequest()
     {
         var coordinator = new WidgetGroupSwitchRequestCoordinator();

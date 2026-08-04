@@ -3,8 +3,8 @@
 ; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\arm64 -v:minimal
 
 #define MyAppName "DeskBox"
-#define MyAppVersion "1.3.5"
-#define MyAppVersionInfo "1.3.5.0"
+#define MyAppVersion "1.3.6"
+#define MyAppVersionInfo "1.3.6.0"
 #define MyAppPublisher "朱天雨"
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
@@ -26,7 +26,9 @@ DefaultDirName={localappdata}\Programs\{#MyAppName}
 DisableProgramGroupPage=yes
 DisableDirPage=no
 PrivilegesRequired=lowest
-UsePreviousAppDir=no
+; Manual upgrades should preserve a user-selected location. In-app updates
+; additionally pass /DIR explicitly so silent installs cannot fall back to C:.
+UsePreviousAppDir=yes
 UsePreviousPrivileges=no
 CloseApplications=force
 CloseApplicationsFilter={#MyAppExeName}

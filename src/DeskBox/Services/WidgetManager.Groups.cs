@@ -456,6 +456,79 @@ public sealed partial class WidgetManager
         }
     }
 
+    private void SaveWidgetGroupActiveMemberDeferred()
+    {
+        // The selected member is runtime navigation state, not a topology
+        // mutation. Coalescing rapid tab/stack/hotkey switches avoids a full
+        // settings serialization and atomic file replacement per click.
+        _settingsService.SaveDebounced(notifySubscribers: false);
+    }
+
+    /// <summary>
+    /// A group topology mutation can replace the HWND that the user is
+    /// interacting with. Preserve its raised layer for the replacement so a
+    /// detached member cannot appear above the group that produced it.
+    /// </summary>
+    private bool ShouldPreserveRaisedWidgetLayer(params string?[] widgetIds)
+    {
+        if (_widgetsRaisedFromTray)
+        {
+            return true;
+        }
+
+        foreach (string? widgetId in widgetIds)
+        {
+            if (string.IsNullOrWhiteSpace(widgetId))
+            {
+                continue;
+            }
+
+            if (GetLoadedWindow(widgetId) is { Visible: true } window &&
+                window.IsRaisedAboveDesktopLayer)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void RaiseVisibleWidgetTransitionWindows(
+        IEnumerable<string> widgetIds,
+        string reason)
+    {
+        if (WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            return;
+        }
+
+        var seenHandles = new HashSet<IntPtr>();
+        var windows = new List<IDesktopWidgetWindow>();
+        foreach (string widgetId in widgetIds.Distinct(StringComparer.Ordinal))
+        {
+            if (GetLoadedWindow(widgetId) is not { Visible: true } window ||
+                window.WindowHandle == IntPtr.Zero ||
+                !seenHandles.Add(window.WindowHandle))
+            {
+                continue;
+            }
+
+            windows.Add(window);
+        }
+
+        foreach (IDesktopWidgetWindow window in windows)
+        {
+            window.RaiseTemporarilyFromManager();
+        }
+
+        if (windows.Count > 0)
+        {
+            App.Log(
+                $"[WidgetGroup] Preserved raised layer reason={reason} " +
+                $"count={windows.Count} handles={string.Join(',', windows.Select(window => $"0x{window.WindowHandle.ToInt64():X}"))}");
+        }
+    }
+
     public IReadOnlyList<WidgetGroupJoinTarget> GetWidgetGroupJoinTargets(string sourceWidgetId)
     {
         if (!IsWidgetGroupingEnabled)
@@ -635,6 +708,10 @@ public sealed partial class WidgetManager
                 return false;
             }
 
+            bool preserveRaisedLayer = ShouldPreserveRaisedWidgetLayer(
+                sourceGroup?.ActiveMemberId ?? sourceWidgetId,
+                targetGroup?.ActiveMemberId ?? targetWidgetId);
+
             if (!TryResolveGroupingChromeMode(
                     sourceConfig,
                     sourceGroup,
@@ -718,7 +795,8 @@ public sealed partial class WidgetManager
             {
                 await PromoteGroupToUnifiedSurfaceHostAsync(
                     mergedGroup,
-                    beforeRetireAsync: SaveWidgetGroupSettingsCheckedAsync);
+                    beforeRetireAsync: SaveWidgetGroupSettingsCheckedAsync,
+                    preserveRaisedLayer: preserveRaisedLayer);
             }
             catch (Exception ex)
             {
@@ -766,6 +844,13 @@ public sealed partial class WidgetManager
                 }
 
                 RetireLoadedWindowForGroup(memberId, keepConfigVisible: mergedGroup.IsVisible);
+            }
+
+            if (preserveRaisedLayer && mergedGroup.IsVisible)
+            {
+                RaiseVisibleWidgetTransitionWindows(
+                    new[] { mergedGroup.ActiveMemberId },
+                    "group-merge");
             }
 
             App.Log(
@@ -873,16 +958,7 @@ public sealed partial class WidgetManager
                 // created for this member on the next reveal.
                 TransferCapsuleIdentity(previousActiveId, targetWidgetId);
                 group.ActiveMemberId = targetWidgetId;
-                try
-                {
-                    await SaveWidgetGroupSettingsCheckedAsync();
-                }
-                catch
-                {
-                    group.ActiveMemberId = previousActiveId;
-                    TransferCapsuleIdentity(targetWidgetId, previousActiveId);
-                    throw;
-                }
+                SaveWidgetGroupActiveMemberDeferred();
 
                 RaiseWidgetGroupsChanged();
                 ApplyCapsuleArrangementIfChanged(force: true);
@@ -937,8 +1013,10 @@ public sealed partial class WidgetManager
         ContentWidgetWindow persistentWindow,
         ContentWidgetWindowFactory contentWindowFactory)
     {
+        IWidgetContent? cachedContent =
+            persistentWindow.TakeCachedGroupContent(targetConfig.Id);
         ContentWidgetWindowPlan plan =
-            contentWindowFactory.CreateContentWindowPlan(targetConfig);
+            contentWindowFactory.CreateContentWindowPlan(targetConfig, cachedContent);
         using var loadingDelayCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(
                 request.CancellationToken);
@@ -1019,7 +1097,6 @@ public sealed partial class WidgetManager
         group.ActiveMemberId = targetConfig.Id;
         try
         {
-            await SaveWidgetGroupSettingsCheckedAsync();
             CommitSurfaceHost(group, persistentWindow);
         }
         catch
@@ -1029,16 +1106,6 @@ public sealed partial class WidgetManager
             if (previousConfig is not null)
             {
                 ApplyGroupLayoutToMember(group, previousConfig);
-            }
-            try
-            {
-                await SaveWidgetGroupSettingsCheckedAsync();
-            }
-            catch (Exception rollbackSaveException)
-            {
-                App.Log(
-                    $"[WidgetGroup] Failed to persist pre-animation rollback " +
-                    $"group={group.Id}: {rollbackSaveException}");
             }
             LogWidgetSurfaceEvidence(group, "rollback");
             throw;
@@ -1078,16 +1145,6 @@ public sealed partial class WidgetManager
                     $"surface={group.SurfaceId}: {registryException}");
             }
 
-            try
-            {
-                await SaveWidgetGroupSettingsCheckedAsync();
-            }
-            catch (Exception saveException)
-            {
-                App.Log(
-                    $"[WidgetGroup] Failed to persist in-place rollback " +
-                    $"group={group.Id}: {saveException}");
-            }
             throw;
         }
 
@@ -1100,6 +1157,7 @@ public sealed partial class WidgetManager
         }
         _contentWidgets[targetConfig.Id] = persistentWindow;
         RestoreWidgetGroupTransientState(targetConfig.Id);
+        SaveWidgetGroupActiveMemberDeferred();
 
         if (group.IsVisible && !persistentWindow.Visible)
         {
@@ -1120,7 +1178,8 @@ public sealed partial class WidgetManager
 
         App.Log(
             $"[WidgetGroup] Switched persistent surface={group.SurfaceId} " +
-            $"group={group.Id} {previousActiveId} -> {targetConfig.Id} " +
+            $"group={group.Id} origin={request.Origin} " +
+            $"{previousActiveId} -> {targetConfig.Id} " +
             $"hwnd=0x{persistentWindow.WindowHandle.ToInt64():X}");
         LogWidgetSurfaceEvidence(group, "settled");
         RaiseWidgetGroupsChanged();
@@ -1171,6 +1230,11 @@ public sealed partial class WidgetManager
             {
                 return false;
             }
+
+            bool preserveRaisedLayer =
+                ShouldPreserveRaisedWidgetLayer(group.ActiveMemberId);
+            bool raiseTransitionWindows =
+                detachedPosition.HasValue || preserveRaisedLayer;
 
             WidgetGroupMutationSnapshot rollbackSnapshot =
                 WidgetGroupMutationSnapshot.Capture(this, group);
@@ -1266,12 +1330,13 @@ public sealed partial class WidgetManager
             if (removedConfig.IsVisible)
             {
                 await ShowStandaloneWindowAsync(removedConfig);
-                if (detachedPosition.HasValue)
-                {
-                    GetLoadedWindow(removedConfig.Id)?.RaiseTemporarilyFromManager();
-                    App.LogVerbose(
-                        $"[WidgetGroup] Detached member raised temporarily member={removedConfig.Id}");
-                }
+            }
+
+            if (raiseTransitionWindows)
+            {
+                RaiseVisibleWidgetTransitionWindows(
+                    group.MemberIds.Append(removedConfig.Id),
+                    detachedPosition.HasValue ? "group-detach" : "group-remove");
             }
 
             App.Log(
@@ -1313,6 +1378,9 @@ public sealed partial class WidgetManager
             {
                 return false;
             }
+
+            bool preserveRaisedLayer =
+                ShouldPreserveRaisedWidgetLayer(group.ActiveMemberId);
 
             List<WidgetConfig> members = group.MemberIds
                 .Select(FindConfig)
@@ -1361,6 +1429,13 @@ public sealed partial class WidgetManager
             foreach (WidgetConfig member in members.Where(member => member.IsVisible))
             {
                 await ShowStandaloneWindowAsync(member);
+            }
+
+            if (preserveRaisedLayer)
+            {
+                RaiseVisibleWidgetTransitionWindows(
+                    members.Select(member => member.Id),
+                    "group-dissolve");
             }
 
             App.Log($"[WidgetGroup] Dissolved group={group.Id} members={members.Count}");
@@ -1484,7 +1559,10 @@ public sealed partial class WidgetManager
         _settingsService.SaveDebounced(notifySubscribers: false);
     }
 
-    public void SetWidgetGroupVisibility(WidgetConfig member, bool isVisible)
+    public bool SetWidgetGroupVisibility(
+        WidgetConfig member,
+        bool isVisible,
+        bool persist = true)
     {
         WidgetGroupConfig? group = WidgetGroupSettings.FindByMember(
             _settingsService.Settings,
@@ -1492,7 +1570,7 @@ public sealed partial class WidgetManager
         if (group is null ||
             !string.Equals(group.ActiveMemberId, member.Id, StringComparison.Ordinal))
         {
-            return;
+            return false;
         }
 
         if (!isVisible)
@@ -1508,7 +1586,12 @@ public sealed partial class WidgetManager
                 config.IsVisible = isVisible;
             }
         }
-        _settingsService.SaveDebounced(notifySubscribers: false);
+        if (persist)
+        {
+            _settingsService.SaveDebounced(notifySubscribers: false);
+        }
+
+        return true;
     }
 
     public void UpdateWidgetGroupDragPreview(string sourceWidgetId)

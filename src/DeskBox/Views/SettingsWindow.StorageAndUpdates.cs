@@ -222,6 +222,11 @@ public sealed partial class SettingsWindow
 
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
+            if (!await CreatePreUpdateRecoverySnapshotAsync())
+            {
+                return;
+            }
+
             var result = ViewModel.StartDownloadedUpdateInstall();
             if (!result.Success)
             {
@@ -237,6 +242,32 @@ public sealed partial class SettingsWindow
 
         // Otherwise, trigger one-click check → download flow.
         await ViewModel.OneClickUpdateActionAsync();
+    }
+
+    private async Task<bool> CreatePreUpdateRecoverySnapshotAsync()
+    {
+        try
+        {
+            await App.Current.SettingsService.SaveAsync(notifySubscribers: false);
+            string? snapshotPath = await App.Current.DataBackupService.CreateAutomaticSnapshotNowAsync();
+            if (!string.IsNullOrWhiteSpace(snapshotPath))
+            {
+                return true;
+            }
+
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.Update.PreUpdateBackupFailedTitle"),
+                _localizationService.T("Settings.Update.PreUpdateBackupFailedBody"));
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Update] Failed to create pre-update recovery snapshot: {ex}");
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.Update.PreUpdateBackupFailedTitle"),
+                _localizationService.Format("Settings.Update.PreUpdateBackupFailedBodyWithError", ex.Message));
+        }
+
+        return false;
     }
 
     private void OpenManualUpdateDownloadButton_Click(object sender, RoutedEventArgs e)

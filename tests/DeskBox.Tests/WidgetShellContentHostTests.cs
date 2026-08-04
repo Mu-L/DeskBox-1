@@ -74,6 +74,30 @@ public sealed class WidgetShellContentHostTests
     }
 
     [Fact]
+    public async Task ActivationCallbacks_OnlyForwardActualStateTransitions()
+    {
+        var calls = new List<string>();
+        var content = new TestWidgetContent("first", WidgetKind.File, calls);
+        var host = new WidgetShellContentHost(setContent: _ => { });
+        await host.SetContentAsync(content);
+        calls.Clear();
+
+        // A desktop-layer window may be shown with SW_SHOWNOACTIVATE and receive
+        // an initial deactivated notification without ever becoming active.
+        host.OnDeactivated();
+        host.OnActivated();
+        host.OnActivated();
+        host.OnDeactivated();
+        host.OnDeactivated();
+
+        Assert.Equal(
+        [
+            "activate:first",
+            "deactivate:first"
+        ], calls);
+    }
+
+    [Fact]
     public async Task PreparedTransition_KeepsOutgoingContentUntilCompletion()
     {
         var calls = new List<string>();

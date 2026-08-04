@@ -158,6 +158,7 @@ public sealed partial class WidgetShell : UserControl
     private WidgetGroupPresentation? _groupPresentation;
     private IWidgetContent? _hostedContent;
     private IWidgetResponsiveLayoutContent? _responsiveLayoutContent;
+    private readonly RectangleGeometry _contentTransitionClip = new();
     private bool _isContentSnapshotTransitionActive;
     private bool _isResponsiveLayoutTransitionActive;
     private double _responsiveTargetContentWidth;
@@ -245,10 +246,12 @@ public sealed partial class WidgetShell : UserControl
     public event EventHandler? GroupDissolveRequested;
     public event EventHandler? GroupPickerOpened;
     public event EventHandler? GroupPickerClosed;
+    public event EventHandler? HostedContentChanged;
 
     public WidgetShell()
     {
         InitializeComponent();
+        ContentTransitionViewport.Clip = _contentTransitionClip;
         GroupTitleSwitcher.MemberInvoked += (_, e) => GroupMemberInvoked?.Invoke(this, e);
         GroupTitleSwitcher.RemoveMemberRequested += (_, e) => GroupMemberRemoveRequested?.Invoke(this, e);
         GroupTitleSwitcher.DetachMemberRequested += (_, e) => GroupMemberDetachRequested?.Invoke(this, e);
@@ -475,6 +478,11 @@ public sealed partial class WidgetShell : UserControl
         ApplyChromeMode();
     }
 
+    internal bool TryHandleGroupKeyboardNavigation(KeyRoutedEventArgs e)
+    {
+        return GroupTitleSwitcher.TryHandleKeyboardNavigation(e);
+    }
+
     public void OpenGroupPicker(FrameworkElement? anchor = null)
     {
         if (_groupPresentation is null)
@@ -626,6 +634,7 @@ public sealed partial class WidgetShell : UserControl
         _responsiveLayoutContent = content as IWidgetResponsiveLayoutContent;
         ShellContent = content.View;
         content.OnCompactStateChanged(_isCollapsed);
+        HostedContentChanged?.Invoke(this, EventArgs.Empty);
     }
 
     internal bool HasPresentableContentFrame =>
@@ -1054,14 +1063,11 @@ public sealed partial class WidgetShell : UserControl
         object sender,
         SizeChangedEventArgs e)
     {
-        ContentTransitionViewport.Clip = new RectangleGeometry
-        {
-            Rect = new Windows.Foundation.Rect(
-                0,
-                0,
-                Math.Max(0, e.NewSize.Width),
-                Math.Max(0, e.NewSize.Height))
-        };
+        _contentTransitionClip.Rect = new Windows.Foundation.Rect(
+            0,
+            0,
+            Math.Max(0, e.NewSize.Width),
+            Math.Max(0, e.NewSize.Height));
     }
 
     public void RollbackContentTransition(IWidgetContent outgoingContent)
@@ -1074,12 +1080,17 @@ public sealed partial class WidgetShell : UserControl
 
     public void ClearContent()
     {
+        bool hadContent = _hostedContent is not null || ShellContent is not null;
         DetachHostedContentEvents();
         _hostedContent = null;
         _responsiveLayoutContent = null;
         ShellContent = null;
         StopContentDropHighlight();
         CompleteContentTransition();
+        if (hadContent)
+        {
+            HostedContentChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void AttachHostedContentEvents()

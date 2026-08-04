@@ -1954,5 +1954,10 @@
     "Settings.DragDropPermission.Status.ReadFailed": "Lesen nicht möglich: {0}",
     "Settings.DragDropPermission.Status.UacNeverNotify": "Nie benachrichtigen (EnableLUA=0)",
     "Settings.DragDropPermission.Status.UacEnabled": "Aktiviert (EnableLUA=1)",
-    "Settings.DragDropPermission.Status.UacDetails": "{0}, ConsentPromptBehaviorAdmin={1}, PromptOnSecureDesktop={2}"
+    "Settings.DragDropPermission.Status.UacDetails": "{0}, ConsentPromptBehaviorAdmin={1}, PromptOnSecureDesktop={2}",
+    "Settings.Update.PreUpdateBackupFailedTitle": "Wiederherstellungspunkt für das Update konnte nicht erstellt werden",
+    "Settings.Update.PreUpdateBackupFailedBody": "DeskBox hat das Update zum Schutz Ihrer aktuellen Einstellungen nicht gestartet. Versuchen Sie es später erneut oder exportieren Sie vor der manuellen Installation ein Backup.",
+    "Settings.Update.PreUpdateBackupFailedBodyWithError": "DeskBox hat das Update zum Schutz Ihrer aktuellen Einstellungen nicht gestartet.\n\n{0}",
+    "Settings.Recovery.AvailableTitle": "DeskBox-Wiederherstellungsdaten verfügbar",
+    "Settings.Recovery.AvailableBody": "Ein gespeicherter Wiederherstellungs-Snapshot wurde gefunden. Stellen Sie Ihr vorheriges Widget-Layout und Aussehen unter Einstellungen > Backup & Wiederherstellung > Lokale Snapshots wieder her."
 }

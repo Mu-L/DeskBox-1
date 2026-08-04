@@ -36,17 +36,6 @@ public sealed partial class WidgetGroupTitleSwitcher
 
     private void RegisterKeyboardAccelerators()
     {
-        AddKeyboardAccelerator(
-            VirtualKey.Tab,
-            VirtualKeyModifiers.Control,
-            delta: 1,
-            WidgetGroupSwitchOrigin.Keyboard);
-        AddKeyboardAccelerator(
-            VirtualKey.Tab,
-            VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift,
-            delta: -1,
-            WidgetGroupSwitchOrigin.Keyboard);
-
         var openPicker = new KeyboardAccelerator
         {
             Key = VirtualKey.Down,
@@ -65,51 +54,15 @@ public sealed partial class WidgetGroupTitleSwitcher
         KeyboardAccelerators.Add(openPicker);
     }
 
-    private void AddKeyboardAccelerator(
-        VirtualKey key,
-        VirtualKeyModifiers modifiers,
-        int delta,
-        WidgetGroupSwitchOrigin origin)
-    {
-        var accelerator = new KeyboardAccelerator
-        {
-            Key = key,
-            Modifiers = modifiers
-        };
-        accelerator.Invoked += (_, args) =>
-        {
-            args.Handled = SwitchRelative(delta, origin);
-        };
-        KeyboardAccelerators.Add(accelerator);
-    }
-
     private void SelectorButton_KeyDown(
         object sender,
         KeyRoutedEventArgs e)
     {
-        CoreVirtualKeyStates controlState =
-            InputKeyboardSource.GetKeyStateForCurrentThread(
-                VirtualKey.Control);
-        CoreVirtualKeyStates shiftState =
-            InputKeyboardSource.GetKeyStateForCurrentThread(
-                VirtualKey.Shift);
         CoreVirtualKeyStates menuState =
             InputKeyboardSource.GetKeyStateForCurrentThread(
                 VirtualKey.Menu);
-        bool control =
-            controlState.HasFlag(CoreVirtualKeyStates.Down);
-        bool shift =
-            shiftState.HasFlag(CoreVirtualKeyStates.Down);
         bool menu =
             menuState.HasFlag(CoreVirtualKeyStates.Down);
-
-        if (e.Key == VirtualKey.Tab && control)
-        {
-            e.Handled = SwitchRelative(
-                shift ? -1 : 1,
-                WidgetGroupSwitchOrigin.Keyboard);
-            return;
-        }
 
         if (e.Key == VirtualKey.Down && menu)
         {
@@ -119,6 +72,28 @@ public sealed partial class WidgetGroupTitleSwitcher
 
         // Enter and Space intentionally use Button's native invocation path,
         // preserving standard focus, pressed-state and accessibility behavior.
+    }
+
+    internal bool TryHandleKeyboardNavigation(KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Tab ||
+            !IsVirtualKeyDown(VirtualKey.Control) ||
+            _presentation is null ||
+            _presentation.Members.Count < 2 ||
+            _pickerOpen)
+        {
+            return false;
+        }
+
+        return SwitchRelative(
+            IsVirtualKeyDown(VirtualKey.Shift) ? -1 : 1,
+            WidgetGroupSwitchOrigin.Keyboard);
+    }
+
+    private static bool IsVirtualKeyDown(VirtualKey key)
+    {
+        return InputKeyboardSource.GetKeyStateForCurrentThread(key)
+            .HasFlag(CoreVirtualKeyStates.Down);
     }
 
     private void SelectorButton_PointerEntered(

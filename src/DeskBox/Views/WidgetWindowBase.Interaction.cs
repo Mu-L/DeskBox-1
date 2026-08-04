@@ -38,6 +38,7 @@ public abstract partial class WidgetWindowBase
         if (WidgetLayerService.UsesDesktopPinnedMode())
         {
             IsAtDesktopLayer = true;
+            IsRaisedFromManager = false;
             KeepRaisedUntilDeactivate = false;
             RestoreDesktopLayerWhenIdle = false;
             WidgetLayerService.MoveToDesktopBottom(HWnd);
@@ -62,6 +63,7 @@ public abstract partial class WidgetWindowBase
 
         LastElevateForInteractionUtc = DateTime.UtcNow;
         HoldTemporaryTopMost();
+        IsRaisedFromManager = !IsAtDesktopLayer;
     }
 
     protected void StartTopMostSafetyTimer()
@@ -157,6 +159,7 @@ public abstract partial class WidgetWindowBase
         }
 
         TopMostSafetyTimer?.Stop();
+        IsRaisedFromManager = false;
         KeepRaisedUntilDeactivate = false;
         RestoreDesktopLayerWhenIdle = false;
         ClearTopMostOnly();
@@ -165,6 +168,7 @@ public abstract partial class WidgetWindowBase
 
     protected void ClearTopMostOnly()
     {
+        IsRaisedFromManager = false;
         IsAtDesktopLayer = true;
         IntPtr foreground = WidgetLayerService.ClearTopMostPreservingForeground(HWnd);
         App.LogVerbose($"[ZOrder] {LogPrefix} ClearTopMostOnly hwnd=0x{HWnd.ToInt64():X} fg=0x{foreground.ToInt64():X}");

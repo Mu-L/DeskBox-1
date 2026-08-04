@@ -11,20 +11,30 @@ namespace DeskBox.ViewModels;
 
 public partial class WidgetViewModel
 {
-    public async Task InitializeAsync()
+    public Task InitializeAsync()
+    {
+        return InitializeAsync(CancellationToken.None);
+    }
+
+    public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         if (_isDisposed)
         {
             return;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         IsLoading = true;
         try
         {
             EnsureFolderBackedConfig();
+            cancellationToken.ThrowIfCancellationRequested();
             MappedFolderPath = Config.MappedFolderPath;
-            await ConfigureFolderWatchersAsync(MappedFolderPath);
-            await ReloadFolderContentsAsync(MappedFolderPath!);
+            await ConfigureFolderWatchersAsync(MappedFolderPath, cancellationToken);
+            await ReloadFolderContentsAsync(
+                MappedFolderPath!,
+                cancellationToken: cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             IsInitialized = !_isDisposed;
         }
         finally
@@ -246,16 +256,18 @@ public partial class WidgetViewModel
 
     private async Task ReloadFolderContentsAsync(
         string expectedFolderPath,
-        bool clearIconCacheBeforeHydration = false)
+        bool clearIconCacheBeforeHydration = false,
+        CancellationToken cancellationToken = default)
     {
         if (_isDisposed)
         {
             return;
         }
 
-        await _folderRefreshGate.WaitAsync();
+        await _folderRefreshGate.WaitAsync(cancellationToken);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (_isDisposed ||
                 string.IsNullOrEmpty(MappedFolderPath) ||
                 !string.Equals(
@@ -268,7 +280,8 @@ public partial class WidgetViewModel
 
             await LoadFolderContentsAsync(
                 MappedFolderPath,
-                clearIconCacheBeforeHydration);
+                clearIconCacheBeforeHydration,
+                cancellationToken);
         }
         finally
         {

@@ -38,6 +38,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private int _itemHydrationGeneration;
     private int _iconDecodePixelWidth;
     private bool _isDisposed;
+    private bool _isSurfaceBackgroundSuspended;
 
     private string _name = string.Empty;
     private ViewMode _viewMode;
@@ -395,5 +396,45 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         // short-lived after this point and the waiter exits via _isDisposed.
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _localizationService.LanguageChanged -= OnLanguageChanged;
+    }
+
+    public void SuspendBackgroundActivity()
+    {
+        if (_isDisposed || _isSurfaceBackgroundSuspended)
+        {
+            return;
+        }
+
+        _isSurfaceBackgroundSuspended = true;
+        Interlocked.Increment(ref _itemHydrationGeneration);
+        _folderWatcher.Stop();
+        _publicFolderWatcher.Stop();
+    }
+
+    public void ResumeBackgroundActivity()
+    {
+        if (_isDisposed || !_isSurfaceBackgroundSuspended ||
+            string.IsNullOrWhiteSpace(MappedFolderPath))
+        {
+            return;
+        }
+
+        _isSurfaceBackgroundSuspended = false;
+        string folderPath = MappedFolderPath;
+        _ = ResumeBackgroundActivityAsync(folderPath);
+    }
+
+    private async Task ResumeBackgroundActivityAsync(string folderPath)
+    {
+        try
+        {
+            await ConfigureFolderWatchersAsync(folderPath);
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[FolderRefresh] Failed to resume file widget background activity " +
+                $"id={Config.Id}: {ex.Message}");
+        }
     }
 }

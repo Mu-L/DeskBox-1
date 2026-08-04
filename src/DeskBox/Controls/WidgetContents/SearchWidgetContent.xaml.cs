@@ -19,6 +19,9 @@ public sealed partial class SearchWidgetContent : UserControl, IDisposable
     private bool _externalSubscriptionsAttached;
     private bool _historyRefreshQueued;
     private bool _hasHotkeyBadge;
+    private bool _isResponsiveLayoutTransitionActive;
+    private double _responsiveTargetWidth;
+    private double _responsiveTargetHeight;
     private bool _isDisposed;
 
     public SearchWidgetContent(
@@ -127,6 +130,41 @@ public sealed partial class SearchWidgetContent : UserControl, IDisposable
         UpdateSearchIcon();
         UpdateHotkeyBadge();
         UpdateHistoryList();
+        UpdateResponsiveLayout();
+    }
+
+    internal void BeginResponsiveLayoutTransition(
+        double targetContentWidth,
+        double targetContentHeight,
+        bool isCollapsing)
+    {
+        _isResponsiveLayoutTransitionActive = true;
+        _responsiveTargetWidth = Math.Max(0, targetContentWidth);
+        _responsiveTargetHeight = Math.Max(0, targetContentHeight);
+
+        // On expand the live body is revealed during the transition, so select
+        // its final responsive state once before intermediate HWND sizes arrive.
+        if (!isCollapsing)
+        {
+            ApplyResponsiveLayout(_responsiveTargetWidth, _responsiveTargetHeight);
+        }
+    }
+
+    internal void CompleteResponsiveLayoutTransition(
+        double finalContentWidth,
+        double finalContentHeight)
+    {
+        _isResponsiveLayoutTransitionActive = false;
+        _responsiveTargetWidth = 0;
+        _responsiveTargetHeight = 0;
+        ApplyResponsiveLayout(finalContentWidth, finalContentHeight);
+    }
+
+    internal void CancelResponsiveLayoutTransition()
+    {
+        _isResponsiveLayoutTransitionActive = false;
+        _responsiveTargetWidth = 0;
+        _responsiveTargetHeight = 0;
         UpdateResponsiveLayout();
     }
 
@@ -294,14 +332,31 @@ public sealed partial class SearchWidgetContent : UserControl, IDisposable
             return;
         }
 
-        double width = RootGrid.ActualWidth;
-        double height = RootGrid.ActualHeight;
-        HistoryArea.Visibility = width >= 180 && height >= 112
+        if (_isResponsiveLayoutTransitionActive)
+        {
+            return;
+        }
+
+        ApplyResponsiveLayout(RootGrid.ActualWidth, RootGrid.ActualHeight);
+    }
+
+    private void ApplyResponsiveLayout(double width, double height)
+    {
+        Visibility historyVisibility = width >= 180 && height >= 112
             ? Visibility.Visible
             : Visibility.Collapsed;
-        HotkeyBadge.Visibility = _hasHotkeyBadge && width >= 220
+        Visibility hotkeyVisibility = _hasHotkeyBadge && width >= 220
             ? Visibility.Visible
             : Visibility.Collapsed;
+        if (HistoryArea.Visibility != historyVisibility)
+        {
+            HistoryArea.Visibility = historyVisibility;
+        }
+
+        if (HotkeyBadge.Visibility != hotkeyVisibility)
+        {
+            HotkeyBadge.Visibility = hotkeyVisibility;
+        }
     }
 
     public void Dispose()

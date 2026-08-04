@@ -98,6 +98,14 @@ public abstract partial class WidgetWindowBase
 
     protected bool IsWidgetCollapsed => _targetCollapsed;
 
+    /// <summary>
+    /// True while the native window is morphing between compact and expanded
+    /// bounds. Derived content hosts use this to defer expensive SizeChanged
+    /// work until the final geometry is available.
+    /// </summary>
+    protected bool IsCompactTransitionActive =>
+        _isCollapseAnimationRendering || _isShellTransitionActive;
+
     protected bool IsCompactBoundsStateActive =>
         IsWidgetCollapsedBoundsActive || _targetCollapsed;
 
@@ -648,6 +656,15 @@ public abstract partial class WidgetWindowBase
             }
 
             cancellation.Dispose();
+
+            if (token.IsCancellationRequested &&
+                _collapseInitialized &&
+                _targetCollapsed &&
+                !_isCompactExpansionWarmed &&
+                !IsClosing)
+            {
+                DispatcherQueue.TryEnqueue(QueueCompactExpansionWarmup);
+            }
         }
     }
 
@@ -774,6 +791,25 @@ public abstract partial class WidgetWindowBase
     private void CancelCompactExpansionWarmup()
     {
         _compactExpansionWarmupCancellation?.Cancel();
+    }
+
+    private void WidgetShellControl_HostedContentChanged(object? sender, EventArgs e)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+                WidgetShellControl_HostedContentChanged(sender, e));
+            return;
+        }
+
+        // A grouped host can swap the live body while it is collapsed. The
+        // previous member's warm-up is no longer valid for the incoming tree.
+        _isCompactExpansionWarmed = false;
+        CancelCompactExpansionWarmup();
+        if (_targetCollapsed && _compactExpansionWarmupCancellation is null)
+        {
+            QueueCompactExpansionWarmup();
+        }
     }
 
     /// <summary>
@@ -1970,6 +2006,7 @@ public abstract partial class WidgetWindowBase
             ApplyCompactSurfaceState();
             RestoreLayerAfterExpandedState();
             StartCompactHoverRecoveryProbe();
+            QueueCompactExpansionWarmup();
         }
         else
         {

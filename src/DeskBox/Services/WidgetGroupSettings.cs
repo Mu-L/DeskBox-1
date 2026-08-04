@@ -157,6 +157,22 @@ public static class WidgetGroupSettings
                 changed = true;
             }
 
+            // A group owns one desktop surface, so visibility is group-level
+            // state. Individual member flags are retained for compatibility
+            // with standalone widgets, but they must not disagree with the
+            // group: startup otherwise filters out the active member and can
+            // leave a persisted visible group without a restored window.
+            foreach (string memberId in candidate.MemberIds)
+            {
+                WidgetConfig? member = settings.Widgets.FirstOrDefault(widget =>
+                    string.Equals(widget.Id, memberId, StringComparison.Ordinal));
+                if (member is not null && member.IsVisible != candidate.IsVisible)
+                {
+                    member.IsVisible = candidate.IsVisible;
+                    changed = true;
+                }
+            }
+
 
             string normalizedNavigationStyle =
                 WidgetGroupNavigationStyles.Normalize(

@@ -1,12 +1,22 @@
 using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using System.Runtime.CompilerServices;
 
 namespace DeskBox.Services;
 
 public static class WidgetSegmentedLayoutHelper
 {
     private static DispatcherQueue? s_dispatcher;
+    private static readonly ConditionalWeakTable<Segmented, EqualWidthLayoutState>
+        s_equalWidthLayoutStates = new();
+
+    private sealed class EqualWidthLayoutState
+    {
+        public bool FollowUpQueued;
+        public double AppliedItemWidth = double.NaN;
+        public int AppliedItemCount;
+    }
 
     public static void Initialize(DispatcherQueue dispatcher)
     {
@@ -15,6 +25,7 @@ public static class WidgetSegmentedLayoutHelper
 
     public static void ApplyNaturalItemWidths(Segmented segmented)
     {
+        s_equalWidthLayoutStates.Remove(segmented);
         var visibleItems = segmented.Items
             .OfType<SegmentedItem>()
             .Where(item => item.Visibility == Visibility.Visible)
@@ -36,6 +47,13 @@ public static class WidgetSegmentedLayoutHelper
 
     public static void ApplyEqualItemWidths(Segmented segmented)
     {
+        ApplyEqualItemWidthsCore(segmented, queueFollowUp: true);
+    }
+
+    private static void ApplyEqualItemWidthsCore(
+        Segmented segmented,
+        bool queueFollowUp)
+    {
         var visibleItems = segmented.Items
             .OfType<SegmentedItem>()
             .Where(item => item.Visibility == Visibility.Visible)
@@ -45,54 +63,68 @@ public static class WidgetSegmentedLayoutHelper
             return;
         }
 
-        // Step 1: Clear previous fixed widths so the Segmented control
-        // is not locked at a larger size from the previous layout.
-        foreach (var item in visibleItems)
-        {
-            item.Width = double.NaN;
-            item.MaxWidth = double.PositiveInfinity;
-        }
-
-        // Step 2: Apply new equal widths immediately.
-        // After clearing, ActualWidth already reflects the current
-        // available space (SizeChanged fires after layout).
         double itemWidth = Math.Max(0, Math.Floor(segmented.ActualWidth / visibleItems.Count));
-        foreach (var item in visibleItems)
+        double minHeight = Math.Max(24, segmented.MinHeight - 3);
+        var padding = new Thickness(4, 1, 4, 2);
+        EqualWidthLayoutState state = s_equalWidthLayoutStates.GetOrCreateValue(segmented);
+        bool needsUpdate = state.AppliedItemCount != visibleItems.Count ||
+            Math.Abs(state.AppliedItemWidth - itemWidth) >= 0.5 ||
+            visibleItems.Any(item =>
+                !NearlyEqual(item.Width, itemWidth) ||
+                !NearlyEqual(item.MaxWidth, itemWidth) ||
+                !NearlyEqual(item.MinHeight, minHeight) ||
+                !PaddingEquals(item.Padding, padding));
+
+        if (needsUpdate)
         {
-            item.Width = itemWidth;
-            item.MaxWidth = itemWidth;
-            item.MinWidth = 0;
-            item.Padding = new Thickness(4, 1, 4, 2);
-            item.MinHeight = Math.Max(24, segmented.MinHeight - 3);
+            foreach (var item in visibleItems)
+            {
+                item.Width = itemWidth;
+                item.MaxWidth = itemWidth;
+                item.MinWidth = 0;
+                item.Padding = padding;
+                item.MinHeight = minHeight;
+            }
+
+            state.AppliedItemWidth = itemWidth;
+            state.AppliedItemCount = visibleItems.Count;
         }
 
-        // Step 3: Schedule a follow-up pass on the next frame.
-        // When the widget shrinks, the SizeChanged event may fire with
-        // an ActualWidth that was still influenced by the old item widths.
-        // Re-running on the next dispatcher tick ensures we get the true
-        // final width after the parent has settled.
-        var width = segmented.ActualWidth;
-        var count = visibleItems.Count;
-        s_dispatcher?.TryEnqueue(() =>
+        // A shrink can report a width briefly influenced by the previous fixed
+        // item width. Keep the corrective pass, but coalesce it: a compact
+        // transition can otherwise queue one dispatcher item per animation frame.
+        if (!queueFollowUp || state.FollowUpQueued || s_dispatcher is null)
         {
-            if (segmented.ActualWidth <= 0 || count == 0)
-            {
-                return;
-            }
+            return;
+        }
 
-            // Guard: if the width hasn't changed since we applied, skip.
-            if (Math.Abs(segmented.ActualWidth - width) < 0.5)
+        state.FollowUpQueued = true;
+        if (!s_dispatcher.TryEnqueue(() =>
             {
-                return;
-            }
+                if (!s_equalWidthLayoutStates.TryGetValue(segmented, out var currentState) ||
+                    !ReferenceEquals(currentState, state))
+                {
+                    return;
+                }
 
-            double newWidth = Math.Max(0, Math.Floor(segmented.ActualWidth / count));
-            foreach (var item in segmented.Items.OfType<SegmentedItem>()
-                         .Where(i => i.Visibility == Visibility.Visible))
-            {
-                item.Width = newWidth;
-                item.MaxWidth = newWidth;
-            }
-        });
+                state.FollowUpQueued = false;
+                ApplyEqualItemWidthsCore(segmented, queueFollowUp: false);
+            }))
+        {
+            state.FollowUpQueued = false;
+        }
+    }
+
+    private static bool NearlyEqual(double current, double expected)
+    {
+        return !double.IsNaN(current) && Math.Abs(current - expected) < 0.5;
+    }
+
+    private static bool PaddingEquals(Thickness left, Thickness right)
+    {
+        return Math.Abs(left.Left - right.Left) < 0.01 &&
+            Math.Abs(left.Top - right.Top) < 0.01 &&
+            Math.Abs(left.Right - right.Right) < 0.01 &&
+            Math.Abs(left.Bottom - right.Bottom) < 0.01;
     }
 }

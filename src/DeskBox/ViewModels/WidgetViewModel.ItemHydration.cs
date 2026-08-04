@@ -59,8 +59,12 @@ public partial class WidgetViewModel
         return candidate;
     }
 
-    private async Task LoadFolderContentsAsync(string folderPath, bool clearIconCacheBeforeHydration = false)
+    private async Task LoadFolderContentsAsync(
+        string folderPath,
+        bool clearIconCacheBeforeHydration = false,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var perfScope = PerformanceLogger.Measure(
             "WidgetViewModel.LoadFolderContents",
             $"id={Config.Id} path={folderPath}");
@@ -76,7 +80,8 @@ public partial class WidgetViewModel
                 showFileExtensions: _showFileExtensions,
                 hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
                 loadIcons: false,
-                loadFolderItemCounts: false);
+                loadFolderItemCounts: false).WaitAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             FolderEnumerationResult publicResult = await _fileService.EnumerateDirectoryForRefreshAsync(
                 publicDesktop,
                 hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
@@ -84,7 +89,7 @@ public partial class WidgetViewModel
                 showFileExtensions: _showFileExtensions,
                 hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
                 loadIcons: false,
-                loadFolderItemCounts: false);
+                loadFolderItemCounts: false).WaitAsync(cancellationToken);
 
             if (!FolderSnapshotStatusPolicy.IsSuccessful(userResult.Status) ||
                 !FolderSnapshotStatusPolicy.IsSuccessful(publicResult.Status))
@@ -111,7 +116,7 @@ public partial class WidgetViewModel
                 showFileExtensions: _showFileExtensions,
                 hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
                 loadIcons: false,
-                loadFolderItemCounts: false);
+                loadFolderItemCounts: false).WaitAsync(cancellationToken);
             if (!FolderSnapshotStatusPolicy.IsSuccessful(result.Status))
             {
                 App.Log(
@@ -122,6 +127,7 @@ public partial class WidgetViewModel
             items = result.Items;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         ApplyPersistedAddedTimes(items);
         SyncFolderItems(items);
         SortItems();

@@ -34,6 +34,10 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     private readonly WidgetShellContentHost _contentHost;
     private readonly ContentWidgetTitleViewModel _titleViewModel;
     private readonly Task _contentLoadTask;
+    private const int CachedGroupContentCapacity = 2;
+    private readonly Dictionary<string, IWidgetContent> _cachedGroupContents =
+        new(StringComparer.Ordinal);
+    private readonly LinkedList<string> _cachedGroupContentOrder = [];
 
     private bool _isHidePrepared;
     private bool _isCommittingTitleRename;
@@ -69,7 +73,9 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             HWnd,
             GetCurrentAnimationBounds,
             LogTrayWindow);
-        _contentHost = new WidgetShellContentHost(ContentWidgetShell);
+        _contentHost = new WidgetShellContentHost(
+            ContentWidgetShell,
+            TryRetainGroupContent);
 
         _titleViewModel = new ContentWidgetTitleViewModel(_config, settingsService);
         ContentWidgetShell.DataContext = _titleViewModel;
@@ -663,11 +669,7 @@ TrayAnimation.Stop();
 IsHideAnimationRunning = true;
         _isHidePrepared = true;
         Visible = false;
-        _config.IsVisible = false;
-        if (persistVisibility)
-        {
-            SettingsService.SaveDebounced();
-        }
+        UpdatePersistedVisibility(isVisible: false, persistVisibility);
 
         LogTrayWindow($"PrepareHide gen={TrayAnimation.Generation}");
         TrayAnimation.PrepareVisualState(0, 0, WidgetTrayAnimationController.RestingOpacity, WidgetTrayAnimationController.RestingScale);
@@ -735,8 +737,7 @@ IsHideAnimationRunning = true;
         IsHideAnimationRunning = false;
         _isHidePrepared = false;
         Visible = false;
-        _config.IsVisible = false;
-        SettingsService.SaveDebounced();
+        UpdatePersistedVisibility(isVisible: false, persistVisibility: true);
         WidgetLayerService.ClearTopMost(HWnd);
         Win32Helper.ShowWindow(HWnd, Win32Helper.SW_HIDE);
         AppWindow.Hide();
@@ -950,6 +951,7 @@ IsHideAnimationRunning = true;
         DisplayChangeWatcher = new WidgetDisplayChangeWatcher(HWnd, DispatcherQueue, RestoreBoundsAfterDisplayChange);
         ContentWidgetShell.RightTapped += ContentWidgetShell_RightTapped;
         ContentWidgetShell.TitleDoubleTapped += ContentWidgetShell_TitleDoubleTapped;
+        InstallGroupFileDropFallbackHandlers();
 
         foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
         {
@@ -967,6 +969,8 @@ IsHideAnimationRunning = true;
         {
             IsClosing = true;
             Visible = false;
+            try { RemoveGroupFileDropFallbackHandlers(); } catch (Exception ex) { App.Log($"[ContentWidget] Remove group drop fallback failed during close: {ex.Message}"); }
+            try { RemoveNativeFileDropBridge(); } catch (Exception ex) { App.Log($"[ContentWidget] Remove native file drop bridge failed during close: {ex.Message}"); }
             App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;
             SettingsService.SettingsChanged -= OnSettingsChanged;
             AppWindow.Changed -= OnAppWindowChanged;
@@ -985,6 +989,7 @@ IsHideAnimationRunning = true;
             try { TrayAnimation.RevealWindowForTrayShow(); } catch { }
             try { CleanupBase(); } catch (Exception ex) { App.Log($"[ContentWidget] CleanupBase failed during close: {ex.Message}"); }
             try { _contentHost.DisposeContent(); } catch (Exception ex) { App.Log($"[ContentWidget] DisposeContent failed during close: {ex.Message}"); }
+            try { DisposeCachedGroupContents(); } catch (Exception ex) { App.Log($"[ContentWidget] Dispose cached group content failed during close: {ex.Message}"); }
 
             foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
             {

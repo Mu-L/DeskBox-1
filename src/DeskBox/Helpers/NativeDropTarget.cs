@@ -518,7 +518,20 @@ public sealed class NativeDropTarget : IDisposable
                 Path.Combine(temporaryDirectory, fileName));
             if (TrySaveVirtualFileContents(dataObj, index, destinationPath))
             {
-                paths.Add(destinationPath);
+                string resolvedPath =
+                    VirtualDropFileNameResolver.AddMissingExtensionFromContent(
+                        destinationPath);
+                if (!string.Equals(
+                        resolvedPath,
+                        destinationPath,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    App.Log(
+                        $"[DropTarget] Added missing virtual-file extension " +
+                        $"source='{destinationPath}' resolved='{resolvedPath}'");
+                }
+
+                paths.Add(resolvedPath);
             }
         }
 

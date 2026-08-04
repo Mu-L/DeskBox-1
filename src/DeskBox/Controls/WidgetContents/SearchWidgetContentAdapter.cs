@@ -8,7 +8,7 @@ namespace DeskBox.Controls.WidgetContents;
 /// <summary>
 /// Adapts SearchWidgetContent to the IWidgetContent contract.
 /// </summary>
-public sealed class SearchWidgetContentAdapter : IWidgetContent, IDisposable
+public sealed class SearchWidgetContentAdapter : IWidgetContent, IWidgetResponsiveLayoutContent, IDisposable
 {
     private readonly Func<FrameworkElement> _viewFactory;
     private FrameworkElement? _view;
@@ -95,6 +95,40 @@ public sealed class SearchWidgetContentAdapter : IWidgetContent, IDisposable
 
     public void OnDeactivated()
     {
+    }
+
+    public void BeginResponsiveLayoutTransition(
+        double targetContentWidth,
+        double targetContentHeight,
+        bool isCollapsing)
+    {
+        if (_view is SearchWidgetContent content)
+        {
+            content.BeginResponsiveLayoutTransition(
+                targetContentWidth,
+                targetContentHeight,
+                isCollapsing);
+        }
+    }
+
+    public void CompleteResponsiveLayoutTransition(
+        double finalContentWidth,
+        double finalContentHeight)
+    {
+        if (_view is SearchWidgetContent content)
+        {
+            content.CompleteResponsiveLayoutTransition(
+                finalContentWidth,
+                finalContentHeight);
+        }
+    }
+
+    public void CancelResponsiveLayoutTransition()
+    {
+        if (_view is SearchWidgetContent content)
+        {
+            content.CancelResponsiveLayoutTransition();
+        }
     }
 
     public void Dispose()

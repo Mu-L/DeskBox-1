@@ -49,7 +49,9 @@ public sealed class ContentWidgetWindowFactory
         return _windowFactory(plan.Config, plan.Content, _settingsService, plan.Descriptor);
     }
 
-    internal ContentWidgetWindowPlan CreateContentWindowPlan(WidgetConfig config)
+    internal ContentWidgetWindowPlan CreateContentWindowPlan(
+        WidgetConfig config,
+        IWidgetContent? reusableContent = null)
     {
         if (!CanCreateContentWindow(config.WidgetKind))
         {
@@ -58,7 +60,7 @@ public sealed class ContentWidgetWindowFactory
         }
 
         var descriptor = _contentFactory.GetDescriptor(config.WidgetKind);
-        IWidgetContent content = config.WidgetKind switch
+        IWidgetContent content = reusableContent ?? (config.WidgetKind switch
         {
             WidgetKind.QuickCapture => _quickCaptureContentFactory!(config),
             WidgetKind.File => _fileContentFactory!(config),
@@ -66,7 +68,16 @@ public sealed class ContentWidgetWindowFactory
                 config,
                 _todoStoreFactory,
                 _settingsService)
-        };
+        });
+
+        if (!string.Equals(content.WidgetId, config.Id, StringComparison.Ordinal) ||
+            content.WidgetKind != config.WidgetKind)
+        {
+            (content as IDisposable)?.Dispose();
+            throw new InvalidOperationException(
+                "Reusable widget content did not match the requested member.");
+        }
+
         return new ContentWidgetWindowPlan(config, content, descriptor);
     }
 }

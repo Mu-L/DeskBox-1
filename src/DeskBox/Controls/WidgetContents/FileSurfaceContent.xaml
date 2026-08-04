@@ -9,6 +9,28 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
+        <Style x:Key="FileIconLoadingPlaceholderStyle" TargetType="ContentControl">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContentControl">
+                        <Viewbox Stretch="Uniform">
+                            <Grid Width="36" Height="36">
+                                <Border
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="9"
+                                    Opacity="0.62" />
+                            </Grid>
+                        </Viewbox>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SurfaceGridViewItemStyle" TargetType="GridViewItem">
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
@@ -88,11 +110,10 @@
                                 Source="{Binding Icon}"
                                 Stretch="Uniform"
                                 Visibility="{Binding IconVisibility}" />
-                            <FontIcon
+                            <ContentControl
+                                Style="{StaticResource FileIconLoadingPlaceholderStyle}"
                                 Width="{Binding DataContext.IconImageSize, ElementName=ItemsGrid}"
                                 Height="{Binding DataContext.IconImageSize, ElementName=ItemsGrid}"
-                                FontSize="{Binding DataContext.IconImageSize, ElementName=ItemsGrid}"
-                                Glyph="{Binding FallbackGlyph}"
                                 Visibility="{Binding FallbackIconVisibility}" />
                         </Grid>
                         <TextBlock
@@ -143,7 +164,7 @@
                                     <CompositeTransform Rotation="-7" ScaleX="0.70" ScaleY="0.70" TranslateX="-5" TranslateY="3" />
                                 </Grid.RenderTransform>
                                 <Image Source="{Binding PreviewThree.Icon}" Stretch="Uniform" Visibility="{Binding PreviewThree.IconVisibility}" />
-                                <FontIcon FontSize="{Binding PreviewItemSize}" Glyph="{Binding PreviewThree.FallbackGlyph}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
                             </Grid>
                             <Grid
                                 Width="{Binding PreviewItemSize}"
@@ -156,7 +177,7 @@
                                     <CompositeTransform Rotation="6" ScaleX="0.80" ScaleY="0.80" TranslateX="5" TranslateY="2" />
                                 </Grid.RenderTransform>
                                 <Image Source="{Binding PreviewTwo.Icon}" Stretch="Uniform" Visibility="{Binding PreviewTwo.IconVisibility}" />
-                                <FontIcon FontSize="{Binding PreviewItemSize}" Glyph="{Binding PreviewTwo.FallbackGlyph}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
                             </Grid>
                             <Grid
                                 Width="{Binding PreviewItemSize}"
@@ -168,7 +189,7 @@
                                     <CompositeTransform ScaleX="0.90" ScaleY="0.90" TranslateY="-2" />
                                 </Grid.RenderTransform>
                                 <Image Source="{Binding PreviewOne.Icon}" Stretch="Uniform" Visibility="{Binding PreviewOne.IconVisibility}" />
-                                <FontIcon FontSize="{Binding PreviewItemSize}" Glyph="{Binding PreviewOne.FallbackGlyph}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
                             </Grid>
                             <Border
                                 MinWidth="16"
@@ -242,9 +263,10 @@
                             Source="{Binding Icon}"
                             Stretch="Uniform"
                             Visibility="{Binding IconVisibility}" />
-                        <FontIcon
-                            FontSize="{Binding DataContext.ListIconSize, ElementName=ItemsList}"
-                            Glyph="{Binding FallbackGlyph}"
+                        <ContentControl
+                            Style="{StaticResource FileIconLoadingPlaceholderStyle}"
+                            Width="{Binding DataContext.ListIconSize, ElementName=ItemsList}"
+                            Height="{Binding DataContext.ListIconSize, ElementName=ItemsList}"
                             Visibility="{Binding FallbackIconVisibility}" />
                     </Grid>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -288,15 +310,15 @@
                         <Grid Visibility="{Binding CollapsedPreviewVisibility}">
                             <Grid Opacity="0.55" Visibility="{Binding ThirdPreviewVisibility}">
                                 <Image Source="{Binding PreviewThree.Icon}" Stretch="Uniform" Visibility="{Binding PreviewThree.IconVisibility}" />
-                                <FontIcon FontSize="{Binding ListIconSize}" Glyph="{Binding PreviewThree.FallbackGlyph}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
                             </Grid>
                             <Grid Margin="4,2,0,0" Opacity="0.76">
                                 <Image Source="{Binding PreviewTwo.Icon}" Stretch="Uniform" Visibility="{Binding PreviewTwo.IconVisibility}" />
-                                <FontIcon FontSize="{Binding ListIconSize}" Glyph="{Binding PreviewTwo.FallbackGlyph}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
                             </Grid>
                             <Grid Margin="0,0,4,3">
                                 <Image Source="{Binding PreviewOne.Icon}" Stretch="Uniform" Visibility="{Binding PreviewOne.IconVisibility}" />
-                                <FontIcon FontSize="{Binding ListIconSize}" Glyph="{Binding PreviewOne.FallbackGlyph}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
                             </Grid>
                             <Border
                                 MinWidth="14"
@@ -393,7 +415,6 @@
                 <GridView.ItemContainerTransitions>
                     <TransitionCollection>
                         <AddDeleteThemeTransition />
-                        <RepositionThemeTransition />
                     </TransitionCollection>
                 </GridView.ItemContainerTransitions>
             </GridView>
@@ -423,7 +444,6 @@
                 <ListView.ItemContainerTransitions>
                     <TransitionCollection>
                         <AddDeleteThemeTransition />
-                        <RepositionThemeTransition />
                     </TransitionCollection>
                 </ListView.ItemContainerTransitions>
             </ListView>

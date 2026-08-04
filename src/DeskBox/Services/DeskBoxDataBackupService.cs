@@ -32,21 +32,36 @@ public sealed class DeskBoxDataBackupService
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _rootPath;
+    private readonly string _recoveryRootPath;
 
     public DeskBoxDataBackupService()
-        : this(DeskBoxDataPathService.Current.RootPath)
+        : this(
+            DeskBoxDataPathService.Current.RootPath,
+            DeskBoxDataPathService.Current.RecoveryDirectory)
     {
     }
 
-    internal DeskBoxDataBackupService(string rootPath)
+    internal DeskBoxDataBackupService(string rootPath, string? recoveryRootPath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         _rootPath = Path.GetFullPath(rootPath);
+        _recoveryRootPath = Path.GetFullPath(
+            string.IsNullOrWhiteSpace(recoveryRootPath)
+                ? Path.Combine(Path.GetDirectoryName(_rootPath) ?? _rootPath, "DeskBox-Recovery")
+                : recoveryRootPath);
     }
 
     internal string DataDirectory => Path.Combine(_rootPath, "data");
 
-    internal string AutomaticSnapshotDirectory => Path.Combine(_rootPath, "backups", "automatic");
+    /// <summary>
+    /// Automatic snapshots are retained outside the app-data root so they
+    /// survive normal uninstall and can be restored after reinstall.
+    /// </summary>
+    internal string AutomaticSnapshotDirectory => Path.Combine(_recoveryRootPath, "automatic");
+
+    // Keep snapshots written by builds released before recovery isolation
+    // visible and restorable during the transition.
+    internal string LegacyAutomaticSnapshotDirectory => Path.Combine(_rootPath, "backups", "automatic");
 
     internal string PreRestoreBackupDirectory => Path.Combine(_rootPath, "backups", "pre-restore");
 
@@ -825,6 +840,7 @@ public sealed class DeskBoxDataBackupService
             var paths = new[]
                 {
                     (Directory: AutomaticSnapshotDirectory, Kind: "automatic"),
+                    (Directory: LegacyAutomaticSnapshotDirectory, Kind: "automatic"),
                     (Directory: PreRestoreBackupDirectory, Kind: "pre-restore")
                 }
                 .Where(item => Directory.Exists(item.Directory))
@@ -857,6 +873,52 @@ public sealed class DeskBoxDataBackupService
         }
     }
 
+    /// <summary>
+    /// Finds the newest readable snapshot stored outside the app-data root.
+    /// This is used after a reinstall when the local settings file no longer
+    /// exists, so DeskBox can point the user to a safe recovery copy.
+    /// </summary>
+    public async Task<DeskBoxBackupSnapshotInfo?> GetLatestRecoverySnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!Directory.Exists(AutomaticSnapshotDirectory))
+            {
+                return null;
+            }
+
+            foreach (string path in Directory
+                         .EnumerateFiles(AutomaticSnapshotDirectory, "DeskBox-Auto-*.zip")
+                         .OrderByDescending(File.GetLastWriteTimeUtc))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                FileInfo file = new(path);
+                SnapshotManifestSummary summary = await ReadSnapshotManifestSummaryAsync(path, cancellationToken);
+                if (!summary.IsReadable)
+                {
+                    continue;
+                }
+
+                return new DeskBoxBackupSnapshotInfo(
+                    path,
+                    "automatic",
+                    summary.CreatedAtUtc ?? file.LastWriteTimeUtc,
+                    file.Length,
+                    true,
+                    summary.AppVersion,
+                    summary.SchemaVersion);
+            }
+
+            return null;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<bool> DeleteSnapshotAsync(
         string snapshotPath,
         CancellationToken cancellationToken = default)
@@ -866,6 +928,7 @@ public sealed class DeskBoxDataBackupService
 
         if (!snapshotPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
             (!IsPathInsideDirectory(snapshotPath, AutomaticSnapshotDirectory) &&
+             !IsPathInsideDirectory(snapshotPath, LegacyAutomaticSnapshotDirectory) &&
              !IsPathInsideDirectory(snapshotPath, PreRestoreBackupDirectory)))
         {
             throw new InvalidOperationException("The selected backup snapshot is not managed by DeskBox.");

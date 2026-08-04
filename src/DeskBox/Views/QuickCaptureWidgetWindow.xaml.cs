@@ -140,6 +140,7 @@ public sealed partial class QuickCaptureWidgetWindow :
     private bool _isInternalQuickCaptureDrag;
     private bool _internalQuickCaptureDragCanReorder;
     private bool _quickCaptureTabDropHandled;
+    private bool _segmentedLayoutRefreshDeferred;
     private QuickCaptureViewMode? _internalQuickCaptureDragView;
     private bool _selectionPointerPressed;
     private bool _isBoxSelecting;
@@ -176,6 +177,17 @@ public sealed partial class QuickCaptureWidgetWindow :
     protected override bool IsPositionLocked => ViewModel.Config.IsPositionLocked;
     protected override bool IsCompactExpansionWarmupContentReady =>
         ViewModel.IsInitialized;
+
+    protected override void OnCompactVisualStateChanged(bool collapsed)
+    {
+        if (IsCompactTransitionActive || !_segmentedLayoutRefreshDeferred)
+        {
+            return;
+        }
+
+        _segmentedLayoutRefreshDeferred = false;
+        ApplySegmentedLayout();
+    }
     protected override WidgetCompactPresentation CreateCompactPresentation()
     {
         string contentMode = ResolveEffectiveCompactContentMode();

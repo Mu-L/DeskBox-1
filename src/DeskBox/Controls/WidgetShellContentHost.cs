@@ -13,6 +13,7 @@ public sealed class WidgetShellContentHost
     private readonly Action<IWidgetContent, IWidgetContent> _beginTransition;
     private readonly Action _completeTransition;
     private readonly Action<IWidgetContent> _rollbackTransition;
+    private readonly Func<IWidgetContent, bool>? _retainContent;
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<
         IWidgetContent,
         object> _disposedContents = new();
@@ -26,7 +27,9 @@ public sealed class WidgetShellContentHost
     private bool _isWindowVisible;
     private bool _isActivated;
 
-    public WidgetShellContentHost(WidgetShell shell)
+    public WidgetShellContentHost(
+        WidgetShell shell,
+        Func<IWidgetContent, bool>? retainContent = null)
     {
         ArgumentNullException.ThrowIfNull(shell);
         _setContent = shell.SetContent;
@@ -34,6 +37,7 @@ public sealed class WidgetShellContentHost
         _beginTransition = shell.BeginContentTransition;
         _completeTransition = shell.CompleteContentTransition;
         _rollbackTransition = shell.RollbackContentTransition;
+        _retainContent = retainContent;
     }
 
     internal WidgetShellContentHost(
@@ -41,13 +45,15 @@ public sealed class WidgetShellContentHost
         Action? clearContent = null,
         Action<IWidgetContent, IWidgetContent>? beginTransition = null,
         Action? completeTransition = null,
-        Action<IWidgetContent>? rollbackTransition = null)
+        Action<IWidgetContent>? rollbackTransition = null,
+        Func<IWidgetContent, bool>? retainContent = null)
     {
         _setContent = setContent ?? throw new ArgumentNullException(nameof(setContent));
         _clearContent = clearContent ?? (() => { });
         _beginTransition = beginTransition ?? ((_, incoming) => _setContent(incoming));
         _completeTransition = completeTransition ?? (() => { });
         _rollbackTransition = rollbackTransition ?? _setContent;
+        _retainContent = retainContent;
     }
 
     public IWidgetContent? CurrentContent { get; private set; }
@@ -100,18 +106,34 @@ public sealed class WidgetShellContentHost
         Task? initializationTask = null;
         try
         {
-            initializationTask = content.InitializeAsync();
+            initializationTask = content is IWidgetGroupContentCacheable
+                {
+                    IsReadyForReuse: true
+                }
+                ? Task.CompletedTask
+                : content is ICancellableWidgetContent cancellableContent
+                    ? cancellableContent.InitializeAsync(cancellationToken)
+                    : content.InitializeAsync();
             _pendingInitializationTask = initializationTask;
             await initializationTask.WaitAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             ClearPendingContent(content, initializationTask);
+            bool supportsCancellableInitialization =
+                content is ICancellableWidgetContent;
+            if (supportsCancellableInitialization)
+            {
+                // A cancellable file surface can stop its watcher/enumeration
+                // work. Do not retain an obsolete view until slow shell work
+                // eventually completes.
+                DisposeContentOnce(content);
+            }
             if (initializationTask is { IsCompleted: false })
             {
                 _ = ObserveInitializationAndDisposeAsync(initializationTask, content);
             }
-            else
+            else if (!supportsCancellableInitialization)
             {
                 DisposeContentOnce(content);
             }
@@ -216,12 +238,22 @@ public sealed class WidgetShellContentHost
 
     public void OnActivated()
     {
+        if (_isActivated)
+        {
+            return;
+        }
+
         _isActivated = true;
         CurrentContent?.OnActivated();
     }
 
     public void OnDeactivated()
     {
+        if (!_isActivated)
+        {
+            return;
+        }
+
         _isActivated = false;
         CurrentContent?.OnDeactivated();
     }
@@ -302,6 +334,11 @@ public sealed class WidgetShellContentHost
         if (transition.OutgoingContent is { } outgoingContent)
         {
             outgoingContent.OnWindowVisibilityChanged(false);
+            if (TryRetainContent(outgoingContent))
+            {
+                return;
+            }
+
             try
             {
                 DisposeContentOnce(outgoingContent);
@@ -413,6 +450,26 @@ public sealed class WidgetShellContentHost
         }
 
         disposable.Dispose();
+    }
+
+    private bool TryRetainContent(IWidgetContent content)
+    {
+        if (_retainContent is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return _retainContent(content);
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[WidgetSurface] Retaining inactive content failed " +
+                $"member={content.WidgetId}: {ex}");
+            return false;
+        }
     }
 
     internal sealed class WidgetShellPreparedContent : IDisposable

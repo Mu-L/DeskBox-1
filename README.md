@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.3.5-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.5)
+[![Latest release](https://img.shields.io/badge/release-1.3.6-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.6)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -26,10 +26,10 @@ DeskBox adds native-feeling WinUI 3 widgets to the Windows desktop without repla
 
 ## Download
 
-Download DeskBox 1.3.5 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.5):
+Download DeskBox 1.3.6 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.6):
 
-- [DeskBox 1.3.5 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.5/DeskBox_Setup_1.3.5_x64.exe) — most Intel and AMD PCs.
-- [DeskBox 1.3.5 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.5/DeskBox_Setup_1.3.5_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.3.6 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.6/DeskBox_Setup_1.3.6_x64.exe) — most Intel and AMD PCs.
+- [DeskBox 1.3.6 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.6/DeskBox_Setup_1.3.6_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
@@ -74,6 +74,16 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Raise or hide all widgets from the tray or a configurable global hotkey.
 - Customize Mica/acrylic materials, opacity, borders, DWM corners, animation, title bars, icon size, and text size.
 
+## What is new in 1.3.6
+
+- **Widget-group switching stays responsive:** inactive file surfaces are reused during tab switches; Ctrl+Tab treats a held key as one gesture, throttles fast retriggers, and can recover from an interrupted same-member transition without a manual tab click.
+- **Correct grouped-widget layering:** groups now retain the same temporary foreground state as standalone widgets at launch and when members are merged, detached, dissolved, or switched.
+- **Cross-app drops work consistently:** browser virtual files keep their extension in standalone widgets, and WeChat plus other native drag sources can import into grouped file widgets.
+- **Grouped file pages finish loading on first show:** icon hydration follows true window visibility, so grouped file icons refresh automatically instead of remaining on placeholders. The fallback is now a softer square rounded card while loading.
+- **Better group interactions:** Space opens QuickLook for the selected file inside a group, and compact/capsule expansion defers expensive surface work through the size transition.
+- **Desktop organization follow-up:** destination labels reflect the existing target that will actually receive files, and placement can continue even when the visible desktop is crowded or widgets are hidden.
+- **Small Direct installers:** x64 and ARM64 releases remain framework-dependent. Setup reuses compatible .NET 10 and Windows App Runtime 2.2 installations and downloads a missing architecture-matched dependency only when necessary.
+
 ## What is new in 1.3.5
 
 - **Desktop organization is new in 1.3.5:** a responsive card preview shows the files that will move, the selected destination, the files that stay on the Desktop, and the final storage location before anything runs. This capability was not present in 1.3.4.
@@ -101,7 +111,7 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - **Hotkey reliability:** low-level keyboard hooks were removed, RDP modifier-key recovery was improved, and the search hotkey follows the search feature switch.
 - **Release packaging:** application and installer versions are aligned to 1.3.4; framework-dependent x64 and ARM64 installers detect and download only missing architecture-matched runtimes. The legacy image-gallery widget has also been removed.
 
-Read the full [changelog](CHANGELOG.md) or the [1.3.5 release notes](docs/releases/v1.3.5.md).
+Read the full [changelog](CHANGELOG.md) or the [1.3.6 release notes](docs/releases/v1.3.6.md).
 
 ## Current interface
 
@@ -214,8 +224,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.3.5_x64.exe
-Output\DeskBox_Setup_1.3.5_arm64.exe
+Output\DeskBox_Setup_1.3.6_x64.exe
+Output\DeskBox_Setup_1.3.6_arm64.exe
 ```
 
 ## Project layout

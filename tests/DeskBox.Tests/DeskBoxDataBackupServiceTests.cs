@@ -147,6 +147,28 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AutomaticSnapshot_IsStoredOutsideAppDataAndCanBeDiscoveredAfterReinstall()
+    {
+        string dataDirectory = Directory.CreateDirectory(Path.Combine(_appDataRoot, "data")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(dataDirectory, "settings.json"), "{\"theme\":\"Dark\"}");
+        string recoveryRoot = Path.Combine(_tempRoot, "DeskBox-Recovery");
+        var service = new DeskBoxDataBackupService(_appDataRoot, recoveryRoot);
+
+        string snapshotPath = Assert.IsType<string>(await service.CreateAutomaticSnapshotNowAsync());
+
+        Assert.True(File.Exists(snapshotPath));
+        Assert.StartsWith(recoveryRoot, snapshotPath, StringComparison.OrdinalIgnoreCase);
+        Assert.False(snapshotPath.StartsWith(_appDataRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+
+        Directory.Delete(_appDataRoot, recursive: true);
+        DeskBoxBackupSnapshotInfo? recoverySnapshot = await service.GetLatestRecoverySnapshotAsync();
+
+        Assert.NotNull(recoverySnapshot);
+        Assert.Equal(snapshotPath, recoverySnapshot.Path, ignoreCase: true);
+        Assert.True(recoverySnapshot.IsReadable);
+    }
+
+    [Fact]
     public async Task SnapshotInventory_ReportsUnreadableEntriesAndAllowsManagedDeletion()
     {
         string dataDirectory = Directory.CreateDirectory(Path.Combine(_appDataRoot, "data")).FullName;

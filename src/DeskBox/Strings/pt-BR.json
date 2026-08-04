@@ -1954,5 +1954,10 @@
     "Settings.DragDropPermission.Status.ReadFailed": "Não foi possível ler: {0}",
     "Settings.DragDropPermission.Status.UacNeverNotify": "Nunca notificar (EnableLUA=0)",
     "Settings.DragDropPermission.Status.UacEnabled": "Ativado (EnableLUA=1)",
-    "Settings.DragDropPermission.Status.UacDetails": "{0}, ConsentPromptBehaviorAdmin={1}, PromptOnSecureDesktop={2}"
+    "Settings.DragDropPermission.Status.UacDetails": "{0}, ConsentPromptBehaviorAdmin={1}, PromptOnSecureDesktop={2}",
+    "Settings.Update.PreUpdateBackupFailedTitle": "Não foi possível criar um ponto de recuperação da atualização",
+    "Settings.Update.PreUpdateBackupFailedBody": "O DeskBox não iniciou a atualização para proteger as configurações atuais. Tente novamente mais tarde ou exporte um backup antes de instalar a atualização manualmente.",
+    "Settings.Update.PreUpdateBackupFailedBodyWithError": "O DeskBox não iniciou a atualização para proteger as configurações atuais.\n\n{0}",
+    "Settings.Recovery.AvailableTitle": "Dados de recuperação do DeskBox disponíveis",
+    "Settings.Recovery.AvailableBody": "Foi encontrado um snapshot de recuperação preservado. Restaure o layout e a aparência anteriores dos widgets em Configurações > Backup e restauração > Snapshots locais."
 }

@@ -820,6 +820,9 @@ public partial class App : Application
 
             // A prepared restore is applied before any service reads or normalizes app data.
             DeskBoxRestoreApplyResult restoreResult = await DataBackupService.ApplyPendingRestoreAsync();
+            bool hadSettingsBeforeStartup = File.Exists(Path.Combine(
+                DeskBoxDataPathService.Current.DataDirectory,
+                "settings.json"));
 
             // Capture the previous session's data before any startup normalization writes.
             await DataBackupService.CreateAutomaticSnapshotIfDueAsync();
@@ -896,6 +899,11 @@ public partial class App : Application
             StartTodoReminderService();
             StartNativeNotificationService();
             ShowDataRestoreResultNotification(restoreResult);
+            if (!hadSettingsBeforeStartup)
+            {
+                ShowRecoverySnapshotAvailableNotification(
+                    await DataBackupService.GetLatestRecoverySnapshotAsync());
+            }
 
             if (SettingsService.Settings.Widgets.Count(widget =>
                     widget.WidgetKind == WidgetKind.File &&
@@ -1805,6 +1813,41 @@ public partial class App : Application
         catch (Exception ex)
         {
             Log($"[DataBackup] Restore result notification failed: {ex.Message}");
+        }
+    }
+
+    private void ShowRecoverySnapshotAvailableNotification(DeskBoxBackupSnapshotInfo? snapshot)
+    {
+        if (snapshot is null || LocalizationService is null)
+        {
+            return;
+        }
+
+        string title = LocalizationService.T("Settings.Recovery.AvailableTitle");
+        string message = LocalizationService.T("Settings.Recovery.AvailableBody");
+        Log($"[DataBackup] Recovery snapshot available after fresh settings start: {snapshot.Path}");
+
+        if (_nativeNotificationService?.TryShow(title, message) == true || _trayIcon is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _trayIcon.ShowNotification(
+                title,
+                message,
+                NotificationIcon.Info,
+                customIconHandle: null,
+                largeIcon: false,
+                sound: false,
+                respectQuietTime: true,
+                realtime: false,
+                timeout: TimeSpan.FromSeconds(10));
+        }
+        catch (Exception ex)
+        {
+            Log($"[DataBackup] Recovery snapshot notification failed: {ex.Message}");
         }
     }
 

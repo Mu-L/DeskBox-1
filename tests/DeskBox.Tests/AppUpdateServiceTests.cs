@@ -248,6 +248,22 @@ public sealed class AppUpdateServiceTests : IDisposable
         Assert.True(File.Exists(Path.Combine(Path.GetDirectoryName(detachedExe)!, "DeskBox.Updater.runtimeconfig.json")));
     }
 
+    [Fact]
+    public void TryGetInstallDirectory_ReturnsCurrentDeskBoxExecutableDirectory()
+    {
+        string installDirectory = Directory.CreateDirectory(Path.Combine(_tempRoot, "D-drive", "DeskBox")).FullName;
+        string appPath = Path.Combine(installDirectory, "DeskBox.exe");
+        File.WriteAllText(appPath, "exe");
+
+        bool resolved = AppUpdateService.TryGetInstallDirectory(appPath, out string actualDirectory);
+
+        Assert.True(resolved);
+        Assert.Equal(installDirectory, actualDirectory, ignoreCase: true);
+        Assert.False(AppUpdateService.TryGetInstallDirectory(
+            Path.Combine(installDirectory, "OtherApp.exe"),
+            out _));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempRoot))

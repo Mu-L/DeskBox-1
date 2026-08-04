@@ -42,17 +42,12 @@ public static class WidgetLayerService
         IntPtr foreground = Win32Helper.GetForegroundWindow();
         DetachFromDesktopIconLayerIfNeeded(windowHandle);
 
-        // Always clear TopMost and bring the foreground window to front.
-        // Previously this was gated by `wasTopMost`, but raised widgets use
-        // BringWindowTemporarilyToFront (TOPMOST→NOTOPMOST) so they are never
-        // persistently TopMost by the time restore runs — the gate was always
-        // false, causing a "silent restore" (state changed, visual didn't).
+        // Restore only the DeskBox window. Calling SetWindowPos on an arbitrary
+        // foreground application's HWND can synchronously wait on that process
+        // and has caused the widget UI thread to stall during rapid hover cycles.
+        // Removing our own topmost state is sufficient to return input priority
+        // to the foreground application.
         Win32Helper.ClearWindowTopMost(windowHandle);
-
-        if (foreground != IntPtr.Zero && foreground != windowHandle)
-        {
-            Win32Helper.BringWindowToFront(foreground);
-        }
 
         return foreground;
     }

@@ -17,6 +17,8 @@
         IsTabStop="True"
         DragOver="RootGrid_DragOver"
         Drop="RootGrid_Drop"
+        PreviewKeyDown="RootGrid_PreviewKeyDown"
+        PreviewKeyUp="RootGrid_PreviewKeyUp"
         KeyDown="RootGrid_KeyDown">
         <controls:WidgetShell
             x:Name="ContentWidgetShell"

@@ -103,7 +103,27 @@ public sealed partial class WidgetWindow
     {
         if (!ViewModel.ShowFileItemPathTooltips || border.DataContext is not WidgetItem item)
         {
-            ToolTipService.SetToolTip(border, null);
+            if (ToolTipService.GetToolTip(border) is not null)
+            {
+                ToolTipService.SetToolTip(border, null);
+            }
+
+            return;
+        }
+
+        // Item styling is refreshed from several code paths, including window
+        // SizeChanged. Reuse an existing tooltip instead of allocating a new
+        // TextBlock, Border and ToolTip for every realized item on every pass.
+        if (ToolTipService.GetToolTip(border) is ToolTip
+            {
+                Content: Border { Child: TextBlock existingTooltipText }
+            })
+        {
+            if (!string.Equals(existingTooltipText.Text, item.FullPath, StringComparison.Ordinal))
+            {
+                existingTooltipText.Text = item.FullPath;
+            }
+
             return;
         }
 
@@ -326,11 +346,13 @@ public sealed partial class WidgetWindow
                     icon.Height = ViewModel.ListIconSize;
                 }
 
-                if (TryGetDescendant<FontIcon>(listGrid, out var fallbackIcon))
+                if (TryGetDescendant<FrameworkElement>(
+                        listGrid,
+                        out var loadingPlaceholder,
+                        "IconLoadingPlaceholder"))
                 {
-                    fallbackIcon.Width = ViewModel.ListIconSize;
-                    fallbackIcon.Height = ViewModel.ListIconSize;
-                    fallbackIcon.FontSize = Math.Clamp(Math.Round(ViewModel.ListIconSize * 0.72), 12, 20);
+                    loadingPlaceholder.Width = ViewModel.ListIconSize;
+                    loadingPlaceholder.Height = ViewModel.ListIconSize;
                 }
 
                 double textMaxWidth = GetListItemTextMaxWidth();
@@ -393,11 +415,13 @@ public sealed partial class WidgetWindow
                 icon.Height = ViewModel.IconImageSize;
             }
 
-            if (TryGetDescendant<FontIcon>(iconStack, out var fallbackIcon))
+            if (TryGetDescendant<FrameworkElement>(
+                    iconStack,
+                    out var loadingPlaceholder,
+                    "IconLoadingPlaceholder"))
             {
-                fallbackIcon.Width = ViewModel.IconImageSize;
-                fallbackIcon.Height = ViewModel.IconImageSize;
-                fallbackIcon.FontSize = Math.Clamp(Math.Round(ViewModel.IconImageSize * 0.72), 16, 34);
+                loadingPlaceholder.Width = ViewModel.IconImageSize;
+                loadingPlaceholder.Height = ViewModel.IconImageSize;
             }
 
             if (TryGetDescendant<TextBlock>(iconStack, out var label, "IconItemNameText"))

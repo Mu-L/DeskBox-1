@@ -16,6 +16,7 @@ public sealed class TodoWidgetContentAdapter :
     IWidgetAddActionContent,
     IWidgetFeedbackSource,
     IWidgetTransientStateContent,
+    IWidgetResponsiveLayoutContent,
     IDisposable
 {
     private readonly Func<TodoWidgetViewModel, FrameworkElement> _viewFactory;
@@ -106,6 +107,40 @@ public sealed class TodoWidgetContentAdapter :
 
     public void OnDeactivated()
     {
+    }
+
+    public void BeginResponsiveLayoutTransition(
+        double targetContentWidth,
+        double targetContentHeight,
+        bool isCollapsing)
+    {
+        if (_view is TodoWidgetContent todoContent)
+        {
+            todoContent.BeginResponsiveLayoutTransition(
+                targetContentWidth,
+                targetContentHeight,
+                isCollapsing);
+        }
+    }
+
+    public void CompleteResponsiveLayoutTransition(
+        double finalContentWidth,
+        double finalContentHeight)
+    {
+        if (_view is TodoWidgetContent todoContent)
+        {
+            todoContent.CompleteResponsiveLayoutTransition(
+                finalContentWidth,
+                finalContentHeight);
+        }
+    }
+
+    public void CancelResponsiveLayoutTransition()
+    {
+        if (_view is TodoWidgetContent todoContent)
+        {
+            todoContent.CancelResponsiveLayoutTransition();
+        }
     }
 
     public object? CaptureTransientState()

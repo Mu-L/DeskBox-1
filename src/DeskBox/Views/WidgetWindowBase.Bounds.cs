@@ -82,6 +82,8 @@ public abstract partial class WidgetWindowBase
         ApplyBackdropPreference();
         InitializeWidgetCollapse();
         InitializeWidgetGrouping();
+        WidgetShellControl.HostedContentChanged -= WidgetShellControl_HostedContentChanged;
+        WidgetShellControl.HostedContentChanged += WidgetShellControl_HostedContentChanged;
 
         RootElement.Loaded += (_, _) =>
         {

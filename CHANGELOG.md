@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.3.6 - 2026-08-04
+
+### English
+
+#### Widget Group Reliability and Interaction
+
+- **Fast tab switching is recoverable:** Ctrl+Tab is now handled once per physical key gesture, with a short cooldown for rapid separate presses. Repeated key-down messages can no longer queue a switch storm or leave the keyboard path waiting for a manual tab click to recover.
+- **Faster grouped file surfaces:** inactive group members retain a bounded, reusable content cache. Rapid tab changes no longer repeatedly dispose and recreate file grids, watchers, and icon work.
+- **Correct group layering:** grouped widgets now keep the same temporary foreground state as standalone widgets at startup and across merge, detach, dissolve, and member-switch transitions.
+- **QuickLook works inside groups:** Space reaches the selected file surface in a group and opens the same QuickLook preview behavior as a standalone file widget.
+
+#### File Import and Visual Polish
+
+- **Browser and WeChat drops are reliable:** virtual browser files preserve their resolved extension when copied into a standalone widget, and the native drop bridge lets WeChat and other non-WinUI sources import into grouped file widgets.
+- **Initial icon hydration is consistent:** grouped file surfaces no longer cancel their first background refresh merely because their desktop window is shown without activation. Placeholder icons are temporary, square rounded cards with a softer appearance.
+- **Capsule and content transitions are smoother:** compact expansion warm-up follows the actual incoming group content, while expensive surface work is deferred during geometry transitions.
+
+#### Desktop Organization and Release
+
+- **Organization targets are clearer:** the preview reports the actual existing widget destination rather than misleadingly showing a new target, and placement can keep working when the visible desktop is crowded or widgets are hidden.
+- **Framework-dependent installers:** x64 and ARM64 installers remain small and check the matching .NET 10 Runtime and Windows App Runtime 2.2. Missing dependencies are downloaded only when needed.
+
+### 中文
+
+#### 格子组可靠性与交互
+
+- **高频 Tab 切换可恢复**：Ctrl+Tab 现在按一次物理按键手势只处理一次，并对连续独立按键做短暂冷却。重复 KeyDown 不会再堆积切换事务，也不会出现必须手动点一次 Tab 才能恢复的问题。
+- **格子组文件页切换更快**：非活动成员会保留有容量上限、可复用的内容缓存；频繁切换时不再反复销毁和重建文件网格、监听器与图标加载。
+- **格子组层级正确**：启动以及合并、拆分、解散、成员切换期间，格子组会与独立格子保持一致的临时前景层级。
+- **组内空格预览生效**：空格可以传递到格子组内选中的文件区域，调用与独立文件格子相同的 QuickLook 预览行为。
+
+#### 文件导入与视觉细节
+
+- **浏览器和微信拖入更稳定**：浏览器虚拟文件复制到独立格子时会保留解析出的扩展名；微信等非 WinUI 拖放源也可以导入格子组内的文件格子。
+- **首次图标加载一致**：格子组的文件页不会因桌面窗口以非激活方式显示而取消首次后台刷新。占位图标改为短暂展示的柔和正方形圆角卡片。
+- **胶囊与内容切换更流畅**：胶囊展开预热会跟随实际切入的格子组内容，尺寸过渡期间会延后较重的表面工作。
+
+#### 桌面整理与发布
+
+- **整理目标更清晰**：预览会展示实际命中的已有格子，而不会误显示为新建目标；可见桌面拥挤或格子隐藏时也会继续寻找合适位置完成整理。
+- **框架依赖安装包**：x64 与 ARM64 安装包继续保持轻量，按架构检测 .NET 10 Runtime 和 Windows App Runtime 2.2，仅在缺少时联网下载。
+
 ## 1.3.5 - 2026-08-03
 
 > Scope note: Desktop organization, automatic organization, and widget groups were not part of 1.3.4. They are new in 1.3.5; the 1.3.4 section below remains the historical release record.

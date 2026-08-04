@@ -239,6 +239,12 @@ public sealed class AppUpdateService : IAppUpdateService
             appPath = Path.Combine(AppContext.BaseDirectory, "DeskBox.exe");
         }
 
+        if (!TryGetInstallDirectory(appPath, out string installDirectory))
+        {
+            return AppUpdateInstallResult.Failed(
+                "DeskBox could not determine the current installation directory. Please use the manual installer instead.");
+        }
+
         try
         {
             string helperPath = PrepareDetachedUpdaterHelper(AppContext.BaseDirectory, _updateRootPath);
@@ -260,6 +266,8 @@ public sealed class AppUpdateService : IAppUpdateService
             startInfo.ArgumentList.Add(installerPath);
             startInfo.ArgumentList.Add("--app");
             startInfo.ArgumentList.Add(appPath);
+            startInfo.ArgumentList.Add("--install-dir");
+            startInfo.ArgumentList.Add(installDirectory);
             if (silent)
             {
                 startInfo.ArgumentList.Add("--silent");
@@ -271,6 +279,40 @@ public sealed class AppUpdateService : IAppUpdateService
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return AppUpdateInstallResult.Failed(ex.Message);
+        }
+    }
+
+    internal static bool TryGetInstallDirectory(string? appPath, out string installDirectory)
+    {
+        installDirectory = string.Empty;
+        if (string.IsNullOrWhiteSpace(appPath) || !File.Exists(appPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            string fullAppPath = Path.GetFullPath(appPath);
+            if (!string.Equals(
+                    Path.GetFileName(fullAppPath),
+                    "DeskBox.exe",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string? directory = Path.GetDirectoryName(fullAppPath);
+            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            {
+                return false;
+            }
+
+            installDirectory = directory;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return false;
         }
     }
 

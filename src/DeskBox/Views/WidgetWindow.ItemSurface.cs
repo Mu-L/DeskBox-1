@@ -114,6 +114,15 @@ public sealed partial class WidgetWindow
 
     private void UpdateInteractiveSurfaces()
     {
+        if (IsCompactTransitionActive)
+        {
+            // A native compact transition resizes the HWND every rendering frame.
+            // Rewalking every realized item tree (and rebuilding tooltips) here
+            // turns that into a layout/allocation storm. Apply once at settle.
+            _interactiveSurfaceRefreshDeferred = true;
+            return;
+        }
+
         foreach (var border in _interactiveSurfaces.ToArray())
         {
             if (border.XamlRoot is null)

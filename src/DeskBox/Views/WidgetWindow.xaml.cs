@@ -84,6 +84,7 @@ public sealed partial class WidgetWindow :
     private bool _isMigrationBusy;
     private long _backdropRefreshGeneration { get => BackdropRefreshGeneration; set => BackdropRefreshGeneration = value; }
     private bool _areItemTransitionsSuppressed;
+    private bool _interactiveSurfaceRefreshDeferred;
     private DispatcherQueueTimer? _autoRestoreTimer;
     private DispatcherQueueTimer? _topMostSafetyTimer { get => TopMostSafetyTimer; set => TopMostSafetyTimer = value; }
     private WidgetDisplayChangeWatcher? _displayChangeWatcher { get => DisplayChangeWatcher; set => DisplayChangeWatcher = value; }

@@ -36,6 +36,25 @@ public interface IWidgetContent
 }
 
 /// <summary>
+/// Optional lifecycle contract for content whose initialization can be stopped
+/// when a newer group-member switch supersedes it.
+/// </summary>
+public interface ICancellableWidgetContent
+{
+    Task InitializeAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Opts a content surface into the small, per-group inactive-member cache.
+/// Cacheable content must tolerate OnDeactivated/OnActivated cycles and must
+/// release all resources when disposed by the owning content window.
+/// </summary>
+public interface IWidgetGroupContentCacheable : IDisposable
+{
+    bool IsReadyForReuse { get; }
+}
+
+/// <summary>
 /// Optional contract for content whose layout changes at size breakpoints.
 /// Capsule transitions can lock that content to its start or target layout
 /// instead of letting intermediate animated window sizes trigger every layout.

@@ -61,6 +61,7 @@ public abstract partial class WidgetWindowBase : Window
     protected bool MicaControllerAttached;
     private bool? _acrylicControllerUsesBase;
     private bool? _micaControllerUsesAlt;
+    private BackdropSignature? _lastAppliedBackdropSignature;
     protected SystemBackdropConfiguration? BackdropConfiguration;
     protected ICompositionSupportsSystemBackdrop? BackdropTarget;
 
@@ -84,6 +85,10 @@ public abstract partial class WidgetWindowBase : Window
 
     // ── Protected state: layer / Z-order ───────────────────────
     protected bool IsAtDesktopLayer;
+    // Manager-initiated raises represent a shared presentation state (startup,
+    // group topology changes), not an individual pointer interaction. Content
+    // hosts must not independently undo that state on their own deactivation.
+    protected bool IsRaisedFromManager;
     protected bool KeepRaisedUntilDeactivate;
     protected bool RestoreDesktopLayerWhenIdle;
     protected bool IsHideAnimationRunning;
@@ -125,6 +130,14 @@ public abstract partial class WidgetWindowBase : Window
 
     /// <summary>The widget configuration for this window.</summary>
     public abstract WidgetConfig Config { get; }
+
+    /// <summary>
+    /// Whether the window currently sits above its resting desktop layer.
+    /// This is intentionally logical state rather than the Win32 TOPMOST flag:
+    /// DeskBox temporarily raises normal-band windows without leaving them
+    /// permanently topmost.
+    /// </summary>
+    public bool IsRaisedAboveDesktopLayer => !IsAtDesktopLayer;
 
     /// <summary>The opacity value (0–1) used for backdrop tinting.</summary>
     protected abstract double WidgetOpacity { get; }
@@ -250,6 +263,7 @@ public abstract partial class WidgetWindowBase : Window
 
     protected void CleanupBase()
     {
+        WidgetShellControl.HostedContentChanged -= WidgetShellControl_HostedContentChanged;
         CleanupWidgetGrouping();
         CleanupWidgetCollapse();
         StopBackdropRefreshTimer();

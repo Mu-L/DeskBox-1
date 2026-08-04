@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.3.5-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.5)
+[![最新版本](https://img.shields.io/badge/release-1.3.6-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.6)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -26,10 +26,10 @@ DeskBox 基于 C#、WinUI 3 和 Windows App SDK 构建，在原生 Windows 桌�
 
 ## 下载
 
-在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.5) 下载 DeskBox 1.3.5：
+在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.6) 下载 DeskBox 1.3.6：
 
-- [DeskBox 1.3.5 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.5/DeskBox_Setup_1.3.5_x64.exe)——适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.3.5 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.5/DeskBox_Setup_1.3.5_arm64.exe)——适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.3.6 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.6/DeskBox_Setup_1.3.6_x64.exe)——适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.3.6 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.6/DeskBox_Setup_1.3.6_arm64.exe)——适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -74,6 +74,16 @@ DeskBox 基于 C#、WinUI 3 和 Windows App SDK 构建，在原生 Windows 桌�
 - 可通过托盘和自定义全局快捷键显示、隐藏或临时唤起全部格子。
 - 支持云母/亚克力材质、透明度、边框、DWM 圆角、动画、标题栏、图标与文字大小。
 
+## 1.3.6 更新亮点
+
+- **格子组切换保持流畅**：文件页会在 Tab 切换之间复用；Ctrl+Tab 按住时只当作一次手势，快速重复触发会节流，中断的同成员切换也可自动恢复，无需手动点击 Tab。
+- **格子组层级正确**：启动、合并、拆分、解散和成员切换后，格子组都会保留与独立格子一致的临时前景层级。
+- **跨应用拖入一致可用**：浏览器虚拟文件拖到独立格子时会保留扩展名；微信及其他原生拖放源可以拖入格子组内的文件格子。
+- **格子组文件页首次加载完整**：图标加载跟随真实窗口可见状态，启动后会自动刷新，不再长期停在占位。加载中的占位改为柔和的正方形圆角卡片。
+- **格子组交互补全**：组内选中文件按空格可调用 QuickLook；胶囊/紧凑模式切换尺寸时会延后较重的表面工作，减少频繁操作的卡顿。
+- **桌面整理后续优化**：目标标签会展示实际接收文件的已有格子；可见桌面拥挤或格子隐藏时也会继续寻找位置完成整理。
+- **轻量 Direct 安装包**：x64 和 ARM64 保持框架依赖模式，复用已有 .NET 10 与 Windows App Runtime 2.2，仅在缺少对应架构运行时时下载。
+
 ## 1.3.5 更新亮点
 
 - **桌面整理是 1.3.5 新增能力**：使用响应式卡片预览要移动的文件、目标位置、不会移动的项目和最终收纳位置；1.3.4 尚未提供这项功能。
@@ -101,7 +111,7 @@ DeskBox 基于 C#、WinUI 3 和 Windows App SDK 构建，在原生 Windows 桌�
 - **热键可靠性**：移除低级键盘钩子，改进远程桌面修饰键恢复，搜索快捷键与搜索功能开关联动。
 - **发布打包**：应用与安装器版本统一为 1.3.4；x64 和 ARM64 均采用框架依赖安装包，只检测并下载当前架构缺少的运行时；同时移除旧图片画廊格子。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.5 发布说明](docs/releases/v1.3.5.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.6 发布说明](docs/releases/v1.3.6.md)。
 
 ## 当前界面
 
@@ -214,8 +224,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.3.5_x64.exe
-Output\DeskBox_Setup_1.3.5_arm64.exe
+Output\DeskBox_Setup_1.3.6_x64.exe
+Output\DeskBox_Setup_1.3.6_arm64.exe
 ```
 
 ## 项目结构

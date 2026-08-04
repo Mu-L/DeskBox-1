@@ -509,6 +509,12 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void ApplySegmentedLayout()
     {
+        if (IsCompactTransitionActive)
+        {
+            _segmentedLayoutRefreshDeferred = true;
+            return;
+        }
+
         if (ViewModel.TabStyle == SettingsService.WidgetTabStyleButton)
         {
             WidgetSegmentedLayoutHelper.ApplyEqualItemWidths(QuickCaptureViewSegmented);

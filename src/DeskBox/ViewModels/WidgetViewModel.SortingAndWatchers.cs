@@ -179,22 +179,37 @@ public partial class WidgetViewModel
         NormalizeSortOrder();
     }
 
-    private async Task ConfigureFolderWatchersAsync(string? folderPath)
+    private async Task ConfigureFolderWatchersAsync(
+        string? folderPath,
+        CancellationToken cancellationToken = default)
     {
         _folderWatcher.Stop();
         _publicFolderWatcher.Stop();
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (_isDisposed || string.IsNullOrEmpty(folderPath))
         {
             return;
         }
 
-        await _folderWatcher.StartAsync(folderPath);
-
-        var (userDesktop, publicDesktop) = FileService.GetDesktopPaths();
-        if (folderPath.Equals(userDesktop, StringComparison.OrdinalIgnoreCase))
+        try
         {
-            await _publicFolderWatcher.StartAsync(publicDesktop);
+            await _folderWatcher.StartAsync(folderPath).WaitAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var (userDesktop, publicDesktop) = FileService.GetDesktopPaths();
+            if (folderPath.Equals(userDesktop, StringComparison.OrdinalIgnoreCase))
+            {
+                await _publicFolderWatcher.StartAsync(publicDesktop).WaitAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Stop bumps each watcher's generation, preventing a slow probe from
+            // attaching after this content switch has already been superseded.
+            _folderWatcher.Stop();
+            _publicFolderWatcher.Stop();
+            throw;
         }
     }
 

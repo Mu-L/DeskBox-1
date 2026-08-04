@@ -74,12 +74,23 @@ internal static class Program
 
     private static int RunInstaller(UpdateOptions options)
     {
+        if (!TryGetInstallDirectory(options, out string installDirectory))
+        {
+            Log("Current installation directory is missing or invalid; refusing to run a silent update without /DIR.");
+            return 4;
+        }
+
         var startInfo = new ProcessStartInfo
         {
             FileName = options.InstallerPath,
             UseShellExecute = true,
             WorkingDirectory = Path.GetDirectoryName(options.InstallerPath) ?? Environment.CurrentDirectory
         };
+
+        // Inno Setup otherwise falls back to DefaultDirName during a silent
+        // install. Always pin an in-app update to the directory containing
+        // the currently running DeskBox.exe.
+        startInfo.ArgumentList.Add($"/DIR={installDirectory}");
 
         if (options.Silent)
         {
@@ -89,7 +100,7 @@ internal static class Program
             startInfo.ArgumentList.Add("/FORCECLOSEAPPLICATIONS");
         }
 
-        Log($"Starting installer: {options.InstallerPath}");
+        Log($"Starting installer: {options.InstallerPath}; target directory: {installDirectory}");
         using var process = Process.Start(startInfo);
         if (process is null)
         {
@@ -100,6 +111,47 @@ internal static class Program
         process.WaitForExit();
         Log($"Installer exited with code {process.ExitCode}.");
         return process.ExitCode;
+    }
+
+    private static bool TryGetInstallDirectory(UpdateOptions options, out string installDirectory)
+    {
+        installDirectory = string.Empty;
+        string candidate = options.InstallDirectory;
+        if (string.IsNullOrWhiteSpace(candidate) && !string.IsNullOrWhiteSpace(options.AppPath))
+        {
+            candidate = Path.GetDirectoryName(options.AppPath) ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return false;
+        }
+
+        try
+        {
+            string normalizedDirectory = Path.GetFullPath(candidate);
+            string expectedAppPath = Path.Combine(normalizedDirectory, "DeskBox.exe");
+            if (!Directory.Exists(normalizedDirectory) || !File.Exists(expectedAppPath))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(options.AppPath) &&
+                !string.Equals(
+                    Path.GetFullPath(options.AppPath),
+                    expectedAppPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            installDirectory = normalizedDirectory;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static bool RestartApp(string appPath)
@@ -141,6 +193,7 @@ internal static class Program
         public int ParentProcessId { get; private init; }
         public string InstallerPath { get; private init; } = string.Empty;
         public string AppPath { get; private init; } = string.Empty;
+        public string InstallDirectory { get; private init; } = string.Empty;
         public bool Silent { get; private init; }
         public bool RestartOnly { get; private init; }
 
@@ -149,6 +202,7 @@ internal static class Program
             int parentProcessId = 0;
             string installerPath = string.Empty;
             string appPath = string.Empty;
+            string installDirectory = string.Empty;
             bool silent = false;
             bool restartOnly = false;
 
@@ -186,6 +240,10 @@ internal static class Program
                 {
                     appPath = value;
                 }
+                else if (string.Equals(arg, "--install-dir", StringComparison.OrdinalIgnoreCase))
+                {
+                    installDirectory = value;
+                }
             }
 
             return new UpdateOptions
@@ -193,6 +251,7 @@ internal static class Program
                 ParentProcessId = parentProcessId,
                 InstallerPath = installerPath,
                 AppPath = appPath,
+                InstallDirectory = installDirectory,
                 Silent = silent,
                 RestartOnly = restartOnly
             };

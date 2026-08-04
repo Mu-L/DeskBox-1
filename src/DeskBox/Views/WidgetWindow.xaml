@@ -25,6 +25,28 @@
         PointerExited="RootGrid_PointerExited">
 
         <Grid.Resources>
+            <Style x:Key="FileIconLoadingPlaceholderStyle" TargetType="ContentControl">
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="IsHitTestVisible" Value="False" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ContentControl">
+                            <Viewbox Stretch="Uniform">
+                                <Grid Width="36" Height="36">
+                                    <Border
+                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="9"
+                                        Opacity="0.62" />
+                                </Grid>
+                            </Viewbox>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style x:Key="WidgetGridViewItemStyle" TargetType="GridViewItem">
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="Margin" Value="0" />
@@ -106,11 +128,9 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Visibility="{Binding IconVisibility}" />
-                                <FontIcon
-                                    Glyph="{Binding FallbackGlyph}"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
+                                <ContentControl
+                                    x:Name="IconLoadingPlaceholder"
+                                    Style="{StaticResource FileIconLoadingPlaceholderStyle}"
                                     Visibility="{Binding FallbackIconVisibility}" />
                             </Grid>
 
@@ -176,7 +196,7 @@
                                         <CompositeTransform Rotation="-7" ScaleX="0.70" ScaleY="0.70" TranslateX="-5" TranslateY="3" />
                                     </Grid.RenderTransform>
                                     <Image Source="{Binding PreviewThree.Icon}" Stretch="Uniform" Visibility="{Binding PreviewThree.IconVisibility}" />
-                                    <FontIcon FontSize="{Binding PreviewItemSize}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Glyph="{Binding PreviewThree.FallbackGlyph}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
+                                    <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
                                 </Grid>
                                 <Grid
                                     Tag="StackPreviewLayer1"
@@ -190,7 +210,7 @@
                                         <CompositeTransform Rotation="6" ScaleX="0.80" ScaleY="0.80" TranslateX="5" TranslateY="2" />
                                     </Grid.RenderTransform>
                                     <Image Source="{Binding PreviewTwo.Icon}" Stretch="Uniform" Visibility="{Binding PreviewTwo.IconVisibility}" />
-                                    <FontIcon FontSize="{Binding PreviewItemSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="{Binding PreviewTwo.FallbackGlyph}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
+                                    <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
                                 </Grid>
                                 <Grid
                                     Tag="StackPreviewLayer2"
@@ -203,7 +223,7 @@
                                         <CompositeTransform ScaleX="0.90" ScaleY="0.90" TranslateY="-2" />
                                     </Grid.RenderTransform>
                                     <Image Source="{Binding PreviewOne.Icon}" Stretch="Uniform" Visibility="{Binding PreviewOne.IconVisibility}" />
-                                    <FontIcon FontSize="{Binding PreviewItemSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="{Binding PreviewOne.FallbackGlyph}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
+                                    <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
                                 </Grid>
                                 <Border
                                     Tag="StackPreviewBadge"
@@ -298,7 +318,7 @@
 
                             <Grid VerticalAlignment="Center">
                                 <Image Source="{Binding Icon}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding IconVisibility}" />
-                                <FontIcon Glyph="{Binding FallbackGlyph}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding FallbackIconVisibility}" />
+                                <ContentControl x:Name="IconLoadingPlaceholder" Style="{StaticResource FileIconLoadingPlaceholderStyle}" Visibility="{Binding FallbackIconVisibility}" />
                             </Grid>
 
                             <StackPanel x:Name="ListItemTextHost" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Spacing="1">
@@ -347,21 +367,21 @@
                                     <CompositeTransform Rotation="-8" ScaleX="0.68" ScaleY="0.68" TranslateX="-3" TranslateY="2" />
                                 </Grid.RenderTransform>
                                 <Image Source="{Binding PreviewThree.Icon}" Stretch="Uniform" Visibility="{Binding PreviewThree.IconVisibility}" />
-                                <FontIcon FontSize="{Binding ListIconSize}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Glyph="{Binding PreviewThree.FallbackGlyph}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
                             </Grid>
                             <Grid Tag="StackPreviewLayer1" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Opacity="0.84" RenderTransformOrigin="0.5,0.8">
                                 <Grid.RenderTransform>
                                     <CompositeTransform Rotation="6" ScaleX="0.76" ScaleY="0.76" TranslateX="3" TranslateY="1" />
                                 </Grid.RenderTransform>
                                 <Image Source="{Binding PreviewTwo.Icon}" Stretch="Uniform" Visibility="{Binding PreviewTwo.IconVisibility}" />
-                                <FontIcon FontSize="{Binding ListIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="{Binding PreviewTwo.FallbackGlyph}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
                             </Grid>
                             <Grid Tag="StackPreviewLayer2" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" RenderTransformOrigin="0.5,0.8">
                                 <Grid.RenderTransform>
                                     <CompositeTransform ScaleX="0.82" ScaleY="0.82" TranslateY="-1" />
                                 </Grid.RenderTransform>
                                 <Image Source="{Binding PreviewOne.Icon}" Stretch="Uniform" Visibility="{Binding PreviewOne.IconVisibility}" />
-                                <FontIcon FontSize="{Binding ListIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="{Binding PreviewOne.FallbackGlyph}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
                             </Grid>
                             <Border Tag="StackPreviewBadge" MinWidth="14" Height="14" Padding="2,0" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="7">
                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="8" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Text="{Binding CountText}" />
