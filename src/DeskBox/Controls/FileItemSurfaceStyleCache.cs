@@ -129,9 +129,6 @@ public sealed class FileItemSurfaceStyleCache
         FileItemSurfaceVisualState state,
         bool isSelected)
     {
-        Windows.UI.Color neutral = isDark
-            ? Colors.White
-            : Colors.Black;
         byte alpha = (state, isSelected, isDark) switch
         {
             (FileItemSurfaceVisualState.Hover, true, true) => 0x38,
@@ -146,7 +143,12 @@ public sealed class FileItemSurfaceStyleCache
             (FileItemSurfaceVisualState.Hover, false, false) => 0x0F,
             _ => 0x00
         };
-        return WithAlpha(neutral, alpha);
+        byte channel = isDark ? (byte)0xFF : (byte)0x00;
+
+        // Keep this policy path usable by headless tests and non-UI callers.
+        // Microsoft.UI.Colors and Microsoft.UI.ColorHelper are WinRT statics;
+        // resolving them requires Windows App SDK registration on the process.
+        return Windows.UI.Color.FromArgb(alpha, channel, channel, channel);
     }
 
     private static Windows.UI.Color BuildAccentSurfaceColor(
