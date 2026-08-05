@@ -123,7 +123,7 @@ public partial class App
             {
                 if (WidgetManager is not null)
                 {
-                    _ = ToggleTrayWidgetsAsync();
+                    SafeFireAndForget(ToggleTrayWidgetsAsync);
                 }
             })
         };
@@ -574,14 +574,8 @@ public partial class App
             return;
         }
 
-        if (WidgetManager.ShouldHideWidgetsForTrayToggle())
-        {
-            await WidgetManager.SetAllWidgetsVisibleAsync(false);
-            UpdateTrayLayerStateText(raised: false);
-            return;
-        }
-
-        await RaiseTrayWidgetsAsync();
+        await WidgetManager.ToggleWidgetsFromTrayAsync("tray-toggle");
+        UpdateTrayLayerStateText(WidgetManager.WidgetsRaisedFromTray);
     }
 
     private void UpdateTrayLayerStateText(bool raised)

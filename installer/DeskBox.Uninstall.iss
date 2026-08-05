@@ -197,37 +197,42 @@ begin
 end;
 
 procedure StopDeskBoxProcess;
-var
-  ResultCode: Integer;
 begin
   Log('正在停止 DeskBox 进程。');
-  Exec(
-    ExpandConstant('{sys}\taskkill.exe'),
-    '/IM ' + DeskBoxProcessName + ' /T /F',
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode);
+  if not StopDeskBoxProcessesAtPath(ExpandConstant('{app}')) then
+    Log('DeskBox uninstall could not stop only the current installation processes.');
+end;
 
-  Log('taskkill 返回代码：' + IntToStr(ResultCode));
+function ShortcutTargetsCurrentInstall(ShortcutPath: string): Boolean;
+var
+  TargetPath: string;
+begin
+  Result :=
+    TryReadShortcutTarget(ShortcutPath, TargetPath) and
+    SameInstallPath(ExtractFileDir(TargetPath), ExpandConstant('{app}')) and
+    (CompareText(ExtractFileName(TargetPath), DeskBoxProcessName) = 0);
 end;
 
 procedure RemoveStartupRegistryEntry;
 var
   Value: string;
+  StartupExecutablePath: string;
   StartupShortcutPath: string;
 begin
   if RegQueryStringValue(HKEY_CURRENT_USER, DeskBoxStartupRunKey, 'DeskBox', Value) then
   begin
-    if RegDeleteValue(HKEY_CURRENT_USER, DeskBoxStartupRunKey, 'DeskBox') then
+    StartupExecutablePath := ExtractExecutablePath(Value);
+    if SameInstallPath(ExtractFileDir(StartupExecutablePath), ExpandConstant('{app}')) and
+       (CompareText(ExtractFileName(StartupExecutablePath), DeskBoxProcessName) = 0) and
+       RegDeleteValue(HKEY_CURRENT_USER, DeskBoxStartupRunKey, 'DeskBox') then
       Log('DeskBox uninstall removed startup registry entry.')
     else
-      Log('DeskBox uninstall failed to remove startup registry entry.');
+      Log('DeskBox uninstall preserved startup registry entry owned by another DeskBox installation.')
   end;
 
   // Also remove the legacy startup folder shortcut.
   StartupShortcutPath := ExpandConstant('{userstartup}\DeskBox.lnk');
-  if FileExists(StartupShortcutPath) then
+  if ShortcutTargetsCurrentInstall(StartupShortcutPath) then
   begin
     if DeleteFile(StartupShortcutPath) then
       Log('DeskBox uninstall removed legacy startup shortcut.')
@@ -241,7 +246,7 @@ var
   Path: string;
 begin
   Path := ExpandConstant('{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\DeskBox.lnk');
-  if FileExists(Path) then
+  if ShortcutTargetsCurrentInstall(Path) then
   begin
     if DeleteFile(Path) then
       Log('DeskBox uninstall removed taskbar pinned shortcut.')

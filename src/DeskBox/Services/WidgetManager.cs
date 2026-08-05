@@ -53,6 +53,7 @@ internal interface IDesktopWidgetWindow
     WidgetWindowIdentity Identity { get; }
     WidgetConfig Config { get; }
     IntPtr WindowHandle { get; }
+    FrameworkElement? WindowContentRoot { get; }
     bool Visible { get; }
     bool IsRaisedAboveDesktopLayer { get; }
     bool IsCompactArrangementActive { get; }
@@ -63,11 +64,13 @@ internal interface IDesktopWidgetWindow
     void ApplyCompactArrangement(Windows.Graphics.RectInt32 bounds, bool constrainSize);
     void PreviewCompactArrangement(Windows.Graphics.RectInt32 bounds);
     void SetTrayAnimationOffsetOverride(double? offsetX, double? offsetY);
+    void CancelTrayAnimationAndRestorePosition();
     void PrepareTrayShowAnimation();
     void ShowPreparedAtDesktopLayer(bool persistVisibility = true);
     void ShowPreparedRaisedFromTray(bool persistVisibility = true);
     void PlayTrayShowAnimation();
     void CompleteTrayShowWithoutAnimation();
+    void RevealFromTray(bool autoRestore = true);
     bool PrepareTrayHideAnimation(bool persistVisibility = true);
     void PlayPreparedTrayHideAnimation();
     WidgetTrayBatchAnimationEntry? BeginSharedTrayShowAnimation();
@@ -104,15 +107,17 @@ public sealed partial class WidgetManager
     private readonly bool _recycleManagedFolderDeletes;
     private readonly WidgetRegistry _widgetRegistry;
     private readonly WidgetSessionManager _sessionManager;
-    private readonly Dictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> _widgets = new();
+    private readonly FileWidgetHostDiagnostics _fileWidgetHostDiagnostics;
+    private readonly Dictionary<string, FileWidgetSession> _fileWidgets = new();
     private readonly Dictionary<string, (QuickCaptureWidgetWindow Window, QuickCaptureWidgetViewModel ViewModel)> _quickCaptureWidgets = new();
     private readonly Dictionary<string, ContentWidgetWindow> _contentWidgets = new();
     private readonly HashSet<IntPtr> _widgetWindowHandles = new();
     private readonly HashSet<string> _deletedWidgetIds = [];
     private readonly HashSet<string> _suppressClosedVisibilityPersistence = [];
     private readonly SemaphoreSlim _widgetRenameGate = new(1, 1);
+    private readonly SemaphoreSlim _trayVisibilityOperationGate = new(1, 1);
+    private readonly TrayToggleRequestQueue _trayToggleRequestQueue;
 
-    public IReadOnlyDictionary<string, (WidgetWindow Window, WidgetViewModel ViewModel)> Widgets => _widgets;
     public IReadOnlyDictionary<string, (QuickCaptureWidgetWindow Window, QuickCaptureWidgetViewModel ViewModel)> QuickCaptureWidgets => _quickCaptureWidgets;
     internal IReadOnlyDictionary<string, ContentWidgetWindow> ContentWidgets => _contentWidgets;
 
@@ -122,6 +127,14 @@ public sealed partial class WidgetManager
 
     public bool HasVisibleWidgets =>
         GetLoadedDesktopWindows().Any(window => window.Visible);
+
+    public bool HasVisibleFileWidgets =>
+        _fileWidgets.Values.Any(session => session.Host.Visible) ||
+        _contentWidgets.Values
+            .Distinct()
+            .Any(window =>
+                window.Visible &&
+                window.CurrentContent is FileSurfaceContent);
 
     internal int LoadedWidgetCount => _widgetSurfaces.Count;
 
@@ -147,31 +160,9 @@ public sealed partial class WidgetManager
     /// </summary>
     public FrameworkElement? GetWidgetRootElementByHandle(IntPtr hwnd)
     {
-        foreach (var entry in _widgets.Values)
-        {
-            if (entry.Window.WindowHandle == hwnd)
-            {
-                return entry.Window.Content as FrameworkElement;
-            }
-        }
-
-        foreach (var entry in _quickCaptureWidgets.Values)
-        {
-            if (entry.Window.WindowHandle == hwnd)
-            {
-                return entry.Window.Content as FrameworkElement;
-            }
-        }
-
-        foreach (var window in _contentWidgets.Values)
-        {
-            if (window.WindowHandle == hwnd)
-            {
-                return window.Content as FrameworkElement;
-            }
-        }
-
-        return null;
+        return GetLoadedDesktopWindows()
+            .FirstOrDefault(window => window.WindowHandle == hwnd)
+            ?.WindowContentRoot;
     }
 
     private IReadOnlyList<IDesktopWidgetWindow> GetLoadedDesktopWindows()
@@ -193,7 +184,6 @@ public sealed partial class WidgetManager
         _sessionManager.EndInteraction(reason);
     }
 
-    public event Action<WidgetWindow>? WidgetCreated;
     public event Action<string>? WidgetRemoved;
     public event Action<bool>? TrayLayerStateChanged;
 
@@ -241,31 +231,68 @@ public sealed partial class WidgetManager
 
     public bool ShouldHideWidgetsForTrayToggle()
     {
-        if (_widgetsRaisedFromTray)
-        {
-            App.LogVerbose("[TrayBatch] ToggleDecision=hide reason=raised-session");
-            return true;
-        }
-
-        if (!HasVisibleWidgets)
-        {
-            App.LogVerbose("[TrayBatch] ToggleDecision=raise reason=no-visible-windows");
-            return false;
-        }
-
         IntPtr foregroundWindow = Win32Helper.GetForegroundWindow();
-        if (IsDeskBoxForegroundWindow(foregroundWindow) ||
-            IsDesktopShellWindow(foregroundWindow) ||
-            IsTaskbarWindow(foregroundWindow))
-        {
-            App.LogVerbose(
-                $"[TrayBatch] ToggleDecision=hide reason=foreground-local hwnd=0x{foregroundWindow.ToInt64():X}");
-            return true;
-        }
-
+        bool foregroundLocal = IsDeskBoxForegroundWindow(foregroundWindow) ||
+                               IsDesktopShellWindow(foregroundWindow) ||
+                               IsTaskbarWindow(foregroundWindow);
+        var context = new TrayToggleDecisionContext(
+            _widgetsRaisedFromTray,
+            HasVisibleWidgets,
+            foregroundLocal);
+        bool shouldHide = TrayToggleDecisionPolicy.ShouldHide(context);
+        string reason = context.IsRaisedSession
+            ? "raised-session"
+            : !context.HasVisibleWidgets
+                ? "no-visible-windows"
+                : context.IsForegroundLocal
+                    ? "foreground-local"
+                    : "visible-widgets-behind";
         App.LogVerbose(
-            $"[TrayBatch] ToggleDecision=raise reason=visible-widgets-behind hwnd=0x{foregroundWindow.ToInt64():X}");
-        return false;
+            $"[TrayBatch] ToggleDecision={(shouldHide ? "hide" : "raise")} " +
+            $"reason={reason} hwnd=0x{foregroundWindow.ToInt64():X}");
+        return shouldHide;
+    }
+
+    /// <summary>
+    /// Enqueues one tray-toggle intent. Hotkeys and tray clicks must use this
+    /// entry point so they share one serialized state machine.
+    /// </summary>
+    public Task ToggleWidgetsFromTrayAsync(string source = "tray-toggle")
+    {
+        return _trayToggleRequestQueue.EnqueueAsync(source);
+    }
+
+    private Task ExecuteQueuedTrayToggleAsync(string source)
+    {
+        return RunOnUiThreadAsync(() => ExecuteTrayVisibilityOperationAsync(
+            source,
+            async () =>
+            {
+                if (ShouldHideWidgetsForTrayToggle())
+                {
+                    await SetAllWidgetsVisibleCoreAsync(false);
+                    return;
+                }
+
+                await RaiseWidgetsFromTrayCoreAsync();
+            }));
+    }
+
+    private async Task ExecuteTrayVisibilityOperationAsync(
+        string source,
+        Func<Task> operation)
+    {
+        await _trayVisibilityOperationGate.WaitAsync();
+        App.LogVerbose($"[TrayToggle] operation-start source={source}");
+        try
+        {
+            await operation();
+        }
+        finally
+        {
+            App.LogVerbose($"[TrayToggle] operation-end source={source}");
+            _trayVisibilityOperationGate.Release();
+        }
     }
 
     public WidgetManager(
@@ -327,6 +354,8 @@ public sealed partial class WidgetManager
         _recycleManagedFolderDeletes = recycleManagedFolderDeletes;
         _widgetRegistry = WidgetRegistry.Default;
         _sessionManager = new WidgetSessionManager(App.LogVerbose);
+        _fileWidgetHostDiagnostics = new FileWidgetHostDiagnostics();
+        _trayToggleRequestQueue = new(ExecuteQueuedTrayToggleAsync);
         InitializeCapsuleArrangementState();
         _featureWidgetHandlers = CreateFeatureWidgetHandlers();
         _windowProviders = CreateWindowProviders();
@@ -339,6 +368,10 @@ public sealed partial class WidgetManager
         _settingsService.SettingsChanged += OnSettingsChanged;
         _settingsService.AppearancePreviewChanged += ApplyAppearancePreview;
         _themeService.AppearanceChanged += ApplyAppearancePreview;
+        App.Log(
+            $"[WidgetManager] Standalone file host strategy=UnifiedContentOnly " +
+            $"legacyFallbackAvailable=false fallbackRequests={_fileWidgetHostDiagnostics.FallbackRequestCount} " +
+            $"fallbackReason={_fileWidgetHostDiagnostics.LastFallbackReason ?? "none"}");
     }
 
     private Dictionary<WidgetKind, FeatureWidgetHandler> CreateFeatureWidgetHandlers()
@@ -381,7 +414,7 @@ public sealed partial class WidgetManager
         [
             new(
                 WidgetKind.File,
-                async request => await CreateCancellableWidgetFromConfigAsync(
+                async request => await CreateContentWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
                     request.RevealAfterCreate,
@@ -505,17 +538,7 @@ public sealed partial class WidgetManager
         _isApplyingAppearancePreview = true;
         try
         {
-            foreach (var (_, (window, _)) in _widgets.ToList())
-            {
-                window.ApplyAppearancePreview();
-            }
-
-            foreach (var (_, (window, _)) in _quickCaptureWidgets.ToList())
-            {
-                window.ApplyAppearancePreview();
-            }
-
-            foreach (var (_, window) in _contentWidgets.ToList())
+            foreach (IDesktopWidgetWindow window in GetLoadedDesktopWindows())
             {
                 window.ApplyAppearancePreview();
             }
@@ -601,7 +624,7 @@ public sealed partial class WidgetManager
     /// <summary>
     /// Create a new widget backed by the default managed storage root.
     /// </summary>
-    public async Task<WidgetWindow> CreateManagedWidgetAsync(string? name = null)
+    public async Task CreateManagedWidgetAsync(string? name = null)
     {
         name = string.IsNullOrWhiteSpace(name)
             ? _localizationService.T("Widget.DefaultName")
@@ -625,7 +648,7 @@ public sealed partial class WidgetManager
         _settingsService.Settings.Widgets.Add(config);
         await _settingsService.SaveAsync();
 
-        return await CreateWidgetFromConfigAsync(config, revealAfterCreate: true);
+        await CreateWidgetFromConfigAsync(config, revealAfterCreate: true);
     }
 
     public async Task CreateWidgetOfKindAsync(WidgetKind widgetKind)
@@ -670,7 +693,7 @@ public sealed partial class WidgetManager
     /// <summary>
     /// Create a widget mapped to an arbitrary folder.
     /// </summary>
-    public async Task<WidgetWindow> CreateFolderWidgetAsync(string folderPath)
+    public async Task CreateFolderWidgetAsync(string folderPath)
     {
         string normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folderPath));
         EnsureFileWidgetPathAvailable(normalizedPath);
@@ -695,7 +718,7 @@ public sealed partial class WidgetManager
         SyncMappedWidgetShortcut(config);
         await _settingsService.SaveAsync();
 
-        return await CreateWidgetFromConfigAsync(config, revealAfterCreate: true);
+        await CreateWidgetFromConfigAsync(config, revealAfterCreate: true);
     }
 
     public void EnsureFileWidgetPathAvailable(string folderPath, string? excludedWidgetId = null)
@@ -810,37 +833,37 @@ public sealed partial class WidgetManager
             return false;
         }
 
-        if (_widgets.TryGetValue(widgetId, out var entry))
+        if (_fileWidgets.TryGetValue(widgetId, out var fileSession))
         {
-            entry.Window.RestoreBoundsForCurrentTopology();
-            if (reveal)
-            {
-                entry.Window.RevealFromTray(autoRestoreOnReveal);
-            }
-            else
-            {
-                entry.Window.PrepareTrayShowAnimation();
-                entry.Window.ShowPreparedAtDesktopLayer();
-                entry.Window.CompleteTrayShowWithoutAnimation();
-            }
+            ShowLoadedWidgetWindow(
+                fileSession.Host,
+                reveal,
+                autoRestoreOnReveal);
 
             return true;
         }
 
         var window = await CreateWidgetFromConfigAsync(config, keepPreparedForAnimation: !reveal);
+        ShowLoadedWidgetWindow(window, reveal, autoRestoreOnReveal);
+
+        return true;
+    }
+
+    private static void ShowLoadedWidgetWindow(
+        IDesktopWidgetWindow window,
+        bool reveal,
+        bool autoRestoreOnReveal)
+    {
         window.RestoreBoundsForCurrentTopology();
         if (reveal)
         {
             window.RevealFromTray(autoRestoreOnReveal);
-        }
-        else
-        {
-            window.PrepareTrayShowAnimation();
-            window.ShowPreparedAtDesktopLayer();
-            window.CompleteTrayShowWithoutAnimation();
+            return;
         }
 
-        return true;
+        window.PrepareTrayShowAnimation();
+        window.ShowPreparedAtDesktopLayer();
+        window.CompleteTrayShowWithoutAnimation();
     }
 
     private async Task<bool> ShowContentWidgetAsync(WidgetConfig config, bool reveal)
@@ -881,13 +904,20 @@ public sealed partial class WidgetManager
     /// <summary>
     /// Show or hide all currently managed widgets.
     /// </summary>
-    public async Task SetAllWidgetsVisibleAsync(bool visible)
+    public Task SetAllWidgetsVisibleAsync(bool visible)
+    {
+        return RunOnUiThreadAsync(() => ExecuteTrayVisibilityOperationAsync(
+            $"set-all:{visible}",
+            () => SetAllWidgetsVisibleCoreAsync(visible)));
+    }
+
+    private async Task SetAllWidgetsVisibleCoreAsync(bool visible)
     {
         using var perfScope = PerformanceLogger.Measure("WidgetManager.SetAllWidgetsVisible", $"visible={visible}");
         App.LogVerbose(
             $"[TrayBatch] SetAllVisible requested visible={visible} raised={_widgetsRaisedFromTray} " +
-            $"loadedFile={_widgets.Count} loadedQuick={_quickCaptureWidgets.Count} loadedContent={_contentWidgets.Count}");
-        _trayBatchAnimationDriver.Cancel();
+            $"loadedFile={_fileWidgets.Count} loadedQuick={_quickCaptureWidgets.Count} loadedContent={_contentWidgets.Count}");
+        CancelActiveTrayAnimationsAndRestorePositions();
         if (visible)
         {
             App.CancelBackgroundMemoryCleanup();
@@ -951,40 +981,35 @@ public sealed partial class WidgetManager
         var hideCandidates = GetLoadedDesktopWindows()
             .Where(window => window.Visible)
             .ToList();
-        
-        // ⭐ 终极优化：将整个 Prepare + Play 流程都放在 TryEnqueue 中
-        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        dispatcher.TryEnqueue(() =>
+
+        ApplyTrayAnimationGroupOffset(hideCandidates);
+
+        var windowsToHide = new List<IDesktopWidgetWindow>();
+        foreach (var window in hideCandidates)
         {
-            ApplyTrayAnimationGroupOffset(hideCandidates);
-            
-            var windowsToHide = new List<IDesktopWidgetWindow>();
-            foreach (var window in hideCandidates)
+            try
             {
-                try
+                if (window.PrepareTrayHideAnimation(persistVisibility: false))
                 {
-                    if (window.PrepareTrayHideAnimation(persistVisibility: false))
-                    {
-                        windowsToHide.Add(window);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    App.Log($"[WidgetManager] Failed to prepare widget hide {FormatHostWindow(window)}: {ex}");
+                    windowsToHide.Add(window);
                 }
             }
+            catch (Exception ex)
+            {
+                App.Log($"[WidgetManager] Failed to prepare widget hide {FormatHostWindow(window)}: {ex}");
+            }
+        }
 
-            App.LogVerbose($"[TrayBatch] SetAllVisible preparedHide={windowsToHide.Count}");
-            PlayPreparedTrayHideAnimations(windowsToHide);
+        App.LogVerbose($"[TrayBatch] SetAllVisible preparedHide={windowsToHide.Count}");
+        PlayPreparedTrayHideAnimations(windowsToHide);
 
-            SetWidgetsRaisedFromTray(false);
-            _sessionManager.MarkHidden("set-all-hidden");
-            _trayRaiseBatchGeneration++;
-            StopTrayLayerRestoreMonitor();
-            SaveBatchVisibilityState();
-            App.LogVerbose($"[TrayBatch] SetAllVisible completed visible=false prepared={windowsToHide.Count}");
-            App.ScheduleBackgroundMemoryCleanup();
-        });
+        SetWidgetsRaisedFromTray(false);
+        _sessionManager.MarkHidden("set-all-hidden");
+        _trayRaiseBatchGeneration++;
+        StopTrayLayerRestoreMonitor();
+        SaveBatchVisibilityState();
+        App.LogVerbose($"[TrayBatch] SetAllVisible completed visible=false prepared={windowsToHide.Count}");
+        App.ScheduleBackgroundMemoryCleanup();
 
         return;
     }
@@ -999,19 +1024,7 @@ public sealed partial class WidgetManager
         using var perfScope = PerformanceLogger.Measure("WidgetManager.RestoreWidgetPositions");
         App.Log("[WidgetManager] Restoring widget positions for current display topology");
 
-        foreach (var entry in _widgets.Values.ToList())
-        {
-            try
-            {
-                entry.Window.RestoreBoundsForCurrentTopology();
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[WidgetManager] Failed to restore position for widget '{entry.Window.Identity.WidgetId}': {ex.Message}");
-            }
-        }
-
-        foreach (var window in _contentWidgets.Values.ToList())
+        foreach (IDesktopWidgetWindow window in GetLoadedDesktopWindows())
         {
             try
             {
@@ -1019,19 +1032,7 @@ public sealed partial class WidgetManager
             }
             catch (Exception ex)
             {
-                App.Log($"[WidgetManager] Failed to restore position for content widget: {ex.Message}");
-            }
-        }
-
-        foreach (var entry in _quickCaptureWidgets.Values.ToList())
-        {
-            try
-            {
-                entry.Window.RestoreBoundsForCurrentTopology();
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[WidgetManager] Failed to restore position for quick capture widget: {ex.Message}");
+                App.Log($"[WidgetManager] Failed to restore position for widget '{window.Identity.WidgetId}': {ex.Message}");
             }
         }
 
@@ -1050,14 +1051,10 @@ public sealed partial class WidgetManager
         }
         _deletedWidgetIds.Add(widgetId);
 
-        if (_widgets.TryGetValue(widgetId, out var entry))
+        if (_fileWidgets.TryGetValue(widgetId, out var fileSession))
         {
             App.Log($"[WidgetManager] Retiring widget window for delete: {widgetId}");
-            entry.ViewModel.Dispose();
-            _widgets.Remove(widgetId);
-            _widgetWindowHandles.Remove(entry.Window.WindowHandle);
-            try { entry.Window.HideWindow(); } catch (Exception ex) { App.Log($"[WidgetManager] HideWindow failed during delete: {ex.Message}"); }
-            try { entry.Window.Close(); } catch (Exception ex) { App.Log($"[WidgetManager] Close failed during delete: {ex.Message}"); }
+            _fileWidgets.Remove(widgetId);
         }
 
         if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))
@@ -1180,14 +1177,14 @@ public sealed partial class WidgetManager
 
     public void ClearSelectionsExcept(string activeWidgetId)
     {
-        foreach (var (widgetId, (window, _)) in _widgets.ToList())
+        foreach (var (widgetId, fileSession) in _fileWidgets.ToList())
         {
             if (string.Equals(widgetId, activeWidgetId, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            window.ClearItemSelection();
+            fileSession.ClearItemSelection();
         }
 
         foreach (ContentWidgetWindow window in _contentWidgets.Values.Distinct())
@@ -1207,12 +1204,8 @@ public sealed partial class WidgetManager
 
     private void RestoreLoadedWidgetBoundsAfterStartup()
     {
-        var windows = _widgets.Values
-            .Select(entry => (IDesktopWidgetWindow)entry.Window)
-            .Concat(_quickCaptureWidgets.Values.Select(entry => (IDesktopWidgetWindow)entry.Window))
-            .Concat(_contentWidgets.Values.Select(window => (IDesktopWidgetWindow)window))
-            .Distinct()
-            .ToList();
+        IReadOnlyList<IDesktopWidgetWindow> windows =
+            GetLoadedDesktopWindows();
 
         foreach (IDesktopWidgetWindow window in windows)
         {
@@ -1391,10 +1384,10 @@ public sealed partial class WidgetManager
             _widgetGroupSwitchRequests.Cancel(group.SurfaceId);
         }
 
-        if (_widgets.TryGetValue(widgetId, out var entry))
+        if (_fileWidgets.TryGetValue(widgetId, out var fileSession))
         {
-            entry.Window.HideWindow();
-            SetWidgetGroupVisibility(entry.Window.Config, isVisible: false);
+            fileSession.Host.HideWindow();
+            SetWidgetGroupVisibility(fileSession.Host.Config, isVisible: false);
             return true;
         }
 
@@ -1426,7 +1419,7 @@ public sealed partial class WidgetManager
         }
 
         App.Log(
-            $"[TrayBatch] RestoreDesktopLayer force={force} file={_widgets.Count} quick={_quickCaptureWidgets.Count} content={_contentWidgets.Count}");
+            $"[TrayBatch] RestoreDesktopLayer force={force} file={_fileWidgets.Count} quick={_quickCaptureWidgets.Count} content={_contentWidgets.Count}");
         foreach (var window in GetLoadedDesktopWindows())
         {
             try
@@ -1449,7 +1442,7 @@ public sealed partial class WidgetManager
     /// </summary>
     public bool SetWidgetPositionLocked(string widgetId, bool locked)
     {
-        if (_widgets.TryGetValue(widgetId, out var loadedEntry))
+        if (_fileWidgets.TryGetValue(widgetId, out var loadedEntry))
         {
             loadedEntry.ViewModel.SetPositionLocked(locked);
             SynchronizeGroupLayoutFromMember(loadedEntry.ViewModel.Config);
@@ -1483,7 +1476,7 @@ public sealed partial class WidgetManager
     /// </summary>
     public bool SetWidgetSizeLocked(string widgetId, bool locked)
     {
-        if (_widgets.TryGetValue(widgetId, out var loadedEntry))
+        if (_fileWidgets.TryGetValue(widgetId, out var loadedEntry))
         {
             loadedEntry.ViewModel.SetSizeLocked(locked);
             SynchronizeGroupLayoutFromMember(loadedEntry.ViewModel.Config);
@@ -1535,19 +1528,7 @@ public sealed partial class WidgetManager
         _settingsService.AppearancePreviewChanged -= ApplyAppearancePreview;
         _themeService.AppearanceChanged -= ApplyAppearancePreview;
 
-        foreach (var (_, (window, viewModel)) in _widgets.ToList())
-        {
-            viewModel.Dispose();
-            try
-            {
-                window.Close();
-            }
-            catch
-            {
-            }
-        }
-
-        _widgets.Clear();
+        _fileWidgets.Clear();
 
         foreach (var (_, (window, viewModel)) in _quickCaptureWidgets)
         {
@@ -1563,7 +1544,9 @@ public sealed partial class WidgetManager
 
         _quickCaptureWidgets.Clear();
 
-        foreach (var (_, window) in _contentWidgets.ToList())
+        foreach (ContentWidgetWindow window in _contentWidgets.Values
+                     .DistinctBy(candidate => candidate.WindowHandle)
+                     .ToList())
         {
             try
             {
@@ -1606,7 +1589,7 @@ public sealed partial class WidgetManager
             return;
         }
 
-        if (_widgets.TryGetValue(widgetId, out var fileEntry))
+        if (_fileWidgets.TryGetValue(widgetId, out var fileEntry))
         {
             await fileEntry.ViewModel.RefreshFromConfigAsync();
             return;
@@ -1636,9 +1619,9 @@ public sealed partial class WidgetManager
 
         foreach (string widgetId in widgetIds.Distinct(StringComparer.Ordinal))
         {
-            if (_widgets.TryGetValue(widgetId, out var fileEntry))
+            if (_fileWidgets.TryGetValue(widgetId, out var fileEntry))
             {
-                fileEntry.Window.SetDesktopOrganizationBusy(isBusy);
+                fileEntry.SetDesktopOrganizationBusy(isBusy);
                 continue;
             }
 
@@ -1724,136 +1707,26 @@ public sealed partial class WidgetManager
         return SetContentFeatureWidgetEnabledAsync(WidgetKind.Music, enabled, reveal);
     }
 
-    private Task<WidgetWindow> CreateWidgetFromConfigAsync(
+    private Task<IDesktopWidgetWindow> CreateWidgetFromConfigAsync(
         WidgetConfig config,
         bool keepPreparedForAnimation = false,
         bool revealAfterCreate = false,
         bool showRaisedWhileInitializing = false)
     {
-        return CreateCancellableWidgetFromConfigAsync(
+        if (config.WidgetKind != WidgetKind.File)
+        {
+            return Task.FromException<IDesktopWidgetWindow>(
+                new InvalidOperationException(
+                    $"File widget window creation requires a File config. " +
+                    $"Actual kind: {config.WidgetKind}."));
+        }
+
+        return CreateRegisteredWidgetFromConfigAsync(
             config,
             keepPreparedForAnimation,
             revealAfterCreate,
             showRaisedWhileInitializing,
             CancellationToken.None);
-    }
-
-    private async Task<WidgetWindow> CreateCancellableWidgetFromConfigAsync(
-        WidgetConfig config,
-        bool keepPreparedForAnimation = false,
-        bool revealAfterCreate = false,
-        bool showRaisedWhileInitializing = false,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (config.WidgetKind != WidgetKind.File)
-        {
-            throw new InvalidOperationException(
-                $"File widget window creation requires a File config. Actual kind: {config.WidgetKind}.");
-        }
-
-        if (_widgets.TryGetValue(config.Id, out var existing))
-        {
-            return existing.Window;
-        }
-
-        config.IsDisabled = false;
-        NormalizeWidgetBounds(config);
-
-        var dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        var viewModel = new WidgetViewModel(config, _fileService, _organizerService, _settingsService, _localizationService, dispatcherQueue);
-        var window = new WidgetWindow(viewModel, _settingsService, _localizationService);
-
-        _themeService.TrackWindow(window);
-        _widgets[config.Id] = (window, viewModel);
-        RegisterCreatedSurfaceHost(config, window);
-        _widgetWindowHandles.Add(window.WindowHandle);
-        ApplyCapsuleArrangementIfChanged(force: true);
-
-        window.Closed += (_, _) => OnFileWidgetWindowClosed(window);
-
-        Task? initializationTask = null;
-        try
-        {
-            window.PrepareTrayShowAnimation();
-            if (!keepPreparedForAnimation)
-            {
-                window.Activate();
-                window.PushToBottom();
-            }
-            else if (showRaisedWhileInitializing)
-            {
-                viewModel.IsLoading = true;
-                QueueDeferredWidgetInitialization(config, window, viewModel);
-                WidgetCreated?.Invoke(window);
-                return window;
-            }
-
-            initializationTask = viewModel.InitializeAsync();
-            await initializationTask.WaitAsync(cancellationToken);
-            if (!keepPreparedForAnimation)
-            {
-                window.CompleteTrayShowWithoutAnimation();
-                if (revealAfterCreate)
-                {
-                    window.RevealFromTray(autoRestore: false);
-                }
-            }
-        }
-        catch
-        {
-            _widgets.Remove(config.Id);
-            _widgetWindowHandles.Remove(window.WindowHandle);
-            UnregisterSurfaceHost(window);
-            _ = ObserveAndDisposeWidgetInitializationAsync(
-                initializationTask ?? Task.CompletedTask,
-                viewModel,
-                config);
-            CloseFailedCreatedWindow(
-                config.Id,
-                window,
-                preserveVisibility: cancellationToken.CanBeCanceled);
-            throw;
-        }
-
-        WidgetCreated?.Invoke(window);
-        return window;
-    }
-
-    private void OnFileWidgetWindowClosed(WidgetWindow window)
-    {
-        List<string> registeredIds = _widgets
-            .Where(entry => ReferenceEquals(entry.Value.Window, window))
-            .Select(entry => entry.Key)
-            .ToList();
-        foreach (string registeredId in registeredIds)
-        {
-            _widgets.Remove(registeredId);
-        }
-
-        UnregisterSurfaceHost(window);
-        _widgetWindowHandles.Remove(window.WindowHandle);
-        WidgetConfig closedConfig = window.Config;
-        if (IsDeleted(closedConfig.Id) || FindConfig(closedConfig.Id) is null)
-        {
-            return;
-        }
-
-        if (_suppressClosedVisibilityPersistence.Contains(closedConfig.Id) ||
-            registeredIds.Any(_suppressClosedVisibilityPersistence.Contains))
-        {
-            return;
-        }
-
-        if (_widgets.Values.Any(entry => ReferenceEquals(entry.Window, window)))
-        {
-            return;
-        }
-
-        closedConfig.IsVisible = false;
-        SetWidgetGroupVisibility(closedConfig, isVisible: false);
-        _settingsService.SaveDebounced();
     }
 
     private async Task<IDesktopWidgetWindow> CreateRegisteredWidgetFromConfigAsync(
@@ -1912,7 +1785,13 @@ public sealed partial class WidgetManager
             if (!showRaisedWhileInitializing)
             {
                 await existing.ContentReadyTask.WaitAsync(cancellationToken);
+                RestoreWidgetGroupTransientState(config.Id);
             }
+
+            RegisterStandaloneUnifiedFileSessionIfNeeded(
+                config,
+                existing,
+                existing.CurrentContent);
 
             return existing;
         }
@@ -1932,11 +1811,15 @@ public sealed partial class WidgetManager
         config.IsDisabled = false;
         NormalizeWidgetBounds(config);
 
-        var window = factory.CreateContentWindow(config);
+        ContentWidgetWindowPlan plan = factory.CreateContentWindowPlan(config);
+        var window = factory.CreateContentWindow(plan);
         _themeService.TrackWindow(window);
         _contentWidgets[config.Id] = window;
+        RegisterStandaloneUnifiedFileSessionIfNeeded(
+            config,
+            window,
+            plan.Content);
         RegisterCreatedSurfaceHost(config, window);
-        RestoreWidgetGroupTransientState(config.Id);
         _widgetWindowHandles.Add(window.WindowHandle);
         ApplyCapsuleArrangementIfChanged(force: true);
 
@@ -1950,6 +1833,8 @@ public sealed partial class WidgetManager
             {
                 _contentWidgets.Remove(registeredId);
             }
+
+            RemoveFileWidgetSessionsForHost(window);
 
             UnregisterSurfaceHost(window);
             _widgetWindowHandles.Remove(window.WindowHandle);
@@ -1980,12 +1865,12 @@ public sealed partial class WidgetManager
             if (keepPreparedForAnimation && showRaisedWhileInitializing)
             {
                 window.PrepareTrayShowAnimation();
-                window.ShowPreparedRaisedFromTray();
                 QueueDeferredContentInitialization(config, window);
                 return window;
             }
 
             await window.ContentReadyTask.WaitAsync(cancellationToken);
+            RestoreWidgetGroupTransientState(config.Id);
             window.PrepareTrayShowAnimation();
             if (!keepPreparedForAnimation)
             {
@@ -2002,6 +1887,7 @@ public sealed partial class WidgetManager
         catch
         {
             _contentWidgets.Remove(config.Id);
+            RemoveFileWidgetSessionsForHost(window);
             _widgetWindowHandles.Remove(window.WindowHandle);
             UnregisterSurfaceHost(window);
             CloseFailedCreatedWindow(
@@ -2012,6 +1898,49 @@ public sealed partial class WidgetManager
         }
 
         return window;
+    }
+
+    private void RegisterStandaloneUnifiedFileSessionIfNeeded(
+        WidgetConfig config,
+        ContentWidgetWindow window,
+        DeskBox.Contracts.IWidgetContent? content)
+    {
+        if (config.WidgetKind != WidgetKind.File ||
+            WidgetGroupSettings.FindByMember(
+                _settingsService.Settings,
+                config.Id) is not null ||
+            content is not FileSurfaceContent fileSurface)
+        {
+            return;
+        }
+
+        if (_fileWidgets.TryGetValue(config.Id, out var existing) &&
+            ReferenceEquals(existing.Host, window))
+        {
+            return;
+        }
+
+        var session = new FileWidgetSession(window, fileSurface);
+        _fileWidgets[config.Id] = session;
+        _fileWidgetHostDiagnostics.RecordUnifiedCreation();
+        App.LogVerbose(
+            $"[WidgetManager] Registered unified standalone file host " +
+            $"widget={config.Id} hwnd=0x{window.WindowHandle.ToInt64():X}");
+    }
+
+    private List<string> RemoveFileWidgetSessionsForHost(
+        IDesktopWidgetWindow window)
+    {
+        List<string> registeredIds = _fileWidgets
+            .Where(entry => ReferenceEquals(entry.Value.Host, window))
+            .Select(entry => entry.Key)
+            .ToList();
+        foreach (string registeredId in registeredIds)
+        {
+            _fileWidgets.Remove(registeredId);
+        }
+
+        return registeredIds;
     }
 
     private void CloseFailedCreatedWindow(
@@ -2040,36 +1969,6 @@ public sealed partial class WidgetManager
         }
     }
 
-    private static async Task ObserveAndDisposeWidgetInitializationAsync(
-        Task initializationTask,
-        WidgetViewModel viewModel,
-        WidgetConfig config)
-    {
-        try
-        {
-            await initializationTask;
-        }
-        catch (Exception ex)
-        {
-            App.LogVerbose(
-                $"[WidgetManager] Retired file widget initialization completed with error " +
-                $"id={config.Id}: {ex.GetType().Name}: {ex.Message}");
-        }
-        finally
-        {
-            try
-            {
-                viewModel.Dispose();
-            }
-            catch (Exception ex)
-            {
-                App.Log(
-                    $"[WidgetManager] Retired file widget cleanup failed " +
-                    $"id={config.Id}: {ex}");
-            }
-        }
-    }
-
     private void QueueDeferredContentInitialization(
         WidgetConfig config,
         ContentWidgetWindow window)
@@ -2080,6 +1979,7 @@ public sealed partial class WidgetManager
             try
             {
                 await window.ContentReadyTask;
+                RestoreWidgetGroupTransientState(config.Id);
             }
             catch (Exception ex)
             {
@@ -2090,6 +1990,7 @@ public sealed partial class WidgetManager
                     ReferenceEquals(currentWindow, window))
                 {
                     _contentWidgets.Remove(config.Id);
+                    RemoveFileWidgetSessionsForHost(window);
                     _widgetWindowHandles.Remove(window.WindowHandle);
                     try
                     {
@@ -2103,37 +2004,6 @@ public sealed partial class WidgetManager
         });
     }
 
-    private void QueueDeferredWidgetInitialization(
-        WidgetConfig config,
-        WidgetWindow window,
-        WidgetViewModel viewModel)
-    {
-        App.UiDispatcherQueue.TryEnqueue(async () =>
-        {
-            await Task.Yield();
-            try
-            {
-                await viewModel.InitializeAsync();
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[WidgetManager] Failed to initialize widget '{config.Name}' ({config.Id}) after show: {ex}");
-                if (_widgets.TryGetValue(config.Id, out var entry) &&
-                    ReferenceEquals(entry.Window, window))
-                {
-                    _widgets.Remove(config.Id);
-                    viewModel.Dispose();
-                    try
-                    {
-                        window.Close();
-                    }
-                    catch
-                    {
-                    }
-                }
-            }
-        });
-    }
 
     private void NormalizeWidgetBounds(WidgetConfig config)
     {

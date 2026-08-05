@@ -40,12 +40,7 @@ public partial class SettingsViewModel
         AppRuntimeHealthSnapshot? snapshot = app?.DiagnosticsService?.GetRuntimeHealthSnapshot(
             app.SearchIndexService,
             app.SearchEngineService,
-            app.WidgetManager?.Widgets.Values
-                .SelectMany(entry => new[]
-                {
-                    entry.ViewModel.FolderWatcherHealth,
-                    entry.ViewModel.PublicFolderWatcherHealth
-                }));
+            app.WidgetManager?.GetFolderWatcherHealthSnapshots());
         if (snapshot is null)
         {
             RuntimeHealthSummary = _localizationService.T("Settings.RuntimeHealth.Unavailable");

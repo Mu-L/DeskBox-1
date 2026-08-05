@@ -356,6 +356,24 @@ public sealed partial class QuickCaptureWidgetWindow :
         _trayAnimation.SetOffsetOverride(offsetX, offsetY);
     }
 
+    public void CancelTrayAnimationAndRestorePosition()
+    {
+        if (!Visible && _isHideAnimationRunning)
+        {
+            CompleteTrayHideAnimation();
+            return;
+        }
+
+        long animationGeneration = _trayAnimation.NextGeneration();
+        _trayAnimation.Stop();
+        SetTrayAnimationOffsetOverride(null, null);
+        _trayAnimation.RestoreVisualState();
+        _trayAnimation.RestoreWindowPosition();
+        _trayAnimation.RevealWindowForTrayShow();
+        _isHideAnimationRunning = false;
+        LogTrayWindow($"CancelAnimationAndRestore gen={animationGeneration}");
+    }
+
     public void ShowPreparedRaisedFromTray(bool persistVisibility = true)
     {
         LogTrayWindow("ShowPreparedRaisedFromTray");
@@ -467,7 +485,14 @@ _isHideAnimationRunning = false;
 
 _trayAnimation.NextGeneration();
 _trayAnimation.RevealWindowForTrayShow();
-_trayAnimation.Stop();
+if (_trayAnimation.IsPositionTransitionActive)
+{
+    _trayAnimation.StopAndRestoreWindowPosition();
+}
+else
+{
+    _trayAnimation.Stop();
+}
 _isHideAnimationRunning = true;
         Visible = false;
         ViewModel.Config.IsVisible = false;

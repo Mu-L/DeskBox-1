@@ -150,32 +150,28 @@ public partial class WidgetViewModel
 
         if (Config.SortMode == WidgetSortMode.Manual)
         {
-            // A directory enumeration is naturally name-sorted, but that order
-            // is not user order. Keep the relative order of retained items and
-            // append only genuinely new paths; SortItems() must not be asked to
-            // repair this afterwards.
-            for (int index = Items.Count - 1; index >= 0; index--)
-            {
-                if (!refreshedPaths.Contains(Items[index].Path))
+            List<string> liveOrderPaths = Items.Select(item => item.Path).ToList();
+            List<WidgetItem> snapshotItems = refreshedItems
+                .Select(refreshedItem =>
                 {
-                    Items.RemoveAt(index);
-                }
-            }
+                    if (existingByPath.TryGetValue(refreshedItem.Path, out WidgetItem? existingItem))
+                    {
+                        ApplyRuntimeItemData(existingItem, refreshedItem);
+                        return existingItem;
+                    }
 
-            foreach (WidgetItem refreshedItem in refreshedItems)
-            {
-                if (existingByPath.TryGetValue(refreshedItem.Path, out WidgetItem? existingItem) &&
-                    Items.Contains(existingItem))
-                {
-                    ApplyRuntimeItemData(existingItem, refreshedItem);
-                }
-                else if (!existingByPath.ContainsKey(refreshedItem.Path))
-                {
-                    Items.Add(refreshedItem);
-                }
-            }
+                    return refreshedItem;
+                })
+                .ToList();
+            IReadOnlyList<WidgetItem> reconciled = WidgetManualOrderPolicy.Reconcile(
+                snapshotItems,
+                liveOrderPaths,
+                Config.Items,
+                item => item.Path);
 
+            ApplyReconciledManualOrder(reconciled);
             NormalizeSortOrder();
+            PersistManualOrderSnapshotIfChanged();
             return;
         }
 
@@ -209,6 +205,32 @@ public partial class WidgetViewModel
         }
 
         NormalizeSortOrder();
+    }
+
+    private void ApplyReconciledManualOrder(IReadOnlyList<WidgetItem> reconciled)
+    {
+        var retained = reconciled.ToHashSet();
+        for (int index = Items.Count - 1; index >= 0; index--)
+        {
+            if (!retained.Contains(Items[index]))
+            {
+                Items.RemoveAt(index);
+            }
+        }
+
+        for (int targetIndex = 0; targetIndex < reconciled.Count; targetIndex++)
+        {
+            WidgetItem item = reconciled[targetIndex];
+            int currentIndex = Items.IndexOf(item);
+            if (currentIndex < 0)
+            {
+                Items.Insert(targetIndex, item);
+            }
+            else if (currentIndex != targetIndex)
+            {
+                Items.Move(currentIndex, targetIndex);
+            }
+        }
     }
 
     private void StartItemHydration()

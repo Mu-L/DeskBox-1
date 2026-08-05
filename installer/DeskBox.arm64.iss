@@ -3,8 +3,8 @@
 ; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\arm64 -v:minimal
 
 #define MyAppName "DeskBox"
-#define MyAppVersion "1.3.6"
-#define MyAppVersionInfo "1.3.6.0"
+#define MyAppVersion "1.3.7"
+#define MyAppVersionInfo "1.3.7.0"
 #define MyAppPublisher "朱天雨"
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
@@ -22,13 +22,16 @@ UninstallDisplayName={#MyAppName} {#MyAppVersion}
 UninstallDisplayIcon={app}\Assets\deskbox.ico
 ArchitecturesAllowed=arm64
 ArchitecturesInstallIn64BitMode=arm64
-DefaultDirName={localappdata}\Programs\{#MyAppName}
+DefaultDirName={code:GetDefaultInstallDir}
 DisableProgramGroupPage=yes
 DisableDirPage=no
 PrivilegesRequired=lowest
-; Manual upgrades should preserve a user-selected location. In-app updates
-; additionally pass /DIR explicitly so silent installs cannot fall back to C:.
-UsePreviousAppDir=yes
+; First installs use the default per-user path. Upgrade paths are resolved and
+; locked by DeskBox.Installation.iss before the directory page is shown.
+; Directory reuse is handled exclusively by DeskBox.Installation.iss. Leaving
+; Inno's previous-directory fallback enabled could resurrect a stale uninstall
+; record after the detector intentionally classified the run as a first install.
+UsePreviousAppDir=no
 UsePreviousPrivileges=no
 CloseApplications=force
 CloseApplicationsFilter={#MyAppExeName}
@@ -52,6 +55,26 @@ Name: "german"; MessagesFile: "Languages\German.isl"
 Name: "brazilianportuguese"; MessagesFile: "Languages\BrazilianPortuguese.isl"
 
 [CustomMessages]
+chinesesimplified.MultipleInstallationsTitle=检测到多个 DeskBox 安装
+chinesesimplified.MultipleInstallationsBody=检测到以下多个 DeskBox 程序目录：%n%n%1
+chinesesimplified.MultipleInstallationsFooter=为避免升级后产生新的 DeskBox，请先在系统设置中卸载多余版本，然后重新运行安装程序。
+chinesesimplified.UpgradeDirectoryMismatch=检测到这是升级操作，但安装目录与已安装版本不一致。%n%n原安装目录：%1%n本次指定目录：%2%n%n升级必须使用原安装目录，请取消本次安装后重新运行。
+english.MultipleInstallationsTitle=Multiple DeskBox installations detected
+english.MultipleInstallationsBody=The following DeskBox installation directories were found:%n%n%1
+english.MultipleInstallationsFooter=To prevent another copy from being created, uninstall the extra version from Windows Settings, then run Setup again.
+english.UpgradeDirectoryMismatch=This is an upgrade, but the requested installation directory does not match the existing installation.%n%nExisting directory: %1%nRequested directory: %2%n%nAn upgrade must use the existing directory. Cancel Setup and run it again.
+japanese.MultipleInstallationsTitle=複数の DeskBox インストールが検出されました
+japanese.MultipleInstallationsBody=次の DeskBox インストール フォルダーが見つかりました：%n%n%1
+japanese.MultipleInstallationsFooter=新しいコピーの作成を防ぐため、Windows の設定から余分なバージョンをアンインストールしてから、セットアップを再実行してください。
+japanese.UpgradeDirectoryMismatch=アップグレードですが、指定されたインストール フォルダーが既存のインストールと一致しません。%n%n既存のフォルダー：%1%n指定されたフォルダー：%2%n%nアップグレードでは既存のフォルダーを使用する必要があります。セットアップをキャンセルして再実行してください。
+german.MultipleInstallationsTitle=Mehrere DeskBox-Installationen erkannt
+german.MultipleInstallationsBody=Die folgenden DeskBox-Installationsordner wurden gefunden:%n%n%1
+german.MultipleInstallationsFooter=Um eine weitere Kopie zu verhindern, deinstallieren Sie die zusätzliche Version in den Windows-Einstellungen und führen Sie Setup erneut aus.
+german.UpgradeDirectoryMismatch=Dies ist ein Upgrade, aber der angeforderte Installationsordner stimmt nicht mit der vorhandenen Installation überein.%n%nVorhandener Ordner: %1%nAngeforderter Ordner: %2%n%nEin Upgrade muss den vorhandenen Ordner verwenden. Brechen Sie Setup ab und führen Sie es erneut aus.
+brazilianportuguese.MultipleInstallationsTitle=Várias instalações do DeskBox detectadas
+brazilianportuguese.MultipleInstallationsBody=As seguintes pastas de instalação do DeskBox foram encontradas:%n%n%1
+brazilianportuguese.MultipleInstallationsFooter=Para evitar a criação de outra cópia, desinstale a versão extra nas Configurações do Windows e execute a instalação novamente.
+brazilianportuguese.UpgradeDirectoryMismatch=Esta é uma atualização, mas a pasta de instalação solicitada não corresponde à instalação existente.%n%nPasta existente: %1%nPasta solicitada: %2%n%nA atualização deve usar a pasta existente. Cancele a instalação e execute-a novamente.
 chinesesimplified.ConfirmStorageTitle=检测到 DeskBox 收纳目录中仍有内容
 chinesesimplified.ConfirmStorageBody=当前包含 %1 个文件夹、%2 个文件。
 chinesesimplified.ConfirmStorageFooter=卸载 DeskBox 不会删除这个目录，也不会删除里面的用户文件。%n请确认你已经知道这些文件的位置。是否继续卸载？
@@ -156,6 +179,7 @@ Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
+#include "DeskBox.Installation.iss"
 #include "DeskBox.Migration.iss"
 #include "DeskBox.Dependencies.arm64.iss"
 #include "DeskBox.Uninstall.iss"
@@ -165,6 +189,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 ; default to it on first run (when the user has not manually
 ; changed the in-app language). Read by LocalizationService.
 Root: HKCU; Subkey: "Software\DeskBox"; ValueType: string; ValueName: "InstallLanguage"; ValueData: "{code:InstallLanguageCode}"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\DeskBox\DirectInstall"; ValueType: string; ValueName: "InstallLocation"; ValueData: "{app}"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\DeskBox\DirectInstall"; ValueType: string; ValueName: "InstallVersion"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletevalue
 
 [Code]
 function InstallLanguageCode(Value: string): string;

@@ -115,6 +115,10 @@ public sealed partial class WidgetManager
             _widgetSurfaces.CommitActive(
                 CreateSurfaceDefinition(group),
                 window);
+        // Standalone file sessions are aliases for a single member. Once the
+        // HWND becomes a persistent group surface, content switching owns the
+        // active member and the standalone alias must not outlive that change.
+        RemoveFileWidgetSessionsForHost(window);
         App.LogVerbose(
             $"[WidgetSurface] Commit surface={session.SurfaceId} " +
             $"member={session.ActiveMemberId} " +
@@ -190,9 +194,9 @@ public sealed partial class WidgetManager
 
     private IDesktopWidgetWindow? GetLegacyLoadedWindow(string widgetId)
     {
-        if (_widgets.TryGetValue(widgetId, out var file))
+        if (_fileWidgets.TryGetValue(widgetId, out var file))
         {
-            return file.Window;
+            return file.Host;
         }
 
         if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCapture))

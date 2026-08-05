@@ -189,14 +189,25 @@ public sealed partial class SettingsWindow
         }
     }
 
-    private void OpenRepositoryButton_Click(object sender, RoutedEventArgs e)
-    {
-        Win32Helper.OpenFile(ViewModel.OpenSourceRepositoryUrl);
-    }
-
     private void OpenWebsiteButton_Click(object sender, RoutedEventArgs e)
     {
         Win32Helper.OpenFile(ViewModel.OfficialWebsiteLink);
+    }
+
+    private async void OpenFeedbackEmailButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            bool launched = await Launcher.LaunchUriAsync(new Uri(ViewModel.FeedbackEmailLink));
+            if (!launched)
+            {
+                App.Log($"[SettingsWindow] No email handler accepted '{ViewModel.FeedbackEmailLink}'.");
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SettingsWindow] Failed to open feedback email link: {ex.Message}");
+        }
     }
 
     private async void OneClickUpdateButton_Click(object sender, RoutedEventArgs e)
@@ -241,7 +252,54 @@ public sealed partial class SettingsWindow
         }
 
         // Otherwise, trigger one-click check → download flow.
-        await ViewModel.OneClickUpdateActionAsync();
+        AppUpdateDownloadResult? downloadResult = await ViewModel.OneClickUpdateActionAsync();
+        if (downloadResult is { Success: false, FailureKind: not AppUpdateDownloadFailureKind.Cancelled })
+        {
+            await ShowDownloadFailureDialogAsync(downloadResult);
+        }
+    }
+
+    private async Task ShowDownloadFailureDialogAsync(AppUpdateDownloadResult initialResult)
+    {
+        AppUpdateDownloadResult? result = initialResult;
+        while (result is { Success: false, FailureKind: not AppUpdateDownloadFailureKind.Cancelled } &&
+               SettingsRoot.XamlRoot is not null)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = SettingsRoot.XamlRoot,
+                Title = _localizationService.T("Settings.Update.DownloadFailedTitle"),
+                Content = new TextBlock
+                {
+                    Text = _localizationService.Format(
+                        "Settings.Update.DownloadFailedBody",
+                        ViewModel.UpdateDetailText),
+                    TextWrapping = TextWrapping.Wrap
+                },
+                PrimaryButtonText = _localizationService.T("Settings.Update.OneClick.Retry"),
+                CloseButtonText = _localizationService.T("Common.Cancel"),
+                DefaultButton = ContentDialogButton.Primary
+            };
+
+            if (ViewModel.CanOpenManualUpdateDownload)
+            {
+                dialog.SecondaryButtonText = ViewModel.UpdateFallbackActionText;
+            }
+
+            ContentDialogResult choice = await dialog.ShowAsync();
+            if (choice == ContentDialogResult.Secondary)
+            {
+                OpenManualUpdateDownload();
+                return;
+            }
+
+            if (choice != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            result = await ViewModel.DownloadAvailableUpdateAsync();
+        }
     }
 
     private async Task<bool> CreatePreUpdateRecoverySnapshotAsync()
@@ -272,9 +330,70 @@ public sealed partial class SettingsWindow
 
     private void OpenManualUpdateDownloadButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(ViewModel.UpdateFallbackUrl))
+        OpenManualUpdateDownload();
+    }
+
+    private void OpenManualUpdateDownload()
+    {
+        string url = ViewModel.ManualUpdateDownloadUrl;
+        if (AppUpdateManifest.IsSafeWebUrl(url))
         {
-            Win32Helper.OpenFile(ViewModel.UpdateFallbackUrl);
+            Win32Helper.OpenFile(url);
+        }
+    }
+
+    public void QueueUpdateInstallResultDialog(string outcome)
+    {
+        if (SettingsRoot.XamlRoot is not null)
+        {
+            _ = ShowUpdateInstallResultDialogAsync(outcome);
+            return;
+        }
+
+        RoutedEventHandler? loadedHandler = null;
+        loadedHandler = (_, _) =>
+        {
+            SettingsRoot.Loaded -= loadedHandler;
+            _ = ShowUpdateInstallResultDialogAsync(outcome);
+        };
+        SettingsRoot.Loaded += loadedHandler;
+    }
+
+    private async Task ShowUpdateInstallResultDialogAsync(string outcome)
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        bool wasCancelled = string.Equals(outcome, "cancelled", StringComparison.OrdinalIgnoreCase);
+        bool pathMismatch = string.Equals(outcome, "path-mismatch", StringComparison.OrdinalIgnoreCase);
+        string titleKey = wasCancelled
+            ? "Settings.Update.InstallCancelledTitle"
+            : "Settings.Update.InstallFailedTitle";
+        string bodyKey = wasCancelled
+            ? "Settings.Update.InstallCancelledBody"
+            : pathMismatch
+                ? "Settings.Update.InstallPathMismatchBody"
+                : "Settings.Update.InstallFailedBody";
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = _localizationService.T(titleKey),
+            Content = new TextBlock
+            {
+                Text = _localizationService.T(bodyKey),
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = ViewModel.UpdateFallbackActionText,
+            CloseButtonText = _localizationService.T("Common.Ok"),
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            OpenManualUpdateDownload();
         }
     }
 

@@ -19,6 +19,7 @@ public sealed partial class SearchResultRowControl : UserControl
     // hover/selection brush is applied.
     private readonly Brush _defaultBackground;
     private bool _isHovered;
+    private bool _isPressed;
     private bool _isMultiSelected;
 
     public static readonly DependencyProperty IsSelectedProperty =
@@ -34,6 +35,9 @@ public sealed partial class SearchResultRowControl : UserControl
         _defaultBackground = RowRoot.Background;
         PointerEntered += OnRowPointerEntered;
         PointerExited += OnRowPointerExited;
+        PointerPressed += OnRowPointerPressed;
+        PointerReleased += OnRowPointerReleased;
+        PointerCaptureLost += OnRowPointerCaptureLost;
     }
 
     /// <summary>Keyboard-selection state, driven by the popup window.</summary>
@@ -49,6 +53,11 @@ public sealed partial class SearchResultRowControl : UserControl
         get => _isMultiSelected;
         set
         {
+            if (_isMultiSelected == value)
+            {
+                return;
+            }
+
             _isMultiSelected = value;
             RefreshBackground();
             MultiSelectedIcon.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
@@ -83,6 +92,30 @@ public sealed partial class SearchResultRowControl : UserControl
     private void OnRowPointerExited(object sender, PointerRoutedEventArgs e)
     {
         _isHovered = false;
+        _isPressed = false;
+        RefreshBackground();
+    }
+
+    private void OnRowPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _isPressed = true;
+        RefreshBackground();
+    }
+
+    private void OnRowPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        _isPressed = false;
+        RefreshBackground();
+    }
+
+    private void OnRowPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        _isPressed = false;
         RefreshBackground();
     }
 
@@ -92,8 +125,26 @@ public sealed partial class SearchResultRowControl : UserControl
     /// </summary>
     private void RefreshBackground()
     {
-        RowRoot.Background = IsSelected || IsMultiSelected
-            ? ResolveThemeBrush("ControlFillColorSecondaryBrush")
+        if (IsMultiSelected)
+        {
+            RowRoot.Background = ResolveThemeBrush(
+                _isPressed || _isHovered
+                    ? "ControlFillColorTertiaryBrush"
+                    : "ControlFillColorSecondaryBrush");
+            return;
+        }
+
+        if (IsSelected)
+        {
+            RowRoot.Background = ResolveThemeBrush(
+                _isPressed
+                    ? "SubtleFillColorTertiaryBrush"
+                    : "SubtleFillColorSecondaryBrush");
+            return;
+        }
+
+        RowRoot.Background = _isPressed
+            ? ResolveThemeBrush("SubtleFillColorTertiaryBrush")
             : _isHovered
                 ? ResolveThemeBrush("SubtleFillColorSecondaryBrush")
                 : _defaultBackground;

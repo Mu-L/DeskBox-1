@@ -1,10 +1,17 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using Microsoft.Win32;
+
+[assembly: InternalsVisibleTo("DeskBox.Tests")]
 
 namespace DeskBox.Updater;
 
 internal static class Program
 {
+    private const int InstallRegistrationMismatchExitCode = 20;
+    private const string UpdateInstallResultArgument = "--update-install-result";
+    private const string InstallStateRegistryPath = @"Software\DeskBox\DirectInstall";
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DeskBox",
@@ -12,9 +19,10 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        UpdateOptions? options = null;
         try
         {
-            var options = UpdateOptions.Parse(args);
+            options = UpdateOptions.Parse(args);
             if (options.RestartOnly)
             {
                 if (string.IsNullOrWhiteSpace(options.AppPath) || !File.Exists(options.AppPath))
@@ -30,6 +38,7 @@ internal static class Program
             if (string.IsNullOrWhiteSpace(options.InstallerPath) || !File.Exists(options.InstallerPath))
             {
                 Log("Installer not found.");
+                RestartAfterIncompleteUpdate(options, "failed");
                 return 2;
             }
 
@@ -40,12 +49,21 @@ internal static class Program
             {
                 _ = RestartApp(options.AppPath);
             }
+            else if (exitCode != 0)
+            {
+                RestartAfterIncompleteUpdate(options, GetIncompleteUpdateOutcome(exitCode));
+            }
 
             return exitCode;
         }
         catch (Exception ex)
         {
             Log($"Fatal: {ex}");
+            if (options is not null)
+            {
+                RestartAfterIncompleteUpdate(options, "failed");
+            }
+
             return 1;
         }
     }
@@ -90,14 +108,9 @@ internal static class Program
         // Inno Setup otherwise falls back to DefaultDirName during a silent
         // install. Always pin an in-app update to the directory containing
         // the currently running DeskBox.exe.
-        startInfo.ArgumentList.Add($"/DIR={installDirectory}");
-
-        if (options.Silent)
+        foreach (string argument in BuildInstallerArguments(installDirectory, options.Silent))
         {
-            startInfo.ArgumentList.Add("/VERYSILENT");
-            startInfo.ArgumentList.Add("/SUPPRESSMSGBOXES");
-            startInfo.ArgumentList.Add("/NORESTART");
-            startInfo.ArgumentList.Add("/FORCECLOSEAPPLICATIONS");
+            startInfo.ArgumentList.Add(argument);
         }
 
         Log($"Starting installer: {options.InstallerPath}; target directory: {installDirectory}");
@@ -110,7 +123,61 @@ internal static class Program
 
         process.WaitForExit();
         Log($"Installer exited with code {process.ExitCode}.");
-        return process.ExitCode;
+        if (process.ExitCode != 0)
+        {
+            return process.ExitCode;
+        }
+
+        if (!IsInstallRegistrationConsistent(installDirectory))
+        {
+            Log($"Installer reported success, but the registered installation path does not match {installDirectory}.");
+            return InstallRegistrationMismatchExitCode;
+        }
+
+        return 0;
+    }
+
+    internal static IReadOnlyList<string> BuildInstallerArguments(string installDirectory, bool silent)
+    {
+        var arguments = new List<string>
+        {
+            $"/DIR={installDirectory}"
+        };
+
+        if (silent)
+        {
+            // Keep Inno's progress window visible while hiding the wizard.
+            // Error messages remain enabled so a blocked update is actionable.
+            arguments.Add("/SILENT");
+            arguments.Add("/SP-");
+            arguments.Add("/NORESTART");
+            arguments.Add("/FORCECLOSEAPPLICATIONS");
+        }
+
+        return arguments;
+    }
+
+    private static bool IsInstallRegistrationConsistent(string expectedInstallDirectory)
+    {
+        try
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(InstallStateRegistryPath, writable: false);
+            string? registeredPath = key?.GetValue("InstallLocation") as string;
+            if (string.IsNullOrWhiteSpace(registeredPath))
+            {
+                return false;
+            }
+
+            return string.Equals(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(registeredPath)),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(expectedInstallDirectory)),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            Log($"Install registration verification failed: {ex.Message}");
+            return false;
+        }
     }
 
     private static bool TryGetInstallDirectory(UpdateOptions options, out string installDirectory)
@@ -154,17 +221,47 @@ internal static class Program
         }
     }
 
-    private static bool RestartApp(string appPath)
+    private static void RestartAfterIncompleteUpdate(UpdateOptions options, string outcome)
+    {
+        if (string.IsNullOrWhiteSpace(options.AppPath) || !File.Exists(options.AppPath))
+        {
+            Log($"Cannot restart DeskBox after incomplete update ({outcome}); app executable is missing.");
+            return;
+        }
+
+        _ = RestartApp(options.AppPath, outcome);
+    }
+
+    internal static string GetIncompleteUpdateOutcome(int exitCode)
+    {
+        if (exitCode is 2 or 5)
+        {
+            return "cancelled";
+        }
+
+        return exitCode == InstallRegistrationMismatchExitCode
+            ? "path-mismatch"
+            : "failed";
+    }
+
+    private static bool RestartApp(string appPath, string? updateInstallOutcome = null)
     {
         try
         {
             Log($"Restarting app: {appPath}");
-            Process.Start(new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = appPath,
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(appPath) ?? Environment.CurrentDirectory
-            });
+            };
+            if (!string.IsNullOrWhiteSpace(updateInstallOutcome))
+            {
+                startInfo.ArgumentList.Add(UpdateInstallResultArgument);
+                startInfo.ArgumentList.Add(updateInstallOutcome);
+            }
+
+            Process.Start(startInfo);
             return true;
         }
         catch (Exception ex)

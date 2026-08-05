@@ -1933,18 +1933,10 @@ public sealed partial class WidgetManager
         _suppressClosedVisibilityPersistence.Add(widgetId);
         try
         {
-            if (_widgets.TryGetValue(widgetId, out var file) &&
-                ReferenceEquals(file.Window, window))
+            if (_fileWidgets.TryGetValue(widgetId, out var file) &&
+                ReferenceEquals(file.Host, window))
             {
-                _widgets.Remove(widgetId);
-                try
-                {
-                    file.ViewModel.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    App.Log($"[WidgetGroup] File view model dispose failed id={widgetId}: {ex}");
-                }
+                _fileWidgets.Remove(widgetId);
             }
             if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCapture) &&
                 ReferenceEquals(quickCapture.Window, window))
@@ -2173,8 +2165,8 @@ public sealed partial class WidgetManager
                     widgetId,
                     out var quickCapture)
                     ? quickCapture.Window
-                    : _widgets.TryGetValue(widgetId, out var file)
-                        ? file.Window
+                    : _fileWidgets.TryGetValue(widgetId, out var file)
+                        ? file.Content
                         : null;
         if (transientStateTarget is not null)
         {

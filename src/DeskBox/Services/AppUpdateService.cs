@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -53,6 +54,8 @@ public sealed class AppUpdateService : IAppUpdateService
 
     public string ManifestUrl => _manifestUrl;
     public AppUpdateDeliveryKind DeliveryKind => AppUpdateDeliveryKind.DirectInstaller;
+    internal static string CurrentInstallerArchitectureSuffix =>
+        GetInstallerArchitectureSuffix(RuntimeInformation.ProcessArchitecture);
 
     public async Task<AppUpdateCheckResult> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
     {
@@ -94,7 +97,18 @@ public sealed class AppUpdateService : IAppUpdateService
                     "The update manifest is missing required fields.");
             }
 
-            return IsRemoteVersionNewer(currentVersion, manifest!.Version)
+            if (!IsInstallerDownloadCompatibleWithArchitecture(
+                    manifest!.DownloadUrl,
+                    CurrentInstallerArchitectureSuffix))
+            {
+                return new AppUpdateCheckResult(
+                    AppUpdateCheckStatus.InvalidManifest,
+                    currentVersion,
+                    manifest,
+                    "The update manifest points to an installer for a different processor architecture.");
+            }
+
+            return IsRemoteVersionNewer(currentVersion, manifest.Version)
                 ? new AppUpdateCheckResult(AppUpdateCheckStatus.UpdateAvailable, currentVersion, manifest)
                 : new AppUpdateCheckResult(AppUpdateCheckStatus.UpToDate, currentVersion, manifest);
         }
@@ -151,6 +165,15 @@ public sealed class AppUpdateService : IAppUpdateService
         if (!Uri.TryCreate(manifest.DownloadUrl, UriKind.Absolute, out var downloadUri))
         {
             return AppUpdateDownloadResult.Failed(AppUpdateDownloadFailureKind.InvalidManifest);
+        }
+
+        if (!IsInstallerDownloadCompatibleWithArchitecture(
+                manifest.DownloadUrl,
+                CurrentInstallerArchitectureSuffix))
+        {
+            return AppUpdateDownloadResult.Failed(
+                AppUpdateDownloadFailureKind.InvalidManifest,
+                "The installer architecture does not match this DeskBox process.");
         }
 
         string targetDirectory = Path.Combine(_updateRootPath, SanitizePathSegment(manifest.Version));
@@ -213,6 +236,11 @@ public sealed class AppUpdateService : IAppUpdateService
             File.Move(tempPath, targetPath, overwrite: true);
             progress?.Report(new AppUpdateDownloadProgress(bytesReceived, totalBytes ?? bytesReceived));
             return AppUpdateDownloadResult.Completed(targetPath);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            TryDelete(tempPath);
+            return AppUpdateDownloadResult.Failed(AppUpdateDownloadFailureKind.Cancelled);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -493,12 +521,23 @@ public sealed class AppUpdateService : IAppUpdateService
         return result;
     }
 
-    private static string GetInstallerFileName(Uri downloadUri, string version)
+    internal static string GetInstallerFileName(Uri downloadUri, string version)
     {
         string fileName = Path.GetFileName(downloadUri.LocalPath);
-        return string.IsNullOrWhiteSpace(fileName)
-            ? $"DeskBox_Setup_{SanitizePathSegment(version)}_x64.exe"
+        return string.IsNullOrWhiteSpace(fileName) ||
+            !fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? $"DeskBox_Setup_{SanitizePathSegment(version)}_{CurrentInstallerArchitectureSuffix}.exe"
             : SanitizeFileName(fileName);
+    }
+
+    internal static string GetInstallerArchitectureSuffix(Architecture architecture)
+    {
+        return architecture switch
+        {
+            Architecture.Arm64 => "arm64",
+            Architecture.X64 => "x64",
+            _ => string.Empty
+        };
     }
 
     private static string SanitizePathSegment(string value)
@@ -523,8 +562,36 @@ public sealed class AppUpdateService : IAppUpdateService
 
     private static bool IsInstallerAsset(GitHubReleaseAsset asset)
     {
-        return asset.Name.StartsWith("DeskBox_Setup_", StringComparison.OrdinalIgnoreCase) &&
-            asset.Name.EndsWith("_x64.exe", StringComparison.OrdinalIgnoreCase);
+        return IsInstallerAssetName(asset.Name, CurrentInstallerArchitectureSuffix);
+    }
+
+    internal static bool IsInstallerAssetName(string assetName, string architectureSuffix)
+    {
+        return !string.IsNullOrWhiteSpace(architectureSuffix) &&
+            assetName.StartsWith("DeskBox_Setup_", StringComparison.OrdinalIgnoreCase) &&
+            assetName.EndsWith($"_{architectureSuffix}.exe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsInstallerDownloadCompatibleWithArchitecture(
+        string downloadUrl,
+        string architectureSuffix)
+    {
+        if (string.IsNullOrWhiteSpace(architectureSuffix) ||
+            !Uri.TryCreate(downloadUrl, UriKind.Absolute, out Uri? uri))
+        {
+            return false;
+        }
+
+        string fileName = Path.GetFileName(uri.LocalPath);
+        if (!fileName.StartsWith("DeskBox_Setup_", StringComparison.OrdinalIgnoreCase))
+        {
+            // Keep compatibility with a server endpoint that returns a
+            // redirect or content-disposition filename instead of exposing
+            // the final installer name in the URL.
+            return true;
+        }
+
+        return fileName.EndsWith($"_{architectureSuffix}.exe", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ExtractSha256FromDigest(string? digest)

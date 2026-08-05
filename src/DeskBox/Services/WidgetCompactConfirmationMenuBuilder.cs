@@ -1,6 +1,4 @@
-using Microsoft.UI;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace DeskBox.Services;
 
@@ -47,14 +45,12 @@ public static class WidgetCompactConfirmationMenuBuilder
         var confirmItem = new MenuFlyoutItem
         {
             Text = options.ActionText,
-            Icon = new FontIcon
-            {
-                Glyph = options.ActionGlyph,
-                Foreground = options.IsDangerAction
-                    ? new SolidColorBrush(Colors.Red)
-                    : null
-            }
+            Icon = new FontIcon { Glyph = options.ActionGlyph }
         };
+        if (options.IsDangerAction)
+        {
+            WidgetDangerActionStyle.Apply(confirmItem);
+        }
         confirmItem.Click += async (_, _) => await options.ConfirmedAction();
         flyout.Items.Add(confirmItem);
 

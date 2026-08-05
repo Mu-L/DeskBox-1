@@ -54,8 +54,29 @@ public sealed partial class WidgetManager
         bool preserveRaisedLayer = false)
     {
         IDesktopWidgetWindow? loaded = GetLoadedWindow(group.ActiveMemberId);
-        if (loaded is ContentWidgetWindow ||
-            (loaded is null && !group.IsVisible))
+        if (loaded is ContentWidgetWindow contentWindow)
+        {
+            if (beforeRetireAsync is not null)
+            {
+                await beforeRetireAsync();
+            }
+
+            string standaloneSurfaceId = contentWindow.Config.Id;
+            CommitSurfaceHost(group, contentWindow);
+            if (!string.Equals(
+                    standaloneSurfaceId,
+                    group.SurfaceId,
+                    StringComparison.Ordinal))
+            {
+                // Commit the group identity first, then remove the former
+                // standalone identity. This keeps the live HWND registered if
+                // a registry validation ever rejects the group commit.
+                _widgetSurfaces.RemoveSurface(standaloneSurfaceId);
+            }
+            return;
+        }
+
+        if (loaded is null && !group.IsVisible)
         {
             if (beforeRetireAsync is not null)
             {
@@ -135,6 +156,8 @@ public sealed partial class WidgetManager
                     {
                         _contentWidgets.Remove(config.Id);
                     }
+
+                    RemoveFileWidgetSessionsForHost(candidate);
 
                     _widgetWindowHandles.Remove(candidate.WindowHandle);
                     UnregisterSurfaceHost(candidate);

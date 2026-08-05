@@ -177,16 +177,101 @@ public sealed class WeatherWidgetViewModelTests
         Assert.Contains(nameof(WeatherWidgetViewModel.ExpandedHourlyCardHeight), changedProperties);
     }
 
+    [Fact]
+    public void ViewMode_UsesPersistedWidgetOverride()
+    {
+        var config = CreateConfig();
+        config.Metadata[DeskBox.Services.WeatherWidgetViewModeSettings.MetadataKey] =
+            DeskBox.Services.WeatherWidgetViewModeSettings.WeekValue;
+
+        using var viewModel = CreateViewModel(config);
+
+        Assert.True(viewModel.IsWeekView);
+    }
+
+    [Fact]
+    public void ViewModeChange_IsStoredInWidgetMetadata()
+    {
+        var config = CreateConfig();
+        using (var viewModel = CreateViewModel(config))
+        {
+            viewModel.SetViewMode(useWeekView: true);
+        }
+
+        using var restored = CreateViewModel(config);
+        Assert.True(restored.IsWeekView);
+        Assert.Equal(
+            DeskBox.Services.WeatherWidgetViewModeSettings.WeekValue,
+            config.Metadata[
+                DeskBox.Services.WeatherWidgetViewModeSettings.MetadataKey]);
+    }
+
+    [Fact]
+    public async Task ViewModeChange_SurvivesSettingsReload()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "DeskBox.Tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new DeskBox.Services.SettingsService(root);
+            var config = CreateConfig();
+            settings.UpdateWidget(config, notifySubscribers: false);
+            using (var viewModel = new WeatherWidgetViewModel(
+                       config,
+                       new DeskBox.Services.WeatherService(),
+                       TestServices.CreateLocalizationService(),
+                       settings))
+            {
+                viewModel.SetViewMode(useWeekView: true);
+            }
+
+            Assert.True(await settings.FlushPendingSaveAsync());
+
+            var reloaded = new DeskBox.Services.SettingsService(root);
+            await reloaded.LoadAsync();
+            DeskBox.Models.WidgetConfig restoredConfig = Assert.Single(
+                reloaded.Settings.Widgets,
+                widget => widget.Id == config.Id);
+            using var restored = new WeatherWidgetViewModel(
+                restoredConfig,
+                new DeskBox.Services.WeatherService(),
+                TestServices.CreateLocalizationService(),
+                reloaded);
+
+            Assert.True(restored.IsWeekView);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static WeatherWidgetViewModel CreateViewModel()
     {
+        return CreateViewModel(CreateConfig());
+    }
+
+    private static WeatherWidgetViewModel CreateViewModel(
+        DeskBox.Models.WidgetConfig config)
+    {
         return new WeatherWidgetViewModel(
-            new DeskBox.Models.WidgetConfig
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                Name = "Weather",
-                WidgetKind = DeskBox.Models.WidgetKind.Weather
-            },
+            config,
             new DeskBox.Services.WeatherService(),
             TestServices.CreateLocalizationService());
+    }
+
+    private static DeskBox.Models.WidgetConfig CreateConfig()
+    {
+        return new DeskBox.Models.WidgetConfig
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = "Weather",
+            WidgetKind = DeskBox.Models.WidgetKind.Weather
+        };
     }
 }

@@ -2,6 +2,8 @@ using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.ViewModels;
+using DeskBox.Controls;
+using DeskBox.Contracts;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -74,7 +76,7 @@ public sealed partial class FileSurfaceContent
         _selectionCurrentPoint =
             e.GetCurrentPoint(SelectionOverlay).Position;
         if (!_isBoxSelecting &&
-            GetDragDistance(
+            FileItemSelectionGeometry.GetDragDistance(
                 _selectionStartPoint,
                 _selectionCurrentPoint) < 6)
         {
@@ -128,10 +130,10 @@ public sealed partial class FileSurfaceContent
             return false;
         }
 
-        return !IsWithinItemSurface(source) &&
-               !HasAncestor<ScrollBar>(source) &&
-               !HasAncestor<ButtonBase>(source) &&
-               !HasAncestor<TextBox>(source);
+        return !FileItemSelectionGeometry.IsWithinItemSurface(source) &&
+               !FileItemSelectionGeometry.HasAncestor<ScrollBar>(source) &&
+               !FileItemSelectionGeometry.HasAncestor<ButtonBase>(source) &&
+               !FileItemSelectionGeometry.HasAncestor<TextBox>(source);
     }
 
     private void CacheSelectionHits(ListViewBase listView)
@@ -168,13 +170,13 @@ public sealed partial class FileSurfaceContent
     private void ApplySelectionPreview(ListViewBase listView)
     {
         Windows.Foundation.Rect selectionRect =
-            GetSelectionRect(
+            FileItemSelectionGeometry.GetSelectionRect(
                 _selectionStartPoint,
                 _selectionCurrentPoint);
         var selected = new HashSet<WidgetItem>(_selectionSnapshot);
         foreach (SelectionHit hit in _selectionHits)
         {
-            if (RectsIntersect(selectionRect, hit.Bounds))
+            if (FileItemSelectionGeometry.Intersects(selectionRect, hit.Bounds))
             {
                 selected.Add(hit.Item);
             }
@@ -203,7 +205,7 @@ public sealed partial class FileSurfaceContent
     private void UpdateSelectionRectangle()
     {
         Windows.Foundation.Rect rect =
-            GetSelectionRect(
+            FileItemSelectionGeometry.GetSelectionRect(
                 _selectionStartPoint,
                 _selectionCurrentPoint);
         Canvas.SetLeft(SelectionRectangle, rect.X);
@@ -249,99 +251,39 @@ public sealed partial class FileSurfaceContent
 
     private void ClearSelection() => ClearItemSelection();
 
-    private static Windows.Foundation.Rect GetSelectionRect(
-        Windows.Foundation.Point start,
-        Windows.Foundation.Point end)
-    {
-        return new Windows.Foundation.Rect(
-            Math.Min(start.X, end.X),
-            Math.Min(start.Y, end.Y),
-            Math.Abs(end.X - start.X),
-            Math.Abs(end.Y - start.Y));
-    }
-
-    private static double GetDragDistance(
-        Windows.Foundation.Point start,
-        Windows.Foundation.Point end)
-    {
-        double x = end.X - start.X;
-        double y = end.Y - start.Y;
-        return Math.Sqrt((x * x) + (y * y));
-    }
-
-    private static bool RectsIntersect(
-        Windows.Foundation.Rect first,
-        Windows.Foundation.Rect second)
-    {
-        return first.X < second.X + second.Width &&
-               first.X + first.Width > second.X &&
-               first.Y < second.Y + second.Height &&
-               first.Y + first.Height > second.Y;
-    }
-
-    private static bool HasAncestor<T>(DependencyObject source)
-        where T : DependencyObject
-    {
-        DependencyObject? current = source;
-        while (current is not null)
-        {
-            if (current is T)
-            {
-                return true;
-            }
-
-            current = VisualTreeHelper.GetParent(current);
-        }
-
-        return false;
-    }
-
-    private static bool IsWithinItemSurface(DependencyObject source)
-    {
-        DependencyObject? current = source;
-        while (current is not null)
-        {
-            if (current is Border border &&
-                border.Tag as string is "InteractiveSurface" or "StackSurface")
-            {
-                return true;
-            }
-
-            current = VisualTreeHelper.GetParent(current);
-        }
-
-        return false;
-    }
-
     private FrameworkElement? FindItemSurface(WidgetItem item)
     {
-        if (GetActiveItemsView().ContainerFromItem(item) is not SelectorItem container)
+        WidgetItem? displayedItem = FindDisplayedItem(item);
+        if (displayedItem is null ||
+            GetActiveItemsView().ContainerFromItem(displayedItem)
+                is not SelectorItem)
         {
             return null;
         }
 
-        return FindDescendantSurface(container);
+        return _itemSurfaces.FirstOrDefault(surface =>
+            ReferenceEquals(surface.DataContext, displayedItem));
     }
 
-    private static Border? FindDescendantSurface(DependencyObject parent)
+    private WidgetItem? FindDisplayedItem(WidgetItem item)
     {
-        int childCount = VisualTreeHelper.GetChildrenCount(parent);
-        for (int index = 0; index < childCount; index++)
+        ListViewBase activeView = GetActiveItemsView();
+        WidgetItem? referenceMatch = activeView.Items
+            .OfType<WidgetItem>()
+            .FirstOrDefault(candidate => ReferenceEquals(candidate, item));
+        if (referenceMatch is not null)
         {
-            DependencyObject child = VisualTreeHelper.GetChild(parent, index);
-            if (child is Border border &&
-                border.Tag as string is "InteractiveSurface" or "StackSurface")
-            {
-                return border;
-            }
-
-            if (FindDescendantSurface(child) is { } nested)
-            {
-                return nested;
-            }
+            return referenceMatch;
         }
 
-        return null;
+        return activeView.Items
+            .OfType<WidgetItem>()
+            .FirstOrDefault(candidate =>
+                candidate is not WidgetStackItem &&
+                string.Equals(
+                    candidate.Path,
+                    item.Path,
+                    StringComparison.OrdinalIgnoreCase));
     }
 
     private static WidgetItem? FindItemFromSource(object? source)
@@ -370,253 +312,95 @@ public sealed partial class FileSurfaceContent
 
     private MenuFlyout CreateItemFlyout(WidgetItem item)
     {
-        var flyout = new MenuFlyout();
-
-        MenuFlyoutItem open = CreateMenuItem(
-            "Widget.Open",
-            "\uE8E5");
-        open.Click += (_, _) =>
-        {
-            flyout.Hide();
-            ViewModel.OpenItem(item);
-        };
-        flyout.Items.Add(open);
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
-        MenuFlyoutItem cut = CreateMenuItem(
-            "Common.Cut",
-            "\uE8C6");
-        cut.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await RunAsync(
-                () => CopySelectionToClipboardAsync(cut: true));
-        };
-        flyout.Items.Add(cut);
-
-        MenuFlyoutItem copy = CreateMenuItem(
-            "Common.Copy",
-            "\uE8C8");
-        copy.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await RunAsync(
-                () => CopySelectionToClipboardAsync(cut: false));
-        };
-        flyout.Items.Add(copy);
-
-        MenuFlyoutItem rename = CreateMenuItem(
-            "Common.Rename",
-            "\uE8AC");
-        rename.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await RenameItemAsync(item);
-        };
-        flyout.Items.Add(rename);
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
-        MenuFlyoutItem copyPath = CreateMenuItem(
-            "Widget.CopyPath",
-            "\uE8C8");
-        copyPath.Click += (_, _) =>
-        {
-            flyout.Hide();
-            CopySelectedPathsToClipboard();
-        };
-        flyout.Items.Add(copyPath);
-
-        MenuFlyoutItem showInExplorer = CreateMenuItem(
-            "Widget.ShowInExplorer",
-            "\uE838");
-        showInExplorer.Click += (_, _) =>
-        {
-            flyout.Hide();
-            ViewModel.ShowInExplorer(item);
-        };
-        flyout.Items.Add(showInExplorer);
-
-        MenuFlyoutItem properties = CreateMenuItem(
-            "Common.Properties",
-            "\uE946");
-        properties.Click += (_, _) =>
-        {
-            flyout.Hide();
-            IntPtr foreground = Win32Helper.GetForegroundWindow();
-            IntPtr owner = Win32Helper.GetAncestor(
-                foreground,
-                Win32Helper.GA_ROOT);
-            if (!ShellContextMenuHelper.ShowProperties(
-                    owner == IntPtr.Zero ? foreground : owner,
-                    item.Path))
-            {
-                ShowFeedback(new WidgetFeedbackRequest(
-                    T("Widget.Error.OperationIncomplete"),
-                    WidgetFeedbackSeverity.Warning,
-                    "file-properties"));
-            }
-        };
-        flyout.Items.Add(properties);
-
-        if (CanMoveItemsBackToDesktop())
-        {
-            flyout.Items.Add(new MenuFlyoutSeparator());
-            MenuFlyoutItem moveBack = CreateMenuItem(
-                "Widget.MoveBackToDesktop",
-                "\uE74A");
-            moveBack.Click += async (_, _) =>
-            {
-                flyout.Hide();
-                await MoveSelectedItemsBackToDesktopAsync();
-            };
-            flyout.Items.Add(moveBack);
-        }
-
-        flyout.Items.Add(new MenuFlyoutSeparator());
-        MenuFlyoutItem delete = CreateMenuItem(
-            "Common.Delete",
-            "\uE74D");
-        delete.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await DeleteItemsAsync(GetSelectedItems());
-        };
-        flyout.Items.Add(delete);
-        return flyout;
+        return FileItemMenuBuilder.CreateItemFlyout(
+            item,
+            CreateFileItemMenuActions());
     }
 
     private MenuFlyout CreateMultiSelectionFlyout()
     {
-        var flyout = new MenuFlyout();
+        return FileItemMenuBuilder.CreateMultiSelectionFlyout(
+            CreateFileItemMenuActions());
+    }
 
-        if (ViewModel.FileStacksEnabled)
-        {
-            MenuFlyoutItem startStack = CreateMenuItem(
-                "Widget.Stack.Start",
-                "\uE8B7");
-            startStack.Click += (_, _) =>
+    private FileItemMenuActions CreateFileItemMenuActions()
+    {
+        return new FileItemMenuActions(
+            CreateMenuItem,
+            item => ViewModel.OpenItem(item),
+            cut => RunAsync(
+                () => CopySelectionToClipboardAsync(cut)),
+            RenameItemAsync,
+            CopySelectedPathsToClipboard,
+            item => ViewModel.ShowInExplorer(item),
+            ShowFileProperties,
+            CanMoveItemsBackToDesktop,
+            _ => MoveSelectedItemsBackToDesktopAsync(),
+            DeleteItemsAsync,
+            GetSelectedItems,
+            ViewModel.FileStacksEnabled,
+            items =>
             {
-                flyout.Hide();
-                ViewModel.CreateManualStack(
-                    GetSelectedItems());
+                _ = ViewModel.CreateManualStack(items);
                 ClearSelection();
-            };
-            flyout.Items.Add(startStack);
-            flyout.Items.Add(new MenuFlyoutSeparator());
+            },
+            ClearSelection);
+    }
+
+    private void ShowFileProperties(WidgetItem item)
+    {
+        IntPtr foreground = Win32Helper.GetForegroundWindow();
+        IntPtr owner = Win32Helper.GetAncestor(
+            foreground,
+            Win32Helper.GA_ROOT);
+        if (!ShellContextMenuHelper.ShowProperties(
+                owner == IntPtr.Zero ? foreground : owner,
+                item.Path))
+        {
+            ShowFeedback(new WidgetFeedbackRequest(
+                T("Widget.Error.OperationIncomplete"),
+                WidgetFeedbackSeverity.Warning,
+                "file-properties"));
         }
-
-        MenuFlyoutItem cut = CreateMenuItem(
-            "Common.Cut",
-            "\uE8C6");
-        cut.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await RunAsync(
-                () => CopySelectionToClipboardAsync(cut: true));
-        };
-        flyout.Items.Add(cut);
-
-        MenuFlyoutItem copy = CreateMenuItem(
-            "Common.Copy",
-            "\uE8C8");
-        copy.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await RunAsync(
-                () => CopySelectionToClipboardAsync(cut: false));
-        };
-        flyout.Items.Add(copy);
-
-        flyout.Items.Add(new MenuFlyoutSeparator());
-        MenuFlyoutItem copyPath = CreateMenuItem(
-            "Widget.CopyPath",
-            "\uE8C8");
-        copyPath.Click += (_, _) =>
-        {
-            flyout.Hide();
-            CopySelectedPathsToClipboard();
-        };
-        flyout.Items.Add(copyPath);
-
-        if (CanMoveItemsBackToDesktop())
-        {
-            MenuFlyoutItem moveBack = CreateMenuItem(
-                "Widget.MoveBackToDesktop",
-                "\uE74A");
-            moveBack.Click += async (_, _) =>
-            {
-                flyout.Hide();
-                await MoveSelectedItemsBackToDesktopAsync();
-            };
-            flyout.Items.Add(moveBack);
-        }
-
-        flyout.Items.Add(new MenuFlyoutSeparator());
-        MenuFlyoutItem delete = CreateMenuItem(
-            "Common.Delete",
-            "\uE74D");
-        delete.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await DeleteItemsAsync(GetSelectedItems());
-        };
-        flyout.Items.Add(delete);
-        return flyout;
     }
 
     private MenuFlyout CreateContentAreaFlyout()
     {
         var flyout = new MenuFlyout();
-        if (CanPasteFromClipboard())
+        string? mappedFolderPath = ViewModel.MappedFolderPath;
+        bool hasMappedFolder =
+            !string.IsNullOrWhiteSpace(mappedFolderPath);
+        MenuFlyoutItem newFolder =
+            CreateMenuItem("Common.NewFolder", "\uE8B7");
+        newFolder.IsEnabled = hasMappedFolder;
+        newFolder.Click += async (_, _) =>
         {
-            var paste = CreateMenuItem("Common.Paste", "\uE77F");
-            paste.Click += async (_, _) =>
-            {
-                flyout.Hide();
-                await RunAsync(PasteFromClipboardAsync);
-            };
-            flyout.Items.Add(paste);
-        }
+            flyout.Hide();
+            await CreateFolderInMappedLocationAsync();
+        };
+        flyout.Items.Add(newFolder);
 
-        if (!string.IsNullOrWhiteSpace(
-                ViewModel.MappedFolderPath))
+        MenuFlyoutItem openFolder = CreateMenuItem(
+            "Widget.OpenStorageFolder",
+            "\uE838");
+        openFolder.IsEnabled = hasMappedFolder;
+        openFolder.Click += (_, _) =>
         {
-            MenuFlyoutItem newFolder =
-                CreateMenuItem("Common.NewFolder", "\uE8B7");
-            newFolder.Click += async (_, _) =>
+            flyout.Hide();
+            if (hasMappedFolder && mappedFolderPath is not null)
             {
-                flyout.Hide();
-                await CreateFolderInMappedLocationAsync();
-            };
-            flyout.Items.Add(newFolder);
-
-            MenuFlyoutItem openFolder = CreateMenuItem(
-                ViewModel.FollowsDefaultStoragePath
-                    ? "Widget.OpenStorageFolder"
-                    : "Widget.OpenCurrentFolder",
-                "\uE838");
-            openFolder.Click += (_, _) =>
-            {
-                flyout.Hide();
-                Win32Helper.OpenFile(ViewModel.MappedFolderPath);
-            };
-            flyout.Items.Add(openFolder);
-
-            if (!ViewModel.FollowsDefaultStoragePath)
-            {
-                MenuFlyoutItem changePath = CreateMenuItem(
-                    "Widget.ChangeMappedPath",
-                    "\uE8B7");
-                changePath.Click += async (_, _) =>
-                {
-                    flyout.Hide();
-                    await PickMappedFolderAsync();
-                };
-                flyout.Items.Add(changePath);
+                Win32Helper.OpenFile(mappedFolderPath);
             }
+        };
+        flyout.Items.Add(openFolder);
+
+        var hostItems = new WidgetHostContextMenuOpeningEventArgs(flyout);
+        HostContextMenuOpening?.Invoke(this, hostItems);
+        if (hostItems.TitleStyleItem is not null)
+        {
+            flyout.Items.Add(hostItems.TitleStyleItem);
         }
 
-        flyout.Items.Add(new MenuFlyoutSeparator());
         var viewAndSort = new MenuFlyoutSubItem
         {
             Text = T("Widget.ViewAndSort"),
@@ -669,7 +453,11 @@ public sealed partial class FileSurfaceContent
         flyout.Items.Add(viewAndSort);
         flyout.Items.Add(CreateStackSettingsMenu());
 
-        flyout.Items.Add(new MenuFlyoutSeparator());
+        if (hostItems.CloseWidgetItem is not null)
+        {
+            flyout.Items.Add(hostItems.CloseWidgetItem);
+        }
+
         MenuFlyoutItem refresh =
             CreateMenuItem("Common.Refresh", "\uE72C");
         refresh.Click += async (_, _) =>
@@ -679,21 +467,6 @@ public sealed partial class FileSurfaceContent
         };
         flyout.Items.Add(refresh);
         return flyout;
-    }
-
-    private static bool CanPasteFromClipboard()
-    {
-        try
-        {
-            DataPackageView clipboard = Clipboard.GetContent();
-            return clipboard.Contains(
-                       StandardDataFormats.StorageItems) ||
-                   GetPackagePaths(clipboard).Length > 0;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private async Task CreateFolderInMappedLocationAsync()

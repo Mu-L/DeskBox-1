@@ -100,9 +100,14 @@ public sealed partial class SearchPopupWindow : Window
     // Multi-selection state: tracks all items selected via rubber-band or Ctrl+click.
     // When non-empty, batch operations (copy/cut/delete) act on these items.
     private readonly HashSet<SearchResultItem> _multiSelectedItems = new();
+    private readonly HashSet<SearchResultItem> _rubberBandBaseSelection = new();
     private bool _isRubberBanding;
     private Point _rubberBandStart;
+    private Point _rubberBandCurrent;
+    private Point _rubberBandPointerInViewport;
+    private DispatcherTimer? _rubberBandAutoScrollTimer;
     private bool _suppressMultiSelectSync;
+    private int _selectionAnchorIndex = -1;
 
     // One stable search surface. Layout differences should follow available width,
     // not a user-facing mode that only changes the window dimensions.
@@ -1493,7 +1498,6 @@ public sealed partial class SearchPopupWindow : Window
         SortHeaderRow.Visibility = showResultChrome && fileSortTab
             ? Visibility.Visible
             : Visibility.Collapsed;
-        SortHeaderBackground.Visibility = SortHeaderRow.Visibility;
         ResultFilterBar.Visibility = showResultChrome && _viewModel.SelectedTab?.Id == "all"
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1701,6 +1705,7 @@ public sealed partial class SearchPopupWindow : Window
                     {
                         _multiSelectedItems.Add(r);
                     }
+                    _selectionAnchorIndex = Math.Max(0, _viewModel.SelectedIndex);
                     SyncMultiSelectionVisuals();
                     UpdateSelectionActions();
                     e.Handled = true;
@@ -2399,16 +2404,24 @@ public sealed partial class SearchPopupWindow : Window
     {
         var column = _viewModel.SortColumn;
         bool ascending = _viewModel.SortAscending;
-        SetSortIndicator(SortNameDirection, column == ResultSortColumn.Name, ascending);
-        SetSortIndicator(SortTypeDirection, column == ResultSortColumn.Type, ascending);
-        SetSortIndicator(SortSizeDirection, column == ResultSortColumn.Size, ascending);
-        SetSortIndicator(SortDateDirection, column == ResultSortColumn.Date, ascending);
+        SetSortIndicator(SortNameDirection, SortNameLabel, column == ResultSortColumn.Name, ascending);
+        SetSortIndicator(SortTypeDirection, SortTypeLabel, column == ResultSortColumn.Type, ascending);
+        SetSortIndicator(SortSizeDirection, SortSizeLabel, column == ResultSortColumn.Size, ascending);
+        SetSortIndicator(SortDateDirection, SortDateLabel, column == ResultSortColumn.Date, ascending);
     }
 
-    private static void SetSortIndicator(FontIcon icon, bool active, bool ascending)
+    private static void SetSortIndicator(
+        FontIcon icon,
+        TextBlock label,
+        bool active,
+        bool ascending)
     {
         icon.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
         icon.Glyph = ascending ? "\uE74A" : "\uE74B";
+        label.Foreground = ResolveThemeBrush(
+            active
+                ? "TextFillColorPrimaryBrush"
+                : "TextFillColorSecondaryBrush");
     }
 
     // Result row interaction (hover, click, drag, and context menu).
@@ -2424,50 +2437,56 @@ public sealed partial class SearchPopupWindow : Window
         bool isCtrlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
         bool isShiftPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift);
         bool isLeft = point.Properties.IsLeftButtonPressed;
-        bool isRight = point.Properties.IsRightButtonPressed;
-        bool anyButton = isLeft || isRight;
 
-        // Ctrl-click / Shift-click on a row: modify the multi-selection.
-        if (item is not null && anyButton)
+        // Ctrl-click / Shift-click on a row: modify the multi-selection while
+        // keeping an explicit range anchor independent from keyboard focus.
+        if (item is not null && isLeft)
         {
-            if (isLeft && isCtrlPressed)
+            if (isCtrlPressed)
             {
+                SelectResultItem(item, row);
+                _selectionAnchorIndex = _viewModel.CurrentResults.IndexOf(item);
                 ToggleMultiSelectionItem(item);
                 e.Handled = true;
                 return;
             }
 
-            if (isLeft && isShiftPressed && _viewModel.SelectedIndex >= 0)
+            if (isShiftPressed)
             {
-                RangeSelectItems(_viewModel.SelectedIndex, item);
-                e.Handled = true;
-                return;
+                int anchorIndex = _selectionAnchorIndex >= 0
+                    ? _selectionAnchorIndex
+                    : _viewModel.SelectedIndex;
+                if (anchorIndex >= 0)
+                {
+                    _selectionAnchorIndex = anchorIndex;
+                    RangeSelectItems(anchorIndex, item);
+                    e.Handled = true;
+                    return;
+                }
             }
         }
 
-        // Left-click on empty space — either outside any row or on a blank part
-        // of the row (not icon/title/type/size/date) — clears the selection and
-        // starts rubber-band. Right-click on a row is handled by RightTapped;
-        // right-click on empty space falls through without opening a context menu.
-        bool onRowInteractivePart = row is not null
-            && IsPointerOnRowInteractivePart(source, row);
-        bool onEmptySpace = item is null
-            || (row is not null && isLeft && !onRowInteractivePart);
-
-        if (isLeft && !isCtrlPressed && !isShiftPressed && onEmptySpace)
+        // Details-view rows are interactive across their complete width. Marquee
+        // selection starts only from actual empty result-surface space, never from
+        // a padding or inter-column gap inside a row.
+        if (SearchResultSelectionPolicy.ShouldStartRubberBand(
+                isLeft,
+                isOverResultRow: row is not null || item is not null,
+                isShiftPressed))
         {
             _pressedItem = null;
             _dragCandidate = null;
             _dragSourceRow = null;
-            ClearMultiSelection();
             StartRubberBand(e);
             e.Handled = true;
             return;
         }
 
-        if (item is not null && anyButton)
+        if (item is not null && isLeft)
         {
+            ClearMultiSelection();
             SelectResultItem(item, row);
+            _selectionAnchorIndex = _viewModel.CurrentResults.IndexOf(item);
         }
 
         if (!point.Properties.IsLeftButtonPressed)
@@ -2503,6 +2522,7 @@ public sealed partial class SearchPopupWindow : Window
         // Update rubber-band selection if active.
         if (_isRubberBanding)
         {
+            _rubberBandPointerInViewport = e.GetCurrentPoint(ResultsPanel).Position;
             UpdateRubberBand(e.GetCurrentPoint(ResultsSurface).Position);
             e.Handled = true;
             return;
@@ -2882,8 +2902,10 @@ public sealed partial class SearchPopupWindow : Window
             return;
         }
 
+        ClearMultiSelection();
         var row = FindItemRow(e.OriginalSource as DependencyObject);
         SelectResultItem(item, row);
+        _selectionAnchorIndex = _viewModel.CurrentResults.IndexOf(item);
         var anchor = (UIElement?)row ?? ResultsPanel;
         ShowResultFlyout(item, anchor, e.GetPosition(anchor));
         e.Handled = true;
@@ -2911,58 +2933,39 @@ public sealed partial class SearchPopupWindow : Window
         return false;
     }
 
-    /// <summary>
-    /// Returns <c>true</c> when the pointer landed on an interactive cell of the
-    /// row — the icon column (drag origin), title / subtitle (column 2), or the
-    /// type / size / date cells (columns 3 / 4 / 5). Clicks on the selection-bar
-    /// gutter (column 0), inter-column gaps, or the row padding / margins return
-    /// <c>false</c>, so the popup treats them as empty space and starts
-    /// rubber-band selection instead of selecting that row.
-    /// </summary>
-    private static bool IsPointerOnRowInteractivePart(
-        DependencyObject? element, SearchResultRowControl row)
-    {
-        while (element is not null)
-        {
-            if (element is FrameworkElement fe)
-            {
-                switch (fe.Name)
-                {
-                    case "IconColumn":
-                    case "TitleText":
-                    case "SubtitleText":
-                    case "TypeText":
-                    case "SizeText":
-                    case "DateText":
-                        return true;
-                }
-            }
-
-            if (ReferenceEquals(element, row))
-            {
-                break;
-            }
-
-            element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
-        }
-
-        return false;
-    }
-
     // ── Rubber-band multi-selection ──
 
     private void StartRubberBand(PointerRoutedEventArgs e)
     {
         _isRubberBanding = true;
+        bool isAdditive = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
+        _rubberBandBaseSelection.Clear();
+        if (isAdditive)
+        {
+            _rubberBandBaseSelection.UnionWith(_multiSelectedItems);
+        }
+        else
+        {
+            _multiSelectedItems.Clear();
+            _selectionAnchorIndex = -1;
+            SyncMultiSelectionVisuals();
+            UpdateSelectionActions();
+        }
+
         var position = e.GetCurrentPoint(ResultsSurface).Position;
         _rubberBandStart = position;
+        _rubberBandCurrent = position;
+        _rubberBandPointerInViewport = e.GetCurrentPoint(ResultsPanel).Position;
         RubberBandRect.Visibility = Visibility.Visible;
         UpdateRubberBandRect(position, position);
         ResultsPanel.CapturePointer(e.Pointer);
+        EnsureRubberBandAutoScrollTimer();
+        _rubberBandAutoScrollTimer!.Start();
     }
 
     private void UpdateRubberBand(Point position)
     {
+        _rubberBandCurrent = position;
         UpdateRubberBandRect(_rubberBandStart, position);
         SelectItemsIntersectingRubberBand(_rubberBandStart, position);
     }
@@ -2970,6 +2973,8 @@ public sealed partial class SearchPopupWindow : Window
     private void EndRubberBand()
     {
         _isRubberBanding = false;
+        _rubberBandAutoScrollTimer?.Stop();
+        _rubberBandBaseSelection.Clear();
         RubberBandRect.Visibility = Visibility.Collapsed;
         ResultsPanel.ReleasePointerCaptures();
     }
@@ -2982,7 +2987,60 @@ public sealed partial class SearchPopupWindow : Window
         }
 
         _isRubberBanding = false;
+        _rubberBandAutoScrollTimer?.Stop();
+        _rubberBandBaseSelection.Clear();
         RubberBandRect.Visibility = Visibility.Collapsed;
+    }
+
+    private void EnsureRubberBandAutoScrollTimer()
+    {
+        if (_rubberBandAutoScrollTimer is not null)
+        {
+            return;
+        }
+
+        _rubberBandAutoScrollTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(32)
+        };
+        _rubberBandAutoScrollTimer.Tick += OnRubberBandAutoScrollTick;
+    }
+
+    private void OnRubberBandAutoScrollTick(object? sender, object e)
+    {
+        if (!_isRubberBanding)
+        {
+            _rubberBandAutoScrollTimer?.Stop();
+            return;
+        }
+
+        double delta = SearchResultSelectionPolicy.GetAutoScrollDelta(
+            _rubberBandPointerInViewport.Y,
+            ResultsPanel.ViewportHeight);
+        if (Math.Abs(delta) < 0.1)
+        {
+            return;
+        }
+
+        double previousOffset = ResultsPanel.VerticalOffset;
+        double targetOffset = Math.Clamp(
+            previousOffset + delta,
+            0,
+            ResultsPanel.ScrollableHeight);
+        if (Math.Abs(targetOffset - previousOffset) < 0.1)
+        {
+            return;
+        }
+
+        ResultsPanel.ChangeView(
+            null,
+            targetOffset,
+            null,
+            disableAnimation: true);
+        _rubberBandCurrent = new Point(
+            _rubberBandCurrent.X,
+            _rubberBandCurrent.Y + targetOffset - previousOffset);
+        UpdateRubberBand(_rubberBandCurrent);
     }
 
     private void ResultsPanel_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -3031,6 +3089,7 @@ public sealed partial class SearchPopupWindow : Window
 
         _suppressMultiSelectSync = true;
         _multiSelectedItems.Clear();
+        _multiSelectedItems.UnionWith(_rubberBandBaseSelection);
 
         if (_viewModel.CurrentResults is { } results)
         {
@@ -3072,16 +3131,17 @@ public sealed partial class SearchPopupWindow : Window
     private void RangeSelectItems(int fromIndex, SearchResultItem toItem)
     {
         int toIndex = _viewModel.CurrentResults.IndexOf(toItem);
-        if (toIndex < 0)
+        var range = SearchResultSelectionPolicy.GetRange(
+            fromIndex,
+            toIndex,
+            _viewModel.CurrentResults.Count);
+        if (range.Start < 0)
         {
             return;
         }
 
-        int start = Math.Min(fromIndex, toIndex);
-        int end = Math.Max(fromIndex, toIndex);
-
         _multiSelectedItems.Clear();
-        for (int i = start; i <= end; i++)
+        for (int i = range.Start; i <= range.End; i++)
         {
             _multiSelectedItems.Add(_viewModel.CurrentResults[i]);
         }
@@ -3093,6 +3153,7 @@ public sealed partial class SearchPopupWindow : Window
 
     private void ClearMultiSelection()
     {
+        _selectionAnchorIndex = -1;
         if (_multiSelectedItems.Count == 0)
         {
             return;
@@ -3965,6 +4026,7 @@ public sealed partial class SearchPopupWindow : Window
         _skeletonDelayCancellation?.Dispose();
         SearchFeedbackPresenter.Clear();
         _entranceGuardTimer?.Stop();
+        _rubberBandAutoScrollTimer?.Stop();
         ResultsRepeater.ItemsSource = null;
         RecommendedAppsRepeater.ItemsSource = null;
         FavoritesRepeater.ItemsSource = null;

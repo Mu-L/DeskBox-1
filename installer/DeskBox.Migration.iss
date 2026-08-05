@@ -1,10 +1,7 @@
 [Code]
 const
   DeskBoxAdminCleanupParam = '/ADMINCLEANUP=';
-  DeskBoxLegacyUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{5E052824-3456-427E-9759-3BCAE078A1D3}_is1';
-  DeskBoxLegacyWowUninstallKey = 'Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{5E052824-3456-427E-9759-3BCAE078A1D3}_is1';
   DeskBoxAppCompatLayersKey = 'Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers';
-  DeskBoxLegacyExeName = 'DeskBox.exe';
 
 var
   IsMigrationAdminCleanupMode: Boolean;
@@ -15,39 +12,27 @@ function PrepareDeskBoxDependencies(var NeedsRestart: Boolean): string; forward;
 procedure ExitProcess(ExitCode: Integer);
   external 'ExitProcess@kernel32.dll stdcall';
 
-function NormalizeDirPath(Path: string): string;
-begin
-  Result := RemoveBackslashUnlessRoot(ExpandConstant(Path));
-end;
-
-function IsDefaultProgramFilesDeskBoxPath(Path: string): Boolean;
-var
-  NormalizedPath: string;
-  ProgramFilesPath: string;
-  ProgramFilesX86Path: string;
-begin
-  NormalizedPath := NormalizeDirPath(Path);
-  ProgramFilesPath := NormalizeDirPath('{pf}\DeskBox');
-  ProgramFilesX86Path := NormalizeDirPath('{pf32}\DeskBox');
-
-  Result :=
-    (CompareText(NormalizedPath, ProgramFilesPath) = 0) or
-    (CompareText(NormalizedPath, ProgramFilesX86Path) = 0);
-end;
-
-function IsLegacyInstallPath(Path: string): Boolean;
-begin
-  Result :=
-    (Path <> '') and
-    IsDefaultProgramFilesDeskBoxPath(Path) and
-    FileExists(AddBackslash(Path) + DeskBoxLegacyExeName);
-end;
-
 function TryReadLegacyInstallPathFromRegistry(var InstallPath: string): Boolean;
 begin
   Result := False;
   InstallPath := '';
 
+  if RegQueryStringValue(HKEY_CURRENT_USER, DeskBoxLegacyUninstallKey, 'InstallLocation', InstallPath) and
+     IsLegacyInstallPath(InstallPath) then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  InstallPath := '';
+  if RegQueryStringValue(HKEY_CURRENT_USER, DeskBoxLegacyWowUninstallKey, 'InstallLocation', InstallPath) and
+     IsLegacyInstallPath(InstallPath) then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  InstallPath := '';
   if RegQueryStringValue(HKEY_LOCAL_MACHINE, DeskBoxLegacyUninstallKey, 'InstallLocation', InstallPath) and
      IsLegacyInstallPath(InstallPath) then
   begin
@@ -115,17 +100,9 @@ begin
 end;
 
 procedure StopLegacyDeskBoxProcess;
-var
-  ResultCode: Integer;
 begin
-  Exec(
-    ExpandConstant('{sys}\taskkill.exe'),
-    '/IM DeskBox.exe /T /F',
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode);
-  Log('DeskBox migration taskkill exit code: ' + IntToStr(ResultCode));
+  if not StopDeskBoxProcessesAtPath(MigrationAdminCleanupPath) then
+    Log('DeskBox migration could not stop only the legacy install processes.');
 end;
 
 procedure DeleteShortcutIfExists(Path: string);
@@ -137,6 +114,12 @@ begin
     else
       Log('DeskBox migration failed to delete shortcut: ' + Path);
   end;
+end;
+
+procedure DeleteShortcutIfTargetsInstall(Path: string; InstallPath: string);
+begin
+  if ShortcutTargetsInstall(Path, InstallPath) then
+    DeleteShortcutIfExists(Path);
 end;
 
 procedure DeleteAppCompatLayerValue(RootKey: Integer; ExePath: string);
@@ -187,15 +170,15 @@ begin
   LegacyExePath := AddBackslash(LegacyInstallPath) + DeskBoxLegacyExeName;
   StopLegacyDeskBoxProcess;
 
-  DeleteShortcutIfExists(ExpandConstant('{commonprograms}\DeskBox.lnk'));
-  DeleteShortcutIfExists(ExpandConstant('{commondesktop}\DeskBox.lnk'));
-  DeleteShortcutIfExists(ExpandConstant('{commonstartup}\DeskBox.lnk'));
-  DeleteShortcutIfExists(ExpandConstant('{commonappdata}\Microsoft\Windows\Start Menu\Programs\DeskBox.lnk'));
-  DeleteShortcutIfExists(ExpandConstant('{commonappdata}\Microsoft\Windows\Start Menu\Programs\Startup\DeskBox.lnk'));
-  DeleteShortcutIfExists(ExpandConstant('{userprograms}\DeskBox.lnk'));
-  DeleteShortcutIfExists(ExpandConstant('{userdesktop}\DeskBox.lnk'));
-  DeleteShortcutIfExists(ExpandConstant('{userstartup}\DeskBox.lnk'));
-  DeleteShortcutIfExists(ExpandConstant('{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\DeskBox.lnk'));
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{commonprograms}\DeskBox.lnk'), LegacyInstallPath);
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{commondesktop}\DeskBox.lnk'), LegacyInstallPath);
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{commonstartup}\DeskBox.lnk'), LegacyInstallPath);
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{commonappdata}\Microsoft\Windows\Start Menu\Programs\DeskBox.lnk'), LegacyInstallPath);
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{commonappdata}\Microsoft\Windows\Start Menu\Programs\Startup\DeskBox.lnk'), LegacyInstallPath);
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{userprograms}\DeskBox.lnk'), LegacyInstallPath);
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{userdesktop}\DeskBox.lnk'), LegacyInstallPath);
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{userstartup}\DeskBox.lnk'), LegacyInstallPath);
+  DeleteShortcutIfTargetsInstall(ExpandConstant('{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\DeskBox.lnk'), LegacyInstallPath);
 
   DeleteAppCompatLayerValue(HKEY_LOCAL_MACHINE, LegacyExePath);
 
@@ -223,7 +206,7 @@ var
   Parameters: string;
 begin
   Parameters :=
-    '/SP- /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "' +
+    '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "' +
     DeskBoxAdminCleanupParam + LegacyInstallPath + '"';
 
   Log('DeskBox migration launching admin cleanup for: ' + LegacyInstallPath);
@@ -277,31 +260,30 @@ begin
   begin
     CleanupCurrentUserAppCompatFlags('');
   end;
+
+  if not PrepareDirectInstallPlan then
+  begin
+    Result := False;
+    Exit;
+  end;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := IsMigrationAdminCleanupMode;
+  Result := IsMigrationAdminCleanupMode or
+    (DirectInstallUpgrade and (PageID = wpSelectDir));
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): string;
 var
-  ResultCode: Integer;
   DependencyError: string;
 begin
   Result := '';
 
-  // Explicitly terminate DeskBox before file copy. Restart Manager alone
-  // cannot always close a tray-first app with multiple top-level windows,
-  // causing the "close applications" dialog to hang and eventually timeout.
-  Exec(
-    ExpandConstant('{sys}\taskkill.exe'),
-    '/IM DeskBox.exe /T /F',
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode);
-  Log('DeskBox taskkill exit code: ' + IntToStr(ResultCode));
+  // Close only the DeskBox process that belongs to the install being updated.
+  // Restart Manager remains the final file-lock fallback for Setup itself.
+  if not StopDeskBoxProcessesAtPath(WizardDirValue) then
+    Log('DeskBox path-scoped process shutdown failed; Setup will continue with Restart Manager handling file locks.');
 
   // Give the process time to fully exit before Restart Manager runs.
   Sleep(2000);

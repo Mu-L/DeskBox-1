@@ -1,14 +1,38 @@
 using System.Net;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text;
 using DeskBox.Models;
 using DeskBox.Services;
+using DeskBox.ViewModels;
 
 namespace DeskBox.Tests;
 
 public sealed class AppUpdateServiceTests : IDisposable
 {
     private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), "DeskBox.Tests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public void InstallerAssetSelection_UsesTheCurrentProcessArchitecture()
+    {
+        Assert.Equal("x64", AppUpdateService.GetInstallerArchitectureSuffix(Architecture.X64));
+        Assert.Equal("arm64", AppUpdateService.GetInstallerArchitectureSuffix(Architecture.Arm64));
+        Assert.True(AppUpdateService.IsInstallerAssetName("DeskBox_Setup_1.2.4_x64.exe", "x64"));
+        Assert.False(AppUpdateService.IsInstallerAssetName("DeskBox_Setup_1.2.4_arm64.exe", "x64"));
+        Assert.True(AppUpdateService.IsInstallerAssetName("DeskBox_Setup_1.2.4_arm64.exe", "arm64"));
+        Assert.True(AppUpdateService.IsInstallerDownloadCompatibleWithArchitecture(
+            "https://example.com/DeskBox_Setup_1.2.4_arm64.exe",
+            "arm64"));
+        Assert.False(AppUpdateService.IsInstallerDownloadCompatibleWithArchitecture(
+            "https://example.com/DeskBox_Setup_1.2.4_x64.exe",
+            "arm64"));
+        Assert.True(AppUpdateService.IsInstallerDownloadCompatibleWithArchitecture(
+            "https://example.com/download/latest",
+            "arm64"));
+        Assert.Equal(
+            $"DeskBox_Setup_1.2.4_{AppUpdateService.CurrentInstallerArchitectureSuffix}.exe",
+            AppUpdateService.GetInstallerFileName(new Uri("https://example.com/download/latest"), "1.2.4"));
+    }
 
     [Fact]
     public void LocalizedSummary_PrefersEnglishWhenLocaleIsMissing()
@@ -24,6 +48,26 @@ public sealed class AppUpdateServiceTests : IDisposable
 
         Assert.Equal("English summary", manifest.GetLocalizedSummary("de-DE"));
         Assert.Equal("中文摘要", manifest.GetLocalizedSummary("zh-CN"));
+    }
+
+    [Fact]
+    public void ManualUpdateDownloadUrl_UsesOnlyHttpsCandidates()
+    {
+        var manifest = new AppUpdateManifest
+        {
+            ManualDownloadUrl = "javascript:alert('unsafe')",
+            MirrorUrl = "https://mirror.example.com/deskbox"
+        };
+
+        Assert.False(AppUpdateManifest.IsSafeWebUrl(manifest.ManualDownloadUrl));
+        Assert.Equal(
+            manifest.MirrorUrl,
+            SettingsViewModel.GetManualUpdateDownloadUrl(manifest));
+
+        manifest.MirrorUrl = "http://mirror.example.com/deskbox";
+        Assert.Equal(
+            AppUpdateService.DefaultManualDownloadUrl,
+            SettingsViewModel.GetManualUpdateDownloadUrl(manifest));
     }
 
     [Theory]
@@ -225,6 +269,54 @@ public sealed class AppUpdateServiceTests : IDisposable
         Assert.True(result.Success, $"{result.FailureKind}: {result.ErrorMessage}");
         Assert.True(File.Exists(result.FilePath));
         Assert.Equal(payload, await File.ReadAllBytesAsync(result.FilePath!));
+    }
+
+    [Fact]
+    public async Task DownloadUpdateAsync_RejectsInstallerForAnotherArchitecture()
+    {
+        byte[] payload = Encoding.UTF8.GetBytes("deskbox-installer");
+        string sha256 = Convert.ToHexString(SHA256.HashData(payload));
+        string otherArchitecture = AppUpdateService.CurrentInstallerArchitectureSuffix == "arm64"
+            ? "x64"
+            : "arm64";
+        using var httpClient = CreateHttpClient(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(payload)
+        });
+        var service = new AppUpdateService(httpClient, updateRootPath: _tempRoot);
+
+        var result = await service.DownloadUpdateAsync(new AppUpdateManifest
+        {
+            Version = "1.2.2",
+            DownloadUrl = $"https://example.com/DeskBox_Setup_1.2.2_{otherArchitecture}.exe",
+            Sha256 = sha256,
+            Size = payload.Length
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal(AppUpdateDownloadFailureKind.InvalidManifest, result.FailureKind);
+    }
+
+    [Fact]
+    public async Task DownloadUpdateAsync_ReportsCallerCancellationSeparately()
+    {
+        using var httpClient = CreateHttpClient(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent([1, 2, 3])
+        });
+        var service = new AppUpdateService(httpClient, updateRootPath: _tempRoot);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await service.DownloadUpdateAsync(new AppUpdateManifest
+        {
+            Version = "1.2.2",
+            DownloadUrl = $"https://example.com/DeskBox_Setup_1.2.2_{AppUpdateService.CurrentInstallerArchitectureSuffix}.exe",
+            Sha256 = "00"
+        }, cancellationToken: cancellation.Token);
+
+        Assert.False(result.Success);
+        Assert.Equal(AppUpdateDownloadFailureKind.Cancelled, result.FailureKind);
     }
 
     [Fact]

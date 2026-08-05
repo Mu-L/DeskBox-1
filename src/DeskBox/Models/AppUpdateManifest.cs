@@ -110,6 +110,11 @@ public sealed class AppUpdateManifest
 
     public static bool IsSafeReleaseNotesUrl(string? url)
     {
+        return IsSafeWebUrl(url);
+    }
+
+    public static bool IsSafeWebUrl(string? url)
+    {
         return Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) &&
             uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     }
@@ -167,7 +172,8 @@ public enum AppUpdateDownloadFailureKind
     HashMissing,
     HashMismatch,
     Network,
-    FileSystem
+    FileSystem,
+    Cancelled
 }
 
 public sealed class AppUpdateDownloadResult

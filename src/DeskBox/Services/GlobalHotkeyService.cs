@@ -23,7 +23,7 @@ public sealed class GlobalHotkeyService : IDisposable
     private IntPtr _windowHandle;
     private bool _isSubclassInstalled;
     private bool _isRegistered;
-    private bool _isInvoking;
+    private long _invocationSequence;
 
     public GlobalHotkeyService(
         SettingsService settingsService,
@@ -39,6 +39,7 @@ public sealed class GlobalHotkeyService : IDisposable
     public event Action? RegistrationChanged;
 
     public bool IsRegistered => _isRegistered;
+    public long InvocationCount => Interlocked.Read(ref _invocationSequence);
     public string? LastError { get; private set; }
 
     public GlobalHotkeyGesture CurrentGesture => NormalizeGesture(
@@ -249,25 +250,17 @@ public sealed class GlobalHotkeyService : IDisposable
 
     private async Task InvokeHotkeyAsync(string source)
     {
-        if (_isInvoking)
-        {
-            App.Log("[GlobalHotkey] Ignored repeat while previous invocation is still running.");
-            return;
-        }
-
-        _isInvoking = true;
-        App.Log($"[GlobalHotkey] Triggered source={source} gesture={CurrentGestureText}");
+        long invocationId = Interlocked.Increment(ref _invocationSequence);
+        App.Log(
+            $"[GlobalHotkey] Triggered id={invocationId} source={source} " +
+            $"gesture={CurrentGestureText}");
         try
         {
             await _invokeAsync();
         }
         catch (Exception ex)
         {
-            App.Log($"[GlobalHotkey] Invocation failed: {ex}");
-        }
-        finally
-        {
-            _isInvoking = false;
+            App.Log($"[GlobalHotkey] Invocation failed id={invocationId}: {ex}");
         }
     }
 

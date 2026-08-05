@@ -343,10 +343,26 @@ public sealed partial class WidgetManager
         if (!string.IsNullOrWhiteSpace(destinationPath))
         {
             RememberLastQuickCaptureFileWidgetTarget(targetWidgetId);
-            if (_widgets.TryGetValue(targetWidgetId, out var targetEntry))
+            if (_fileWidgets.TryGetValue(targetWidgetId, out var targetEntry))
             {
                 await targetEntry.ViewModel.RefreshFromConfigAsync();
-                targetEntry.Window.RevealSavedItem(destinationPath);
+                targetEntry.RevealSavedItem(destinationPath);
+            }
+            else
+            {
+                ContentWidgetWindow? contentWindow = _contentWidgets.Values
+                    .Distinct()
+                    .FirstOrDefault(window =>
+                        window.CurrentContent is FileSurfaceContent surface &&
+                        string.Equals(
+                            surface.WidgetId,
+                            targetWidgetId,
+                            StringComparison.Ordinal));
+                if (contentWindow?.CurrentContent is FileSurfaceContent fileSurface)
+                {
+                    await fileSurface.ViewModel.RefreshFromConfigAsync();
+                    fileSurface.RevealSavedItem(destinationPath);
+                }
             }
         }
 
@@ -921,15 +937,14 @@ public sealed partial class WidgetManager
             quickCaptureEntry.ViewModel.Dispose();
         }
         else if (window.Config.WidgetKind == WidgetKind.File &&
-                 _widgets.TryGetValue(window.Config.Id, out var fileEntry) &&
-                 ReferenceEquals(fileEntry.Window, window))
+                 _fileWidgets.TryGetValue(window.Config.Id, out var fileEntry) &&
+                 ReferenceEquals(fileEntry.Host, window))
         {
-            _widgets.Remove(window.Config.Id);
-            _widgetWindowHandles.Remove(window.WindowHandle);
-            fileEntry.ViewModel.Dispose();
+            _fileWidgets.Remove(window.Config.Id);
         }
-        else if (_contentWidgets.TryGetValue(window.Config.Id, out var contentWindow) &&
-                 ReferenceEquals(contentWindow, window))
+
+        if (_contentWidgets.TryGetValue(window.Config.Id, out var contentWindow) &&
+            ReferenceEquals(contentWindow, window))
         {
             _contentWidgets.Remove(window.Config.Id);
             _widgetWindowHandles.Remove(window.WindowHandle);

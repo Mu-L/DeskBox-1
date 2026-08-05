@@ -184,8 +184,17 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     public bool ShowListItemDetails
     {
         get => _showListItemDetails;
-        set => SetProperty(ref _showListItemDetails, value);
+        set
+        {
+            if (SetProperty(ref _showListItemDetails, value))
+            {
+                OnPropertyChanged(nameof(ListItemDetailVisibility));
+            }
+        }
     }
+
+    public Visibility ListItemDetailVisibility =>
+        ShowListItemDetails ? Visibility.Visible : Visibility.Collapsed;
 
     public bool ShowFileItemPathTooltips
     {
@@ -306,8 +315,17 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     public double ListLabelFontSize
     {
         get => _listLabelFontSize;
-        set => SetProperty(ref _listLabelFontSize, value);
+        set
+        {
+            if (SetProperty(ref _listLabelFontSize, value))
+            {
+                OnPropertyChanged(nameof(ListItemDetailFontSize));
+            }
+        }
     }
+
+    public double ListItemDetailFontSize =>
+        Math.Max(ListLabelFontSize - 2, 9);
 
     public ObservableCollection<WidgetItem> Items { get; } = [];
 

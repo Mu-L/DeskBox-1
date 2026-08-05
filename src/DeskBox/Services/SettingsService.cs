@@ -25,6 +25,19 @@ internal enum DefaultPreferencePreservationReason
     RuntimeState
 }
 
+public enum SettingsLoadRecoveryState
+{
+    Primary,
+    RecoveredFromBackup,
+    DefaultsForMissingFile,
+    DefaultsAfterFailure
+}
+
+public sealed record SettingsPersistenceFailure(
+    string Operation,
+    string Message,
+    DateTimeOffset OccurredAt);
+
 /// <summary>
 /// Manages application settings persistence using JSON files stored in the application directory.
 /// </summary>
@@ -300,11 +313,22 @@ public const int WeatherRefreshMaxMinutes = 180;
     private AppSettings _settings = new();
     private readonly object _lock = new();
     private readonly SemaphoreSlim _fileWriteLock = new(1, 1);
+    private readonly object _debounceLock = new();
     private CancellationTokenSource? _debounceCts;
     private CancellationTokenSource? _appearancePreviewCts;
+    private long _debounceGeneration;
+    private int _hasPendingSave;
 
     public event Action? SettingsChanged;
     public event Action? AppearancePreviewChanged;
+    public event Action<SettingsPersistenceFailure>? PersistenceFailed;
+
+    public SettingsLoadRecoveryState LastLoadRecoveryState { get; private set; } =
+        SettingsLoadRecoveryState.DefaultsForMissingFile;
+
+    public SettingsPersistenceFailure? LastPersistenceFailure { get; private set; }
+
+    public bool HasPendingSave => Volatile.Read(ref _hasPendingSave) != 0;
 
     public AppSettings Settings
     {
@@ -487,17 +511,26 @@ settings.FocusClickedWidgetOnRaise = false;
         {
             await MigrateLegacySettingsIfNeededAsync();
 
-            bool loadedFromDisk = false;
-
-            if (File.Exists(_settingsPath))
+            ResilientJsonLoadResult<AppSettings> loadResult =
+                await ResilientJsonStore.LoadWithResultAsync(
+                    _settingsPath,
+                    json => JsonSerializer.Deserialize<AppSettings>(json, s_jsonOptions) ??
+                            throw new InvalidDataException("DeskBox settings JSON is empty."),
+                    () => new AppSettings(),
+                    "SettingsService");
+            bool loadedFromDisk = loadResult.Source is
+                ResilientJsonLoadSource.Primary or
+                ResilientJsonLoadSource.Backup;
+            LastLoadRecoveryState = loadResult.Source switch
             {
-                var json = await File.ReadAllTextAsync(_settingsPath);
-                var loaded = JsonSerializer.Deserialize<AppSettings>(json, s_jsonOptions);
-                if (loaded is not null)
-                {
-                    lock (_lock) _settings = loaded;
-                    loadedFromDisk = true;
-                }
+                ResilientJsonLoadSource.Primary => SettingsLoadRecoveryState.Primary,
+                ResilientJsonLoadSource.Backup => SettingsLoadRecoveryState.RecoveredFromBackup,
+                ResilientJsonLoadSource.DefaultAfterFailure => SettingsLoadRecoveryState.DefaultsAfterFailure,
+                _ => SettingsLoadRecoveryState.DefaultsForMissingFile
+            };
+            lock (_lock)
+            {
+                _settings = loadResult.Value;
             }
 
             bool changed;
@@ -521,8 +554,8 @@ settings.FocusClickedWidgetOnRaise = false;
                 changed |= NormalizeSearchSettings(_settings);
                 changed |= NormalizeQuickCaptureSettings(_settings);
                 changed |= NormalizeTodoSettings(_settings);
-changed |= NormalizeWeatherSettings(_settings);
-changed |= NormalizeDeletionSettings(_settings);
+                changed |= NormalizeWeatherSettings(_settings);
+                changed |= NormalizeDeletionSettings(_settings);
             }
 
             if (changed)
@@ -532,8 +565,10 @@ changed |= NormalizeDeletionSettings(_settings);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SettingsService] Failed to load settings: {ex.Message}");
+            App.Log($"[SettingsService] Failed to load settings: {ex}");
+            LastLoadRecoveryState = SettingsLoadRecoveryState.DefaultsAfterFailure;
             lock (_lock) _settings = new AppSettings();
+            ApplyDefaultPreferences(_settings);
         }
     }
 
@@ -566,10 +601,15 @@ changed |= NormalizeDeletionSettings(_settings);
     /// </summary>
     public async Task SaveAsync(bool notifySubscribers = true)
     {
-        await SaveToFileOnlyAsync();
+        CancelPendingDebouncedSave();
+        bool saved = await SaveToFileOnlyAsync();
+        if (saved)
+        {
+            Volatile.Write(ref _hasPendingSave, 0);
+        }
         if (notifySubscribers)
         {
-            SettingsChanged?.Invoke();
+            NotifySettingsChangedSafely();
         }
     }
 
@@ -580,13 +620,27 @@ changed |= NormalizeDeletionSettings(_settings);
     /// </summary>
     public async Task<bool> SaveCheckedAsync(bool notifySubscribers = true)
     {
+        CancelPendingDebouncedSave();
         bool saved = await SaveToFileOnlyAsync();
+        if (saved)
+        {
+            Volatile.Write(ref _hasPendingSave, 0);
+        }
         if (saved && notifySubscribers)
         {
-            SettingsChanged?.Invoke();
+            NotifySettingsChangedSafely();
         }
 
         return saved;
+    }
+
+    /// <summary>
+    /// Cancels the debounce delay and persists the latest in-memory settings.
+    /// Used by shutdown and Windows end-session handling.
+    /// </summary>
+    public Task<bool> FlushPendingSaveAsync(bool notifySubscribers = false)
+    {
+        return SaveCheckedAsync(notifySubscribers);
     }
 
     private async Task<bool> SaveToFileOnlyAsync()
@@ -610,22 +664,28 @@ changed |= NormalizeDeletionSettings(_settings);
                 json = JsonSerializer.Serialize(_settings, s_jsonOptions);
             }
 
-            // Atomic write: serialize to a temp file, then rename to the target path.
-            // This prevents corruption if the process crashes or power is lost mid-write.
-            string? directory = Path.GetDirectoryName(_settingsPath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            string tempPath = _settingsPath + ".tmp";
-            await File.WriteAllTextAsync(tempPath, json);
-            File.Move(tempPath, _settingsPath, overwrite: true);
+            await ResilientJsonStore.SaveAsync(_settingsPath, json);
+            LastPersistenceFailure = null;
             return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SettingsService] Failed to save settings: {ex.Message}");
+            var failure = new SettingsPersistenceFailure(
+                "save",
+                ex.Message,
+                DateTimeOffset.UtcNow);
+            LastPersistenceFailure = failure;
+            App.Log($"[SettingsService] Failed to save settings: {ex}");
+            try
+            {
+                PersistenceFailed?.Invoke(failure);
+            }
+            catch (Exception notificationException)
+            {
+                App.Log(
+                    $"[SettingsService] Persistence failure observer threw: " +
+                    notificationException);
+            }
             return false;
         }
         finally
@@ -642,44 +702,92 @@ changed |= NormalizeDeletionSettings(_settings);
     {
         if (notifySubscribers)
         {
-            SettingsChanged?.Invoke();
+            NotifySettingsChangedSafely();
         }
 
-        // Cancel and dispose the previous CTS to avoid leaking native
-        // kernel event handles.  Each undisposed CTS holds a native handle
-        // that is only reclaimed by the GC finalizer, which may not run
-        // for a long time in a large-heap app.
-        //
-        // Note: The CTS may have already been disposed by a completed
-        // Task.Run lambda's finally block (see below).  Catch
-        // ObjectDisposedException defensively to handle this race.
-        try
+        CancellationTokenSource debounceCts;
+        long generation;
+        lock (_debounceLock)
         {
-            _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
+            try
+            {
+                _debounceCts?.Cancel();
+                _debounceCts?.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            debounceCts = new CancellationTokenSource();
+            _debounceCts = debounceCts;
+            generation = ++_debounceGeneration;
+            Volatile.Write(ref _hasPendingSave, 1);
         }
-        catch (ObjectDisposedException) { }
-        _debounceCts = new CancellationTokenSource();
-        var token = _debounceCts.Token;
+
+        CancellationToken token = debounceCts.Token;
 
         Task.Run(async () =>
         {
+            bool saved = false;
             try
             {
                 await Task.Delay(1000, token);
                 if (!token.IsCancellationRequested)
                 {
-                    await SaveToFileOnlyAsync();
+                    saved = await SaveToFileOnlyAsync();
                 }
             }
             catch (TaskCanceledException) { }
-            // Do NOT dispose the CTS here — _debounceCts may still
-            // reference it, and disposing it here would cause the next
-            // SaveDebounced call to throw ObjectDisposedException when
-            // it tries to Cancel/Dispose the (already-disposed) CTS.
-            // The CTS will be disposed by the next SaveDebounced call
-            // or by the GC finalizer.
+            finally
+            {
+                lock (_debounceLock)
+                {
+                    if (ReferenceEquals(_debounceCts, debounceCts))
+                    {
+                        _debounceCts = null;
+                        debounceCts.Dispose();
+                        if (saved && generation == _debounceGeneration)
+                        {
+                            Volatile.Write(ref _hasPendingSave, 0);
+                        }
+                    }
+                }
+            }
         });
+    }
+
+    private void NotifySettingsChangedSafely()
+    {
+        Delegate[] handlers = SettingsChanged?.GetInvocationList() ?? [];
+        foreach (Action handler in handlers.Cast<Action>())
+        {
+            try
+            {
+                handler();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[SettingsService] SettingsChanged observer failed: {ex}");
+            }
+        }
+    }
+
+    private void CancelPendingDebouncedSave()
+    {
+        lock (_debounceLock)
+        {
+            _debounceGeneration++;
+            try
+            {
+                _debounceCts?.Cancel();
+                _debounceCts?.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            _debounceCts = null;
+        }
     }
 
     public void RequestAppearancePreview()

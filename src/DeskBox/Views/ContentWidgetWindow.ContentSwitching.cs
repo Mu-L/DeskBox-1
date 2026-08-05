@@ -80,6 +80,7 @@ public sealed partial class ContentWidgetWindow
             WidgetTitleIconKindNames.FromWidgetKind(config.WidgetKind);
         AttachCompactPresentationSource(content);
         AttachFeedbackSource(content);
+        AttachHostContextMenuSource(content);
         ApplyLocalizedTitleActionTooltips();
         ApplyTitleBarLayout();
         ApplyAppearancePreview();

@@ -5,14 +5,22 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.3.6-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.6)
+[![Latest release](https://img.shields.io/badge/release-1.3.7-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.7)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-![DeskBox Windows 11 desktop organizer with file, todo, search, weather, and music widgets](docs/images/brand/readme-hero-1-3-4-option-c-mica.png)
+![DeskBox Windows desktop organizer with file, todo, search, weather, and music widgets](docs/images/brand/readme-hero-1-3-7-dark-en.png)
 
 DeskBox adds native-feeling WinUI 3 widgets to the Windows desktop without replacing Explorer or changing how your files work. Create a desktop file organizer backed by a real folder, map an existing folder, keep todos and quick notes close at hand, search the PC, view weather, or control the active media session. Widgets can stay expanded, collapse into compact capsules, or be raised temporarily from the tray or a global hotkey.
+
+## Mica and Acrylic on the desktop
+
+DeskBox uses native-feeling Windows materials and keeps ordinary desktop files and folders in place.
+
+| Mica | Acrylic |
+| --- | --- |
+| ![DeskBox desktop widgets with Mica material in English](docs/images/screenshots/en-us/云母材质.png) | ![DeskBox desktop widgets with Acrylic material in English](docs/images/screenshots/en-us/亚克力材质.png) |
 
 ## DeskBox at a glance
 
@@ -26,10 +34,10 @@ DeskBox adds native-feeling WinUI 3 widgets to the Windows desktop without repla
 
 ## Download
 
-Download DeskBox 1.3.6 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.6):
+Download DeskBox 1.3.7 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.7):
 
-- [DeskBox 1.3.6 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.6/DeskBox_Setup_1.3.6_x64.exe) — most Intel and AMD PCs.
-- [DeskBox 1.3.6 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.6/DeskBox_Setup_1.3.6_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.3.7 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.7/DeskBox_Setup_1.3.7_x64.exe) — most Intel and AMD PCs.
+- [DeskBox 1.3.7 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.7/DeskBox_Setup_1.3.7_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
@@ -40,10 +48,18 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 ### File organizer and folder widgets
 
 - Create managed file widgets backed by ordinary folders, or map an existing folder without moving it.
-- Use icon or list layouts, title styles, sorting, auto stacks, adjustable icon sizes, and compact display density.
-- Drag files in or out, copy, cut, paste, rename, delete, reveal in Explorer, and open shortcuts through the Windows shell.
+- Use icon or list layouts, title styles, detail and path controls, manual or rule-based sorting, auto stacks, adjustable icon sizes, and compact display density.
+- Reorder items directly, move or copy them into a folder item, and create a folder with automatic scrolling and inline naming. Manual order is restored after restart.
+- Drag files and shortcuts in or out, copy, cut, paste, rename, delete, reveal in Explorer, and use Shell-compatible shortcut behavior when dragging to the Windows desktop.
 - Drop content from Explorer, WeChat, or a browser; remote image and file URLs can be downloaded and imported.
 - Preview supported files through a running [QuickLook](https://github.com/QL-Win/QuickLook) instance by pressing Space.
+
+### Widget groups and desktop organization
+
+- Merge file widgets into a group without changing their backing folders, then switch members from the title, mouse wheel, or cyclic Ctrl+Tab shortcut.
+- Detach a member or dissolve a group safely; grouped and standalone file widgets share the same views, settings, menus, sorting, drag-and-drop, and QuickLook behavior.
+- Preview desktop organization by category before moving anything, and choose whether each category creates a folder or reuses an existing widget.
+- Optionally organize new desktop files after downloads, extraction, and same-path replacements reach a stable state.
 
 ### Todo and Quick Capture
 
@@ -55,7 +71,9 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 
 - Search files, folders, applications, settings, and DeskBox content from one popup or search widget.
 - Combine the Windows index with an optional local USN-based file index.
-- Use configurable filters, result limits, history, favorites, and a global search hotkey.
+- Use configurable filters, sortable detail columns, result limits, history, favorites, and a global search hotkey.
+- Select multiple rows with Ctrl or Shift, drag a selection rectangle with edge auto-scroll, and apply batch actions to the result set.
+- Receive staged incremental results while individual search providers remain isolated from one another if a source fails.
 - The popup shell is warmed during idle time so a widget click can show and focus it first, while recommendations, icons, and an idle-unloaded local index recover in the background.
 - The resident local index can unload after search has been idle while lightweight file watchers continue tracking changes; disabling Search releases the complete search runtime.
 
@@ -71,75 +89,45 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Collapse widgets into smart capsules with click-to-toggle or hover-to-expand behavior.
 - Show key information, a short summary, or only an icon and title; hide sensitive Todo and Quick Capture text while collapsed.
 - Arrange capsules independently or combine them into a movable, ordered bar.
-- Raise or hide all widgets from the tray or a configurable global hotkey.
+- Raise or hide all widgets from the tray or a configurable global hotkey, with serialized repeated-toggle handling and recovery across display, DPI, sleep, and Explorer changes.
 - Customize Mica/acrylic materials, opacity, borders, DWM corners, animation, title bars, icon size, and text size.
 
-## What is new in 1.3.6
+### Updates, backup, and diagnostics
 
-- **Widget-group switching stays responsive:** inactive file surfaces are reused during tab switches; Ctrl+Tab treats a held key as one gesture, throttles fast retriggers, and can recover from an interrupted same-member transition without a manual tab click.
-- **Correct grouped-widget layering:** groups now retain the same temporary foreground state as standalone widgets at launch and when members are merged, detached, dissolved, or switched.
-- **Cross-app drops work consistently:** browser virtual files keep their extension in standalone widgets, and WeChat plus other native drag sources can import into grouped file widgets.
-- **Grouped file pages finish loading on first show:** icon hydration follows true window visibility, so grouped file icons refresh automatically instead of remaining on placeholders. The fallback is now a softer square rounded card while loading.
-- **Better group interactions:** Space opens QuickLook for the selected file inside a group, and compact/capsule expansion defers expensive surface work through the size transition.
-- **Desktop organization follow-up:** destination labels reflect the existing target that will actually receive files, and placement can continue even when the visible desktop is crowded or widgets are hidden.
-- **Small Direct installers:** x64 and ARM64 releases remain framework-dependent. Setup reuses compatible .NET 10 and Windows App Runtime 2.2 installations and downloads a missing architecture-matched dependency only when necessary.
+- Check for updates in the app, read long release notes in a dedicated view, retry failed downloads, or continue from the official website.
+- Start a visible installer after DeskBox closes; upgrades reuse and lock the existing installation path instead of creating a second copy.
+- Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
+- Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
-## What is new in 1.3.5
+## What is new in 1.3.7
 
-- **Desktop organization is new in 1.3.5:** a responsive card preview shows the files that will move, the selected destination, the files that stay on the Desktop, and the final storage location before anything runs. This capability was not present in 1.3.4.
-- **Per-card organization controls:** each card can be enabled independently and can target a new folder or an existing widget, with an explanation of the destination and a concrete list of items that will not move.
-- **Automatic organization is new in 1.3.5:** growing downloads, temporary/archive work, extraction, and same-path replacements wait for a stable terminal state; the large-file threshold is 100 MB and incomplete baselines are not committed.
-- **Widget groups are new in 1.3.5:** file widgets can be merged, switched with the title wheel, detached by holding the title, or dissolved while keeping safer z-order and nested-path rules.
-- **File and mapped-folder widgets stay in sync:** unavailable or offline folders keep their last known snapshot, refreshes preserve manual ordering, and watcher generations prevent stale events from entering a newly mapped path.
-- **Search indexing is more resilient:** partial, capped, offline, or permission-limited scans no longer erase valid results; USN journal changes can be applied incrementally with safe fallback and recovery diagnostics.
-- **Drag and reorder interactions are more predictable:** cross-screen reorder uses a breathing insertion line without mutating the list during DragOver; standalone and grouped surfaces share the same insertion calculation and file-to-folder versus blank-area rules.
-- **Windows 10 and lifecycle recovery:** secondary-window backdrop fallback, animation accessibility checks, sleep/unlock/RDP recovery, Explorer restart handling, and startup z-order normalization improve compatibility without changing the Windows 11 experience.
-- **Release notes and diagnostics:** Settings can open the latest bilingual Markdown release notes in a separate window, and reliability diagnostics expose watcher, index, and recovery state.
-- **Smaller polish and compatibility fixes:** localized strings were synchronized across five languages, file icons and drag feedback were refined, and automated coverage was expanded for the new reliability paths.
+- **One file-widget implementation:** standalone widgets and widget groups now use the same file surface and host, keeping views, detail and path settings, menus, sorting, QuickLook, and drag-and-drop behavior aligned. The legacy standalone file interaction tree has been removed.
+- **More reliable file work:** new folders scroll into view and enter inline naming, new and existing folders can be renamed, files can be dropped onto folder items, manual order survives a cold start, and shortcut drag-out follows Windows Shell behavior.
+- **Stable groups and global toggles:** Ctrl+Tab cycles continuously, while repeated tray or hotkey presses are serialized so widgets do not become stuck off-screen or stop responding. Display, DPI, sleep, and Explorer recovery now share diagnostics.
+- **Improved search:** providers return staged results without one source blocking another; Ctrl/Shift selection, rubber-band selection with auto-scroll, result rows, columns, and header hover states have been refined.
+- **Settings now persist consistently:** weather Day/Week mode and pending file-order changes are flushed and restored, with recoverable settings snapshots and explicit save-failure reporting.
+- **Safer installation and updating:** upgrades reuse the existing installation path, show the installer after DeskBox closes, provide retry and official-site fallback on download failure, and display long release notes in a dedicated view.
+- **Interface polish and support:** native neutral file hover/selection colors, softer destructive actions, consistent context menus, a feedback email card, improved About layout, and a privacy-filtered diagnostics package make everyday use and troubleshooting clearer.
 
-## What was new in 1.3.4
-
-- **More predictable resource use:** disabled feature widgets and closed Settings release their visual trees, music and capsule timers detach correctly, caches are bounded, and guarded idle maintenance can reclaim memory even while visible widgets remain on the desktop.
-- **Search opens first:** the popup shell is prewarmed, repeated widget clicks only open or focus it, and the native window paints before recommendations, icons, or an idle-unloaded index reload. Search results also keep a visible fallback icon.
-- **Search releases its resident index:** after five minutes without Search, the large custom index can leave memory while its lightweight watchers continue recording changes; invoking the popup starts restoring it immediately, before the first query.
-- **Weather redesign:** responsive Day/Week layouts, refined Standard and Rich skins, condition-aware contrast, a compact sunrise arc, and clearer forecast hierarchy replace the previous crowded layout. Rich is the new-user and reset default, and continuous decorative weather effects have been removed.
-- **Music stability and efficiency:** track changes wait for complete metadata to avoid title/artist flicker, cover decoding is deduplicated and bounded, marquee/vinyl work stops while hidden or collapsed, and playback versus secondary control sizing is more consistent.
-- **Safer capsule interaction:** expanded layouts prewarm during idle time, first hover works after startup or wake without a click, overlapping capsules no longer react through the active widget, and click-to-toggle widgets collapse immediately from the title bar.
-- **Correct window layering:** hover expansion no longer lets a capsule overtake the current foreground application after a temporary tray/F7 raise.
-- **Sharper icons:** large file and shortcut icons use higher-resolution shell sources, small icons use improved downsampling, and stacked icons follow the configured size.
-- **Stability and menu fixes:** shortcuts launch through a Shell-compatible path; Todo and Quick Capture blank areas expose their title-bar menu; file and mapped-folder content menus add title style, expansion mode, and Close widget with confirmation; Paste appears only when usable.
-- **Hotkey reliability:** low-level keyboard hooks were removed, RDP modifier-key recovery was improved, and the search hotkey follows the search feature switch.
-- **Release packaging:** application and installer versions are aligned to 1.3.4; framework-dependent x64 and ARM64 installers detect and download only missing architecture-matched runtimes. The legacy image-gallery widget has also been removed.
-
-Read the full [changelog](CHANGELOG.md) or the [1.3.6 release notes](docs/releases/v1.3.6.md).
+Read the full [changelog](CHANGELOG.md) or the [1.3.7 release notes](docs/releases/v1.3.7.md).
 
 ## Current interface
 
-These screenshots are representative of the current DeskBox interface.
-
-### Desktop widgets and materials
-
-#### Mica
-
-![DeskBox 1.3.4 desktop widgets with Mica material in English](docs/images/screenshots/en-us/云母材质.png)
-
-#### Acrylic
-
-![DeskBox 1.3.4 desktop widgets with Acrylic material in English](docs/images/screenshots/en-us/亚克力材质.png)
+These screenshots are representative of the current DeskBox settings interface.
 
 ### Settings
 
 | General | Appearance |
 | --- | --- |
-| ![DeskBox 1.3.4 General settings in English](docs/images/screenshots/en-us/常规.png) | ![DeskBox 1.3.4 Appearance settings in English](docs/images/screenshots/en-us/外观.png) |
+| ![DeskBox General settings in English](docs/images/screenshots/en-us/常规.png) | ![DeskBox Appearance settings in English](docs/images/screenshots/en-us/外观.png) |
 
 | Capsule mode | File widgets |
 | --- | --- |
-| ![DeskBox 1.3.4 Capsule mode settings in English](docs/images/screenshots/en-us/胶囊模式.png) | ![DeskBox 1.3.4 File widget settings in English](docs/images/screenshots/en-us/文件格子.png) |
+| ![DeskBox Capsule mode settings in English](docs/images/screenshots/en-us/胶囊模式.png) | ![DeskBox File widget settings in English](docs/images/screenshots/en-us/文件格子.png) |
 
 | Feature widgets | Shortcuts & interaction |
 | --- | --- |
-| ![DeskBox 1.3.4 Feature widget settings in English](docs/images/screenshots/en-us/功能格子.png) | ![DeskBox 1.3.4 Shortcuts and interaction settings in English](docs/images/screenshots/en-us/快捷与交互.png) |
+| ![DeskBox Feature widget settings in English](docs/images/screenshots/en-us/功能格子.png) | ![DeskBox Shortcuts and interaction settings in English](docs/images/screenshots/en-us/快捷与交互.png) |
 
 ## Local-first data and privacy
 
@@ -224,8 +212,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.3.6_x64.exe
-Output\DeskBox_Setup_1.3.6_arm64.exe
+Output\DeskBox_Setup_1.3.7_x64.exe
+Output\DeskBox_Setup_1.3.7_arm64.exe
 ```
 
 ## Project layout

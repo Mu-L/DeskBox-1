@@ -38,6 +38,7 @@ public partial class App : Application
     private const int SearchPopupShellWarmupDelayMilliseconds = 900;
     private const int SearchPopupIdleCacheReleaseDelaySeconds = 45;
     private const long SearchPopupShellReleasePrivateBytes = 512L * 1024 * 1024;
+    private const string UpdateInstallResultArgument = "--update-install-result";
     private const int MaxQueuedLogLines = 4096;
     private const long MaxLogFileSizeBytes = 5 * 1024 * 1024; // 5 MB before rotation
     private const string TodoReminderNotificationSource = "source=todoReminder";
@@ -113,6 +114,7 @@ public partial class App : Application
     private bool _widgetsRaisedFromTray;
     private bool _hasUpdateAvailable;
     private bool _updateNotificationShown;
+    private DateTimeOffset _lastSettingsPersistenceNotificationAt = DateTimeOffset.MinValue;
     private string _availableUpdateVersion = string.Empty;
     private int _externalStateRecoveryScheduled;
 
@@ -209,8 +211,10 @@ public partial class App : Application
         Services = serviceCollection.BuildServiceProvider();
 
         SettingsService = Services.GetRequiredService<SettingsService>();
+        SettingsService.PersistenceFailed += OnSettingsPersistenceFailed;
         DataBackupService = Services.GetRequiredService<DeskBoxDataBackupService>();
         AttachmentHealthService = Services.GetRequiredService<DeskBoxAttachmentHealthService>();
+        DiagnosticsBundleService = Services.GetRequiredService<DeskBoxDiagnosticsBundleService>();
         FileService = Services.GetRequiredService<FileService>();
         OrganizerService = Services.GetRequiredService<OrganizerService>();
         AppUpdateService = Services.GetRequiredService<IAppUpdateService>();
@@ -637,9 +641,7 @@ public partial class App : Application
             return true;
         }
 
-        return WidgetManager?.Widgets.Values.Any(entry => entry.Window.WindowHandle == rootHwnd) == true ||
-               WidgetManager?.QuickCaptureWidgets.Values.Any(entry => entry.Window.WindowHandle == rootHwnd) == true ||
-               WidgetManager?.ContentWidgets.Values.Any(window => window.WindowHandle == rootHwnd) == true;
+        return WidgetManager?.IsWidgetWindow(rootHwnd) == true;
     }
 
     public static void Log(string msg)
@@ -798,6 +800,38 @@ public partial class App : Application
         return string.Equals(argument.Trim().Trim('"'), "--startup", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string? TryGetUpdateInstallOutcome(IReadOnlyList<string> arguments)
+    {
+        for (int index = 0; index < arguments.Count; index++)
+        {
+            string argument = arguments[index].Trim().Trim('"');
+            if (string.Equals(argument, UpdateInstallResultArgument, StringComparison.OrdinalIgnoreCase) &&
+                index + 1 < arguments.Count)
+            {
+                return NormalizeUpdateInstallOutcome(arguments[index + 1]);
+            }
+
+            string prefix = UpdateInstallResultArgument + "=";
+            if (argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return NormalizeUpdateInstallOutcome(argument[prefix.Length..]);
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeUpdateInstallOutcome(string? outcome)
+    {
+        return outcome?.Trim().Trim('"').ToLowerInvariant() switch
+        {
+            "cancelled" => "cancelled",
+            "path-mismatch" => "path-mismatch",
+            "failed" => "failed",
+            _ => null
+        };
+    }
+
     private bool _isLaunched;
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -814,6 +848,7 @@ public partial class App : Application
 
         try
         {
+            string? updateInstallOutcome = TryGetUpdateInstallOutcome(Environment.GetCommandLineArgs());
             IsStartupMode = IsStartupLaunch(args.Arguments);
             UiDispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
             WidgetSegmentedLayoutHelper.Initialize(UiDispatcherQueue);
@@ -899,7 +934,9 @@ public partial class App : Application
             StartTodoReminderService();
             StartNativeNotificationService();
             ShowDataRestoreResultNotification(restoreResult);
-            if (!hadSettingsBeforeStartup)
+            ShowSettingsLoadRecoveryNotification();
+            if (!hadSettingsBeforeStartup ||
+                SettingsService.LastLoadRecoveryState == SettingsLoadRecoveryState.DefaultsAfterFailure)
             {
                 ShowRecoverySnapshotAvailableNotification(
                     await DataBackupService.GetLatestRecoverySnapshotAsync());
@@ -960,6 +997,12 @@ public partial class App : Application
             }
 
             StartVisibleIdleMemoryMaintenance();
+            if (!string.IsNullOrWhiteSpace(updateInstallOutcome))
+            {
+                ShowSettings("About");
+                _settingsWindow?.QueueUpdateInstallResultDialog(updateInstallOutcome);
+            }
+
             Log("OnLaunched completed successfully");
         }
         catch (Exception ex)
@@ -1010,7 +1053,8 @@ public partial class App : Application
                 _lifecycleRecoveryWatcher = new AppLifecycleRecoveryWatcher(
                     trayHwnd,
                     UiDispatcherQueue,
-                    OnLifecycleRecoveryRequested);
+                    OnLifecycleRecoveryRequested,
+                    FlushSettingsForEndSession);
             }
         }
         catch (Exception ex)
@@ -1034,6 +1078,28 @@ public partial class App : Application
         {
             ScheduleExternalStateRecovery();
             _searchIndexService?.RecoverAfterLifecycleChange(reason);
+        }
+    }
+
+    private void FlushSettingsForEndSession(string reason)
+    {
+        Log($"[Lifecycle] Flushing settings for {reason}.");
+        try
+        {
+            Task<bool> flushTask = Task.Run(
+                () => SettingsService.FlushPendingSaveAsync(notifySubscribers: false));
+            if (!flushTask.Wait(TimeSpan.FromSeconds(3)))
+            {
+                Log($"[Lifecycle] Settings flush timed out for {reason}.");
+            }
+            else if (!flushTask.Result)
+            {
+                Log($"[Lifecycle] Settings flush failed for {reason}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Lifecycle] Settings flush threw for {reason}: {ex}");
         }
     }
 
@@ -1760,7 +1826,7 @@ public partial class App : Application
                 widget.WidgetKind == WidgetKind.File &&
                 !widget.IsDisabled &&
                 !SettingsService.Settings.DeletedWidgetIds.Contains(widget.Id));
-            bool anyLoadedVisible = WidgetManager.Widgets.Values.Any(entry => entry.Window.Visible);
+            bool anyLoadedVisible = WidgetManager.HasVisibleFileWidgets;
 
             if (hasConfiguredWidgets && !anyLoadedVisible)
             {
@@ -1768,8 +1834,15 @@ public partial class App : Application
             }
             else
             {
-                var firstWidget = WidgetManager.Widgets.Values.FirstOrDefault().Window;
-                firstWidget?.RevealFromTray();
+                WidgetConfig? firstWidget = SettingsService.Settings.Widgets
+                    .FirstOrDefault(widget =>
+                        widget.WidgetKind == WidgetKind.File &&
+                        !widget.IsDisabled &&
+                        !SettingsService.Settings.DeletedWidgetIds.Contains(widget.Id));
+                if (firstWidget is not null)
+                {
+                    await WidgetManager.ShowWidgetAsync(firstWidget.Id);
+                }
             }
         }
 
@@ -1813,6 +1886,90 @@ public partial class App : Application
         catch (Exception ex)
         {
             Log($"[DataBackup] Restore result notification failed: {ex.Message}");
+        }
+    }
+
+    private void ShowSettingsLoadRecoveryNotification()
+    {
+        switch (SettingsService.LastLoadRecoveryState)
+        {
+            case SettingsLoadRecoveryState.RecoveredFromBackup:
+                ShowSettingsNotification(
+                    "Settings.Persistence.RecoveredTitle",
+                    "Settings.Persistence.RecoveredBody",
+                    NotificationIcon.Info);
+                break;
+            case SettingsLoadRecoveryState.DefaultsAfterFailure:
+                ShowSettingsNotification(
+                    "Settings.Persistence.ResetTitle",
+                    "Settings.Persistence.ResetBody",
+                    NotificationIcon.Warning);
+                break;
+        }
+
+        if (SettingsService.LastPersistenceFailure is { } failure)
+        {
+            OnSettingsPersistenceFailed(failure);
+        }
+    }
+
+    private void OnSettingsPersistenceFailed(SettingsPersistenceFailure failure)
+    {
+        Log(
+            $"[SettingsService] Persistence failure operation={failure.Operation} " +
+            $"at={failure.OccurredAt:O} message={failure.Message}");
+        if (UiDispatcherQueue is { HasThreadAccess: false } dispatcher)
+        {
+            dispatcher.TryEnqueue(() => OnSettingsPersistenceFailed(failure));
+            return;
+        }
+
+        if (DateTimeOffset.UtcNow - _lastSettingsPersistenceNotificationAt <
+            TimeSpan.FromMinutes(5))
+        {
+            return;
+        }
+
+        _lastSettingsPersistenceNotificationAt = DateTimeOffset.UtcNow;
+        ShowSettingsNotification(
+            "Settings.Persistence.SaveFailedTitle",
+            "Settings.Persistence.SaveFailedBody",
+            NotificationIcon.Warning);
+    }
+
+    private void ShowSettingsNotification(
+        string titleKey,
+        string bodyKey,
+        NotificationIcon icon)
+    {
+        if (LocalizationService is null)
+        {
+            return;
+        }
+
+        string title = LocalizationService.T(titleKey);
+        string message = LocalizationService.T(bodyKey);
+        if (_nativeNotificationService?.TryShow(title, message) == true || _trayIcon is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _trayIcon.ShowNotification(
+                title,
+                message,
+                icon,
+                customIconHandle: null,
+                largeIcon: false,
+                sound: false,
+                respectQuietTime: true,
+                realtime: false,
+                timeout: TimeSpan.FromSeconds(10));
+        }
+        catch (Exception ex)
+        {
+            Log($"[SettingsService] Persistence notification failed: {ex.Message}");
         }
     }
 
@@ -2399,7 +2556,11 @@ public partial class App : Application
             DesktopAutoOrganizationWatcher.Dispose();
         }
         DesktopAutoOrganizationWatcher = null;
-        await SettingsService.SaveAsync();
+        // Dispose live surfaces before the final flush. A surface may commit a
+        // last drag/order snapshot while it is being torn down.
+        WidgetManager?.CloseAll();
+        await SettingsService.FlushPendingSaveAsync(notifySubscribers: false);
+        SettingsService.PersistenceFailed -= OnSettingsPersistenceFailed;
         _nativeNotificationService?.Dispose();
         _nativeNotificationService = null;
         _todoReminderService?.Dispose();
@@ -2413,7 +2574,6 @@ public partial class App : Application
         GlobalHotkeyService?.Dispose();
         GlobalHotkeyService = null;
 
-        WidgetManager?.CloseAll();
         _trayIcon?.Dispose();
         _trayIcon = null;
         _activationRegistration?.Unregister(null);

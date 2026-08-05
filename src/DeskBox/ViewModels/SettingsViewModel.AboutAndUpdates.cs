@@ -23,6 +23,8 @@ public partial class SettingsViewModel
     public string OpenSourceRepositoryUrl => RepositoryUrl;
     public string OfficialWebsiteDisplayText => OfficialWebsiteUrl.Replace("https://", string.Empty).TrimEnd('/');
     public string OfficialWebsiteLink => OfficialWebsiteUrl;
+    public string FeedbackEmailAddress => FeedbackEmail;
+    public string FeedbackEmailLink => $"mailto:{FeedbackEmail}";
     public string DomesticMirrorDownloadUrl => AppUpdateService.DefaultManualDownloadUrl;
     public string AboutDeveloperText => _localizationService.T("Settings.About.DeveloperName");
     public Visibility DonationCardVisibility => IsDirectInstallerUpdateDelivery ? Visibility.Visible : Visibility.Collapsed;
@@ -49,8 +51,6 @@ public partial class SettingsViewModel
     public Visibility ReleaseNotesButtonVisibility =>
         CanViewReleaseNotes ? Visibility.Visible : Visibility.Collapsed;
     public string ViewReleaseNotesButtonText => _localizationService.T("Settings.Update.ViewReleaseNotes");
-    public string UpdateFallbackUrl => RepositoryUrl + "/releases";
-
     public string ManualUpdateDownloadUrl => GetManualUpdateDownloadUrl(_availableUpdateManifest);
     public Visibility UpdateAutoCheckVisibility => Visibility.Visible;
     public Visibility UpdateProgressVisibility => IsDownloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
@@ -80,13 +80,19 @@ public partial class SettingsViewModel
         ? "Settings.Update.StoreInstall"
         : "Settings.Update.Download");
     public string UpdateFallbackActionText => _localizationService.T("Settings.Update.ManualDownload");
-    public string UpdateProgressText => $"{Math.Clamp(UpdateProgressValue, 0, 100):0}%";
+    public bool UpdateProgressIsIndeterminate => IsDownloadingUpdate && _updateTotalBytes is not > 0;
+    public string UpdateProgressText => _updateTotalBytes is > 0
+        ? $"{FormatByteSize(_updateBytesReceived)} / {FormatByteSize(_updateTotalBytes.Value)} · {Math.Clamp(UpdateProgressValue, 0, 100):0}%"
+        : FormatByteSize(_updateBytesReceived);
 
     // One-click update properties
     public string UpdateSummaryText =>
         _availableUpdateManifest?.GetLocalizedSummary(_localizationService.CurrentCultureName) ?? string.Empty;
     public Visibility UpdateSummaryVisibility =>
-        _availableUpdateManifest is not null && !string.IsNullOrWhiteSpace(UpdateSummaryText)
+        _availableUpdateManifest is not null &&
+        !IsDownloadingUpdate &&
+        !_lastUpdateDownloadFailed &&
+        !string.IsNullOrWhiteSpace(UpdateSummaryText)
             ? Visibility.Visible : Visibility.Collapsed;
     public bool HasUpdateAvailable => _availableUpdateManifest is not null;
     public bool IsUpdateDownloaded =>
@@ -105,6 +111,8 @@ public partial class SettingsViewModel
                 return _localizationService.Format("Settings.Update.Status.Downloading", _availableUpdateManifest?.Version ?? "");
             if (IsUpdateDownloaded)
                 return _localizationService.T("Settings.Update.OneClick.Install");
+            if (_lastUpdateDownloadFailed)
+                return _localizationService.T("Settings.Update.OneClick.Retry");
             if (_availableUpdateManifest is not null)
                 return _localizationService.Format("Settings.Update.OneClick.UpdateTo", _availableUpdateManifest.Version);
             return _localizationService.T("Settings.Update.Check");
@@ -125,24 +133,23 @@ public partial class SettingsViewModel
     /// The caller (XAML click handler) is responsible for showing the
     /// install confirmation dialog when <see cref="IsUpdateDownloaded"/> becomes true.
     /// </summary>
-    public async Task OneClickUpdateActionAsync()
+    public async Task<AppUpdateDownloadResult?> OneClickUpdateActionAsync()
     {
         if (IsCheckingForUpdates || IsDownloadingUpdate)
         {
-            return;
+            return null;
         }
 
         // If already downloaded, the caller should handle install confirmation.
         if (IsUpdateDownloaded)
         {
-            return;
+            return null;
         }
 
         // If update is available but not yet downloaded, start downloading.
         if (_availableUpdateManifest is not null)
         {
-            await DownloadAvailableUpdateAsync();
-            return;
+            return await DownloadAvailableUpdateAsync();
         }
 
         // Otherwise, check for updates first.
@@ -151,8 +158,10 @@ public partial class SettingsViewModel
         // If check found an update, auto-start download.
         if (_availableUpdateManifest is not null && !IsUpdateDownloaded)
         {
-            await DownloadAvailableUpdateAsync();
+            return await DownloadAvailableUpdateAsync();
         }
+
+        return null;
     }
 
     public async Task CheckForUpdatesAsync()
@@ -183,18 +192,21 @@ public partial class SettingsViewModel
         }
     }
 
-    public async Task DownloadAvailableUpdateAsync()
+    public async Task<AppUpdateDownloadResult?> DownloadAvailableUpdateAsync()
     {
         if (_availableUpdateManifest is null || IsCheckingForUpdates || IsDownloadingUpdate)
         {
-            return;
+            return null;
         }
 
         _updateOperationCts?.Cancel();
         _updateOperationCts = new CancellationTokenSource();
         _downloadedUpdateInstallerPath = null;
+        _lastUpdateDownloadFailed = false;
         IsDownloadingUpdate = true;
         UpdateProgressValue = 0;
+        _updateBytesReceived = 0;
+        _updateTotalBytes = null;
         UpdateStatusText = IsStoreUpdateDelivery
             ? _localizationService.T("Settings.Update.Status.StoreInstalling")
             : _localizationService.Format("Settings.Update.Status.Downloading", _availableUpdateManifest.Version);
@@ -205,8 +217,11 @@ public partial class SettingsViewModel
 
         var progress = new Progress<AppUpdateDownloadProgress>(downloadProgress =>
         {
+            _updateBytesReceived = downloadProgress.BytesReceived;
+            _updateTotalBytes = downloadProgress.TotalBytes;
             UpdateProgressValue = downloadProgress.Percent;
             OnPropertyChanged(nameof(UpdateProgressText));
+            OnPropertyChanged(nameof(UpdateProgressIsIndeterminate));
         });
 
         try
@@ -220,7 +235,7 @@ public partial class SettingsViewModel
                 UpdateProgressValue = 100;
                 UpdateStatusText = _localizationService.T("Settings.Update.Status.StoreInstallComplete");
                 UpdateDetailText = _localizationService.T("Settings.Update.Detail.StoreInstallComplete");
-                return;
+                return result;
             }
 
             if (result.Success && !string.IsNullOrWhiteSpace(result.FilePath))
@@ -230,10 +245,11 @@ public partial class SettingsViewModel
                 UpdateProgressValue = 100;
                 UpdateStatusText = _localizationService.Format("Settings.Update.Status.Downloaded", _availableUpdateManifest.Version);
                 UpdateDetailText = _localizationService.T("Settings.Update.Detail.Downloaded");
-                return;
+                return result;
             }
 
             ApplyDownloadFailure(result);
+            return result;
         }
         finally
         {
@@ -280,21 +296,20 @@ public partial class SettingsViewModel
             _availableUpdateManifest = result.Manifest;
             _downloadedUpdateInstallerPath = null;
             _showManualUpdateFallback = false;
+            _lastUpdateDownloadFailed = false;
             UpdateStatusText = IsStoreUpdateDelivery
                 ? _localizationService.T("Settings.Update.Status.StoreAvailable")
                 : _localizationService.Format("Settings.Update.Status.Available", result.Manifest.Version);
-            string summary = result.Manifest.GetLocalizedSummary(_localizationService.CurrentCultureName);
-            UpdateDetailText = string.IsNullOrWhiteSpace(summary)
-                ? _localizationService.T(IsStoreUpdateDelivery
-                    ? "Settings.Update.Detail.StoreAvailable"
-                    : "Settings.Update.Detail.Available")
-                : summary;
+            UpdateDetailText = _localizationService.T(IsStoreUpdateDelivery
+                ? "Settings.Update.Detail.StoreAvailable"
+                : "Settings.Update.Detail.Available");
         }
         else if (result.Status == AppUpdateCheckStatus.UpToDate)
         {
             _availableUpdateManifest = null;
             _downloadedUpdateInstallerPath = null;
             _showManualUpdateFallback = false;
+            _lastUpdateDownloadFailed = false;
             UpdateStatusText = _localizationService.T("Settings.Update.Status.UpToDate");
             UpdateDetailText = BuildUpToDateDetailText(result);
         }
@@ -303,6 +318,7 @@ public partial class SettingsViewModel
             _availableUpdateManifest = null;
             _downloadedUpdateInstallerPath = null;
             _showManualUpdateFallback = IsDirectInstallerUpdateDelivery;
+            _lastUpdateDownloadFailed = false;
             UpdateStatusText = _localizationService.T("Settings.Update.Status.Failed");
             UpdateDetailText = _localizationService.T("Settings.Update.Detail.InvalidManifest");
         }
@@ -311,6 +327,7 @@ public partial class SettingsViewModel
             _availableUpdateManifest = null;
             _downloadedUpdateInstallerPath = null;
             _showManualUpdateFallback = IsDirectInstallerUpdateDelivery;
+            _lastUpdateDownloadFailed = false;
             UpdateStatusText = _localizationService.T("Settings.Update.Status.Failed");
             UpdateDetailText = string.IsNullOrWhiteSpace(result.ErrorMessage)
                 ? _localizationService.T("Settings.Update.Detail.Failed")
@@ -323,9 +340,11 @@ public partial class SettingsViewModel
     private void ApplyDownloadFailure(AppUpdateDownloadResult result)
     {
         _showManualUpdateFallback = IsDirectInstallerUpdateDelivery;
+        _lastUpdateDownloadFailed = result.FailureKind != AppUpdateDownloadFailureKind.Cancelled;
         UpdateStatusText = _localizationService.T("Settings.Update.Status.Failed");
         UpdateDetailText = result.FailureKind switch
         {
+            AppUpdateDownloadFailureKind.Cancelled => _localizationService.T("Settings.Update.Detail.DownloadCancelled"),
             AppUpdateDownloadFailureKind.HashMissing => _localizationService.T("Settings.Update.Detail.HashMissing"),
             AppUpdateDownloadFailureKind.HashMismatch => _localizationService.T("Settings.Update.Detail.HashMismatch"),
             AppUpdateDownloadFailureKind.InvalidManifest => _localizationService.T("Settings.Update.Detail.InvalidManifest"),
@@ -397,16 +416,16 @@ public partial class SettingsViewModel
         return _localizationService.T("Settings.Update.Detail.Failed");
     }
 
-    private static string GetManualUpdateDownloadUrl(AppUpdateManifest? manifest)
+    internal static string GetManualUpdateDownloadUrl(AppUpdateManifest? manifest)
     {
-        if (!string.IsNullOrWhiteSpace(manifest?.ManualDownloadUrl))
+        if (AppUpdateManifest.IsSafeWebUrl(manifest?.ManualDownloadUrl))
         {
-            return manifest.ManualDownloadUrl;
+            return manifest!.ManualDownloadUrl;
         }
 
-        if (!string.IsNullOrWhiteSpace(manifest?.MirrorUrl))
+        if (AppUpdateManifest.IsSafeWebUrl(manifest?.MirrorUrl))
         {
-            return manifest.MirrorUrl;
+            return manifest!.MirrorUrl;
         }
 
         return AppUpdateService.DefaultManualDownloadUrl;
@@ -414,8 +433,23 @@ public partial class SettingsViewModel
 
     private static bool HasManifestManualDownloadUrl(AppUpdateManifest? manifest)
     {
-        return !string.IsNullOrWhiteSpace(manifest?.ManualDownloadUrl) ||
-            !string.IsNullOrWhiteSpace(manifest?.MirrorUrl);
+        return AppUpdateManifest.IsSafeWebUrl(manifest?.ManualDownloadUrl) ||
+            AppUpdateManifest.IsSafeWebUrl(manifest?.MirrorUrl);
+    }
+
+    private static string FormatByteSize(long bytes)
+    {
+        const double KiloByte = 1024d;
+        const double MegaByte = KiloByte * 1024d;
+        const double GigaByte = MegaByte * 1024d;
+
+        return bytes switch
+        {
+            >= (long)GigaByte => $"{bytes / GigaByte:0.0} GB",
+            >= (long)MegaByte => $"{bytes / MegaByte:0.0} MB",
+            >= (long)KiloByte => $"{bytes / KiloByte:0.0} KB",
+            _ => $"{Math.Max(0, bytes)} B"
+        };
     }
 
     private void NotifyUpdateActionPropertiesChanged()
@@ -427,6 +461,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(UpdateDownloadActionText));
         OnPropertyChanged(nameof(UpdateProgressVisibility));
         OnPropertyChanged(nameof(UpdateProgressTextVisibility));
+        OnPropertyChanged(nameof(UpdateProgressIsIndeterminate));
         OnPropertyChanged(nameof(UpdateReleaseNotesVisibility));
         OnPropertyChanged(nameof(AvailableUpdateReleaseNotesUrl));
         OnPropertyChanged(nameof(LatestUpdateManifest));

@@ -162,7 +162,7 @@ public sealed partial class WidgetManager
             return;
         }
 
-        if (_widgets.TryGetValue(widgetId, out var entry))
+        if (_fileWidgets.TryGetValue(widgetId, out var entry))
         {
             await entry.ViewModel.HandleItemsMovedOutAsync(paths);
             return;
@@ -273,14 +273,9 @@ public sealed partial class WidgetManager
 
             foreach (var widgetPlan in affectedWidgets)
             {
-                if (!_widgets.TryGetValue(widgetPlan.Widget.Id, out var entry))
-                {
-                    continue;
-                }
-
                 try
                 {
-                    await entry.ViewModel.RefreshFromConfigAsync();
+                    await RefreshFileWidgetAsync(widgetPlan.Widget.Id);
                 }
                 catch (Exception ex)
                 {
@@ -328,9 +323,20 @@ public sealed partial class WidgetManager
     {
         foreach (string widgetId in widgetIds.Distinct(StringComparer.Ordinal))
         {
-            if (_widgets.TryGetValue(widgetId, out var entry))
+            if (_fileWidgets.TryGetValue(widgetId, out var entry))
             {
-                entry.Window.SetMigrationBusy(isBusy);
+                entry.SetMigrationBusy(isBusy);
+                continue;
+            }
+
+            ContentWidgetWindow? contentWindow = _contentWidgets.Values
+                .Distinct()
+                .FirstOrDefault(window =>
+                    window.CurrentContent is FileSurfaceContent surface &&
+                    string.Equals(surface.WidgetId, widgetId, StringComparison.Ordinal));
+            if (contentWindow?.CurrentContent is FileSurfaceContent fileSurface)
+            {
+                fileSurface.SetMigrationBusy(isBusy);
             }
         }
     }
@@ -383,10 +389,7 @@ public sealed partial class WidgetManager
         config.ManagedFolderName = desiredFolderName;
         config.MappedFolderPath = destinationFolderPath;
 
-        if (_widgets.TryGetValue(config.Id, out var entry))
-        {
-            await entry.ViewModel.RefreshFromConfigAsync();
-        }
+        await RefreshFileWidgetAsync(config.Id);
     }
 
     private void RemoveMappedWidgetShortcut(WidgetConfig config)

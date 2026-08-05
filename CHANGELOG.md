@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.3.7 - 2026-08-05
+
+### English
+
+#### Unified File Widgets and Groups
+
+- **One shared file surface:** standalone file widgets and grouped file widgets now run through the same `FileSurfaceContent` and unified content host. The legacy standalone file interaction tree and XAML have been removed, eliminating a major source of behavior drift.
+- **Group and standalone settings stay aligned:** list details, path display, compact list spacing, title styles, context menus, QuickLook, sorting, auto stacks, and cyclic Ctrl+Tab switching now follow the same implementation.
+- **File operations are more complete:** newly created folders scroll into view and enter inline naming, new and existing folders can be renamed, files can be moved or copied into a folder item, and manual ordering is restored reliably after a cold start.
+- **Native drag behavior is more predictable:** shortcut drag-out uses a Shell-compatible virtual-file path and reconciles a completed move, while reorder insertion indicators use a softer transition and no longer block dropping onto a folder.
+
+#### Hotkeys, State, and Recovery
+
+- **Repeated global toggles are serialized:** rapid tray or hotkey presses are processed through one state transaction, preventing widget windows from being stranded off-screen or the global hotkey from becoming unresponsive after several toggles.
+- **Lifecycle recovery is broader:** display topology, DPI, sleep and resume, remote-session changes, and Explorer restarts share window-state recovery and diagnostics.
+- **Settings survive shutdown more reliably:** pending file-order and configuration changes are flushed before exit, recoverable snapshots protect against damaged settings, and save failures are recorded instead of silently reverting to defaults.
+- **Weather view preference persists:** the selected Day or Week forecast mode is restored after an application restart.
+
+#### Search and Interface
+
+- **Search returns useful work sooner:** providers publish staged incremental results and failures are isolated so one unavailable source does not block the remaining search pipeline.
+- **Selection and tables are clearer:** Ctrl/Shift multi-selection, rubber-band selection with edge auto-scroll, result rows, sortable columns, and header hover states have been refined for predictable batch work.
+- **Windows-native visual states:** file hover and selection use theme-adaptive neutral colors with tighter corners; destructive Close actions use one softer red treatment across widgets, and file context menus have a consistent order.
+- **Settings and support polish:** About uses space more efficiently, the unnecessary repository button was removed, a feedback email card was added, and diagnostics can be exported as a privacy-filtered package.
+
+#### Installation and Updates
+
+- **Upgrades keep one DeskBox installation:** stable installer identity and existing-path detection reuse and lock the current install directory, preventing a normal upgrade from creating a second copy.
+- **The update handoff is visible:** after DeskBox closes, the downloaded installer opens normally so the user can see progress without choosing the installation path again.
+- **Download failures are actionable:** the updater offers retry and official-site fallback, while long release notes open in a dedicated view instead of being clipped above the progress bar.
+- **Dual-architecture distribution:** framework-dependent x64 and ARM64 installers reuse compatible .NET 10 and Windows App Runtime 2.2 installations and download only a missing architecture-matched dependency.
+
+### 中文
+
+#### 文件格子与格子组统一
+
+- **共用同一套文件内容**：独立文件格子与格子组内文件格子统一由 `FileSurfaceContent` 和内容宿主承载，旧独立文件交互树与 XAML 已删除，从架构上消除两套实现逐渐不一致的问题。
+- **组内与独立设置保持一致**：列表详细信息、路径显示、紧凑间距、标题样式、右键菜单、QuickLook、排序、自动叠放和可循环 Ctrl+Tab 均走同一套实现。
+- **文件操作更完整**：新建文件夹会自动滚动到可见位置并进入名称输入，新旧文件夹均可重命名，文件可以移动或复制到格子内的文件夹，冷启动后也能可靠恢复手动排序。
+- **原生拖放更可控**：快捷方式拖出使用兼容 Shell 的虚拟文件路径，并在移动完成后同步源状态；排序插入提示过渡更柔和，也不会再挡住拖入文件夹的操作。
+
+#### 快捷键、状态与恢复
+
+- **连续唤起串行处理**：短时间连续点击托盘或按全局快捷键时，所有显隐操作进入同一个状态事务，避免格子丢失到屏幕外，或多次切换后全局热键暂时失效。
+- **生命周期恢复覆盖更完整**：显示器拓扑、DPI、睡眠唤醒、远程会话和资源管理器重启共用窗口状态恢复与诊断。
+- **退出保存更可靠**：退出前刷新待保存的文件顺序与配置；损坏设置可以从快照恢复；保存失败会记录和提示，不再静默恢复默认值。
+- **天气视图会记忆**：天气格子选择的日视图或周视图会在应用重启后恢复。
+
+#### 搜索与界面
+
+- **搜索更快返回可用结果**：不同来源分阶段增量发布结果，并隔离单个来源异常，某个数据源不可用时不会阻塞其余搜索流程。
+- **多选与表格更清晰**：补齐 Ctrl/Shift 多选、带边缘自动滚动的框选，并优化结果行、可排序列和表头悬停状态，批量操作更可预测。
+- **更接近 Windows 原生视觉**：文件悬停与选中改为明暗自适应的中性色并缩小圆角；所有格子的“关闭”使用统一且更柔和的红色，文件右键菜单顺序保持一致。
+- **设置与支持细节**：关于页减少无效空白，移除不需要的开源仓库按钮，新增反馈邮箱卡片，并可导出经过隐私过滤的一键诊断包。
+
+#### 安装与更新
+
+- **升级只保留一个 DeskBox**：稳定的安装器标识与已有路径检测会复用并锁定当前安装目录，普通升级不会再生成第二份应用。
+- **更新交接过程可见**：DeskBox 关闭后正常打开已下载的安装器，用户可以看到安装进度，同时无需重新选择路径。
+- **下载失败可处理**：更新器提供重试与官网回退；较长的版本日志改在独立界面打开，不再挤在进度条上方被截断。
+- **双架构发布**：x64 和 ARM64 均为框架依赖安装包，复用兼容的 .NET 10 与 Windows App Runtime 2.2，只在缺少时下载对应架构依赖。
+
 ## 1.3.6 - 2026-08-04
 
 ### English

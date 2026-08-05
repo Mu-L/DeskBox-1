@@ -30,16 +30,16 @@ public static class ReorderInsertionIndicatorAnimator
         Compositor compositor = visual.Compositor;
         ScalarKeyFrameAnimation animation =
             compositor.CreateScalarKeyFrameAnimation();
-        animation.Duration = TimeSpan.FromMilliseconds(1200);
+        animation.Duration = TimeSpan.FromMilliseconds(1450);
         animation.IterationBehavior = AnimationIterationBehavior.Forever;
 
         CubicBezierEasingFunction easing =
             compositor.CreateCubicBezierEasingFunction(
                 new Vector2(0.42f, 0.0f),
                 new Vector2(0.58f, 1.0f));
-        animation.InsertKeyFrame(0.0f, 0.34f);
+        animation.InsertKeyFrame(0.0f, 0.72f);
         animation.InsertKeyFrame(0.5f, 1.0f, easing);
-        animation.InsertKeyFrame(1.0f, 0.34f, easing);
+        animation.InsertKeyFrame(1.0f, 0.72f, easing);
         visual.StartAnimation("Opacity", animation);
     }
 

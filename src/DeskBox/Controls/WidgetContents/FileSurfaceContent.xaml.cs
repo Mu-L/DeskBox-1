@@ -1,4 +1,6 @@
 using System.Collections.Specialized;
+using System.Security.Cryptography;
+using DeskBox.Controls;
 using DeskBox.Contracts;
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -21,9 +23,7 @@ using VirtualKey = Windows.System.VirtualKey;
 namespace DeskBox.Controls.WidgetContents;
 
 /// <summary>
-/// File-widget member that can live inside a persistent Surface window.
-/// Standalone legacy file windows remain supported, but grouped file members
-/// no longer need to own a top-level HWND.
+/// Shared file-widget content used by both standalone and grouped unified hosts.
 /// </summary>
 public sealed partial class FileSurfaceContent :
     UserControl,
@@ -32,6 +32,7 @@ public sealed partial class FileSurfaceContent :
     IWidgetGroupContentCacheable,
     IWidgetAddActionContent,
     IWidgetFeedbackSource,
+    IWidgetHostContextMenuSource,
     IWidgetTransientStateContent,
     IDisposable
 {
@@ -56,7 +57,10 @@ public sealed partial class FileSurfaceContent :
     private bool _surfaceReorderHasLastPosition;
     private string[] _activeDragSourcePaths = [];
     private bool _activeDragHasStorageItems;
+    private bool _activeDragUsesVirtualStorageItems;
+    private HashSet<string>? _activeDragDesktopSnapshot;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private Border? _folderDropTarget;
     private Border? _stackMemberDropTarget;
     private WidgetStackItem? _pressedStack;
     private bool _stackPointerDragStarted;
@@ -120,6 +124,9 @@ public sealed partial class FileSurfaceContent :
 
     public event EventHandler<WidgetFeedbackRequestedEventArgs>? FeedbackRequested;
 
+    public event EventHandler<WidgetHostContextMenuOpeningEventArgs>?
+        HostContextMenuOpening;
+
     internal event EventHandler? ExternalFileDragEnded;
 
     internal event Action<bool>? ImportBusyChanged;
@@ -156,6 +163,40 @@ public sealed partial class FileSurfaceContent :
         await ViewModel.RefreshFolderContentsAsync();
         _lastDiskReconciliationUtc = DateTime.UtcNow;
         UpdateEmptyState();
+    }
+
+    internal void RevealSavedItem(string itemPath)
+    {
+        if (string.IsNullOrWhiteSpace(itemPath))
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => RevealSavedItem(itemPath));
+            return;
+        }
+
+        WidgetItem? item = ViewModel.Items.FirstOrDefault(candidate =>
+            string.Equals(
+                candidate.Path,
+                itemPath,
+                StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+        {
+            return;
+        }
+
+        ListViewBase activeView = GetActiveItemsView();
+        activeView.SelectedItems.Clear();
+        activeView.SelectedItems.Add(item);
+        UpdateSelectionCommandBar();
+        SynchronizeItemSelectionState();
+        ShowFeedback(new WidgetFeedbackRequest(
+            T("Widget.SavedHere"),
+            WidgetFeedbackSeverity.Success,
+            "file-saved-here"));
     }
 
     public void ApplyAppearance()
@@ -434,11 +475,16 @@ public sealed partial class FileSurfaceContent :
             e.Cancel = true;
             _activeDragSourcePaths = [];
             _activeDragHasStorageItems = false;
+            _activeDragUsesVirtualStorageItems = false;
+            _activeDragDesktopSnapshot = null;
             return;
         }
 
         _activeDragSourcePaths = [];
         _activeDragHasStorageItems = false;
+        _activeDragUsesVirtualStorageItems = false;
+        _activeDragDesktopSnapshot = null;
+        ClearFolderDropTarget();
         HideSurfaceReorderInsertionIndicator();
         _isSurfaceReorderDragActive = false;
         _surfaceReorderPaths = [];
@@ -467,40 +513,59 @@ public sealed partial class FileSurfaceContent :
 
         WidgetItem[] selectedItems = e.Items
             .OfType<WidgetItem>()
-            .Where(item => !string.IsNullOrWhiteSpace(item.Path))
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.Path) &&
+                (File.Exists(item.Path) || Directory.Exists(item.Path)))
             .ToArray();
-        string[] paths = selectedItems
-            .Select(item => item.Path)
-            .Where(path => File.Exists(path) || Directory.Exists(path))
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (paths.Length == 0)
+        if (!FileItemDragPackage.TryPrepare(
+                e.Data,
+                selectedItems,
+                WidgetId,
+                paths => _fileService.GetStorageItems(paths),
+                paths => paths.Count == 1
+                    ? Path.GetFileName(paths[0])
+                    : paths.Count.ToString(),
+                out FileItemDragPackageResult result))
         {
             e.Cancel = true;
             return;
         }
 
-        IReadOnlyList<IStorageItem> storageItems =
-            _fileService.GetStorageItems(paths);
-        if (storageItems.Count > 0)
+        _activeDragSourcePaths = result.SourcePaths.ToArray();
+        _activeDragHasStorageItems = result.HasStorageItems;
+        _activeDragUsesVirtualStorageItems =
+            result.UsesVirtualStorageItems;
+        if (result.UsesVirtualStorageItems &&
+            ViewModel.FollowsDefaultStoragePath)
         {
-            e.Data.SetStorageItems(storageItems, readOnly: false);
+            e.Data.RequestedOperation = DataPackageOperation.Move;
+            _activeDragDesktopSnapshot =
+                TryCaptureDesktopEntrySnapshot();
         }
-        _activeDragSourcePaths = paths;
-        _activeDragHasStorageItems = storageItems.Count > 0;
-        e.Data.SetText(string.Join(Environment.NewLine, paths));
-        e.Data.RequestedOperation =
-            DataPackageOperation.Copy |
-            DataPackageOperation.Move |
-            DataPackageOperation.Link;
-        e.Data.Properties["DeskBoxSourceWidgetId"] = WidgetId;
-        e.Data.Properties["DeskBoxSourcePaths"] = paths;
-        e.Data.Properties["DeskBoxInternalDragToken"] =
-            "DeskBox.WidgetItemDrag.v2";
-        e.Data.Properties.Title = paths.Length == 1
-            ? Path.GetFileName(paths[0])
-            : paths.Length.ToString();
+    }
+
+    private void Items_DragStarting(
+        UIElement sender,
+        DragStartingEventArgs e)
+    {
+        string[] sourcePaths = _activeDragSourcePaths.Length > 0
+            ? _activeDragSourcePaths
+            : GetSelectedItems()
+                .Where(item => item is not WidgetStackItem)
+                .Select(item => item.Path)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToArray();
+        if (!ViewModel.FollowsDefaultStoragePath ||
+            !VirtualShortcutDragProvider.CanProvide(sourcePaths))
+        {
+            return;
+        }
+
+        // DataPackage.RequestedOperation is a single preferred operation,
+        // while AllowedOperations controls the permitted set. Managed storage
+        // shortcuts are being restored to the desktop, so both are Move.
+        e.Data.RequestedOperation = DataPackageOperation.Move;
+        e.AllowedOperations = DataPackageOperation.Move;
     }
 
     private async void Items_DragItemsCompleted(
@@ -518,11 +583,44 @@ public sealed partial class FileSurfaceContent :
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         bool hasStorageItems = _activeDragHasStorageItems;
+        bool usesVirtualStorageItems =
+            _activeDragUsesVirtualStorageItems;
+        HashSet<string>? desktopSnapshot =
+            _activeDragDesktopSnapshot;
         _activeDragSourcePaths = [];
         _activeDragHasStorageItems = false;
+        _activeDragUsesVirtualStorageItems = false;
+        _activeDragDesktopSnapshot = null;
 
         try
         {
+            if (usesVirtualStorageItems &&
+                movedPaths.Length > 0 &&
+                ViewModel.FollowsDefaultStoragePath &&
+                ShellDesktopDropTarget.IsPointerOverDesktop())
+            {
+                await CompleteVirtualShortcutDesktopMoveAsync(
+                    movedPaths,
+                    desktopSnapshot);
+                return;
+            }
+
+            if (e.DropResult == DataPackageOperation.None &&
+                !hasStorageItems &&
+                movedPaths.Length > 0 &&
+                ViewModel.FollowsDefaultStoragePath &&
+                ShellDesktopDropTarget.IsPointerOverDesktop())
+            {
+                // Windows.Storage rejects some real shell files, most notably
+                // .lnk shortcuts. Their drag package still carries DeskBox's
+                // path metadata and text, but Explorer cannot consume it as a
+                // native file drop. Complete the intended managed-storage
+                // move only after confirming that the release target is the
+                // actual Shell desktop.
+                await MoveRejectedManagedDragToDesktopAsync(movedPaths);
+                return;
+            }
+
             if ((e.DropResult == DataPackageOperation.Move ||
                  (e.DropResult == DataPackageOperation.None && hasStorageItems)) &&
                 movedPaths.Length > 0)
@@ -546,6 +644,7 @@ public sealed partial class FileSurfaceContent :
         {
             _pressedStack = null;
             _stackPointerDragStarted = false;
+            ClearFolderDropTarget();
             ClearStackMemberDropTarget();
             if (_isSurfaceReorderDragActive &&
                 _surfaceReorderHasLastPosition)
@@ -560,6 +659,220 @@ public sealed partial class FileSurfaceContent :
                 PersistSurfaceReorder();
             }
         }
+    }
+
+    private static HashSet<string>? TryCaptureDesktopEntrySnapshot()
+    {
+        try
+        {
+            string desktopPath = FileService.GetDesktopPaths().UserDesktop;
+            return Directory
+                .EnumerateFileSystemEntries(desktopPath)
+                .Select(Path.GetFullPath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[DragStart] Failed to capture desktop snapshot: " +
+                $"{ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task CompleteVirtualShortcutDesktopMoveAsync(
+        IReadOnlyCollection<string> sourcePaths,
+        HashSet<string>? desktopSnapshot)
+    {
+        string[] remainingPaths = sourcePaths
+            .Where(path =>
+                !string.IsNullOrWhiteSpace(path) &&
+                File.Exists(path))
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (remainingPaths.Length == 0)
+        {
+            return;
+        }
+
+        IReadOnlySet<string> materializedSources =
+            desktopSnapshot is null
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                : await FindMaterializedVirtualShortcutSourcesAsync(
+                    remainingPaths,
+                    desktopSnapshot);
+        int completedByVirtualMove = 0;
+        foreach (string sourcePath in materializedSources)
+        {
+            try
+            {
+                File.Delete(sourcePath);
+                completedByVirtualMove++;
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[DragComplete] Failed to finalize virtual shortcut " +
+                    $"move source='{sourcePath}': {ex.Message}");
+            }
+        }
+
+        string[] fallbackPaths = remainingPaths
+            .Where(File.Exists)
+            .ToArray();
+        if (fallbackPaths.Length > 0)
+        {
+            await MoveRejectedManagedDragToDesktopAsync(fallbackPaths);
+            return;
+        }
+
+        if (completedByVirtualMove > 0)
+        {
+            await ViewModel.RefreshFolderContentsAsync();
+            ShowFeedback(new WidgetFeedbackRequest(
+                _localizationService.Format(
+                    "Widget.MovedToDesktop",
+                    completedByVirtualMove),
+                WidgetFeedbackSeverity.Success,
+                "file-virtual-drag-desktop-move"));
+            App.Log(
+                $"[DragComplete] Finalized virtual shortcut desktop move " +
+                $"id={WidgetId} paths={completedByVirtualMove}");
+        }
+    }
+
+    private static async Task<IReadOnlySet<string>>
+        FindMaterializedVirtualShortcutSourcesAsync(
+            IReadOnlyList<string> sourcePaths,
+            IReadOnlySet<string> desktopSnapshot)
+    {
+        string desktopPath = FileService.GetDesktopPaths().UserDesktop;
+        Dictionary<string, string> sourceFingerprints = sourcePaths
+            .ToDictionary(
+                path => path,
+                ComputeFileFingerprint,
+                StringComparer.OrdinalIgnoreCase);
+
+        for (int attempt = 0; attempt < 6; attempt++)
+        {
+            await Task.Delay(attempt == 0 ? 160 : 120);
+            string[] candidates;
+            try
+            {
+                candidates = Directory
+                    .EnumerateFiles(desktopPath, "*.lnk")
+                    .Select(Path.GetFullPath)
+                    .Where(path => !desktopSnapshot.Contains(path))
+                    .ToArray();
+            }
+            catch
+            {
+                continue;
+            }
+
+            var candidateFingerprints = new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in candidates)
+            {
+                try
+                {
+                    candidateFingerprints[candidate] =
+                        ComputeFileFingerprint(candidate);
+                }
+                catch
+                {
+                }
+            }
+
+            var matchedSources = sourceFingerprints
+                .Where(source => candidateFingerprints.Any(candidate =>
+                    string.Equals(
+                        source.Value,
+                        candidate.Value,
+                        StringComparison.Ordinal)))
+                .Select(source => source.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (matchedSources.Count == sourcePaths.Count ||
+                (attempt == 5 && matchedSources.Count > 0))
+            {
+                return matchedSources;
+            }
+        }
+
+        return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string ComputeFileFingerprint(string path)
+    {
+        using FileStream stream = File.Open(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read | FileShare.Delete);
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    private async Task MoveRejectedManagedDragToDesktopAsync(
+        IReadOnlyCollection<string> sourcePaths)
+    {
+        // A shell text-path compatibility handler can occasionally finish just
+        // after WinUI reports None. Give it one short turn, then operate only
+        // on sources that still exist so the fallback can never duplicate a
+        // successful external move.
+        await Task.Delay(120);
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        HashSet<string> pathSet = sourcePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .Where(path => File.Exists(path) || Directory.Exists(path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (pathSet.Count == 0)
+        {
+            App.Log(
+                $"[DragComplete] Skipped managed desktop fallback id={WidgetId}; " +
+                "the shell already consumed every source path.");
+            return;
+        }
+
+        List<WidgetItem> draggedItems = ViewModel.Items
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.Path) &&
+                pathSet.Contains(Path.GetFullPath(item.Path)))
+            .ToList();
+        if (draggedItems.Count == 0)
+        {
+            App.Log(
+                $"[DragComplete] Managed desktop fallback found no live items " +
+                $"id={WidgetId} paths={pathSet.Count}");
+            return;
+        }
+
+        App.Log(
+            $"[DragComplete] Using managed desktop fallback id={WidgetId} " +
+            $"paths={draggedItems.Count} reason=StorageItemsUnavailable");
+        await RunAsync(async () =>
+        {
+            int moved = await ViewModel.MoveItemsBackToDesktopAsync(
+                draggedItems,
+                useShellProgress: true);
+            _cutClipboardPaths = [];
+            ApplyCutState();
+            ShowFeedback(new WidgetFeedbackRequest(
+                moved > 0
+                    ? _localizationService.Format(
+                        "Widget.MovedToDesktop",
+                        moved)
+                    : T("Widget.NoItemsMoved"),
+                moved > 0
+                    ? WidgetFeedbackSeverity.Success
+                    : WidgetFeedbackSeverity.Info,
+                "file-drag-desktop-fallback"));
+        });
     }
 
     private async Task ObserveExternalDragOutAsync(
@@ -638,20 +951,28 @@ public sealed partial class FileSurfaceContent :
 
     private async Task StartItemRenameAsync(WidgetItem item)
     {
-        FrameworkElement? nameElement = FindItemNameElement(item);
-        FrameworkElement? target = nameElement ?? FindItemSurface(item);
+        FrameworkElement? target =
+            await FindOrRealizeItemRenameTargetAsync(item);
         UIElement? contentHost = SelectionOverlay.Parent as UIElement;
         if (target is null || contentHost is null)
         {
+            App.Log(
+                $"[WidgetSurface] Inline rename target unavailable " +
+                $"id={WidgetId} path={item.Path}");
             return;
         }
 
+        WidgetItem renameItem = target.DataContext as WidgetItem ??
+            FindDisplayedItem(item) ??
+            item;
+        FrameworkElement? nameElement = FindItemNameElement(renameItem);
+
         ListViewBase activeView = GetActiveItemsView();
         activeView.SelectedItems.Clear();
-        activeView.SelectedItems.Add(item);
-        _itemRenameTarget = item;
+        activeView.SelectedItems.Add(renameItem);
+        _itemRenameTarget = renameItem;
         _isCancellingItemRename = false;
-        ItemRenameTextBox.Text = item.Name;
+        ItemRenameTextBox.Text = renameItem.Name;
 
         if (nameElement is TextBlock nameText)
         {
@@ -686,12 +1007,16 @@ public sealed partial class FileSurfaceContent :
         App.Current?.WidgetManager?.BeginWidgetInteraction(
             "surface-file-item-rename-opened");
 
-        SelectFilenameWithoutExtension(ItemRenameTextBox);
+        SelectItemNameForRename(
+            ItemRenameTextBox,
+            renameItem.IsFolder);
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (ReferenceEquals(_itemRenameTarget, item))
+            if (ReferenceEquals(_itemRenameTarget, renameItem))
             {
-                SelectFilenameWithoutExtension(ItemRenameTextBox);
+                SelectItemNameForRename(
+                    ItemRenameTextBox,
+                    renameItem.IsFolder);
             }
         });
 
@@ -852,45 +1177,79 @@ public sealed partial class FileSurfaceContent :
             return null;
         }
 
-        string elementName = ViewModel.IsListMode
-            ? "ListItemNameText"
-            : "IconItemNameText";
-        return FindNamedDescendant<TextBlock>(container, elementName);
+        return FindItemSurface(item) is Border border
+            ? FileItemSurface.FindOwner(border)?.ItemNameText
+            : null;
     }
 
-    private static TElement? FindNamedDescendant<TElement>(
-        DependencyObject parent,
-        string name)
-        where TElement : FrameworkElement
+    private async Task<FrameworkElement?>
+        FindOrRealizeItemRenameTargetAsync(WidgetItem item)
     {
-        int childCount = Microsoft.UI.Xaml.Media.VisualTreeHelper
-            .GetChildrenCount(parent);
-        for (int index = 0; index < childCount; index++)
+        const int realizationPasses = 5;
+        ViewModel.RevealItemForInteraction(item.Path);
+        for (int pass = 0; pass < realizationPasses; pass++)
         {
-            DependencyObject child =
-                Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(
-                    parent,
-                    index);
-            if (child is TElement element &&
-                string.Equals(element.Name, name, StringComparison.Ordinal))
+            ListViewBase activeView = GetActiveItemsView();
+            WidgetItem? displayedItem = FindDisplayedItem(item);
+            if (_isDisposed)
             {
-                return element;
+                return null;
             }
 
-            if (FindNamedDescendant<TElement>(child, name)
-                is { } nested)
+            if (displayedItem is not null)
             {
-                return nested;
+                // The new item can sort outside the current viewport. Always
+                // reveal the projected item before asking for its container.
+                activeView.ScrollIntoView(displayedItem);
+                activeView.UpdateLayout();
+                FrameworkElement? target =
+                    FindItemNameElement(displayedItem) ??
+                    FindItemSurface(displayedItem);
+                if (target is not null)
+                {
+                    return target;
+                }
+            }
+
+            if (!await YieldForItemContainerRealizationAsync())
+            {
+                break;
             }
         }
 
-        return null;
+        WidgetItem? finalItem = FindDisplayedItem(item);
+        return finalItem is null
+            ? null
+            : FindItemNameElement(finalItem) ??
+              FindItemSurface(finalItem);
     }
 
-    private static void SelectFilenameWithoutExtension(TextBox textBox)
+    private Task<bool> YieldForItemContainerRealizationAsync()
+    {
+        var completion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(
+                DispatcherQueuePriority.Low,
+                () => completion.TrySetResult(!_isDisposed)))
+        {
+            completion.TrySetResult(false);
+        }
+
+        return completion.Task;
+    }
+
+    private static void SelectItemNameForRename(
+        TextBox textBox,
+        bool isFolder)
     {
         textBox.Focus(FocusState.Programmatic);
         string text = textBox.Text;
+        if (isFolder)
+        {
+            textBox.SelectAll();
+            return;
+        }
+
         int dotIndex = text.LastIndexOf('.');
         if (dotIndex > 0 && text.Length - dotIndex - 1 <= 8)
         {
@@ -988,6 +1347,7 @@ public sealed partial class FileSurfaceContent :
 
     private void Root_DragLeave(object sender, DragEventArgs e)
     {
+        ClearFolderDropTarget();
         ClearStackMemberDropTarget();
         ApplyDropVisual(FileDropVisualState.None);
         ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
@@ -1005,6 +1365,7 @@ public sealed partial class FileSurfaceContent :
     private async void Root_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        ClearFolderDropTarget();
         ClearStackMemberDropTarget();
         ApplyDropVisual(FileDropVisualState.None);
         ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
@@ -1099,27 +1460,24 @@ public sealed partial class FileSurfaceContent :
 
     private void SetImportBusy(bool isBusy)
     {
-        if (_isImportBusy == isBusy)
+        SetBusyOverlay(
+            isBusy,
+            "Widget.Import.Title",
+            "Widget.Import.Description");
+    }
+
+    internal void SetMigrationBusy(bool isBusy)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
         {
+            DispatcherQueue.TryEnqueue(() => SetMigrationBusy(isBusy));
             return;
         }
 
-        _isImportBusy = isBusy;
-        if (isBusy)
-        {
-            ImportTitleText.Text = T("Widget.Import.Title");
-            ImportDescriptionText.Text =
-                T("Widget.Import.Description");
-            ApplyDropVisual(FileDropVisualState.None);
-        }
-
-        ImportOverlay.Visibility =
-            isBusy ? Visibility.Visible : Visibility.Collapsed;
-        ImportProgressRing.IsActive = isBusy;
-        ItemsGrid.IsHitTestVisible = !isBusy;
-        ItemsList.IsHitTestVisible = !isBusy;
-        EmptyState.IsHitTestVisible = !isBusy;
-        ImportBusyChanged?.Invoke(isBusy);
+        SetBusyOverlay(
+            isBusy,
+            "Widget.Migration.Title",
+            "Widget.Migration.Description");
     }
 
     internal void SetDesktopOrganizationBusy(bool isBusy)
@@ -1130,6 +1488,17 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
+        SetBusyOverlay(
+            isBusy,
+            "DesktopOrganization.Busy.Title",
+            "DesktopOrganization.Busy.Description");
+    }
+
+    private void SetBusyOverlay(
+        bool isBusy,
+        string titleKey,
+        string descriptionKey)
+    {
         if (_isImportBusy == isBusy)
         {
             return;
@@ -1138,8 +1507,8 @@ public sealed partial class FileSurfaceContent :
         _isImportBusy = isBusy;
         if (isBusy)
         {
-            ImportTitleText.Text = T("DesktopOrganization.Busy.Title");
-            ImportDescriptionText.Text = T("DesktopOrganization.Busy.Description");
+            ImportTitleText.Text = T(titleKey);
+            ImportDescriptionText.Text = T(descriptionKey);
             ApplyDropVisual(FileDropVisualState.None);
         }
 
@@ -1500,11 +1869,20 @@ public sealed partial class FileSurfaceContent :
         ReorderInsertionIndicator.Width = placement.Bounds.Width;
         ReorderInsertionIndicator.Height = placement.Bounds.Height;
         ReorderInsertionLine.Width = placement.IsVertical
-            ? 2
+            ? 1.5
             : placement.Bounds.Width;
         ReorderInsertionLine.Height = placement.IsVertical
             ? placement.Bounds.Height
-            : 2;
+            : 1.5;
+        if (ReorderInsertionGlow.Background is LinearGradientBrush glowBrush)
+        {
+            glowBrush.StartPoint = placement.IsVertical
+                ? new Windows.Foundation.Point(0, 0.5)
+                : new Windows.Foundation.Point(0.5, 0);
+            glowBrush.EndPoint = placement.IsVertical
+                ? new Windows.Foundation.Point(1, 0.5)
+                : new Windows.Foundation.Point(0.5, 1);
+        }
         Canvas.SetLeft(
             ReorderInsertionIndicator,
             placement.Bounds.X);
@@ -1740,7 +2118,8 @@ public sealed partial class FileSurfaceContent :
     private async Task<bool> TryHandleSpacePreviewAsync(KeyRoutedEventArgs e)
     {
         if (e.Key != VirtualKey.Space ||
-            IsTextInputSource(e.OriginalSource))
+            e.OriginalSource is DependencyObject source &&
+            FileItemSelectionGeometry.HasAncestor<TextBox>(source))
         {
             return false;
         }
@@ -1762,21 +2141,6 @@ public sealed partial class FileSurfaceContent :
         }
 
         return true;
-    }
-
-    private static bool IsTextInputSource(object originalSource)
-    {
-        for (DependencyObject? current = originalSource as DependencyObject;
-             current is not null;
-             current = VisualTreeHelper.GetParent(current))
-        {
-            if (current is TextBox)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private ListViewBase GetActiveItemsView()

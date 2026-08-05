@@ -28,13 +28,25 @@ public sealed partial class WidgetManager
     /// <summary>
     /// Bring desktop widgets to the front of the normal Z-order from the tray.
     /// </summary>
-    public async Task<bool?> RaiseWidgetsFromTrayAsync()
+    public Task<bool?> RaiseWidgetsFromTrayAsync()
+    {
+        return RunOnUiThreadAsync(async () =>
+        {
+            bool? result = null;
+            await ExecuteTrayVisibilityOperationAsync(
+                "raise-from-tray",
+                async () => result = await RaiseWidgetsFromTrayCoreAsync());
+            return result;
+        });
+    }
+
+    private async Task<bool?> RaiseWidgetsFromTrayCoreAsync()
     {
         using var perfScope = PerformanceLogger.Measure("WidgetManager.RaiseWidgetsFromTray");
         if (WidgetLayerService.UsesDesktopPinnedMode())
         {
             App.LogVerbose("[TrayBatch] Raise redirected to desktop-pinned show");
-            await SetAllWidgetsVisibleAsync(true);
+            await SetAllWidgetsVisibleCoreAsync(true);
             return false;
         }
 
@@ -42,7 +54,7 @@ public sealed partial class WidgetManager
         double sinceLastToggleMs = (now - _lastTrayLayerToggleUtc).TotalMilliseconds;
         App.LogVerbose(
             $"[TrayBatch] Raise requested raised={_widgetsRaisedFromTray} toggling={_isTogglingWidgetsDesktopLayer} " +
-            $"sinceLastMs={sinceLastToggleMs:F0} loadedFile={_widgets.Count} loadedQuick={_quickCaptureWidgets.Count} loadedContent={_contentWidgets.Count}");
+            $"sinceLastMs={sinceLastToggleMs:F0} loadedFile={_fileWidgets.Count} loadedQuick={_quickCaptureWidgets.Count} loadedContent={_contentWidgets.Count}");
         // ⭐ 移除 320ms 节流限制，确保即时响应
         if (_isTogglingWidgetsDesktopLayer)
         {
@@ -54,7 +66,7 @@ public sealed partial class WidgetManager
         _lastTrayLayerToggleUtc = now;
         try
         {
-            _trayBatchAnimationDriver.Cancel();
+            CancelActiveTrayAnimationsAndRestorePositions();
             var candidates = _settingsService.Settings.Widgets
                 .Where(IsSessionCandidate)
                 .ToList();
@@ -204,15 +216,15 @@ public sealed partial class WidgetManager
             return null;
         }
 
-        if (_widgets.TryGetValue(config.Id, out var existing))
+        if (GetLoadedWindow(config.Id) is { } existing)
         {
-            App.LogVerbose($"[TrayBatch] Prepare useLoaded widget={FormatWidget(config)} {FormatHostWindow(existing.Window)}");
-            existing.Window.RestoreBoundsForCurrentTopology();
-            if (!existing.Window.Visible)
+            App.LogVerbose($"[TrayBatch] Prepare useLoaded widget={FormatWidget(config)} {FormatHostWindow(existing)}");
+            existing.RestoreBoundsForCurrentTopology();
+            if (!existing.Visible)
             {
-                existing.Window.PrepareTrayShowAnimation();
+                existing.PrepareTrayShowAnimation();
             }
-            return existing.Window;
+            return existing;
         }
 
         App.LogVerbose($"[TrayBatch] Prepare createFile widget={FormatWidget(config)} raisedInit={showRaisedWhileInitializing}");
@@ -221,6 +233,17 @@ public sealed partial class WidgetManager
             keepPreparedForAnimation: true,
             showRaisedWhileInitializing: showRaisedWhileInitializing);
         return window;
+    }
+
+    private void CancelActiveTrayAnimationsAndRestorePositions()
+    {
+        _trayBatchAnimationDriver.Cancel();
+        TrayAnimationInterruptionCoordinator.CancelAndRestore(
+            GetLoadedDesktopWindows(),
+            window => window.CancelTrayAnimationAndRestorePosition(),
+            (window, ex) => App.Log(
+                $"[TrayBatch] Failed to reset interrupted animation " +
+                $"{FormatHostWindow(window)}: {ex}"));
     }
 
     private void PlayPreparedTrayShowAnimations(IReadOnlyList<IDesktopWidgetWindow> windows)
@@ -233,12 +256,9 @@ public sealed partial class WidgetManager
         App.LogVerbose($"[TrayBatch] Starting batch show for {windows.Count} widgets...");
         
         // ⭐ 统一驱动：同一时钟 + DeferWindowPos 原子批量提交，所有窗口锁步滑动
-        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        dispatcher.TryEnqueue(() =>
+        try
         {
-            try
-            {
-                // Step 1: 在同一帧内完成所有偏移量设置
+            // Step 1: 在同一帧内完成所有偏移量设置
                 ApplyTrayAnimationGroupOffset(windows);
 
                 // Step 2: 收集所有窗口的共享动画条目（窗口自身的 Opacity/Scale
@@ -268,12 +288,11 @@ public sealed partial class WidgetManager
                     _settingsService.Settings.WidgetAnimationEasingIntensity,
                     isShowing: true,
                     startDelayFrames: 1);
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[TrayBatch] Error during batch animation: {ex}");
-            }
-        });
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[TrayBatch] Error during batch animation: {ex}");
+        }
     }
 
     private void PrepareTrayShowAnimations(IReadOnlyList<IDesktopWidgetWindow> windows)
@@ -302,12 +321,9 @@ public sealed partial class WidgetManager
         App.LogVerbose($"[TrayBatch] Starting batch hide for {windows.Count} widgets...");
         
         // ⭐ 与批量显示相同：统一驱动 + DeferWindowPos 原子批量提交
-        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        dispatcher.TryEnqueue(() =>
+        try
         {
-            try
-            {
-                // Step 1: 在同一帧内完成所有偏移量设置
+            // Step 1: 在同一帧内完成所有偏移量设置
                 ApplyTrayAnimationGroupOffset(windows);
 
                 // Step 2: 收集所有窗口的共享隐藏动画条目
@@ -336,12 +352,11 @@ public sealed partial class WidgetManager
                     _settingsService.Settings.WidgetAnimationEasingIntensity,
                     isShowing: false,
                     startDelayFrames: 0);
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[TrayBatch] Error during batch hide animation: {ex}");
-            }
-        });
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[TrayBatch] Error during batch hide animation: {ex}");
+        }
     }
 
     private void ApplyTrayAnimationGroupOffset(IReadOnlyList<IDesktopWidgetWindow> windows)

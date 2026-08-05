@@ -293,7 +293,6 @@ public sealed partial class QuickCaptureWidgetWindow
                 {
                     Message = localization.T("Widget.FeatureWidget.DisableConfirmNote"),
                     MessageGlyph = "\uE946",
-                    IsDangerAction = false,
                     CancelText = localization.T("Common.Cancel")
                 });
             ShowFlyoutWithElevation(flyout, QuickCaptureShell.CloseActionButton);

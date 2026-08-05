@@ -120,7 +120,7 @@ public static class JumpListService
                 case ArgToggleWidgets:
                     if (app.WidgetManager is { } wm)
                     {
-                        bool anyVisible = wm.Widgets.Values.Any(e => e.Window.Visible);
+                        bool anyVisible = wm.HasVisibleWidgets;
                         await wm.SetAllWidgetsVisibleAsync(!anyVisible);
                     }
                     break;

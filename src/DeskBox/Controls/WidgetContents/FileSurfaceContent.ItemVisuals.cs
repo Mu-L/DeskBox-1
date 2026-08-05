@@ -1,3 +1,4 @@
+using DeskBox.Controls;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -13,14 +14,8 @@ namespace DeskBox.Controls.WidgetContents;
 
 public sealed partial class FileSurfaceContent
 {
-    private enum ItemVisualState
-    {
-        Normal,
-        Hover,
-        Pressed
-    }
-
     private readonly HashSet<Border> _itemSurfaces = [];
+    private readonly FileItemSurfaceStyleCache _itemSurfaceStyleCache = new();
 
     private void ApplySelectionRectangleAppearance()
     {
@@ -41,10 +36,15 @@ public sealed partial class FileSurfaceContent
         object sender,
         RoutedEventArgs e)
     {
-        if (sender is Border border)
+        if (sender is FileItemSurface surface)
+        {
+            surface.VisualStateChanged += ItemSurface_VisualStateChanged;
+        }
+
+        if (FileItemSurface.TryGetInteractiveBorder(sender) is { } border)
         {
             _itemSurfaces.Add(border);
-            ApplyItemSurfaceVisual(border, ItemVisualState.Normal);
+            ApplyItemSurfaceVisual(border, FileItemSurfaceVisualState.Normal);
         }
     }
 
@@ -52,29 +52,29 @@ public sealed partial class FileSurfaceContent
         object sender,
         RoutedEventArgs e)
     {
-        if (sender is Border border)
+        if (sender is FileItemSurface surface)
         {
+            surface.VisualStateChanged -= ItemSurface_VisualStateChanged;
+        }
+
+        if (FileItemSurface.TryGetInteractiveBorder(sender) is { } border)
+        {
+            if (ReferenceEquals(border, _folderDropTarget))
+            {
+                _folderDropTarget = null;
+            }
+
             _itemSurfaces.Remove(border);
         }
     }
 
-    private void ItemSurface_PointerEntered(
-        object sender,
-        PointerRoutedEventArgs e)
+    private void ItemSurface_VisualStateChanged(
+        object? sender,
+        FileItemSurfaceVisualStateChangedEventArgs e)
     {
-        if (sender is Border border)
+        if (FileItemSurface.TryGetInteractiveBorder(sender) is { } border)
         {
-            ApplyItemSurfaceVisual(border, ItemVisualState.Hover);
-        }
-    }
-
-    private void ItemSurface_PointerExited(
-        object sender,
-        PointerRoutedEventArgs e)
-    {
-        if (sender is Border border)
-        {
-            ApplyItemSurfaceVisual(border, ItemVisualState.Normal);
+            ApplyItemSurfaceVisual(border, e.State);
         }
     }
 
@@ -82,7 +82,7 @@ public sealed partial class FileSurfaceContent
         object sender,
         PointerRoutedEventArgs e)
     {
-        if (sender is not Border border ||
+        if (FileItemSurface.TryGetInteractiveBorder(sender) is not { } border ||
             border.DataContext is not WidgetItem item ||
             !e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
         {
@@ -91,46 +91,313 @@ public sealed partial class FileSurfaceContent
 
         ListViewBase listView = GetActiveItemsView();
         ClearOtherWidgetSelections();
-        if (!Win32Helper.IsKeyPressed(
-                Windows.System.VirtualKey.Shift))
-        {
-            if (Win32Helper.IsKeyPressed(
-                    Windows.System.VirtualKey.Control))
-            {
-                if (!listView.SelectedItems.Contains(item))
-                {
-                    listView.SelectedItems.Add(item);
-                }
-            }
-            else if (!listView.SelectedItems.Contains(item))
-            {
-                listView.SelectedItems.Clear();
-                listView.SelectedItems.Add(item);
-            }
-        }
+        FileItemSelectionBehavior.ApplyPointerSelection(
+            listView,
+            item,
+            Win32Helper.IsKeyPressed(
+                Windows.System.VirtualKey.Control),
+            Win32Helper.IsKeyPressed(
+                Windows.System.VirtualKey.Shift));
 
         SynchronizeItemSelectionState();
-        ApplyItemSurfaceVisual(border, ItemVisualState.Pressed);
     }
 
-    private void ItemSurface_PointerReleased(
+    private void ItemSurface_DragOver(
         object sender,
-        PointerRoutedEventArgs e)
+        DragEventArgs e)
     {
-        if (sender is Border border)
+        if (!TryGetFolderDropTarget(sender, out Border border, out WidgetItem targetFolder))
         {
-            Windows.Foundation.Point point =
-                e.GetCurrentPoint(border).Position;
-            bool inside =
-                point.X >= 0 &&
-                point.Y >= 0 &&
-                point.X <= border.ActualWidth &&
-                point.Y <= border.ActualHeight;
-            ApplyItemSurfaceVisual(
-                border,
-                inside
-                    ? ItemVisualState.Hover
-                    : ItemVisualState.Normal);
+            return;
+        }
+
+        e.Handled = true;
+        // A folder item is an explicit filesystem destination. Cancel any
+        // insertion preview that the root produced before the pointer entered
+        // the folder so DragItemsCompleted cannot commit a stale reorder.
+        PersistSurfaceReorder();
+
+        if (_isImportBusy || !HasSurfacePathDropData(e.DataView))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = false;
+            e.DragUIOverride.IsCaptionVisible = false;
+            ClearFolderDropTarget();
+            return;
+        }
+
+        string[] sourcePaths = GetPackagePaths(e.DataView);
+        if (IsUnsafeFolderDrop(sourcePaths, targetFolder.Path))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.DragUIOverride.IsGlyphVisible = false;
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.DragUIOverride.Caption = T("Widget.CannotMoveToFolder");
+            ClearFolderDropTarget();
+            return;
+        }
+
+        DataPackageOperation operation = ResolveFolderDropOperation(e.DataView);
+        e.AcceptedOperation = operation;
+        e.DragUIOverride.IsGlyphVisible = operation != DataPackageOperation.None;
+        e.DragUIOverride.IsCaptionVisible = operation != DataPackageOperation.None;
+        if (operation == DataPackageOperation.None)
+        {
+            ClearFolderDropTarget();
+            return;
+        }
+
+        SetFolderDropTarget(border);
+        e.DragUIOverride.Caption = _localizationService.Format(
+            operation == DataPackageOperation.Copy
+                ? "Widget.CopyToFolder"
+                : "Widget.MoveToFolder",
+            targetFolder.Name);
+    }
+
+    private void ItemSurface_DragLeave(
+        object sender,
+        DragEventArgs e)
+    {
+        if (!TryGetFolderDropTarget(sender, out Border border, out _))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (ReferenceEquals(border, _folderDropTarget))
+        {
+            ClearFolderDropTarget();
+        }
+    }
+
+    private async void ItemSurface_Drop(
+        object sender,
+        DragEventArgs e)
+    {
+        if (!TryGetFolderDropTarget(sender, out _, out WidgetItem targetFolder))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        ClearFolderDropTarget();
+        PersistSurfaceReorder();
+        ApplyDropVisual(FileDropVisualState.None);
+
+        if (_isImportBusy || !HasSurfacePathDropData(e.DataView))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        var deferral = e.GetDeferral();
+        try
+        {
+            using DroppedFileBatch batch = await GetSurfaceDropFilesAsync(e.DataView);
+            DroppedFilePath[] droppedFiles = batch.Files
+                .Where(file =>
+                    !string.IsNullOrWhiteSpace(file.Path) &&
+                    (File.Exists(file.Path) || Directory.Exists(file.Path)))
+                .GroupBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToArray();
+            string[] sourcePaths = droppedFiles
+                .Select(file => file.Path)
+                .ToArray();
+            if (sourcePaths.Length == 0 ||
+                IsUnsafeFolderDrop(sourcePaths, targetFolder.Path))
+            {
+                e.AcceptedOperation = DataPackageOperation.None;
+                if (sourcePaths.Length > 0)
+                {
+                    ShowFeedback(new(
+                        T("Widget.CannotMoveToFolder"),
+                        WidgetFeedbackSeverity.Warning,
+                        "folder-drop-unsafe"));
+                }
+                return;
+            }
+
+            DataPackageOperation operation = e.AcceptedOperation == DataPackageOperation.None
+                ? ResolveFolderDropOperation(e.DataView)
+                : e.AcceptedOperation;
+            if (operation == DataPackageOperation.None)
+            {
+                return;
+            }
+
+            e.AcceptedOperation = operation;
+            bool move = operation != DataPackageOperation.Copy;
+            string? sourceWidgetId = TryGetString(
+                e.DataView.Properties,
+                DeskBoxDragData.SourceWidgetIdProperty);
+
+            // All DataPackageView values have been captured. Completing now
+            // dismisses the shell drag glyph while the filesystem operation
+            // continues under DeskBox's own progress overlay when necessary.
+            deferral.Complete();
+            deferral = null;
+
+            bool showOverlay = DeskBoxDragData.ShouldShowImportOverlay(sourcePaths);
+            if (showOverlay)
+            {
+                SetImportBusy(true);
+            }
+
+            try
+            {
+                var results = new List<FileService.FileTransferResult>();
+                string[] regularPaths = droppedFiles
+                    .Where(file => !file.ForceManagedCopy)
+                    .Select(file => file.Path)
+                    .ToArray();
+                if (regularPaths.Length > 0)
+                {
+                    results.AddRange(await _fileService.TransferItemsWithResultAsync(
+                        regularPaths,
+                        targetFolder.Path,
+                        move));
+                }
+
+                string[] forcedCopyPaths = droppedFiles
+                    .Where(file => file.ForceManagedCopy)
+                    .Select(file => file.Path)
+                    .ToArray();
+                if (forcedCopyPaths.Length > 0)
+                {
+                    results.AddRange(await _fileService.TransferItemsWithResultAsync(
+                        forcedCopyPaths,
+                        targetFolder.Path,
+                        move: false));
+                }
+
+                if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
+                {
+                    await ViewModel.RefreshFromConfigAsync();
+                }
+
+                string[] movedSourcePaths = move
+                    ? results
+                        .Where(result => regularPaths.Contains(
+                            result.SourcePath,
+                            StringComparer.OrdinalIgnoreCase))
+                        .Select(result => result.SourcePath)
+                        .ToArray()
+                    : [];
+                if (movedSourcePaths.Length > 0 &&
+                    sourceWidgetId is { Length: > 0 } &&
+                    App.Current?.WidgetManager is { } manager)
+                {
+                    await manager.NotifyItemsMovedOutAsync(
+                        sourceWidgetId,
+                        movedSourcePaths);
+                }
+
+                if (move)
+                {
+                    _cutClipboardPaths = [];
+                    ApplyCutState();
+                }
+
+                if (results.Count > 0)
+                {
+                    ShowFeedback(new(
+                        _localizationService.Format(
+                            move
+                                ? "Widget.MovedToFolder"
+                                : "Widget.CopiedToFolder",
+                            targetFolder.Name,
+                            results.Count),
+                        WidgetFeedbackSeverity.Success,
+                        move ? "folder-drop-move" : "folder-drop-copy"));
+                }
+            }
+            finally
+            {
+                if (showOverlay)
+                {
+                    SetImportBusy(false);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[WidgetSurface] Folder drop failed id={WidgetId}: {ex}");
+            ShowFeedback(new(
+                $"{T("Widget.MoveToFolderFailed")}: {ex.Message}",
+                WidgetFeedbackSeverity.Error,
+                "folder-drop-error"));
+        }
+        finally
+        {
+            deferral?.Complete();
+        }
+    }
+
+    private static bool TryGetFolderDropTarget(
+        object sender,
+        out Border border,
+        out WidgetItem folder)
+    {
+        if (sender is FileItemSurface surface &&
+            surface.DataContext is WidgetItem
+            {
+                IsFolder: true,
+                Path.Length: > 0
+            } item)
+        {
+            border = surface.InteractiveBorder;
+            folder = item;
+            return true;
+        }
+
+        border = null!;
+        folder = null!;
+        return false;
+    }
+
+    private DataPackageOperation ResolveFolderDropOperation(
+        DataPackageView dataView)
+    {
+        DataPackageOperation requested = dataView.RequestedOperation;
+        bool copyRequested = Win32Helper.IsKeyPressed(
+            Windows.System.VirtualKey.Control);
+        if (copyRequested && requested.HasFlag(DataPackageOperation.Copy))
+        {
+            return DataPackageOperation.Copy;
+        }
+
+        if (requested == DataPackageOperation.None ||
+            requested.HasFlag(DataPackageOperation.Move) ||
+            requested.HasFlag(DataPackageOperation.Link))
+        {
+            return DataPackageOperation.Move;
+        }
+
+        return requested.HasFlag(DataPackageOperation.Copy)
+            ? DataPackageOperation.Copy
+            : DataPackageOperation.None;
+    }
+
+    private void SetFolderDropTarget(Border border)
+    {
+        if (!ReferenceEquals(_folderDropTarget, border))
+        {
+            ClearFolderDropTarget();
+            _folderDropTarget = border;
+        }
+
+        ApplyItemSurfaceVisual(border, FileItemSurfaceVisualState.DropTarget);
+    }
+
+    private void ClearFolderDropTarget()
+    {
+        Border? previous = _folderDropTarget;
+        _folderDropTarget = null;
+        if (previous?.XamlRoot is not null)
+        {
+            ApplyItemSurfaceVisual(previous, FileItemSurfaceVisualState.Normal);
         }
     }
 
@@ -415,58 +682,31 @@ public sealed partial class FileSurfaceContent
                 continue;
             }
 
-            ApplyItemSurfaceVisual(border, ItemVisualState.Normal);
+            ApplyItemSurfaceVisual(border, FileItemSurfaceVisualState.Normal);
         }
     }
 
     private void ApplyItemSurfaceVisual(
         Border border,
-        ItemVisualState state)
+        FileItemSurfaceVisualState state)
     {
-        bool isDark = Root.ActualTheme == ElementTheme.Dark;
+        if (ReferenceEquals(border, _folderDropTarget) &&
+            state != FileItemSurfaceVisualState.DropTarget)
+        {
+            state = FileItemSurfaceVisualState.DropTarget;
+        }
+
         Windows.UI.Color accent =
             App.Current.ThemeService?.GetEffectiveAccentColor() ??
             AccentColorHelper.DefaultAccentColor;
-        bool selected =
-            border.DataContext is WidgetItem { IsSelected: true };
-        bool cut =
-            border.DataContext is WidgetItem { IsCut: true };
-
-        Windows.UI.Color background = state switch
-        {
-            ItemVisualState.Hover when selected =>
-                BuildItemSurfaceColor(
-                    isDark,
-                    accent,
-                    selected: true,
-                    hovered: true),
-            ItemVisualState.Pressed when selected =>
-                BuildItemSurfaceColor(
-                    isDark,
-                    accent,
-                    selected: true,
-                    hovered: true),
-            ItemVisualState.Hover =>
-                BuildItemSurfaceColor(
-                    isDark,
-                    accent,
-                    selected: false,
-                    hovered: true),
-            ItemVisualState.Pressed =>
-                BuildPressedSurfaceColor(isDark, accent),
-            _ when selected =>
-                BuildItemSurfaceColor(
-                    isDark,
-                    accent,
-                    selected: true,
-                    hovered: false),
-            _ => Colors.Transparent
-        };
-
-        border.Background = new SolidColorBrush(background);
-        border.BorderBrush = new SolidColorBrush(Colors.Transparent);
-        border.BorderThickness = new Thickness(0);
-        border.Opacity = cut ? 0.58 : 1;
+        WidgetItem? item = border.DataContext as WidgetItem;
+        _itemSurfaceStyleCache.Apply(
+            border,
+            state,
+            Root.ActualTheme,
+            accent,
+            item?.IsSelected == true,
+            item?.IsCut == true);
     }
 
     private void ApplyStackSurfaceVisual(
@@ -478,91 +718,6 @@ public sealed partial class FileSurfaceContent
             : new SolidColorBrush(Colors.Transparent);
         border.BorderBrush = new SolidColorBrush(Colors.Transparent);
         border.BorderThickness = new Thickness(0);
-    }
-
-    private static Windows.UI.Color BuildItemSurfaceColor(
-        bool isDark,
-        Windows.UI.Color accent,
-        bool selected,
-        bool hovered)
-    {
-        Windows.UI.Color baseColor = selected
-            ? isDark
-                ? ColorHelper.FromArgb(0xFF, 0x31, 0x36, 0x3E)
-                : ColorHelper.FromArgb(0xFF, 0xF1, 0xF6, 0xFC)
-            : isDark
-                ? ColorHelper.FromArgb(0xFF, 0x25, 0x28, 0x2F)
-                : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        double accentMix = selected
-            ? hovered
-                ? isDark ? 0.34 : 0.21
-                : isDark ? 0.30 : 0.18
-            : isDark ? 0.24 : 0.12;
-        double overlayMix = selected
-            ? isDark ? 0.08 : 0.05
-            : isDark ? 0.04 : 0.02;
-        byte alpha = selected
-            ? hovered
-                ? isDark ? (byte)0xC0 : (byte)0xB8
-                : isDark ? (byte)0xA8 : (byte)0xA0
-            : isDark ? (byte)0x6A : (byte)0x86;
-        return WithAlpha(
-            BuildAccentSurfaceColor(
-                isDark,
-                accent,
-                baseColor,
-                accentMix,
-                overlayMix),
-            alpha);
-    }
-
-    private static Windows.UI.Color BuildPressedSurfaceColor(
-        bool isDark,
-        Windows.UI.Color accent)
-    {
-        return WithAlpha(
-            BuildAccentSurfaceColor(
-                isDark,
-                accent,
-                isDark
-                    ? ColorHelper.FromArgb(0xFF, 0x2D, 0x30, 0x37)
-                    : ColorHelper.FromArgb(0xFF, 0xF8, 0xF8, 0xFA),
-                isDark ? 0.24 : 0.15,
-                isDark ? 0.10 : 0.16),
-            isDark ? (byte)0x48 : (byte)0x54);
-    }
-
-    private static Windows.UI.Color BuildAccentSurfaceColor(
-        bool isDark,
-        Windows.UI.Color accent,
-        Windows.UI.Color baseColor,
-        double accentMix,
-        double overlayMix)
-    {
-        Windows.UI.Color tinted =
-            BlendColors(baseColor, accent, accentMix);
-        Windows.UI.Color overlay = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x12, 0x14, 0x18)
-            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        return BlendColors(tinted, overlay, overlayMix);
-    }
-
-    private static Windows.UI.Color BlendColors(
-        Windows.UI.Color from,
-        Windows.UI.Color to,
-        double amount)
-    {
-        amount = Math.Clamp(amount, 0, 1);
-        static byte Blend(byte first, byte second, double mix) =>
-            (byte)Math.Clamp(
-                Math.Round(first + ((second - first) * mix)),
-                0,
-                255);
-        return ColorHelper.FromArgb(
-            Blend(from.A, to.A, amount),
-            Blend(from.R, to.R, amount),
-            Blend(from.G, to.G, amount),
-            Blend(from.B, to.B, amount));
     }
 
     private static Windows.UI.Color WithAlpha(

@@ -20,6 +20,45 @@ public sealed partial class SettingsWindow
         await ViewModel.ResyncRuntimeStateAsync();
     }
 
+    private async void ExportDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        string? folderPath = FolderPickerService.PickFolder(_hWnd);
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            return;
+        }
+
+        ExportDiagnosticsButton.IsEnabled = false;
+        try
+        {
+            DeskBoxDiagnosticSnapshot snapshot = App.Current.CreateDiagnosticSnapshot();
+            string archivePath = await App.Current.DiagnosticsBundleService.ExportAsync(
+                folderPath,
+                snapshot,
+                DeskBoxDataPathService.Current.LogFilePath);
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.Diagnostics.SuccessTitle"),
+                _localizationService.Format("Settings.Diagnostics.SuccessBody", archivePath));
+            Win32Helper.ShowInExplorer(archivePath);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[DiagnosticsBundle] Export failed: {ex}");
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.Diagnostics.FailedTitle"),
+                _localizationService.Format("Settings.Diagnostics.FailedBody", ex.Message));
+        }
+        finally
+        {
+            ExportDiagnosticsButton.IsEnabled = true;
+        }
+    }
+
     private async void RepairDragDropPermissionButton_Click(object sender, RoutedEventArgs e)
     {
         if (SettingsRoot.XamlRoot is null)

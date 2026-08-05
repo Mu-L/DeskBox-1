@@ -433,4 +433,49 @@ public sealed class WidgetPositioningServiceTests
         Assert.Equal(300d, config.Width, precision: 3);
         Assert.Equal(200d, config.Height, precision: 3);
     }
+
+    [Fact]
+    public void ResolveBounds_MixedDpiMonitorRoundTrip_PreservesLogicalSizeAndVisibility()
+    {
+        var primary100 = new RectInt32(0, 0, 1920, 1040);
+        var secondary150 = new RectInt32(-2560, 0, 2560, 1400);
+        var config = new WidgetConfig
+        {
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+            Width = 300,
+            Height = 200,
+            PositionAnchor = WidgetPositionAnchors.RightBottom,
+            PositionMarginX = 20,
+            PositionMarginY = 24,
+            PositionMonitorDeviceName = @"\\.\DISPLAY2",
+            PositionMonitorWasPrimary = false
+        };
+        var monitors = new[]
+        {
+            (primary100, (string?)@"\\.\DISPLAY1"),
+            (secondary150, (string?)@"\\.\DISPLAY2")
+        };
+
+        RectInt32 highDpiBounds = WidgetPositioningService.ResolveBoundsForTest(
+            config,
+            primary100,
+            monitors,
+            area => area.X < 0 ? 1.5 : 1.0);
+
+        Assert.Equal(450, highDpiBounds.Width);
+        Assert.Equal(300, highDpiBounds.Height);
+        Assert.Equal(-480, highDpiBounds.X);
+        Assert.Equal(1064, highDpiBounds.Y);
+
+        RectInt32 fallbackBounds = WidgetPositioningService.ResolveBoundsForTest(
+            config,
+            primary100,
+            [(primary100, (string?)@"\\.\DISPLAY1")],
+            _ => 1.0);
+
+        Assert.Equal(300, fallbackBounds.Width);
+        Assert.Equal(200, fallbackBounds.Height);
+        Assert.InRange(fallbackBounds.X, primary100.X, primary100.X + primary100.Width - fallbackBounds.Width);
+        Assert.InRange(fallbackBounds.Y, primary100.Y, primary100.Y + primary100.Height - fallbackBounds.Height);
+    }
 }

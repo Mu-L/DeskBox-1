@@ -146,7 +146,6 @@ public sealed partial class ContentWidgetWindow
                 {
                     Message = localization.T("Widget.FeatureWidget.DisableConfirmNote"),
                     MessageGlyph = "\uE946",
-                    IsDangerAction = false,
                     CancelText = localization.T("Common.Cancel")
                 });
             ShowFlyoutWithInteraction(flyout, ContentWidgetShell.CloseActionButton);
@@ -273,13 +272,49 @@ public sealed partial class ContentWidgetWindow
             Text = App.Current.LocalizationService.T("Widget.FeatureWidget.Disable"),
             Icon = new FontIcon { Glyph = "\uE7E8" }
         };
+        WidgetDangerActionStyle.Apply(disableWidget);
         disableWidget.Click += (_, _) => showCloseWhenClosed = true;
         flyout.Items.Add(disableWidget);
 
         return flyout;
     }
 
+    private void ProvideWidgetActionsForContentMenu(
+        WidgetHostContextMenuOpeningEventArgs e)
+    {
+        e.TitleStyleItem = WidgetChromeMenuBuilder.Create(
+            _config,
+            _descriptor,
+            App.Current.LocalizationService,
+            App.Current.WidgetManager,
+            SetChromeModeOverride);
+
+        bool showCloseWhenClosed = false;
+        var closeWidget = new MenuFlyoutItem
+        {
+            Text = App.Current.LocalizationService.T(
+                "Widget.FeatureWidget.Disable"),
+            Icon = new FontIcon { Glyph = "\uE7E8" }
+        };
+        WidgetDangerActionStyle.Apply(closeWidget);
+        closeWidget.Click += (_, _) => showCloseWhenClosed = true;
+        e.Menu.Closed += (_, _) =>
+        {
+            if (showCloseWhenClosed)
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                    ShowCloseWidgetFlyout(ContentWidgetShell));
+            }
+        };
+        e.CloseWidgetItem = closeWidget;
+    }
+
     private void ShowCloseWidgetFlyout()
+    {
+        ShowCloseWidgetFlyout(ContentWidgetShell.MoreActionButton);
+    }
+
+    private void ShowCloseWidgetFlyout(FrameworkElement target)
     {
         if (_isCloseWidgetPending ||
             App.Current.WidgetManager is not { } widgetManager)
@@ -292,7 +327,7 @@ public sealed partial class ContentWidgetWindow
             : CreateFeatureWidgetCloseFlyout(widgetManager);
         ShowFlyoutWithInteraction(
             flyout,
-            ContentWidgetShell.MoreActionButton);
+            target);
     }
 
     private MenuFlyout CreateFeatureWidgetCloseFlyout(
@@ -329,7 +364,6 @@ public sealed partial class ContentWidgetWindow
                 Message = localization.T(
                     "Widget.FeatureWidget.DisableConfirmNote"),
                 MessageGlyph = "\uE946",
-                IsDangerAction = false,
                 CancelText = localization.T("Common.Cancel")
             });
     }
@@ -398,16 +432,15 @@ public sealed partial class ContentWidgetWindow
         bool isDanger = true)
     {
         var icon = new FontIcon { Glyph = glyph };
-        if (isDanger)
-        {
-            icon.Foreground = new SolidColorBrush(Colors.Red);
-        }
-
         var item = new MenuFlyoutItem
         {
             Text = text,
             Icon = icon
         };
+        if (isDanger)
+        {
+            WidgetDangerActionStyle.Apply(item);
+        }
         item.Click += async (_, _) =>
         {
             if (_isCloseWidgetPending ||

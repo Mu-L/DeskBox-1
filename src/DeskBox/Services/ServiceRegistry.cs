@@ -18,6 +18,7 @@ public static class ServiceRegistry
         services.AddSingleton<SettingsMigrationPipeline>();
         services.AddSingleton<DeskBoxDataBackupService>();
         services.AddSingleton<DeskBoxAttachmentHealthService>();
+        services.AddSingleton<DeskBoxDiagnosticsBundleService>();
         services.AddSingleton<FileService>();
         services.AddSingleton<ResizeGuideOverlayService>();
 

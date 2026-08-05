@@ -10,14 +10,9 @@ namespace DeskBox.Services;
 /// </summary>
 internal sealed class AppLifecycleRecoveryWatcher : IDisposable
 {
-    private const uint WmPowerBroadcast = 0x0218;
-    private const uint WmWtsSessionChange = 0x02B1;
-    private const uint WmDisplayChange = 0x007E;
-    private const uint WmDpiChanged = 0x02E0;
+    private const uint WmQueryEndSession = 0x0011;
+    private const uint WmEndSession = 0x0016;
     private const uint WmNcDestroy = 0x0082;
-    private const uint PbtResumeAutomatic = 0x0012;
-    private const uint PbtResumeSuspend = 0x0007;
-    private const uint PbtResumeCritical = 0x0006;
     private const uint WtsSessionLock = 0x0007;
     private const uint WtsSessionUnlock = 0x0008;
     private const uint WtsSessionLogon = 0x0005;
@@ -32,6 +27,7 @@ internal sealed class AppLifecycleRecoveryWatcher : IDisposable
     private readonly IntPtr _hWnd;
     private readonly DispatcherQueueTimer _timer;
     private readonly Action<string> _recoveryAction;
+    private readonly Action<string>? _endSessionAction;
     private readonly Win32Helper.SubclassProc _subclassProc;
     private bool _isDisposed;
     private bool _isSubclassInstalled;
@@ -41,10 +37,12 @@ internal sealed class AppLifecycleRecoveryWatcher : IDisposable
     public AppLifecycleRecoveryWatcher(
         IntPtr hWnd,
         DispatcherQueue dispatcherQueue,
-        Action<string> recoveryAction)
+        Action<string> recoveryAction,
+        Action<string>? endSessionAction = null)
     {
         _hWnd = hWnd;
         _recoveryAction = recoveryAction;
+        _endSessionAction = endSessionAction;
         _subclassProc = WindowSubclassProc;
         _timer = dispatcherQueue.CreateTimer();
         _timer.Interval = RecoveryDelay;
@@ -94,15 +92,28 @@ internal sealed class AppLifecycleRecoveryWatcher : IDisposable
         UIntPtr subclassId,
         UIntPtr refData)
     {
-        if (message == WmPowerBroadcast)
+        string? recoveryReason =
+            AppLifecycleRecoverySignalClassifier.ResolveRecoveryReason(
+                message,
+                wParam,
+                s_taskbarCreatedMessage);
+        if (recoveryReason is not null)
         {
-            uint powerEvent = unchecked((uint)wParam.ToUInt64());
-            if (powerEvent is PbtResumeAutomatic or PbtResumeSuspend or PbtResumeCritical)
+            QueueRecovery(recoveryReason);
+        }
+        else if (message == WmQueryEndSession)
+        {
+            InvokeEndSessionAction("query-end-session");
+            return new IntPtr(1);
+        }
+        else if (message == WmEndSession)
+        {
+            if (wParam != UIntPtr.Zero)
             {
-                QueueRecovery("resume");
+                InvokeEndSessionAction("end-session");
             }
         }
-        else if (message == WmWtsSessionChange)
+        else if (message == AppLifecycleRecoverySignalClassifier.WmWtsSessionChange)
         {
             uint sessionEvent = unchecked((uint)wParam.ToUInt64());
             if (sessionEvent == WtsSessionUnlock ||
@@ -120,22 +131,24 @@ internal sealed class AppLifecycleRecoveryWatcher : IDisposable
                 App.Log("[Lifecycle] Session ended or locked; deferring external-state recovery.");
             }
         }
-        else if (message == WmDisplayChange || message == WmDpiChanged)
-        {
-            QueueRecovery("display-message");
-        }
-        else if (message == s_taskbarCreatedMessage)
-        {
-            // Explorer restart recreates the taskbar/tray window and can also
-            // invalidate shell icon and file-system watcher state.
-            QueueRecovery("explorer-restart");
-        }
         else if (message == WmNcDestroy)
         {
             Dispose();
         }
 
         return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
+    }
+
+    private void InvokeEndSessionAction(string reason)
+    {
+        try
+        {
+            _endSessionAction?.Invoke(reason);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Lifecycle] End-session callback failed: {ex.Message}");
+        }
     }
 
     private void QueueRecovery(string reason)

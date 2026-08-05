@@ -2390,17 +2390,31 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     Style="{StaticResource SettingDescriptionTextStyle}"
                                     Text="{Binding RuntimeHealthDetail}"
                                     TextWrapping="Wrap" />
-                                <Button
+                                <StackPanel
                                     HorizontalAlignment="Right"
-                                    Click="ResyncRuntimeStateButton_Click"
-                                    IsEnabled="{Binding CanResyncRuntimeState}"
-                                    Style="{StaticResource ActionButtonStyle}"
-                                    svc:Localized.ToolTipKey="Settings.RuntimeHealth.ResyncTooltip">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <SymbolIcon Symbol="Refresh" />
-                                        <TextBlock svc:Localized.Key="Settings.RuntimeHealth.Resync" />
-                                    </StackPanel>
-                                </Button>
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                                    <Button
+                                        x:Name="ExportDiagnosticsButton"
+                                        Click="ExportDiagnosticsButton_Click"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.Diagnostics.ExportTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="Save" />
+                                            <TextBlock svc:Localized.Key="Settings.Diagnostics.Export" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Click="ResyncRuntimeStateButton_Click"
+                                        IsEnabled="{Binding CanResyncRuntimeState}"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        svc:Localized.ToolTipKey="Settings.RuntimeHealth.ResyncTooltip">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <SymbolIcon Symbol="Refresh" />
+                                            <TextBlock svc:Localized.Key="Settings.RuntimeHealth.Resync" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
                             </StackPanel>
                         </toolkit:SettingsCard>
                     </StackPanel>
@@ -2415,11 +2429,12 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                         <toolkit:SettingsCard
                             ContentAlignment="Vertical"
                             HorizontalContentAlignment="Stretch">
-                            <StackPanel Spacing="14">
+                            <StackPanel>
                                 <Grid
+                                    x:Name="AboutInfoGrid"
                                     ColumnDefinitions="Auto,*,Auto"
                                     ColumnSpacing="14"
-                                    RowSpacing="4">
+                                    RowDefinitions="Auto,Auto">
                                     <Image
                                         Width="34"
                                         Height="34"
@@ -2445,52 +2460,48 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                             Text="{Binding AboutDeveloperText}"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
-                                    <TextBlock
+                                    <StackPanel
+                                        x:Name="AboutRightPanel"
                                         Grid.Column="2"
-                                        MaxWidth="260"
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource SettingValueTextStyle}"
-                                        Text="{Binding AboutVersionText}"
-                                        TextAlignment="Right"
-                                        TextWrapping="Wrap" />
+                                        HorizontalAlignment="Right"
+                                        MaxWidth="300"
+                                        Spacing="6"
+                                        VerticalAlignment="Center">
+                                        <TextBlock
+                                            x:Name="AboutVersionTextBlock"
+                                            HorizontalAlignment="Right"
+                                            Style="{StaticResource SettingValueTextStyle}"
+                                            Text="{Binding AboutVersionText}"
+                                            TextAlignment="Right"
+                                            TextWrapping="Wrap" />
+                                        <StackPanel
+                                            x:Name="AboutInfoActionsPanel"
+                                            HorizontalAlignment="Right"
+                                            Orientation="Horizontal"
+                                            Spacing="6">
+                                            <Button
+                                                x:Name="AboutReasonButton"
+                                                Click="ShowProductReasonButton_Click"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                svc:Localized.ToolTipKey="Settings.About.ReasonTitle">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon FontSize="14" Glyph="&#xE946;" />
+                                                    <TextBlock svc:Localized.Key="Settings.About.ReasonButton" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                x:Name="AboutWebsiteButton"
+                                                Click="OpenWebsiteButton_Click"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                ToolTipService.ToolTip="{Binding OfficialWebsiteLink}">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon FontSize="14" Glyph="&#xE774;" />
+                                                    <TextBlock svc:Localized.Key="Settings.About.Website" />
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </StackPanel>
                                 </Grid>
-
-                                <StackPanel
-                                    x:Name="AboutInfoActionsPanel"
-                                    HorizontalAlignment="Right"
-                                    Orientation="Horizontal"
-                                    Spacing="8">
-                                    <Button
-                                        x:Name="AboutReasonButton"
-                                        Click="ShowProductReasonButton_Click"
-                                        Style="{StaticResource ActionButtonStyle}"
-                                        svc:Localized.ToolTipKey="Settings.About.ReasonTitle">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <FontIcon FontSize="14" Glyph="&#xE946;" />
-                                            <TextBlock svc:Localized.Key="Settings.About.ReasonButton" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button
-                                        x:Name="AboutWebsiteButton"
-                                        Click="OpenWebsiteButton_Click"
-                                        Style="{StaticResource ActionButtonStyle}"
-                                        ToolTipService.ToolTip="{Binding OfficialWebsiteLink}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <FontIcon FontSize="14" Glyph="&#xE774;" />
-                                            <TextBlock svc:Localized.Key="Settings.About.Website" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button
-                                        x:Name="AboutRepositoryButton"
-                                        Click="OpenRepositoryButton_Click"
-                                        Style="{StaticResource ActionButtonStyle}"
-                                        ToolTipService.ToolTip="{Binding OpenSourceRepositoryUrl}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <FontIcon FontSize="14" Glyph="&#xE8A7;" />
-                                            <TextBlock svc:Localized.Key="Settings.About.Repository" />
-                                        </StackPanel>
-                                    </Button>
-                                </StackPanel>
                             </StackPanel>
                         </toolkit:SettingsCard>
 
@@ -2546,8 +2557,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                             <TextBlock
                                                 Style="{StaticResource SettingDescriptionTextStyle}"
                                                 Text="{Binding UpdateDetailText}"
-                                                TextTrimming="CharacterEllipsis"
-                                                TextWrapping="NoWrap"
+                                                TextWrapping="Wrap"
                                                 VerticalAlignment="Center" />
                                             <Button
                                                 x:Name="ViewReleaseNotesButton"
@@ -2564,24 +2574,22 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                             </Button>
                                         </Grid>
 
-                                        <!-- Scrollable release notes card -->
+                                        <!-- Compact summary preview; full notes live in ReleaseNotesWindow. -->
                                         <Border
                                             Margin="0"
                                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                             BorderThickness="1"
                                             CornerRadius="8"
+                                            Padding="14,10"
                                             Visibility="{Binding UpdateSummaryVisibility}">
-                                            <ScrollViewer
-                                                MaxHeight="120"
-                                                VerticalScrollBarVisibility="Auto"
-                                                Padding="14,10">
-                                                <TextBlock
-                                                    FontSize="13"
-                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                    Text="{Binding UpdateSummaryText}"
-                                                    TextWrapping="Wrap" />
-                                            </ScrollViewer>
+                                            <TextBlock
+                                                FontSize="13"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                MaxLines="2"
+                                                Text="{Binding UpdateSummaryText}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="Wrap" />
                                         </Border>
 
                                         <!-- Progress bar -->
@@ -2595,10 +2603,11 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                                 Height="4"
                                                 Minimum="0"
                                                 Maximum="100"
+                                                IsIndeterminate="{Binding UpdateProgressIsIndeterminate}"
                                                 Value="{Binding UpdateProgressValue}" />
                                             <TextBlock
                                                 Grid.Column="1"
-                                                MinWidth="40"
+                                                MinWidth="128"
                                                 HorizontalAlignment="Right"
                                                 Style="{StaticResource SettingDescriptionTextStyle}"
                                                 Text="{Binding UpdateProgressText}"
@@ -2628,6 +2637,25 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 </toolkit:SettingsCard>
                             </toolkit:SettingsExpander.Items>
                         </toolkit:SettingsExpander>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.About.FeedbackDescription"
+                            svc:Localized.HeaderKey="Settings.About.FeedbackTitle">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE715;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <Button
+                                x:Name="FeedbackEmailButton"
+                                Click="OpenFeedbackEmailButton_Click"
+                                Style="{StaticResource ActionButtonStyle}"
+                                ToolTipService.ToolTip="{Binding FeedbackEmailAddress}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon FontSize="14" Glyph="&#xE715;" />
+                                    <TextBlock Text="{Binding FeedbackEmailAddress}" />
+                                </StackPanel>
+                            </Button>
+                        </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"

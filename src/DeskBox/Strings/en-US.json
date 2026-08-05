@@ -846,6 +846,7 @@
     "Settings.ReleaseNotes.Cached": "Offline cached content",
     "Settings.Update.ManualDownload": "Official download",
     "Settings.Update.OneClick.Install": "Install now",
+    "Settings.Update.OneClick.Retry": "Retry",
     "Settings.Update.OneClick.UpdateTo": "Update to {0}",
     "Settings.Update.OpenStore": "Open Store",
     "Settings.Update.Status.Ready": "Ready to check for updates",
@@ -870,6 +871,7 @@
     "Settings.Update.Detail.Installing": "DeskBox will exit. The update helper will run the installer after the app closes.",
     "Settings.Update.Status.Failed": "Update failed",
     "Settings.Update.Detail.Failed": "DeskBox could not complete the update. Try again later.",
+    "Settings.Update.Detail.DownloadCancelled": "The update download was canceled.",
     "Settings.Update.Detail.FailedWithReason": "DeskBox could not complete the update: {0}",
     "Settings.Update.Detail.ManifestNotFound": "Update metadata was not found. You can download from the official website.",
     "Settings.Update.Detail.AccessDenied": "Update metadata is not accessible. You can download from the official website.",
@@ -888,6 +890,13 @@
     "Settings.Update.InstallConfirmBody": "DeskBox will save settings, exit, install the new version with the update helper, and restart.",
     "Settings.Update.InstallStartFailedTitle": "Could not start updater",
     "Settings.Update.InstallStartFailedBody": "Download the update again, or install it manually from GitHub Releases.",
+    "Settings.Update.InstallCancelledTitle": "Update installation canceled",
+    "Settings.Update.InstallCancelledBody": "DeskBox was reopened and the existing version was not replaced. You can try the update again at any time.",
+    "Settings.Update.InstallFailedTitle": "Update was not completed",
+    "Settings.Update.InstallFailedBody": "DeskBox was reopened after the installer failed. Try the update again, or download the installer from the official website.",
+    "Settings.Update.InstallPathMismatchBody": "The installer did not finish in the original DeskBox directory, so DeskBox stopped the update and reopened this version. Download the installer from the official website if the problem continues.",
+    "Settings.Update.DownloadFailedTitle": "Could not download update",
+    "Settings.Update.DownloadFailedBody": "{0}\n\nTry the download again, or get the installer from the official website.",
     "Settings.DragDropPermission.Title": "Drag & Drop Check",
     "Settings.RuntimeHealth.Title": "Runtime Health",
     "Settings.RuntimeHealth.Description": "Check listeners and resync external state",
@@ -947,6 +956,8 @@
     "Settings.About.ReasonButton": "Why",
     "Settings.About.Website": "Official website",
     "Settings.About.WebsiteDescription": "View downloads, changelogs, and product notes",
+    "Settings.About.FeedbackTitle": "Feedback",
+    "Settings.About.FeedbackDescription": "If you encounter a problem, feel free to contact me by email",
     "Settings.About.Repository": "Open-source repository",
     "Settings.About.RepositoryDescription": "View code, report issues, or contribute improvements",
     "Settings.About.DeveloperName": "Developer: Zhu Tianyu",
@@ -1479,6 +1490,7 @@
     "Search.Placeholder": "Search files...",
     "Search.Status.Searching": "Searching...",
     "Search.Status.Results": "{0} results · {1:F0}ms",
+    "Search.Status.PartialResults": "{0} results found · Still searching",
     "Search.Status.Error": "Search error",
     "Search.NoResults.Title": "No results found",
     "Search.NoResults.Subtitle": "Try different keywords or check your spelling",
@@ -1960,4 +1972,16 @@
     ,"Settings.Update.PreUpdateBackupFailedBodyWithError": "DeskBox didn't start the update so it can protect your current settings.\n\n{0}"
     ,"Settings.Recovery.AvailableTitle": "DeskBox recovery data is available"
     ,"Settings.Recovery.AvailableBody": "A preserved recovery snapshot was found. Restore your previous widget layout and appearance from Settings > Backup & Restore > Local snapshots."
+    ,"Settings.Persistence.RecoveredTitle": "DeskBox settings were recovered"
+    ,"Settings.Persistence.RecoveredBody": "The primary settings file could not be read, so DeskBox restored the last valid backup. Review your widget layout and export a fresh backup."
+    ,"Settings.Persistence.ResetTitle": "DeskBox settings need recovery"
+    ,"Settings.Persistence.ResetBody": "Neither the primary nor backup settings file could be read. DeskBox started with defaults; use Backup & Restore to recover a local snapshot."
+    ,"Settings.Persistence.SaveFailedTitle": "DeskBox couldn't save settings"
+    ,"Settings.Persistence.SaveFailedBody": "Check available disk space and permissions for the DeskBox data folder. In-memory changes are retained and DeskBox will retry on the next change or when exiting."
+    ,"Settings.Diagnostics.Export": "Export diagnostics"
+    ,"Settings.Diagnostics.ExportTooltip": "Export runtime, display, hotkey queue, and sanitized log data"
+    ,"Settings.Diagnostics.SuccessTitle": "Diagnostic package exported"
+    ,"Settings.Diagnostics.SuccessBody": "The diagnostic package was saved to:\n{0}\n\nPlease review the archive before sharing it."
+    ,"Settings.Diagnostics.FailedTitle": "Couldn't export diagnostics"
+    ,"Settings.Diagnostics.FailedBody": "Check the destination folder permissions and available disk space, then try again.\n\n{0}"
 }

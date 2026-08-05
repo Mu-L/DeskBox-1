@@ -46,6 +46,13 @@ public sealed class ContentWidgetWindowFactory
     internal ContentWidgetWindow CreateContentWindow(WidgetConfig config)
     {
         var plan = CreateContentWindowPlan(config);
+        return CreateContentWindow(plan);
+    }
+
+    internal ContentWidgetWindow CreateContentWindow(
+        ContentWidgetWindowPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
         return _windowFactory(plan.Config, plan.Content, _settingsService, plan.Descriptor);
     }
 

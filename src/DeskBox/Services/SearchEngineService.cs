@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
@@ -155,25 +156,52 @@ public sealed class SearchEngineService : IDisposable
     /// </summary>
     public async Task<SearchResponse> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
+        SearchResponse? latest = null;
+        await foreach (SearchResponse stage in SearchStagedAsync(
+                           query,
+                           cancellationToken))
+        {
+            latest = stage;
+        }
+
+        return latest ?? BuildSearchResponse(
+            query,
+            [],
+            Math.Clamp(_settingsService.Settings.SearchMaxResults, 10, 200),
+            TimeSpan.Zero,
+            isComplete: true);
+    }
+
+    public async IAsyncEnumerable<SearchResponse> SearchStagedAsync(
+        string query,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
         var stopwatch = Stopwatch.StartNew();
         var settings = _settingsService.Settings;
         int maxResults = Math.Clamp(settings.SearchMaxResults, 10, 200);
 
-        var providerTasks = new List<Task<IReadOnlyList<SearchResultItem>>>();
+        var immediateProviders = new List<SearchProviderTask>();
+        var extendedProviders = new List<SearchProviderTask>();
 
-        // Start every enabled provider together. DeskBox content normally wins the
-        // first-result race, while system and full-disk providers complete in parallel.
+        // Start all enabled providers together, but publish the lightweight
+        // DeskBox/action stage before waiting for system and disk indexes.
         if (settings.SearchIncludeDeskBoxContent)
         {
-            providerTasks.Add(SearchDeskBoxContentAsync(query, maxResults, cancellationToken));
+            immediateProviders.Add(new SearchProviderTask(
+                "deskbox-content",
+                SearchDeskBoxContentAsync(query, maxResults, cancellationToken)));
         }
 
-        providerTasks.Add(Task.FromResult(SearchActions(query)));
+        immediateProviders.Add(new SearchProviderTask(
+            "actions",
+            Task.FromResult(SearchActions(query))));
 
         // Layer 2: Windows Search Index (system-indexed locations)
         if (settings.SearchIncludeSystemIndex)
         {
-            providerTasks.Add(_windowsIndexService.SearchAsync(query, maxResults, cancellationToken));
+            extendedProviders.Add(new SearchProviderTask(
+                "windows-index",
+                _windowsIndexService.SearchAsync(query, maxResults, cancellationToken)));
         }
 
         // Layer 3: File indexes. The USN journal is fast and broad when available,
@@ -184,25 +212,71 @@ public sealed class SearchEngineService : IDisposable
         {
             if (_usnIndexService is { IsAvailable: true })
             {
-                providerTasks.Add(Task.Run<IReadOnlyList<SearchResultItem>>(
-                    () => _usnIndexService.Search(query, maxResults, cancellationToken)
-                        .Where(item => PathExists(item.DetailPath))
-                        .ToList(),
-                    cancellationToken));
+                extendedProviders.Add(new SearchProviderTask(
+                    "usn-index",
+                    Task.Run<IReadOnlyList<SearchResultItem>>(
+                        () => _usnIndexService.Search(query, maxResults, cancellationToken)
+                            .Where(item => PathExists(item.DetailPath))
+                            .ToList(),
+                        cancellationToken)));
             }
 
-            providerTasks.Add(SearchCustomIndexAsync(query, maxResults, cancellationToken));
+            extendedProviders.Add(new SearchProviderTask(
+                "custom-index",
+                SearchCustomIndexAsync(query, maxResults, cancellationToken)));
         }
 
-        IReadOnlyList<SearchResultItem>[] providerResults = await Task.WhenAll(providerTasks);
+        SearchProviderBatchResult immediate = await SearchProviderCoordinator.CollectSafelyAsync(
+            immediateProviders,
+            cancellationToken,
+            LogProviderFailure);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var rankedItems = SearchResultRanker.MergeAndRank(
+        if (extendedProviders.Count == 0)
+        {
+            yield return BuildSearchResponse(
+                query,
+                immediate.Results,
+                maxResults,
+                stopwatch.Elapsed,
+                isComplete: true);
+            yield break;
+        }
+
+        yield return BuildSearchResponse(
+            query,
+            immediate.Results,
+            maxResults,
+            stopwatch.Elapsed,
+            isComplete: false);
+
+        SearchProviderBatchResult extended = await SearchProviderCoordinator.CollectSafelyAsync(
+            extendedProviders,
+            cancellationToken,
+            LogProviderFailure);
+        cancellationToken.ThrowIfCancellationRequested();
+        stopwatch.Stop();
+
+        yield return BuildSearchResponse(
+            query,
+            immediate.Results.Concat(extended.Results),
+            maxResults,
+            stopwatch.Elapsed,
+            isComplete: true);
+    }
+
+    private SearchResponse BuildSearchResponse(
+        string query,
+        IEnumerable<IReadOnlyList<SearchResultItem>> providerResults,
+        int maxResults,
+        TimeSpan elapsed,
+        bool isComplete)
+    {
+        IReadOnlyList<SearchResultItem> rankedItems = SearchResultRanker.MergeAndRank(
             providerResults.SelectMany(items => items),
             query.Trim(),
             maxResults);
-        var groups = BuildGroups(rankedItems);
-        stopwatch.Stop();
+        IReadOnlyList<SearchResultGroup> groups = BuildGroups(rankedItems);
 
         return new SearchResponse
         {
@@ -210,9 +284,14 @@ public sealed class SearchEngineService : IDisposable
             RankedItems = rankedItems,
             Groups = groups,
             TotalResultCount = rankedItems.Count,
-            Elapsed = stopwatch.Elapsed,
-            IsComplete = true
+            Elapsed = elapsed,
+            IsComplete = isComplete
         };
+    }
+
+    private static void LogProviderFailure(string provider, Exception ex)
+    {
+        App.Log($"[Search] Provider '{provider}' failed; returning partial results: {ex}");
     }
 
     private async Task<IReadOnlyList<SearchResultItem>> SearchCustomIndexAsync(

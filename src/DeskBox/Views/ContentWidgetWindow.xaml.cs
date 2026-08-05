@@ -45,6 +45,8 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     private bool _compactPresentationRefreshQueued;
     private INotifyPropertyChanged? _compactPresentationSource;
     private IWidgetFeedbackSource? _feedbackSource;
+    private IWidgetHostContextMenuSource? _hostContextMenuSource;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
 
     private bool _isVisibleOnDesktop;
     private SearchHistoryService? _subscribedSearchHistoryService;
@@ -604,6 +606,25 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         TrayAnimation.SetOffsetOverride(offsetX, offsetY);
     }
 
+    public void CancelTrayAnimationAndRestorePosition()
+    {
+        if (!Visible && IsHideAnimationRunning)
+        {
+            CompleteTrayHideAnimation();
+            return;
+        }
+
+        long animationGeneration = TrayAnimation.NextGeneration();
+        TrayAnimation.Stop();
+        SetTrayAnimationOffsetOverride(null, null);
+        TrayAnimation.RestoreVisualState();
+        TrayAnimation.RestoreWindowPosition();
+        TrayAnimation.RevealWindowForTrayShow();
+        IsHideAnimationRunning = false;
+        _isHidePrepared = false;
+        LogTrayWindow($"CancelAnimationAndRestore gen={animationGeneration}");
+    }
+
 public void PrepareTrayShowAnimation()
 {
 TrayAnimation.NextGeneration();
@@ -655,6 +676,61 @@ IsHideAnimationRunning = false;
         TrayAnimation.RevealWindowForTrayShow();
     }
 
+    public void RevealFromTray(bool autoRestore = true)
+    {
+        PrepareTrayShowAnimation();
+        ShowPreparedRaisedFromTray();
+        ActivateRaisedFromTrayBatch();
+        PlayTrayShowAnimation();
+
+        if (!autoRestore)
+        {
+            _autoRestoreTimer?.Stop();
+            return;
+        }
+
+        if (_autoRestoreTimer is null)
+        {
+            _autoRestoreTimer = DispatcherQueue.CreateTimer();
+            _autoRestoreTimer.IsRepeating = false;
+            _autoRestoreTimer.Tick += AutoRestoreTimer_Tick;
+            PerformanceLogger.RecordTransientUiTimerCreated();
+        }
+        else
+        {
+            _autoRestoreTimer.Stop();
+        }
+
+        _autoRestoreTimer.Interval = TimeSpan.FromMilliseconds(1200);
+        _autoRestoreTimer.Start();
+    }
+
+    private void AutoRestoreTimer_Tick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        sender.Stop();
+        if (!IsDragging && !IsResizing)
+        {
+            RestoreDesktopLayer(force: true);
+        }
+    }
+
+    private void ReleaseAutoRestoreTimer()
+    {
+        Microsoft.UI.Dispatching.DispatcherQueueTimer? timer =
+            _autoRestoreTimer;
+        if (timer is null)
+        {
+            return;
+        }
+
+        _autoRestoreTimer = null;
+        timer.Stop();
+        timer.Tick -= AutoRestoreTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerReleased();
+    }
+
     public bool PrepareTrayHideAnimation(bool persistVisibility = true)
     {
         if (!Visible || IsHideAnimationRunning)
@@ -665,7 +741,14 @@ IsHideAnimationRunning = false;
 
 TrayAnimation.NextGeneration();
 TrayAnimation.RevealWindowForTrayShow();
-TrayAnimation.Stop();
+if (TrayAnimation.IsPositionTransitionActive)
+{
+    TrayAnimation.StopAndRestoreWindowPosition();
+}
+else
+{
+    TrayAnimation.Stop();
+}
 IsHideAnimationRunning = true;
         _isHidePrepared = true;
         Visible = false;
@@ -785,6 +868,7 @@ IsHideAnimationRunning = true;
 
         AttachCompactPresentationSource(content);
         AttachFeedbackSource(content);
+        AttachHostContextMenuSource(content);
         RefreshCompactPresentation();
         ApplyTitleActionButtonConfiguration();
     }
@@ -808,6 +892,32 @@ IsHideAnimationRunning = true;
         WidgetFeedbackRequestedEventArgs e)
     {
         ContentWidgetShell.ShowFeedback(e.Request);
+    }
+
+    private void AttachHostContextMenuSource(IWidgetContent content)
+    {
+        if (_hostContextMenuSource is not null)
+        {
+            _hostContextMenuSource.HostContextMenuOpening -=
+                HostContextMenuSource_HostContextMenuOpening;
+        }
+
+        _hostContextMenuSource = content as IWidgetHostContextMenuSource;
+        if (_hostContextMenuSource is not null)
+        {
+            _hostContextMenuSource.HostContextMenuOpening +=
+                HostContextMenuSource_HostContextMenuOpening;
+        }
+    }
+
+    private void HostContextMenuSource_HostContextMenuOpening(
+        object? sender,
+        WidgetHostContextMenuOpeningEventArgs e)
+    {
+        if (ReferenceEquals(sender, _contentHost.CurrentContent))
+        {
+            ProvideWidgetActionsForContentMenu(e);
+        }
     }
 
     private void AttachCompactPresentationSource(IWidgetContent content)
@@ -969,6 +1079,7 @@ IsHideAnimationRunning = true;
         {
             IsClosing = true;
             Visible = false;
+            ReleaseAutoRestoreTimer();
             try { RemoveGroupFileDropFallbackHandlers(); } catch (Exception ex) { App.Log($"[ContentWidget] Remove group drop fallback failed during close: {ex.Message}"); }
             try { RemoveNativeFileDropBridge(); } catch (Exception ex) { App.Log($"[ContentWidget] Remove native file drop bridge failed during close: {ex.Message}"); }
             App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;

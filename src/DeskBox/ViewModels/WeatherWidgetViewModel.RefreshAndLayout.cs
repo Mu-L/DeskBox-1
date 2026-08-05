@@ -172,12 +172,26 @@ public sealed partial class WeatherWidgetViewModel
 
     public void ToggleViewMode()
     {
-        IsWeekView = !IsWeekView;
+        SetViewMode(!IsWeekView);
     }
 
     public void SetViewMode(bool useWeekView)
     {
+        if (IsWeekView == useWeekView)
+        {
+            return;
+        }
+
         IsWeekView = useWeekView;
+        _hasViewModeOverride = true;
+        if (WeatherWidgetViewModeSettings.SetWeekView(
+                _config,
+                useWeekView))
+        {
+            _settingsService?.UpdateWidget(
+                _config,
+                notifySubscribers: false);
+        }
     }
 
     /// <summary>

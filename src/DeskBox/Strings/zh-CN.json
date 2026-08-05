@@ -118,6 +118,8 @@
     "Widget.AddedFile": "已添加文件",
     "Onboarding.Storage.CurrentPath": "默认收纳路径",
     "Settings.About.DonationTitle": "支持 DeskBox",
+    "Settings.About.FeedbackTitle": "问题反馈",
+    "Settings.About.FeedbackDescription": "遇到问题时，可随时通过邮箱与我联系",
     "Widget.Error.ManagedFolderNameExists": "已存在同名收纳格子，请换一个名称。",
     "Settings.WidgetTabStyle.Pivot": "指示条",
     "QuickCapture.Detail.Appearance": "纸张",
@@ -489,6 +491,13 @@
     "Weather.RefreshFailed": "刷新失败",
     "Settings.CompactContent.Smart": "关键信息（推荐）",
     "Settings.Update.InstallConfirmTitle": "安装更新？",
+    "Settings.Update.InstallCancelledTitle": "已取消安装更新",
+    "Settings.Update.InstallCancelledBody": "DeskBox 已重新打开，当前版本没有被替换。你可以随时重新尝试更新。",
+    "Settings.Update.InstallFailedTitle": "更新没有完成",
+    "Settings.Update.InstallFailedBody": "安装程序未能完成，DeskBox 已重新打开。可以重新尝试更新，或前往官网下载最新版。",
+    "Settings.Update.InstallPathMismatchBody": "安装程序没有在原 DeskBox 目录中完成更新，因此已停止安装并重新打开当前版本。如果问题持续，请前往官网下载最新版。",
+    "Settings.Update.DownloadFailedTitle": "更新下载失败",
+    "Settings.Update.DownloadFailedBody": "{0}\n\n可以重新下载，或前往官网获取安装包。",
     "Settings.DataBackup.Snapshots.PreRestore": "恢复前快照",
     "Settings.DataBackup.Snapshots.Title": "本机快照",
     "Settings.Interaction.Hotkeys.Description": "设置唤起 DeskBox 的快捷键",
@@ -860,6 +869,7 @@
     "Widget.Sort.Type": "项目类型",
     "Settings.Border.None": "无边框",
     "Settings.Update.Detail.HashMismatch": "更新包校验失败，请重新下载或使用官网下载。",
+    "Settings.Update.Detail.DownloadCancelled": "已取消下载更新。",
     "Settings.Capsule.HoverResponse.Custom": "自定义",
     "Widget.MappedShortcutBaseName": "映射文件夹",
     "Settings.DataBackup.RestoreAppliedBody": "设置、格子配置、随记和待办已从备份恢复。",
@@ -1470,6 +1480,7 @@
     "Search.Placeholder": "搜索文件...",
     "Search.Status.Searching": "正在搜索...",
     "Search.Status.Results": "{0} 个结果 · {1:F0}ms",
+    "Search.Status.PartialResults": "已找到 {0} 个结果 · 正在继续搜索",
     "Search.Status.Error": "搜索出错",
     "Search.NoResults.Title": "未找到结果",
     "Search.NoResults.Subtitle": "试试其他关键词，或检查拼写",
@@ -1684,6 +1695,7 @@
     "Onboarding.Step5.SummaryWidgets": "功能格子",
     "Onboarding.Step5.TrySearchHint": "按 Alt+D 可随时唤起搜索",
     "Settings.Update.OneClick.Install": "立即安装",
+    "Settings.Update.OneClick.Retry": "重试",
     "Settings.Update.OneClick.UpdateTo": "更新到 {0}",
     "Settings.Weather.AutoLocation.Failed": "定位失败，请手动选择城市",
     "Settings.Weather.AutoLocation.LocatedAt": "当前位置：{0}",
@@ -1960,4 +1972,16 @@
     ,"Settings.Update.PreUpdateBackupFailedBodyWithError": "为保护当前设置，DeskBox 未启动更新。\n\n{0}"
     ,"Settings.Recovery.AvailableTitle": "发现可恢复的 DeskBox 数据"
     ,"Settings.Recovery.AvailableBody": "检测到已保留的恢复快照。可在“设置 > 备份与恢复 > 本机快照”中恢复之前的格子布局和样式。"
+    ,"Settings.Persistence.RecoveredTitle": "已恢复 DeskBox 设置"
+    ,"Settings.Persistence.RecoveredBody": "主设置文件无法读取，DeskBox 已从上一份有效备份恢复。建议检查格子布局并导出一份新备份。"
+    ,"Settings.Persistence.ResetTitle": "DeskBox 设置需要恢复"
+    ,"Settings.Persistence.ResetBody": "主设置和备用设置均无法读取，DeskBox 已使用默认设置启动。可前往“备份与恢复”恢复本机快照。"
+    ,"Settings.Persistence.SaveFailedTitle": "DeskBox 无法保存设置"
+    ,"Settings.Persistence.SaveFailedBody": "请检查磁盘空间和 DeskBox 数据目录权限。应用会保留内存中的更改，并在下次变更或退出时重试。"
+    ,"Settings.Diagnostics.Export": "导出诊断包"
+    ,"Settings.Diagnostics.ExportTooltip": "导出运行状态、显示器、快捷键队列和脱敏日志"
+    ,"Settings.Diagnostics.SuccessTitle": "诊断包已导出"
+    ,"Settings.Diagnostics.SuccessBody": "诊断包已保存到：\n{0}\n\n发送前仍建议快速检查压缩包内容。"
+    ,"Settings.Diagnostics.FailedTitle": "无法导出诊断包"
+    ,"Settings.Diagnostics.FailedBody": "请检查目标文件夹权限和磁盘空间后重试。\n\n{0}"
 }

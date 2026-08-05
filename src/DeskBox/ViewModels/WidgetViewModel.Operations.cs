@@ -410,9 +410,14 @@ public partial class WidgetViewModel
         int originalIndex = Items.IndexOf(item);
         if (originalIndex >= 0)
         {
-            Items.RemoveAt(originalIndex);
-            Items.Insert(GetSortedInsertIndex(item), item);
+            if (Config.SortMode != WidgetSortMode.Manual)
+            {
+                Items.RemoveAt(originalIndex);
+                Items.Insert(GetSortedInsertIndex(item), item);
+            }
+
             NormalizeSortOrder();
+            PersistManualOrderSnapshotIfChanged();
         }
     }
 

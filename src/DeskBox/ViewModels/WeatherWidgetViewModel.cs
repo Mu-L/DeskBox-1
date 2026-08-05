@@ -49,6 +49,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 
     // Display settings
     private bool _isWeekView;
+    private bool _hasViewModeOverride;
     private string _temperatureUnit = SettingsService.WeatherTemperatureUnitCelsius;
     private string _windSpeedUnit = SettingsService.WeatherWindSpeedUnitKmh;
     private string _skin = SettingsService.WeatherSkinRich;
@@ -104,6 +105,14 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         _localizationService = localizationService;
         _settingsService = settingsService;
         _dispatcherQueue = dispatcherQueue ?? TryGetCurrentDispatcherQueue();
+        _hasViewModeOverride =
+            WeatherWidgetViewModeSettings.TryGetWeekView(
+                _config,
+                out bool persistedWeekView);
+        IsWeekView = _hasViewModeOverride
+            ? persistedWeekView
+            : settingsService?.Settings.WeatherDefaultView ==
+              SettingsService.WeatherDefaultViewWeek;
 
         if (_settingsService is not null)
         {
@@ -334,7 +343,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     public bool IsWeekView
     {
         get => _isWeekView;
-        set
+        private set
         {
             if (SetProperty(ref _isWeekView, value))
             {
@@ -658,7 +667,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
             TextSize = SettingsService.NormalizeTextSize(_settingsService.Settings.TextSize);
         }
 
-        if (string.IsNullOrEmpty(_viewSwitchTooltip))
+        if (!_hasViewModeOverride)
         {
             IsWeekView = settings.WeatherDefaultView == SettingsService.WeatherDefaultViewWeek;
             UpdateViewSwitchButton();

@@ -745,9 +745,9 @@ public sealed partial class WidgetManager
 
     private IDesktopWidgetWindow? FindLoadedWindow(string widgetId)
     {
-        if (_widgets.TryGetValue(widgetId, out var fileEntry))
+        if (_fileWidgets.TryGetValue(widgetId, out var fileEntry))
         {
-            return fileEntry.Window;
+            return fileEntry.Host;
         }
 
         if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))

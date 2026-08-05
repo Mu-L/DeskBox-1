@@ -36,6 +36,7 @@ public partial class WidgetViewModel
         if (mode == WidgetSortMode.Manual)
         {
             NormalizeSortOrder();
+            SyncConfigItemsOrder();
             _settingsService.UpdateWidget(Config, notifySubscribers: false);
             OnPropertyChanged(nameof(SortModeLabel));
             return;
@@ -80,7 +81,6 @@ public partial class WidgetViewModel
         NormalizeSortOrder();
         SyncConfigItemsOrder();
         _settingsService.UpdateWidget(Config, notifySubscribers: false);
-        _settingsService.SaveDebounced(notifySubscribers: false);
         return true;
     }
 
@@ -126,23 +126,54 @@ public partial class WidgetViewModel
         NormalizeSortOrder();
         SyncConfigItemsOrder();
         _settingsService.UpdateWidget(Config, notifySubscribers: false);
-        _settingsService.SaveDebounced(notifySubscribers: false);
     }
 
     /// <summary>
     /// Rebuilds Config.Items to match the current Items collection order.
     /// Called after a manual reorder to persist the new order.
     /// </summary>
-    private void SyncConfigItemsOrder()
+    private bool SyncConfigItemsOrder()
     {
-        Config.Items.Clear();
-        foreach (var item in Items)
+        bool changed = Config.Items.Count != Items.Count;
+        if (!changed)
         {
+            for (int index = 0; index < Items.Count; index++)
+            {
+                WidgetItem item = Items[index];
+                WidgetItemConfig persisted = Config.Items[index];
+                if (!string.Equals(item.Path, persisted.Path, StringComparison.OrdinalIgnoreCase) ||
+                    persisted.SortOrder != index)
+                {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+
+        if (!changed)
+        {
+            return false;
+        }
+
+        Config.Items.Clear();
+        for (int index = 0; index < Items.Count; index++)
+        {
+            WidgetItem item = Items[index];
             Config.Items.Add(new WidgetItemConfig
             {
                 Path = item.Path,
-                SortOrder = item.SortOrder
+                SortOrder = index
             });
+        }
+
+        return true;
+    }
+
+    private void PersistManualOrderSnapshotIfChanged()
+    {
+        if (Config.SortMode == WidgetSortMode.Manual && SyncConfigItemsOrder())
+        {
+            _settingsService.UpdateWidget(Config, notifySubscribers: false);
         }
     }
 
@@ -369,6 +400,9 @@ public partial class WidgetViewModel
     {
         if (change.ChangeType == WatcherChangeTypes.Renamed && !string.IsNullOrWhiteSpace(change.OldFullPath))
         {
+            int previousManualIndex = Config.SortMode == WidgetSortMode.Manual
+                ? FindItemIndexByPath(change.OldFullPath)
+                : -1;
             FolderEntryRefreshStatus oldState =
                 FileService.ClassifyDirectChild(snapshot, change.OldFullPath);
             FolderEntryRefreshStatus newState =
@@ -380,18 +414,23 @@ public partial class WidgetViewModel
                     TransferFileAddedAt(change.OldFullPath, change.FullPath);
                 }
 
-                RemoveItemByPath(change.OldFullPath);
+                RemoveItemByPath(
+                    change.OldFullPath,
+                    persistManualOrder: previousManualIndex < 0);
             }
 
             if (newState == FolderEntryRefreshStatus.Available)
             {
-                await UpsertFolderItemAsync(change.FullPath);
+                await UpsertFolderItemAsync(
+                    change.FullPath,
+                    previousManualIndex >= 0 ? previousManualIndex : null);
             }
             else if (newState == FolderEntryRefreshStatus.Filtered)
             {
                 RemoveItemByPath(change.FullPath);
             }
 
+            PersistManualOrderSnapshotIfChanged();
             return;
         }
 
@@ -423,7 +462,9 @@ public partial class WidgetViewModel
                 changeType == WatcherChangeTypes.Renamed);
     }
 
-    private async Task UpsertFolderItemAsync(string path)
+    private async Task UpsertFolderItemAsync(
+        string path,
+        int? preferredManualIndex = null)
     {
         var item = await _fileService.TryCreateWidgetItemAsync(
             path,
@@ -442,6 +483,17 @@ public partial class WidgetViewModel
         }
 
         int existingIndex = FindItemIndexByPath(path);
+        if (Config.SortMode == WidgetSortMode.Manual && existingIndex >= 0)
+        {
+            AssignAddedAt(item);
+            item.SortOrder = existingIndex;
+            Items[existingIndex] = item;
+            NormalizeSortOrder();
+            PersistManualOrderSnapshotIfChanged();
+            StartItemHydration();
+            return;
+        }
+
         if (existingIndex >= 0)
         {
             Items.RemoveAt(existingIndex);
@@ -449,14 +501,17 @@ public partial class WidgetViewModel
 
         AssignAddedAt(item);
 
-        int insertIndex = GetSortedInsertIndex(item);
+        int insertIndex = Config.SortMode == WidgetSortMode.Manual && preferredManualIndex.HasValue
+            ? Math.Clamp(preferredManualIndex.Value, 0, Items.Count)
+            : GetSortedInsertIndex(item);
         item.SortOrder = insertIndex;
         Items.Insert(insertIndex, item);
         NormalizeSortOrder();
+        PersistManualOrderSnapshotIfChanged();
         StartItemHydration();
     }
 
-    private void RemoveItemByPath(string path)
+    private void RemoveItemByPath(string path, bool persistManualOrder = true)
     {
         int index = FindItemIndexByPath(path);
         if (index < 0)
@@ -467,6 +522,10 @@ public partial class WidgetViewModel
         Items.RemoveAt(index);
         RemoveFileAddedAt(path);
         NormalizeSortOrder();
+        if (persistManualOrder)
+        {
+            PersistManualOrderSnapshotIfChanged();
+        }
     }
 
     private int FindItemIndexByPath(string path)

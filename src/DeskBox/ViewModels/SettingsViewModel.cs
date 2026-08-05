@@ -45,6 +45,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string AnimationPresetStandard = "Standard";
     private const string AnimationPresetEmphasized = "Emphasized";
     private const string AnimationPresetCustom = "Custom";
+    private const string FeedbackEmail = "1047078635@qq.com";
     private const string RepositoryUrl = "https://github.com/Tianyu199509/DeskBox";
     private const string OfficialWebsiteUrl = "https://deskbox.fun";
 
@@ -60,6 +61,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private AppUpdateManifest? _latestUpdateManifest;
     private string? _downloadedUpdateInstallerPath;
     private bool _showManualUpdateFallback;
+    private bool _lastUpdateDownloadFailed;
+    private long _updateBytesReceived;
+    private long? _updateTotalBytes;
     private ImageSource? _donationWechatImageSource;
     private ImageSource? _donationAlipayImageSource;
     private Color _currentAccentColor;

@@ -24,6 +24,75 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_RecoversCorruptPrimaryFromLastValidBackup()
+    {
+        var service = new SettingsService(_settingsRoot);
+        service.Settings.Language = "en-US";
+        await service.SaveAsync();
+        service.Settings.Language = "ja-JP";
+        await service.SaveAsync();
+
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            "{ invalid json");
+
+        var recovered = new SettingsService(_settingsRoot);
+        await recovered.LoadAsync();
+
+        Assert.Equal(SettingsLoadRecoveryState.RecoveredFromBackup, recovered.LastLoadRecoveryState);
+        Assert.Equal("en-US", recovered.Settings.Language);
+        Assert.NotEmpty(Directory.EnumerateFiles(_settingsRoot, "settings.json.corrupt-*"));
+    }
+
+    [Fact]
+    public async Task LoadAsync_UsesDefaultsWhenPrimaryAndBackupAreInvalid()
+    {
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            "{ invalid primary");
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json.bak"),
+            "{ invalid backup");
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(SettingsLoadRecoveryState.DefaultsAfterFailure, service.LastLoadRecoveryState);
+        Assert.Equal("System", service.Settings.Theme);
+    }
+
+    [Fact]
+    public async Task FlushPendingSaveAsync_WritesDebouncedChangesImmediately()
+    {
+        var service = new SettingsService(_settingsRoot);
+        service.Settings.Language = "de-DE";
+        service.SaveDebounced(notifySubscribers: false);
+        Assert.True(service.HasPendingSave);
+
+        Assert.True(await service.FlushPendingSaveAsync());
+        Assert.False(service.HasPendingSave);
+
+        var reloaded = new SettingsService(_settingsRoot);
+        await reloaded.LoadAsync();
+        Assert.Equal("de-DE", reloaded.Settings.Language);
+    }
+
+    [Fact]
+    public async Task SaveDebounced_PersistsEvenWhenASettingsObserverFails()
+    {
+        var service = new SettingsService(_settingsRoot);
+        service.SettingsChanged += () => throw new InvalidOperationException("observer failed");
+        service.Settings.Language = "pt-BR";
+
+        service.SaveDebounced();
+        Assert.True(await service.FlushPendingSaveAsync());
+
+        var reloaded = new SettingsService(_settingsRoot);
+        await reloaded.LoadAsync();
+        Assert.Equal("pt-BR", reloaded.Settings.Language);
+    }
+
+    [Fact]
     public async Task LoadAsync_PreservesQuickCaptureWidgetsAndRemovesLegacyProductivityWidgets()
     {
         var settings = new AppSettings

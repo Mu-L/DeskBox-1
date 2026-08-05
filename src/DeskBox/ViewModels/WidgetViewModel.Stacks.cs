@@ -97,6 +97,51 @@ public partial class WidgetViewModel
     }
 
     /// <summary>
+    /// Makes a real file item addressable by the ItemsControl. Newly created
+    /// entries can immediately join a collapsed automatic stack, in which case
+    /// the stack must be expanded before the item can be scrolled to or edited.
+    /// </summary>
+    public bool RevealItemForInteraction(string itemPath)
+    {
+        if (string.IsNullOrWhiteSpace(itemPath))
+        {
+            return false;
+        }
+
+        WidgetItem? item = Items.FirstOrDefault(candidate =>
+            string.Equals(
+                candidate.Path,
+                itemPath,
+                StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+        {
+            return false;
+        }
+
+        if (!FileStacksEnabled)
+        {
+            return true;
+        }
+
+        RebuildStackDisplayItems();
+        WidgetStackItem? containingStack = _stackDisplayItems
+            .OfType<WidgetStackItem>()
+            .FirstOrDefault(stack => stack.Members.Any(member =>
+                string.Equals(
+                    member.Path,
+                    itemPath,
+                    StringComparison.OrdinalIgnoreCase)));
+        if (containingStack is not null &&
+            !containingStack.IsExpanded)
+        {
+            SetStackExpanded(containingStack, expanded: true);
+        }
+
+        return _stackDisplayItems.Any(candidate =>
+            ReferenceEquals(candidate, item));
+    }
+
+    /// <summary>
     /// Prepares an expanded automatic-stack member for direct manipulation.
     /// A manual drag becomes the user's ordering preference, so both the
     /// widget and the stack use their persisted widget order from this point.

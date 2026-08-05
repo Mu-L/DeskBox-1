@@ -67,8 +67,8 @@ Core widget foundation:
 Window creation routing:
 
 - `WidgetWindowProvider` inside `WidgetManager`: maps a creatable `WidgetKind` to the correct host-window creation path.
-- Current providers: File -> `WidgetWindow`, QuickCapture -> `QuickCaptureWidgetWindow`, Todo/Music -> `ContentWidgetWindow`.
-- The provider layer is intentionally thin. It centralizes dispatch but does not move host-specific implementation bodies yet.
+- Current providers: File/Todo/Music/Weather/Search -> `ContentWidgetWindow`, QuickCapture -> `QuickCaptureWidgetWindow`.
+- File widgets use `FileSurfaceContent` inside the unified content host. The legacy `WidgetWindow` host has been removed.
 
 Shared shell and window helpers:
 
@@ -81,9 +81,8 @@ Shared shell and window helpers:
 
 Current windows:
 
-- `src/DeskBox/Views/WidgetWindow.xaml.cs`: file widgets.
 - `src/DeskBox/Views/QuickCaptureWidgetWindow.xaml.cs`: QuickCapture / note widget.
-- `src/DeskBox/Views/ContentWidgetWindow.xaml.cs`: Todo, Music, Weather, and future content widgets.
+- `src/DeskBox/Views/ContentWidgetWindow.xaml.cs`: File, Todo, Music, Weather, Search, and future content widgets.
 
 Current Todo implementation:
 
@@ -172,9 +171,11 @@ Future content widgets should add a provider instead of expanding a switch in `W
 
 ### File Widgets
 
-File widgets still use `WidgetWindow`.
+File widgets use `FileSurfaceContent` hosted by `ContentWidgetWindow`. The old
+file-only `WidgetWindow` visual tree and interaction implementation have been
+removed.
 
-This is intentional. File widgets contain many high-risk behaviors:
+The shared file surface owns the high-risk behaviors:
 
 - external drag/drop
 - internal drag sorting
@@ -184,11 +185,11 @@ This is intentional. File widgets contain many high-risk behaviors:
 - mapped-folder behavior
 - right-click menus
 
-Do not move this whole window into `WidgetShell` in one pass.
-
 Current shared pieces used by file widgets:
 
 - `WidgetShell` hosts the outer shell.
+- `WidgetShellContentHost` owns content switching and disposal.
+- `FileItemSurface` owns icon/list item presentation.
 - `WidgetTitleBarMetrics` controls title/button visual sizing.
 - `WidgetTrayAnimationController` controls tray/F7 animation execution.
 - shared menu font and spacing resources from `App.xaml`.
@@ -218,9 +219,11 @@ Current shared pieces used by QuickCapture:
 
 Current production users:
 
+- File
 - Todo
 - Music
 - Weather
+- Search
 
 Future likely users:
 
@@ -250,7 +253,7 @@ Current capabilities:
 Current policy:
 
 - New simple content widgets should use the default shell title bar.
-- File widgets may continue using `TitleBarContent` until title editing and drag behavior are safely migrated.
+- File-specific title editing and drag behavior stay in `FileSurfaceContent`; the top-level host remains generic.
 - Avoid adding widget-specific visual hacks inside `WidgetShell`.
 
 ## Title Bar Metrics
@@ -268,7 +271,6 @@ It controls:
 
 Current users:
 
-- `WidgetWindow`
 - `QuickCaptureWidgetWindow`
 - `ContentWidgetWindow`
 
@@ -292,7 +294,6 @@ It controls:
 
 Current users:
 
-- `WidgetWindow`
 - `QuickCaptureWidgetWindow`
 - `ContentWidgetWindow`
 

@@ -119,6 +119,7 @@ public sealed partial class QuickCaptureWidgetWindow
             Text = _localizationService.T("Widget.FeatureWidget.Disable"),
             Icon = new FontIcon { Glyph = "\uE7E8" }
         };
+        WidgetDangerActionStyle.Apply(disableWidget);
         disableWidget.Click += async (_, _) =>
         {
             if (App.Current.WidgetManager is { } widgetManager)

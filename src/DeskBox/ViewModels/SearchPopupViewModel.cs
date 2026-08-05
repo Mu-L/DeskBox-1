@@ -403,7 +403,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     /// </summary>
     private async Task SearchAsync(string query)
     {
-        _searchCts?.Cancel();
+        CancelCurrentSearch();
         long generation = Interlocked.Increment(ref _searchGeneration);
 
         if (string.IsNullOrWhiteSpace(query))
@@ -418,8 +418,9 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
+        var searchCts = new CancellationTokenSource();
+        _searchCts = searchCts;
+        CancellationToken token = searchCts.Token;
         _allResults = [];
         IsQueryActive = true;
         HasResults = false;
@@ -430,32 +431,18 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         try
         {
             await Task.Delay(80, token);
-            var response = await _searchEngine.SearchAsync(query, token);
-            if (token.IsCancellationRequested)
+            await foreach (SearchResponse response in _searchEngine.SearchStagedAsync(
+                               query,
+                               token))
             {
-                return;
+                if (token.IsCancellationRequested ||
+                    generation != Volatile.Read(ref _searchGeneration))
+                {
+                    return;
+                }
+
+                ApplySearchResponse(response, token);
             }
-
-            _allResults = response.RankedItems.Count > 0
-                ? response.RankedItems.ToList()
-                : response.Groups.SelectMany(g => g.Items).ToList();
-
-            // Stamp each result with a localized type label once (cheap, no I/O).
-            foreach (var item in _allResults)
-            {
-                item.TypeDisplay = GetTypeDisplay(item);
-            }
-            IsQueryActive = true;
-            HasResults = _allResults.Count > 0;
-            StatusText = string.Format(
-                _localizationService.T("Search.Status.Results"),
-                response.TotalResultCount,
-                response.Elapsed.TotalMilliseconds);
-            RebuildTabs();
-
-            _ = EnrichResultsAsync(
-                _allResults.Take(MaxEnrichedSearchResults).ToList(),
-                token);
         }
         catch (OperationCanceledException)
         {
@@ -472,6 +459,56 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             {
                 IsSearching = false;
             }
+        }
+    }
+
+    private void ApplySearchResponse(
+        SearchResponse response,
+        CancellationToken token)
+    {
+        _allResults = response.RankedItems.Count > 0
+            ? response.RankedItems.ToList()
+            : response.Groups.SelectMany(g => g.Items).ToList();
+
+        // Stamp each result with a localized type label once (cheap, no I/O).
+        foreach (SearchResultItem item in _allResults)
+        {
+            item.TypeDisplay = GetTypeDisplay(item);
+        }
+
+        IsQueryActive = true;
+        HasResults = _allResults.Count > 0;
+        StatusText = string.Format(
+            _localizationService.T(response.IsComplete
+                ? "Search.Status.Results"
+                : "Search.Status.PartialResults"),
+            response.TotalResultCount,
+            response.Elapsed.TotalMilliseconds);
+        RebuildTabs();
+
+        if (response.IsComplete)
+        {
+            _ = EnrichResultsAsync(
+                _allResults.Take(MaxEnrichedSearchResults).ToList(),
+                token);
+        }
+    }
+
+    private void CancelCurrentSearch()
+    {
+        CancellationTokenSource? previous = Interlocked.Exchange(ref _searchCts, null);
+        if (previous is null)
+        {
+            return;
+        }
+
+        try
+        {
+            previous.Cancel();
+        }
+        finally
+        {
+            previous.Dispose();
         }
     }
 
@@ -1029,7 +1066,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     /// </summary>
     public void ClearSearch()
     {
-        _searchCts?.Cancel();
+        CancelCurrentSearch();
         Query = string.Empty;
         _allResults = [];
         IsQueryActive = false;
@@ -1045,7 +1082,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     /// </summary>
     public void OnPopupHidden()
     {
-        _searchCts?.Cancel();
+        CancelCurrentSearch();
         _indexRefreshCts?.Cancel();
         _recommendationCts?.Cancel();
         Query = string.Empty;
@@ -1216,8 +1253,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         _indexRefreshCts?.Dispose();
         _recommendationCts?.Cancel();
         _recommendationCts?.Dispose();
-        _searchCts?.Cancel();
-        _searchCts?.Dispose();
+        CancelCurrentSearch();
         _allResults = [];
         _emptyStateItems.Clear();
         _recentContentItems.Clear();

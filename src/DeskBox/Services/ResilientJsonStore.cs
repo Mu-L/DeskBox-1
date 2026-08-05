@@ -1,5 +1,17 @@
 namespace DeskBox.Services;
 
+internal enum ResilientJsonLoadSource
+{
+    Primary,
+    Backup,
+    DefaultMissing,
+    DefaultAfterFailure
+}
+
+internal sealed record ResilientJsonLoadResult<T>(
+    T Value,
+    ResilientJsonLoadSource Source);
+
 internal static class ResilientJsonStore
 {
     internal static string GetBackupPath(string storePath) => $"{storePath}.bak";
@@ -10,18 +22,36 @@ internal static class ResilientJsonStore
         Func<T> createDefault,
         string logName)
     {
+        ResilientJsonLoadResult<T> result = await LoadWithResultAsync(
+            storePath,
+            deserialize,
+            createDefault,
+            logName);
+        return result.Value;
+    }
+
+    public static async Task<ResilientJsonLoadResult<T>> LoadWithResultAsync<T>(
+        string storePath,
+        Func<string, T> deserialize,
+        Func<T> createDefault,
+        string logName)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
         ArgumentNullException.ThrowIfNull(deserialize);
         ArgumentNullException.ThrowIfNull(createDefault);
 
+        bool primaryFailed = false;
         if (File.Exists(storePath))
         {
             try
             {
-                return deserialize(await File.ReadAllTextAsync(storePath));
+                return new ResilientJsonLoadResult<T>(
+                    deserialize(await File.ReadAllTextAsync(storePath)),
+                    ResilientJsonLoadSource.Primary);
             }
             catch (Exception ex)
             {
+                primaryFailed = true;
                 App.Log($"[{logName}] Primary store is invalid: {ex}");
                 QuarantineCorruptFile(storePath, logName);
             }
@@ -30,22 +60,44 @@ internal static class ResilientJsonStore
         string backupPath = GetBackupPath(storePath);
         if (!File.Exists(backupPath))
         {
-            return createDefault();
+            return new ResilientJsonLoadResult<T>(
+                createDefault(),
+                primaryFailed
+                    ? ResilientJsonLoadSource.DefaultAfterFailure
+                    : ResilientJsonLoadSource.DefaultMissing);
         }
 
+        T recovered;
         try
         {
             string backupJson = await File.ReadAllTextAsync(backupPath);
-            T recovered = deserialize(backupJson);
-            await RestorePrimaryAsync(storePath, backupJson);
-            App.Log($"[{logName}] Restored store from '{backupPath}'.");
-            return recovered;
+            recovered = deserialize(backupJson);
+
+            try
+            {
+                await RestorePrimaryAsync(storePath, backupJson);
+                App.Log($"[{logName}] Restored store from '{backupPath}'.");
+            }
+            catch (Exception restoreException)
+            {
+                // A read-only or temporarily locked data directory must not
+                // turn a valid backup into an apparent total settings loss.
+                App.Log(
+                    $"[{logName}] Backup loaded, but primary restore failed: " +
+                    restoreException);
+            }
         }
         catch (Exception ex)
         {
             App.Log($"[{logName}] Backup store is invalid: {ex}");
-            return createDefault();
+            return new ResilientJsonLoadResult<T>(
+                createDefault(),
+                ResilientJsonLoadSource.DefaultAfterFailure);
         }
+
+        return new ResilientJsonLoadResult<T>(
+            recovered,
+            ResilientJsonLoadSource.Backup);
     }
 
     public static async Task SaveAsync(string storePath, string json)
