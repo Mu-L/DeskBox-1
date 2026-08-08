@@ -21,6 +21,7 @@ public sealed class WidgetTrayBatchAnimationEntry
     public required double FromOffsetY { get; init; }
     public required double ToOffsetX { get; init; }
     public required double ToOffsetY { get; init; }
+    public required int RefreshRateHz { get; init; }
 
     /// <summary>Returns false when the owning window started a newer animation.</summary>
     public required Func<bool> IsValid { get; init; }
@@ -51,6 +52,8 @@ public sealed class WidgetTrayBatchAnimationDriver
     private bool _isShowing;
     private int _remainingDelayFrames;
     private bool _isRunning;
+    private IDisposable? _clockBoostLease;
+    private WidgetTrayAnimationFrameTracker? _frameTracker;
 
     public WidgetTrayBatchAnimationDriver(Action<string>? log = null)
     {
@@ -84,6 +87,7 @@ public sealed class WidgetTrayBatchAnimationDriver
         _remainingDelayFrames = Math.Max(0, startDelayFrames);
         _stopwatch = null;
         _isRunning = true;
+        _clockBoostLease = CompositorClockBoostCoordinator.Acquire();
         CompositionTarget.Rendering -= OnRenderingFrame;
         CompositionTarget.Rendering += OnRenderingFrame;
         _log(
@@ -98,14 +102,12 @@ public sealed class WidgetTrayBatchAnimationDriver
             return;
         }
 
-        _isRunning = false;
-        _entries.Clear();
-        _stopwatch = null;
-        CompositionTarget.Rendering -= OnRenderingFrame;
+        ReportFrameMetrics("cancelled");
+        StopCore();
         _log("[BatchAnim] Cancelled");
     }
 
-    private void OnRenderingFrame(object sender, object e)
+    private void OnRenderingFrame(object? sender, object e)
     {
         try
         {
@@ -138,7 +140,15 @@ public sealed class WidgetTrayBatchAnimationDriver
                 return;
             }
 
-            _stopwatch ??= Stopwatch.StartNew();
+            long frameTimestamp = Stopwatch.GetTimestamp();
+            if (_stopwatch is null)
+            {
+                _stopwatch = Stopwatch.StartNew();
+                _frameTracker = new WidgetTrayAnimationFrameTracker(
+                    frameTimestamp,
+                    _entries.Select(entry => entry.RefreshRateHz));
+            }
+            _frameTracker?.RecordFrame(frameTimestamp);
 
             double rawProgress = Math.Clamp(_stopwatch.Elapsed.TotalMilliseconds / _durationMs, 0.0, 1.0);
             double easedProgress = WidgetAnimationSettings.Ease(rawProgress, _easingIntensity, _isShowing);
@@ -156,7 +166,7 @@ public sealed class WidgetTrayBatchAnimationDriver
         {
             // Never let a frame exception escape the Rendering callback.
             App.Log($"[WidgetTrayBatchAnimationDriver] Frame exception: {ex.Message}\n{ex.StackTrace}");
-            FinishBatch();
+            FinishBatch("failed");
         }
     }
 
@@ -204,10 +214,11 @@ public sealed class WidgetTrayBatchAnimationDriver
             entry.BaseY + (int)Math.Round(offsetY));
     }
 
-    private void FinishBatch()
+    private void FinishBatch(string outcome = "completed")
     {
         var completed = _entries.ToArray();
-        Cancel();
+        ReportFrameMetrics(outcome);
+        StopCore();
         foreach (var entry in completed)
         {
             try
@@ -219,6 +230,30 @@ public sealed class WidgetTrayBatchAnimationDriver
                 App.Log($"[WidgetTrayBatchAnimationDriver] Completed exception: {ex.Message}");
             }
         }
+    }
+
+    private void ReportFrameMetrics(string outcome)
+    {
+        WidgetTrayAnimationFrameTracker? tracker = _frameTracker;
+        _frameTracker = null;
+        WidgetTrayAnimationDiagnostics.Report(
+            tracker,
+            Stopwatch.GetTimestamp(),
+            _isShowing,
+            outcome,
+            "batch",
+            _log);
+    }
+
+    private void StopCore()
+    {
+        _isRunning = false;
+        _entries.Clear();
+        _stopwatch = null;
+        _frameTracker = null;
+        CompositionTarget.Rendering -= OnRenderingFrame;
+        _clockBoostLease?.Dispose();
+        _clockBoostLease = null;
     }
 
     private static double Lerp(double from, double to, double progress)

@@ -84,8 +84,8 @@ public sealed partial class SettingsWindow : Window
         {
             ["General"] = new("General", "Settings.Section.General", null, "General"),
             ["Appearance"] = new("Appearance", "Settings.Section.Appearance", null, "Appearance"),
-            ["CapsuleMode"] = new("CapsuleMode", "Settings.Section.CapsuleMode", null, "CapsuleMode"),
-            ["WidgetGroups"] = new("WidgetGroups", "Settings.Section.WidgetGroups", null, "WidgetGroups"),
+            ["CapsuleMode"] = new("CapsuleMode", "Settings.Section.CapsuleMode", "Appearance", "Appearance"),
+            ["WidgetGroups"] = new("WidgetGroups", "Settings.Section.WidgetGroups", "Appearance", "Appearance"),
             ["AppearanceDetail"] = new("AppearanceDetail", "Settings.Appearance.DetailTitle", null, "AppearanceDetail"),
             ["FeatureWidgets"] = new("FeatureWidgets", "Settings.Section.FeatureWidgets", null, "FeatureWidgets"),
             ["Interaction"] = new("Interaction", "Settings.Section.Interaction", null, "Interaction"),
@@ -107,10 +107,10 @@ public sealed partial class SettingsWindow : Window
             ["AppearanceDensitySettings"] = new("AppearanceDensitySettings", "Settings.Density.Title", "Appearance", "Appearance"),
             ["AppearanceWindowSettings"] = new("AppearanceWindowSettings", "Settings.Group.AppVisual.Title", "Appearance", "Appearance"),
             ["AppearanceAnimationSettings"] = new("AppearanceAnimationSettings", "Settings.Group.Animation.Title", "Appearance", "Appearance"),
-            ["CapsuleBehaviorSettings"] = new("CapsuleBehaviorSettings", "Settings.Capsule.HoverResponse.Title", "CapsuleMode", "CapsuleMode"),
-            ["CapsuleArrangementSettings"] = new("CapsuleArrangementSettings", "Settings.Capsule.ArrangementDetails.Title", "CapsuleMode", "CapsuleMode"),
-            ["CapsuleAnimationSettings"] = new("CapsuleAnimationSettings", "Settings.Capsule.Animation.Title", "CapsuleMode", "CapsuleMode"),
-            ["CapsuleOverridesSettings"] = new("CapsuleOverridesSettings", "Settings.Capsule.Overrides.Title", "CapsuleMode", "CapsuleMode"),
+            ["CapsuleBehaviorSettings"] = new("CapsuleBehaviorSettings", "Settings.Capsule.HoverResponse.Title", "CapsuleMode", "Appearance"),
+            ["CapsuleArrangementSettings"] = new("CapsuleArrangementSettings", "Settings.Capsule.ArrangementDetails.Title", "CapsuleMode", "Appearance"),
+            ["CapsuleAnimationSettings"] = new("CapsuleAnimationSettings", "Settings.Capsule.Animation.Title", "CapsuleMode", "Appearance"),
+            ["CapsuleOverridesSettings"] = new("CapsuleOverridesSettings", "Settings.Capsule.Overrides.Title", "CapsuleMode", "Appearance"),
             ["BackupRestoreSettings"] = new("BackupRestoreSettings", "Settings.DataBackup.Title", "Maintenance", "Maintenance"),
             ["DataHealthSettings"] = new("DataHealthSettings", "Settings.AttachmentHealth.Title", "Maintenance", "Maintenance"),
             ["CompatibilityDiagnosticsSettings"] = new("CompatibilityDiagnosticsSettings", "Settings.DragDropPermission.Title", "Maintenance", "Maintenance")
@@ -176,6 +176,7 @@ public sealed partial class SettingsWindow : Window
 
         ApplyTitleBarButtonColors();
         ApplyLocalizedText();
+        RefreshManagedStoragePathWarning();
         SettingsNavigationView.SelectedItem = GeneralNavItem;
         ShowSettingsSection("General");
         UpdateResponsiveLayout(GetWindowWidth());

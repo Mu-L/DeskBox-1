@@ -1538,8 +1538,9 @@ public sealed partial class SearchPopupWindow : Window
     private void SearchTextBox_GotFocus(object sender, RoutedEventArgs e)
     {
         HotkeyHintBadge.Opacity = 0.45;
-        SearchBoxBorder.BorderBrush =
-            ResolveThemeBrush("AccentFillColorDefaultBrush");
+        SearchBoxBorder.BorderBrush = new SolidColorBrush(
+            _themeService?.GetEffectiveAccentColor() ??
+            AccentColorHelper.DefaultAccentColor);
     }
 
     private void SearchTextBox_LostFocus(object sender, RoutedEventArgs e)
@@ -3237,7 +3238,7 @@ public sealed partial class SearchPopupWindow : Window
 
         var deleteItem = new MenuFlyoutItem
         {
-            Text = _localizationService.T("Common.Delete"),
+            Text = _localizationService.T("Search.Delete.Action"),
             Icon = new FontIcon { Glyph = "\uE74D" }
         };
         deleteItem.Click += async (_, _) => await DeleteSelectedItemsAsync();
@@ -3299,7 +3300,7 @@ public sealed partial class SearchPopupWindow : Window
             XamlRoot = RootGrid.XamlRoot,
             Title = string.Format(_localizationService.T("Search.Batch.DeleteTitle"), items.Count),
             Content = _localizationService.T("Search.Delete.Message"),
-            PrimaryButtonText = _localizationService.T("Common.Delete"),
+            PrimaryButtonText = _localizationService.T("Search.Delete.Action"),
             CloseButtonText = _localizationService.T("Common.Cancel"),
             DefaultButton = ContentDialogButton.Close
         };
@@ -3469,7 +3470,7 @@ public sealed partial class SearchPopupWindow : Window
 
         var deleteItem = new MenuFlyoutItem
         {
-            Text = _localizationService.T("Common.Delete"),
+            Text = _localizationService.T("Search.Delete.Action"),
             Icon = new FontIcon { Glyph = "\uE74D" }
         };
         deleteItem.Click += async (_, _) =>
@@ -3595,7 +3596,7 @@ public sealed partial class SearchPopupWindow : Window
             XamlRoot = RootGrid.XamlRoot,
             Title = string.Format(_localizationService.T("Search.Delete.Title"), item.Title),
             Content = _localizationService.T("Search.Delete.Message"),
-            PrimaryButtonText = _localizationService.T("Common.Delete"),
+            PrimaryButtonText = _localizationService.T("Search.Delete.Action"),
             CloseButtonText = _localizationService.T("Common.Cancel"),
             DefaultButton = ContentDialogButton.Close
         };
@@ -3937,7 +3938,7 @@ public sealed partial class SearchPopupWindow : Window
         {
             CopySelectedLabel.Text = _localizationService.T("Common.Copy");
             CutSelectedLabel.Text = _localizationService.T("Common.Cut");
-            DeleteSelectedLabel.Text = _localizationService.T("Common.Delete");
+            DeleteSelectedLabel.Text = _localizationService.T("Search.Delete.Action");
             OpenSelectedButton.Visibility = Visibility.Collapsed;
             OpenLocationButton.Visibility = Visibility.Collapsed;
             AttachSelectedButton.Visibility = Visibility.Collapsed;

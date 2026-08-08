@@ -1,18 +1,18 @@
 # DeskBox
 
-**A local-first Windows 11 desktop organizer for files, folders, todos, quick notes, search, weather, and music controls.**
+**A free, open-source Windows desktop organizer with native-feeling WinUI 3 widgets.**
 
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.3.7-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.7)
-[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#system-requirements)
+[![Latest release](https://img.shields.io/badge/release-1.3.8-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.8)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
 ![DeskBox Windows desktop organizer with file, todo, search, weather, and music widgets](docs/images/brand/readme-hero-1-3-7-dark-en.png)
 
-DeskBox adds native-feeling WinUI 3 widgets to the Windows desktop without replacing Explorer or changing how your files work. Create a desktop file organizer backed by a real folder, map an existing folder, keep todos and quick notes close at hand, search the PC, view weather, or control the active media session. Widgets can stay expanded, collapse into compact capsules, or be raised temporarily from the tray or a global hotkey.
+DeskBox organizes desktop files, maps existing folders, and keeps everyday tools close without replacing Explorer or changing how your files work. Its real-folder-backed widgets make it a modern open-source alternative to tools such as Stardock Fences, while todos, quick notes, search, weather, and music controls remain useful extras rather than the product's core promise.
 
 ## Mica and Acrylic on the desktop
 
@@ -26,18 +26,20 @@ DeskBox uses native-feeling Windows materials and keeps ordinary desktop files a
 
 | | |
 | --- | --- |
-| **Platform** | Windows 11, x64 and ARM64 |
+| **Platform** | Windows 10/11, x64 and ARM64 |
 | **Technology** | C#, WinUI 3, .NET 10, Windows App SDK 2.2 |
 | **Storage model** | Local-first; files, notes, tasks, settings, and layouts remain on the PC |
-| **Languages** | English, Simplified Chinese, Japanese, German, Brazilian Portuguese |
+| **Languages** | English, Simplified Chinese, Japanese, German, Brazilian Portuguese, Hindi, Spanish, French, Arabic, Bengali, Russian |
 | **License** | GPL-3.0-only |
+
+The six newer language packs prioritize the main file-widget and onboarding flows. A small number of detailed settings still use English while their translations are completed.
 
 ## Download
 
-Download DeskBox 1.3.7 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.7):
+Download DeskBox 1.3.8 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.8):
 
-- [DeskBox 1.3.7 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.7/DeskBox_Setup_1.3.7_x64.exe) — most Intel and AMD PCs.
-- [DeskBox 1.3.7 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.7/DeskBox_Setup_1.3.7_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.3.8 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.8/DeskBox_Setup_1.3.8_x64.exe) — most Intel and AMD PCs.
+- [DeskBox 1.3.8 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.8/DeskBox_Setup_1.3.8_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
@@ -99,17 +101,18 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
 - Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
-## What is new in 1.3.7
+## What is new in 1.3.8
 
-- **One file-widget implementation:** standalone widgets and widget groups now use the same file surface and host, keeping views, detail and path settings, menus, sorting, QuickLook, and drag-and-drop behavior aligned. The legacy standalone file interaction tree has been removed.
-- **More reliable file work:** new folders scroll into view and enter inline naming, new and existing folders can be renamed, files can be dropped onto folder items, manual order survives a cold start, and shortcut drag-out follows Windows Shell behavior.
-- **Stable groups and global toggles:** Ctrl+Tab cycles continuously, while repeated tray or hotkey presses are serialized so widgets do not become stuck off-screen or stop responding. Display, DPI, sleep, and Explorer recovery now share diagnostics.
-- **Improved search:** providers return staged results without one source blocking another; Ctrl/Shift selection, rubber-band selection with auto-scroll, result rows, columns, and header hover states have been refined.
-- **Settings now persist consistently:** weather Day/Week mode and pending file-order changes are flushed and restored, with recoverable settings snapshots and explicit save-failure reporting.
-- **Safer installation and updating:** upgrades reuse the existing installation path, show the installer after DeskBox closes, provide retry and official-site fallback on download failure, and display long release notes in a dedicated view.
-- **Interface polish and support:** native neutral file hover/selection colors, softer destructive actions, consistent context menus, a feedback email card, improved About layout, and a privacy-filtered diagnostics package make everyday use and troubleshooting clearer.
+- **Six more interface languages:** Hindi, Spanish, French, Arabic, Bengali, and Russian are now available for the main file-widget, onboarding, weather, and update flows; less-used detailed settings safely use English while localization continues.
+- **Store-aligned terminology:** file widgets, folder mapping, automatic stacks, widget groups, tray creation, and recycle-bin actions use the same product language across the app.
+- **Safer file-widget onboarding:** the first widget starts on the right, explains managed storage versus folder mapping, and shows how to create another widget from the tray menu.
+- **Clipboard and selection fixes:** paste actions are available from file widgets, multi-file shell copy/cut preserves the full selection, and cut styling is cleared after a completed move.
+- **Reliable startup and first run:** Windows startup remains tray-first, normal launches remain interactive, and intentionally removed file widgets are never recreated.
+- **A safer first run:** the default file widget is created only for a genuinely new profile and only once. Deleting all file widgets no longer causes DeskBox to recreate one later, and settings recovery never manufactures new content.
+- **Win+D no longer hides dynamic widgets:** both desktop-layer modes rest inside Explorer's desktop icon layer. Dynamic widgets still detach temporarily when raised, preserving the existing foreground interaction.
+- **Native ARM64 update selection:** the client reads the ARM64 installer URL, SHA-256, and size from the stable manifest instead of depending on the GitHub API fallback.
 
-Read the full [changelog](CHANGELOG.md) or the [1.3.7 release notes](docs/releases/v1.3.7.md).
+Read the full [changelog](CHANGELOG.md) or the [1.3.8 release notes](docs/releases/v1.3.8.md).
 
 ## Current interface
 
@@ -156,7 +159,7 @@ DeskBox uses an Inno Setup installer and installs for the current user by defaul
 
 Startup launch is tray-first and silent. If DeskBox is already running, a second startup instance exits instead of opening another settings window.
 
-During uninstall, you can choose whether to remove app-local data under `%LocalAppData%\DeskBox`. DeskBox does not silently delete managed user files; setup asks before any cleanup that could affect them.
+Uninstall offers explicit choices to keep application data or permanently remove it. Permanent removal clears `%LocalAppData%\DeskBox`, `%LocalAppData%\DeskBox-Recovery`, temporary files, and DeskBox-owned registration data; user files in the managed storage path are always preserved. Silent uninstall keeps application data unless an administrator explicitly supplies `/PURGEUSERDATA`.
 
 ## FAQ
 
@@ -167,7 +170,7 @@ No. Explorer remains the desktop shell, and files remain normal files and folder
 ### Where does DeskBox store data?
 
 - App settings and widget data: `%LocalAppData%\DeskBox\data`
-- Default managed file storage: `%UserProfile%\DeskBox`
+- New-user managed storage: a fixed non-system drive with enough free space when available, such as `D:\DeskBox\username`; otherwise `%UserProfile%\DeskBox`
 
 Both locations can be backed up from DeskBox settings.
 
@@ -212,8 +215,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.3.7_x64.exe
-Output\DeskBox_Setup_1.3.7_arm64.exe
+Output\DeskBox_Setup_1.3.8_x64.exe
+Output\DeskBox_Setup_1.3.8_arm64.exe
 ```
 
 ## Project layout

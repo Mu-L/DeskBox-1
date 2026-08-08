@@ -15,6 +15,7 @@
 - 跳过 `DeskBox.Updater`
 - 生成自包含 .NET 包，避免 Store 用户额外安装 .NET Desktop Runtime
 - 关闭 MSIX 签名，适合本机先验证包结构
+- 自动定位本机 VC 符号工具并生成 `.appxsym`
 - 输出到 `artifacts\store-msix\`
 
 ARM64 测试包：
@@ -29,15 +30,15 @@ ARM64 测试包：
 .\scripts\build-store-msix.ps1 -SignPackage -PackageCertificateKeyFile "path\to\DeskBox.pfx"
 ```
 
-## 上架前必须替换
+## Partner Center 身份
 
-`src\DeskBox\Package.appxmanifest` 里目前使用占位身份：
+`src\DeskBox\Package.appxmanifest` 已使用 Partner Center 分配的正式身份：
 
-- `Identity Name="DeskBox.Desktop"`
-- `Publisher="CN=DeskBox"`
-- `PublisherDisplayName="DeskBox"`
+- `Identity Name="D1FC332A.DeskBoxWidgets"`
+- `Publisher="CN=3B75AA4A-2433-4F71-9CC1-B644B26F474A"`
+- `PublisherDisplayName="朱天雨"`
 
-正式上架前需要按 Partner Center 分配的 Package/Publisher Identity 修改，否则无法提交到 Microsoft Store。
+每次打包后仍需从生成包内复核 Identity，确保没有被本地发布配置或临时证书覆盖。
 
 ## 当前边界
 
@@ -70,8 +71,7 @@ Direct 构建继续使用：
 
 真正上架前还需要：
 
-1. 使用 Partner Center 真实身份重新打包。
-2. 运行 Windows App Certification Kit。
-3. 实测文件拖拽、托盘、开机自启、系统音量、多屏/DPI。
-4. 根据 Microsoft Store 政策确认关于页捐赠二维码是否隐藏或替换为官网说明。
-5. 确认包内没有 `DeskBox.Updater.*`、`donation-*` 或 `store-assets-html/` 这类非 Store 包资源。
+1. 运行 Windows App Certification Kit。
+2. 实测文件拖拽、托盘、开机自启、系统音量、多屏/DPI。
+3. 根据 Microsoft Store 政策确认关于页捐赠二维码是否隐藏或替换为官网说明。
+4. 确认包内没有 `DeskBox.Updater.*`、`donation-*` 或 `store-assets-html/` 这类非 Store 包资源。

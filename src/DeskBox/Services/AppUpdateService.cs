@@ -88,24 +88,18 @@ public sealed class AppUpdateService : IAppUpdateService
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             var manifest = await JsonSerializer.DeserializeAsync<AppUpdateManifest>(stream, s_jsonOptions, cancellationToken);
-            if (!IsManifestUsable(manifest))
+            if (manifest is null ||
+                !TrySelectInstallerForArchitecture(
+                    manifest,
+                    CurrentInstallerArchitectureSuffix) ||
+                !IsManifestUsable(manifest) ||
+                string.IsNullOrWhiteSpace(manifest.Sha256))
             {
                 return new AppUpdateCheckResult(
                     AppUpdateCheckStatus.InvalidManifest,
                     currentVersion,
                     manifest,
-                    "The update manifest is missing required fields.");
-            }
-
-            if (!IsInstallerDownloadCompatibleWithArchitecture(
-                    manifest!.DownloadUrl,
-                    CurrentInstallerArchitectureSuffix))
-            {
-                return new AppUpdateCheckResult(
-                    AppUpdateCheckStatus.InvalidManifest,
-                    currentVersion,
-                    manifest,
-                    "The update manifest points to an installer for a different processor architecture.");
+                    "The update manifest is missing installer metadata for this processor architecture.");
             }
 
             return IsRemoteVersionNewer(currentVersion, manifest.Version)
@@ -152,7 +146,10 @@ public sealed class AppUpdateService : IAppUpdateService
         IProgress<AppUpdateDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (!IsManifestUsable(manifest))
+        if (!TrySelectInstallerForArchitecture(
+                manifest,
+                CurrentInstallerArchitectureSuffix) ||
+            !IsManifestUsable(manifest))
         {
             return AppUpdateDownloadResult.Failed(AppUpdateDownloadFailureKind.InvalidManifest);
         }
@@ -443,6 +440,39 @@ public sealed class AppUpdateService : IAppUpdateService
             Uri.TryCreate(manifest.DownloadUrl, UriKind.Absolute, out _);
     }
 
+    internal static bool TrySelectInstallerForArchitecture(
+        AppUpdateManifest manifest,
+        string architectureSuffix)
+    {
+        if (string.Equals(architectureSuffix, "x64", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsInstallerDownloadCompatibleWithArchitecture(
+                manifest.DownloadUrl,
+                architectureSuffix);
+        }
+
+        if (!string.Equals(architectureSuffix, "arm64", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.Arm64DownloadUrl))
+        {
+            // Backward compatibility for an ARM64-only manifest that already
+            // used the primary installer fields.
+            return IsInstallerDownloadCompatibleWithArchitecture(
+                manifest.DownloadUrl,
+                architectureSuffix);
+        }
+
+        manifest.DownloadUrl = manifest.Arm64DownloadUrl;
+        manifest.Sha256 = manifest.Arm64Sha256;
+        manifest.Size = manifest.Arm64Size;
+        return IsInstallerDownloadCompatibleWithArchitecture(
+            manifest.DownloadUrl,
+            architectureSuffix);
+    }
+
     private async Task<AppUpdateManifest?> CreateManifestFromGitHubReleaseAsync(
         GitHubReleaseResponse? release,
         CancellationToken cancellationToken)
@@ -495,7 +525,13 @@ public sealed class AppUpdateService : IAppUpdateService
                 ["en-US"] = $"DeskBox {version} is available from GitHub Releases.",
                 ["ja-JP"] = $"DeskBox {version} は GitHub Releases から入手できます。",
                 ["de-DE"] = $"DeskBox {version} ist über GitHub Releases verfügbar.",
-                ["pt-BR"] = $"O DeskBox {version} está disponível no GitHub Releases."
+                ["pt-BR"] = $"O DeskBox {version} está disponível no GitHub Releases.",
+                ["hi-IN"] = $"DeskBox {version} GitHub Releases से उपलब्ध है।",
+                ["es-ES"] = $"DeskBox {version} está disponible en GitHub Releases.",
+                ["fr-FR"] = $"DeskBox {version} est disponible sur GitHub Releases.",
+                ["ar-SA"] = $"يتوفر DeskBox {version} في إصدارات GitHub.",
+                ["bn-BD"] = $"DeskBox {version} GitHub Releases-এ পাওয়া যাচ্ছে।",
+                ["ru-RU"] = $"DeskBox {version} доступен в GitHub Releases."
             }
         };
     }

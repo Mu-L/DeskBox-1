@@ -418,9 +418,9 @@ public sealed partial class QuickCaptureWidgetWindow
         {
             bool isSelected = string.Equals(button.Tag as string, _detailAppearance.ToString(), StringComparison.Ordinal);
             button.BorderBrush = isSelected
-                ? GetBrushResourceOrFallback(
-                    "AccentFillColorDefaultBrush",
-                    isDark ? ColorHelper.FromArgb(0xFF, 0x60, 0xCD, 0xFF) : ColorHelper.FromArgb(0xFF, 0x00, 0x5F, 0xB8))
+                ? new SolidColorBrush(
+                    App.Current.ThemeService?.GetEffectiveAccentColor() ??
+                    AccentColorHelper.DefaultAccentColor)
                 : new SolidColorBrush(Colors.Transparent);
             button.BorderThickness = new Thickness(isSelected ? 1.5 : 1);
         }

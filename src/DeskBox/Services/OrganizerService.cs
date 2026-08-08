@@ -39,7 +39,10 @@ public sealed class OrganizerService
         string widgetName,
         IEnumerable<string> sourcePaths,
         bool move,
-        bool useShellProgress = false)
+        bool useShellProgress = false,
+        IntPtr ownerWindowHandle = default,
+        IProgress<FileService.FileTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(widget.MappedFolderPath))
         {
@@ -72,7 +75,13 @@ public sealed class OrganizerService
                 })
                 .ToList();
 
-            var results = await _fileService.ExecuteTransferPlanAsync(plans, move, useShellProgress);
+            var results = await _fileService.ExecuteTransferPlanAsync(
+                plans,
+                move,
+                useShellProgress,
+                ownerWindowHandle,
+                progress,
+                cancellationToken);
             var historyEntry = CreateHistoryEntry(
                 widget.Id,
                 widgetName,
@@ -90,6 +99,10 @@ public sealed class OrganizerService
 
             await AddHistoryEntryAsync(historyEntry);
             return historyEntry;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

@@ -65,6 +65,19 @@ public partial class SettingsViewModel
         }
     }
 
+    partial void OnKeepWidgetsVisibleOnShowDesktopChanged(bool value)
+    {
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.KeepWidgetsVisibleOnShowDesktop = value;
+        _settingsService.SaveDebounced();
+        App.Current?.WidgetManager?.RefreshVisibleWidgetDesktopLayers(
+            "settings-show-desktop-visibility");
+    }
+
     partial void OnDefaultWidthChanged(double value)
     {
         if (_isRestoringDefaults)

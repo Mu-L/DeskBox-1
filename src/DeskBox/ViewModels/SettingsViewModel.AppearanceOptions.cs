@@ -360,13 +360,12 @@ public partial class SettingsViewModel
         set
         {
             string normalizedValue = value is
-                AnimationPresetNone or
                 AnimationPresetGentle or
                 AnimationPresetStandard or
                 AnimationPresetEmphasized or
                 AnimationPresetCustom
                     ? value
-                    : AnimationPresetCustom;
+                    : AnimationPresetStandard;
             if (!SetProperty(ref _selectedAnimationPreset, normalizedValue))
             {
                 return;

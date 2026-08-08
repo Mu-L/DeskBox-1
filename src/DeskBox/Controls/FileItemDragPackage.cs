@@ -46,21 +46,32 @@ public static class FileItemDragPackage
             DataPackageOperation.Move |
             DataPackageOperation.Link;
 
-        IReadOnlyList<IStorageItem> storageItems =
-            getStorageItems(sourcePaths);
-        bool usesVirtualStorageItems = false;
-        if (storageItems.Count > 0)
+        // WinRT's StorageFile broker can reject shortcuts carrying Hidden or
+        // System attributes with UNABLE_TO_MASK_PATH. More importantly, this
+        // event is raised on the UI STA, so synchronously waiting for that
+        // broker can deadlock the drag/drop message loop. Shortcuts already
+        // have a streamed provider that does not need the broker; choose it
+        // before attempting any synchronous StorageItems lookup.
+        bool usesVirtualStorageItems =
+            VirtualShortcutDragProvider.RequiresStorageBrokerBypass(
+                sourcePaths) &&
+            VirtualShortcutDragProvider.TryAttach(
+                dataPackage,
+                sourcePaths);
+        IReadOnlyList<IStorageItem> storageItems = [];
+        if (usesVirtualStorageItems)
         {
-            dataPackage.SetStorageItems(storageItems, readOnly: false);
-        }
-        else if (VirtualShortcutDragProvider.TryAttach(
-                     dataPackage,
-                     sourcePaths))
-        {
-            usesVirtualStorageItems = true;
             App.LogVerbose(
-                $"[DragStart] Attached virtual shortcut StorageItems " +
-                $"paths={sourcePaths.Length}");
+                $"[DragStart] Bypassed WinRT StorageItems broker for " +
+                $"virtual shortcuts paths={sourcePaths.Length}");
+        }
+        else
+        {
+            storageItems = getStorageItems(sourcePaths);
+            if (storageItems.Count > 0)
+            {
+                dataPackage.SetStorageItems(storageItems, readOnly: false);
+            }
         }
 
         dataPackage.Properties[DeskBoxDragData.SourceWidgetIdProperty] =

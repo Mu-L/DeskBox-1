@@ -1,12 +1,12 @@
 # DeskBox
 
-**本地优先的 Windows 11 桌面整理工具：用格子管理文件、文件夹、待办、随记、搜索、天气和音乐。**
+**本地优先的 Windows 10/11 桌面整理工具：用格子管理文件、文件夹、待办、随记、搜索、天气和音乐。**
 
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.3.7-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.7)
-[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4.svg)](#环境要求)
+[![最新版本](https://img.shields.io/badge/release-1.3.8-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.8)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
@@ -26,18 +26,20 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 | | |
 | --- | --- |
-| **支持平台** | Windows 11，x64 与 ARM64 |
+| **支持平台** | Windows 10/11，x64 与 ARM64 |
 | **技术栈** | C#、WinUI 3、.NET 10、Windows App SDK 2.2 |
 | **数据方式** | 本地优先；文件、随记、待办、设置与布局保存在电脑上 |
-| **界面语言** | 简体中文、English、日本語、Deutsch、Português do Brasil |
+| **界面语言** | 简体中文、English、日本語、Deutsch、Português do Brasil、हिन्दी、Español、Français、العربية、বাংলা、Русский |
 | **开源协议** | GPL-3.0-only |
+
+新增的 6 种语言优先覆盖文件格子和新手流程等主要体验；少量详细设置仍在持续翻译，暂时使用英文显示。
 
 ## 下载
 
-在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.7) 下载 DeskBox 1.3.7：
+在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.8) 下载 DeskBox 1.3.8：
 
-- [DeskBox 1.3.7 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.7/DeskBox_Setup_1.3.7_x64.exe)——适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.3.7 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.7/DeskBox_Setup_1.3.7_arm64.exe)——适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.3.8 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.8/DeskBox_Setup_1.3.8_x64.exe)——适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.3.8 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.8/DeskBox_Setup_1.3.8_arm64.exe)——适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -99,17 +101,18 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.3.7 更新亮点
+## 1.3.8 更新亮点
 
-- **文件格子统一实现**：独立格子与格子组改为共用同一套文件内容和宿主，视图、详细信息与路径开关、菜单、排序、QuickLook 和拖放行为保持一致，旧独立文件交互树已移除。
-- **文件操作更可靠**：新建文件夹会自动滚动并进入名称输入，新旧文件夹均可重命名，文件可拖入格子内文件夹，手动顺序可在冷启动恢复，快捷方式拖出遵循 Windows Shell 行为。
-- **格子组与全局唤起更稳定**：Ctrl+Tab 支持无限循环；托盘或快捷键连续触发改为串行处理，避免格子卡在屏幕外或热键失效，并补齐显示器、DPI、睡眠和资源管理器恢复诊断。
-- **搜索体验优化**：各搜索来源分阶段返回结果且互相隔离；补齐 Ctrl/Shift 多选、带自动滚动的框选，并优化结果行、列、表头和鼠标悬停视觉。
-- **配置持久化更一致**：天气日/周模式和待保存的文件排序会在退出时刷新并恢复；设置提供可恢复快照，并明确记录保存失败。
-- **安装与更新更安全**：升级复用已有安装路径；DeskBox 关闭后显示安装界面；下载失败可重试或前往官网；较长更新日志改在独立界面展示。
-- **界面与支持细节**：文件悬停/选中使用明暗自适应的原生中性色，危险操作使用更柔和且一致的红色，统一右键菜单，新增反馈邮箱卡片、精简关于页，并支持导出隐私过滤的一键诊断包。
+- **新增 6 种界面语言**：在简体中文、英语、日语、德语和巴西葡萄牙语之外，新增印地语、西班牙语、法语、阿拉伯语、孟加拉语和俄语，优先覆盖文件格子、新手流程、天气和更新等主要体验；少量详细设置暂时使用英文显示。
+- **商店术语同步**：文件格子、文件夹映射、自动叠放、格子组、托盘创建和移入回收站等表述在应用内统一。
+- **新手流程更聚焦**：首个格子固定从屏幕右侧开始，明确解释收纳格子与文件夹映射，并告诉用户如何从托盘菜单新建格子。
+- **粘贴与选择状态修复**：格子支持直接粘贴，多文件复制/剪切会保留完整选择，剪切完成后会清理误显示的剪切样式。
+- **开机启动与首次运行更可靠**：Windows 开机启动继续驻留托盘，主动打开保持交互式体验；用户主动删除文件格子后不会被自动补回。
+- **更安全的首次运行**：默认文件格子只会为真正的新用户创建一次。用户主动删光文件格子后不会再次被补回，配置恢复失败时也不会凭空生成内容。
+- **Win+D 不再隐藏动态格子**：两种桌面层级模式在静止时都附着到资源管理器桌面图标层；动态格子被唤起时仍会临时脱离，同时保留原有前景交互。
+- **ARM64 原生更新链路**：客户端会从稳定版清单读取 ARM64 安装包地址、SHA-256 与大小，不再依赖 GitHub API 回退。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.7 发布说明](docs/releases/v1.3.7.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.8 发布说明](docs/releases/v1.3.8.md)。
 
 ## 当前界面
 
@@ -156,7 +159,7 @@ DeskBox 使用 Inno Setup 安装器，默认安装到当前用户目录。覆盖
 
 开机自启会静默启动到托盘。DeskBox 已运行时，再启动一个实例会直接退出，不会重复打开设置窗口。
 
-卸载时可以选择是否删除 `%LocalAppData%\DeskBox` 下的应用数据。DeskBox 不会静默删除收纳目录中的用户文件；任何可能影响用户文件的清理都会先提示。
+卸载时会明确提供“保留应用数据”和“彻底删除应用数据”两个选择。彻底删除会清理 `%LocalAppData%\DeskBox`、`%LocalAppData%\DeskBox-Recovery`、临时文件和 DeskBox 自己创建的注册信息；收纳路径中的用户文件始终保留。静默卸载默认保留应用数据，管理员只有显式传入 `/PURGEUSERDATA` 才会执行彻底清理。
 
 ## 常见问题
 
@@ -167,7 +170,7 @@ DeskBox 使用 Inno Setup 安装器，默认安装到当前用户目录。覆盖
 ### DeskBox 把数据保存在哪里？
 
 - 应用设置和格子数据：`%LocalAppData%\DeskBox\data`
-- 默认收纳目录：`%UserProfile%\DeskBox`
+- 新用户收纳目录：优先使用空间充足的非系统固定磁盘，例如 `D:\DeskBox\用户名`；没有合适磁盘时回退到 `%UserProfile%\DeskBox`
 
 两类数据都可以通过 DeskBox 设置中的备份功能进行备份。
 
@@ -212,8 +215,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.3.7_x64.exe
-Output\DeskBox_Setup_1.3.7_arm64.exe
+Output\DeskBox_Setup_1.3.8_x64.exe
+Output\DeskBox_Setup_1.3.8_arm64.exe
 ```
 
 ## 项目结构

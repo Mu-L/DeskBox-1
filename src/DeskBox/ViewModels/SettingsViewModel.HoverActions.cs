@@ -206,7 +206,6 @@ public partial class SettingsViewModel
     private static string NormalizeWidgetAnimationEffect(string? effect)
     {
         return effect is
-            SettingsService.WidgetAnimationEffectNone or
             SettingsService.WidgetAnimationEffectFade or
             SettingsService.WidgetAnimationEffectSlideRight or
             SettingsService.WidgetAnimationEffectSlideLeft or

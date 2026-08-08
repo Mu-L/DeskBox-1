@@ -14,6 +14,12 @@ public sealed class LocalizationService
     public const string LanguageJapanese = "ja-JP";
     public const string LanguageGerman = "de-DE";
     public const string LanguagePortuguese = "pt-BR";
+    public const string LanguageHindi = SettingsService.LanguageHindi;
+    public const string LanguageSpanish = SettingsService.LanguageSpanish;
+    public const string LanguageFrench = SettingsService.LanguageFrench;
+    public const string LanguageArabic = SettingsService.LanguageArabic;
+    public const string LanguageBengali = SettingsService.LanguageBengali;
+    public const string LanguageRussian = SettingsService.LanguageRussian;
 
     private readonly SettingsService _settingsService;
 
@@ -43,7 +49,7 @@ public sealed class LocalizationService
     public bool IsEnglish => string.Equals(CurrentCultureName, LanguageEnglish, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Returns a 2-letter language code ("en", "zh", "ja", "de", "pt")
+    /// Returns a 2-letter language code ("en", "zh", "ja", "de", "pt", "hi", "es", "fr", "ar", "bn", "ru")
     /// suitable for passing to weather and location APIs.
     /// </summary>
     public string ApiLanguageCode => CurrentCultureName switch
@@ -52,6 +58,12 @@ public sealed class LocalizationService
         LanguageJapanese => "ja",
         LanguageGerman => "de",
         LanguagePortuguese => "pt",
+        LanguageHindi => "hi",
+        LanguageSpanish => "es",
+        LanguageFrench => "fr",
+        LanguageArabic => "ar",
+        LanguageBengali => "bn",
+        LanguageRussian => "ru",
         _ => "en"
     };
 
@@ -62,7 +74,13 @@ public sealed class LocalizationService
         LanguageEnglish,
         LanguageJapanese,
         LanguageGerman,
-        LanguagePortuguese
+        LanguagePortuguese,
+        LanguageHindi,
+        LanguageSpanish,
+        LanguageFrench,
+        LanguageArabic,
+        LanguageBengali,
+        LanguageRussian
     ];
 
     public string GetLanguageDisplayName(string language)
@@ -74,6 +92,12 @@ public sealed class LocalizationService
             LanguageJapanese => T("Language.Japanese"),
             LanguageGerman => T("Language.German"),
             LanguagePortuguese => T("Language.Portuguese"),
+            LanguageHindi => "हिन्दी",
+            LanguageSpanish => "Español",
+            LanguageFrench => "Français",
+            LanguageArabic => "العربية",
+            LanguageBengali => "বাংলা",
+            LanguageRussian => "Русский",
             _ => T("Language.System")
         };
     }
@@ -133,6 +157,12 @@ public sealed class LocalizationService
             LanguageJapanese => JaJp,
             LanguageGerman => DeDe,
             LanguagePortuguese => PtBr,
+            LanguageHindi => HiIn,
+            LanguageSpanish => EsEs,
+            LanguageFrench => FrFr,
+            LanguageArabic => ArSa,
+            LanguageBengali => BnBd,
+            LanguageRussian => RuRu,
             _ => IsEnglish ? EnUs : ZhCn
         };
         
@@ -141,7 +171,13 @@ public sealed class LocalizationService
             return value;
         }
 
-        // Fallback to Chinese for all languages
+        // All shipped locale files are expected to be complete. Keep English
+        // as a defensive fallback for unknown keys in future app versions.
+        if (EnUs.TryGetValue(key, out value))
+        {
+            return value;
+        }
+
         return ZhCn.TryGetValue(key, out value) ? value : key;
     }
 
@@ -163,6 +199,7 @@ public sealed class LocalizationService
     public static string NormalizeLanguageSetting(string? language)
     {
         return language is LanguageChinese or LanguageEnglish or LanguageJapanese or LanguageGerman or LanguagePortuguese
+            or LanguageHindi or LanguageSpanish or LanguageFrench or LanguageArabic or LanguageBengali or LanguageRussian
             ? language
             : LanguageSystem;
     }
@@ -178,6 +215,18 @@ public sealed class LocalizationService
             return LanguageGerman;
         if (name.StartsWith("pt", StringComparison.OrdinalIgnoreCase))
             return LanguagePortuguese;
+        if (name.StartsWith("hi", StringComparison.OrdinalIgnoreCase))
+            return LanguageHindi;
+        if (name.StartsWith("es", StringComparison.OrdinalIgnoreCase))
+            return LanguageSpanish;
+        if (name.StartsWith("fr", StringComparison.OrdinalIgnoreCase))
+            return LanguageFrench;
+        if (name.StartsWith("ar", StringComparison.OrdinalIgnoreCase))
+            return LanguageArabic;
+        if (name.StartsWith("bn", StringComparison.OrdinalIgnoreCase))
+            return LanguageBengali;
+        if (name.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
+            return LanguageRussian;
         return LanguageEnglish;
     }
 
@@ -201,7 +250,13 @@ public sealed class LocalizationService
                     || value == LanguageEnglish
                     || value == LanguageJapanese
                     || value == LanguageGerman
-                    || value == LanguagePortuguese))
+                    || value == LanguagePortuguese
+                    || value == LanguageHindi
+                    || value == LanguageSpanish
+                    || value == LanguageFrench
+                    || value == LanguageArabic
+                    || value == LanguageBengali
+                    || value == LanguageRussian))
             {
                 return value;
             }
@@ -220,6 +275,12 @@ public sealed class LocalizationService
     private static Dictionary<string, string>? _jaJp;
     private static Dictionary<string, string>? _deDe;
     private static Dictionary<string, string>? _ptBr;
+    private static Dictionary<string, string>? _hiIn;
+    private static Dictionary<string, string>? _esEs;
+    private static Dictionary<string, string>? _frFr;
+    private static Dictionary<string, string>? _arSa;
+    private static Dictionary<string, string>? _bnBd;
+    private static Dictionary<string, string>? _ruRu;
     private static readonly object s_loadLock = new();
 
     private static Dictionary<string, string> ZhCn
@@ -284,6 +345,84 @@ public sealed class LocalizationService
                 _ptBr ??= LoadStringResource("DeskBox.Strings.pt-BR.json");
             }
             return _ptBr;
+        }
+    }
+
+    private static Dictionary<string, string> HiIn
+    {
+        get
+        {
+            if (_hiIn is not null) return _hiIn;
+            lock (s_loadLock)
+            {
+                _hiIn ??= LoadStringResource("DeskBox.Strings.hi-IN.json");
+            }
+            return _hiIn;
+        }
+    }
+
+    private static Dictionary<string, string> EsEs
+    {
+        get
+        {
+            if (_esEs is not null) return _esEs;
+            lock (s_loadLock)
+            {
+                _esEs ??= LoadStringResource("DeskBox.Strings.es-ES.json");
+            }
+            return _esEs;
+        }
+    }
+
+    private static Dictionary<string, string> FrFr
+    {
+        get
+        {
+            if (_frFr is not null) return _frFr;
+            lock (s_loadLock)
+            {
+                _frFr ??= LoadStringResource("DeskBox.Strings.fr-FR.json");
+            }
+            return _frFr;
+        }
+    }
+
+    private static Dictionary<string, string> ArSa
+    {
+        get
+        {
+            if (_arSa is not null) return _arSa;
+            lock (s_loadLock)
+            {
+                _arSa ??= LoadStringResource("DeskBox.Strings.ar-SA.json");
+            }
+            return _arSa;
+        }
+    }
+
+    private static Dictionary<string, string> BnBd
+    {
+        get
+        {
+            if (_bnBd is not null) return _bnBd;
+            lock (s_loadLock)
+            {
+                _bnBd ??= LoadStringResource("DeskBox.Strings.bn-BD.json");
+            }
+            return _bnBd;
+        }
+    }
+
+    private static Dictionary<string, string> RuRu
+    {
+        get
+        {
+            if (_ruRu is not null) return _ruRu;
+            lock (s_loadLock)
+            {
+                _ruRu ??= LoadStringResource("DeskBox.Strings.ru-RU.json");
+            }
+            return _ruRu;
         }
     }
 

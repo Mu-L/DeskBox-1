@@ -7,7 +7,8 @@ public class AppSettings
 {
     /// <summary>
     /// Settings schema version for migration purposes.
-    /// Current version is 1. Older settings files without this field are treated as version 0.
+    /// New or legacy settings without this field begin at version 1 and are
+    /// advanced by <see cref="DeskBox.Services.SettingsMigrationPipeline"/>.
     /// </summary>
     public int SchemaVersion { get; set; } = 1;
 
@@ -22,7 +23,7 @@ public class AppSettings
     public string TrayIconStyle { get; set; } = "Colorful";
 
 /// <summary>
-/// Display language. Valid values: <c>"System"</c>, <c>"zh-CN"</c>, <c>"en-US"</c>, <c>"ja-JP"</c>, <c>"de-DE"</c>, <c>"pt-BR"</c>.
+/// Display language. Valid values: <c>"System"</c>, <c>"zh-CN"</c>, <c>"en-US"</c>, <c>"ja-JP"</c>, <c>"de-DE"</c>, <c>"pt-BR"</c>, <c>"hi-IN"</c>, <c>"es-ES"</c>, <c>"fr-FR"</c>, <c>"ar-SA"</c>, <c>"bn-BD"</c>, <c>"ru-RU"</c>.
 /// </summary>
     public string Language { get; set; } = "System";
 
@@ -155,6 +156,18 @@ public class AppSettings
     /// <summary>Whether the first-run onboarding has been completed or skipped.</summary>
     public bool HasCompletedOnboarding { get; set; }
 
+    /// <summary>The last onboarding step reached before completion.</summary>
+    public int OnboardingStepIndex { get; set; }
+
+    /// <summary>The onboarding experience version most recently completed or skipped.</summary>
+    public int CompletedOnboardingVersion { get; set; }
+
+    /// <summary>
+    /// Whether the one-time default file-widget setup has already been resolved.
+    /// This remains true after the user deletes or disables every file widget.
+    /// </summary>
+    public bool HasResolvedInitialFileWidgetSetup { get; set; }
+
     /// <summary>Default width applied to newly created widgets.</summary>
     public double DefaultWidgetWidth { get; set; } = 280;
 
@@ -221,6 +234,12 @@ public class AppSettings
     /// Valid values: <c>"Dynamic"</c>, <c>"DesktopPinned"</c>.
     /// </summary>
     public string WidgetLayerMode { get; set; } = "Dynamic";
+
+    /// <summary>
+    /// Whether dynamically layered widgets stay visible when Windows shows the desktop.
+    /// Desktop-pinned mode always keeps widgets on the desktop.
+    /// </summary>
+    public bool KeepWidgetsVisibleOnShowDesktop { get; set; } = true;
 
     /// <summary>
     /// Default chrome/title mode for display widgets such as Music, Weather, and System Monitor.

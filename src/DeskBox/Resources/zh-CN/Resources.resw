@@ -46,7 +46,7 @@
     <comment>应用显示名称，显示在开始菜单、商店和任务栏。</comment>
   </data>
   <data name="AppDescription" xml:space="preserve">
-    <value>轻量级 Windows 11 桌面整理工具</value>
+    <value>轻量级 Windows 10/11 桌面整理工具</value>
     <comment>应用描述，显示在商店和应用属性中。</comment>
   </data>
 </root>

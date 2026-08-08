@@ -1,4 +1,7 @@
 using DeskBox.Controls;
+using DeskBox.Models;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 
 namespace DeskBox.Tests;
 
@@ -37,6 +40,26 @@ public sealed class VirtualShortcutDragProviderTests
     }
 
     [Fact]
+    public void RequiresStorageBrokerBypass_AcceptsBlockedOrUnreadableShortcuts()
+    {
+        string[] paths = [@"E:\DeskBox\my\Hidden.lnk"];
+
+        Assert.True(VirtualShortcutDragProvider.RequiresStorageBrokerBypass(
+            paths,
+            _ => true,
+            _ => System.IO.FileAttributes.Hidden |
+                 System.IO.FileAttributes.System));
+        Assert.True(VirtualShortcutDragProvider.RequiresStorageBrokerBypass(
+            paths,
+            _ => true,
+            _ => throw new UnauthorizedAccessException()));
+        Assert.False(VirtualShortcutDragProvider.RequiresStorageBrokerBypass(
+            paths,
+            _ => true,
+            _ => System.IO.FileAttributes.Archive));
+    }
+
+    [Fact]
     public void Provider_AdvertisesOnDemandStorageItems()
     {
         string source = File.ReadAllText(Path.Combine(
@@ -55,6 +78,55 @@ public sealed class VirtualShortcutDragProviderTests
             "StorageFile.CreateStreamedFileAsync",
             source,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DragPackage_BypassesSynchronousStorageBroker_ForShortcuts()
+    {
+        string tempDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "DeskBox.Tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        string shortcutPath = Path.Combine(tempDirectory, "Hidden app.lnk");
+        File.WriteAllBytes(shortcutPath, [0x4C, 0x00, 0x00, 0x00]);
+        File.SetAttributes(
+            shortcutPath,
+            File.GetAttributes(shortcutPath) |
+            System.IO.FileAttributes.Hidden |
+            System.IO.FileAttributes.System);
+
+        try
+        {
+            var dataPackage = new DataPackage();
+            int brokerCallCount = 0;
+            bool prepared = FileItemDragPackage.TryPrepare(
+                dataPackage,
+                [new WidgetItem { Path = shortcutPath, IsShortcut = true }],
+                "widget-test",
+                _ =>
+                {
+                    brokerCallCount++;
+                    return Array.Empty<IStorageItem>();
+                },
+                _ => "Hidden app.lnk",
+                out FileItemDragPackageResult result);
+
+            Assert.True(prepared);
+            Assert.True(result.UsesVirtualStorageItems);
+            Assert.False(result.HasStorageItems);
+            Assert.Equal(0, brokerCallCount);
+        }
+        finally
+        {
+            if (File.Exists(shortcutPath))
+            {
+                File.SetAttributes(
+                    shortcutPath,
+                    System.IO.FileAttributes.Normal);
+            }
+            Directory.Delete(tempDirectory, recursive: true);
+        }
     }
 
     private static string FindRepositoryRoot()

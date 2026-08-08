@@ -18,6 +18,7 @@ namespace DeskBox.Views;
 
 public sealed partial class OnboardingWindow : Window
 {
+    internal const int CurrentOnboardingVersion = 2;
     private const int DesiredWindowWidth = 1040;
     private const int DesiredWindowHeight = 740;
     private const int MinWindowWidth = 660;
@@ -44,15 +45,20 @@ public sealed partial class OnboardingWindow : Window
     private bool _isSubclassInstalled;
     private bool _isAnimating;
     private bool _isRecordingHotkey;
+    private string? _confirmedTaskStoragePath;
     private readonly Win32Helper.SubclassProc _windowSubclassProc;
 
     // Accent color preset list
     private static readonly string[] PresetAccentColors = { "#0078D4", "#E81123", "#107C10", "#5D2E9B", "#FF8C00", "#0099BC" };
 
-    public OnboardingWindow(SettingsService settingsService, LocalizationService localizationService)
+    public OnboardingWindow(
+        SettingsService settingsService,
+        LocalizationService localizationService,
+        int initialStep = 0)
     {
         _settingsService = settingsService;
         _localizationService = localizationService;
+        _stepIndex = Math.Clamp(initialStep, 0, StepCount - 1);
         _windowSubclassProc = WindowSubclassProc;
         InitializeComponent();
         _localizationService.LanguageChanged += OnLanguageChanged;
@@ -128,14 +134,14 @@ public sealed partial class OnboardingWindow : Window
         };
     }
 
-    public void RestartIntro()
+    public void RestartIntro(int stepIndex = 0)
     {
         if (!_hasLoaded)
         {
             return;
         }
 
-        _stepIndex = 0;
+        _stepIndex = Math.Clamp(stepIndex, 0, StepCount - 1);
         SetupStep(animate: false);
         PlayIntroSequence();
     }
@@ -211,17 +217,16 @@ public sealed partial class OnboardingWindow : Window
     //  Step Navigation
     // ════════════════════════════════════════════════════════════
 
-    private static readonly int StepCount = 6;
+    private static readonly int StepCount = 5;
 
     private FrameworkElement GetStepPanel(int index) => index switch
     {
-        0 => Step1Panel,
-        1 => Step3Panel,
-        2 => Step4Panel,
-        3 => StepOrganizationPanel,
-        4 => Step5Panel,
-        5 => Step2Panel,
-        _ => Step1Panel
+        0 => TaskStep1Panel,
+        1 => TaskStep2Panel,
+        2 => TaskStep3Panel,
+        3 => TaskStep4Panel,
+        4 => TaskStep5Panel,
+        _ => TaskStep1Panel
     };
 
     private void BackButton_Click(object sender, RoutedEventArgs e)
@@ -241,11 +246,6 @@ public sealed partial class OnboardingWindow : Window
             return;
         }
 
-        if (_stepIndex == 3 && !_desktopOrganizationCompleted)
-        {
-            OpenDesktopOrganizationWindow();
-            return;
-        }
         if (_stepIndex < StepCount - 1)
         {
             await NavigateToStepAsync(_stepIndex + 1, forward: true);
@@ -257,27 +257,31 @@ public sealed partial class OnboardingWindow : Window
 
     private async void SkipButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_stepIndex == 3)
-        {
-            await NavigateToStepAsync(4, forward: true);
-            return;
-        }
-
         await CompleteOnboardingAsync();
     }
 
     private async Task CompleteOnboardingAsync()
     {
         _settingsService.Settings.HasCompletedOnboarding = true;
+        _settingsService.Settings.CompletedOnboardingVersion = CurrentOnboardingVersion;
+        _settingsService.Settings.OnboardingStepIndex = 0;
         await _settingsService.SaveAsync();
         Close();
     }
 
     private async Task NavigateToStepAsync(int newStep, bool forward)
     {
-        if (newStep == _stepIndex || _isAnimating)
+        if (newStep < 0 ||
+            newStep >= StepCount ||
+            newStep == _stepIndex ||
+            _isAnimating)
         {
             return;
+        }
+
+        if (_stepIndex == 2 && newStep != 2)
+        {
+            RestoreWindowAfterWidgetPractice();
         }
 
         _isAnimating = true;
@@ -373,8 +377,9 @@ public sealed partial class OnboardingWindow : Window
         storyboard.Children.Add(newScaleInY);
 
         _stepTransitionStoryboard = storyboard;
-        int previousStep = _stepIndex;
         _stepIndex = newStep;
+        _settingsService.Settings.OnboardingStepIndex = newStep;
+        _settingsService.SaveDebounced(notifySubscribers: false);
 
         storyboard.Completed += (_, _) =>
         {
@@ -401,22 +406,19 @@ public sealed partial class OnboardingWindow : Window
         switch (_stepIndex)
         {
             case 0:
-                if (animate) StartStep1CardAnimation();
+                SetupTaskStep1();
                 break;
             case 1:
-                SetupStep3();
+                SetupTaskStep2();
                 break;
             case 2:
-                SetupStep4();
+                SetupTaskStep3();
                 break;
             case 3:
-                SetupOrganizationStep();
+                SetupTaskStep4();
                 break;
             case 4:
-                SetupStep5();
-                break;
-            case 5:
-                SetupStep2Features();
+                SetupTaskStep5();
                 break;
         }
     }
@@ -552,23 +554,9 @@ public sealed partial class OnboardingWindow : Window
     /// </summary>
     private void StartStepAmbientAnimation(int step)
     {
-        switch (step)
-        {
-            case 0:
-                StartStep1CardAnimation();
-                break;
-            case 2:
-                // Daily-use step: start keycap pulse if hotkey is enabled.
-                if (Step4HotkeyToggle.IsOn)
-                {
-                    StartKeycapPulse();
-                }
-                break;
-            case 4:
-                // Ready summary: start the search demo animation.
-                StartSearchDemoAnimation();
-                break;
-        }
+        // The task flow keeps ambient motion quiet. Step transitions already
+        // communicate progress; the actual widget and tray actions provide
+        // their own feedback.
     }
 
     // ════════════════════════════════════════════════════════════
@@ -610,19 +598,12 @@ public sealed partial class OnboardingWindow : Window
     private void UpdateFooterState()
     {
         BackButton.IsEnabled = _stepIndex > 0;
-        SkipButton.Content = _localizationService.T("Onboarding.Skip");
+        SkipButton.Content = _localizationService.T("Onboarding.SkipAll");
         BackButton.Content = _localizationService.T("Onboarding.Back");
         NextButton.Content = _stepIndex == StepCount - 1
             ? _localizationService.T("Onboarding.Start")
             : _localizationService.T("Onboarding.Next");
-        if (_stepIndex == 3)
-        {
-            NextButton.Content = _desktopOrganizationCompleted
-                ? _localizationService.T("Onboarding.Organization.Continue")
-                : _localizationService.T("Onboarding.Organization.ReviewAction");
-            SkipButton.Content = _localizationService.T(
-                "Onboarding.Organization.NotNow");
-        }
+        NextButton.IsEnabled = _stepIndex != 1 || IsTaskStoragePathConfirmed();
         SkipButton.Visibility = _stepIndex == StepCount - 1 ? Visibility.Collapsed : Visibility.Visible;
         UpdateProgressDots();
     }

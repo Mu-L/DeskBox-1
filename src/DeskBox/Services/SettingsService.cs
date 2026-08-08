@@ -214,6 +214,12 @@ public sealed class SettingsService
     public const string LanguageJapanese = "ja-JP";
     public const string LanguageGerman = "de-DE";
     public const string LanguagePortuguese = "pt-BR";
+    public const string LanguageHindi = "hi-IN";
+    public const string LanguageSpanish = "es-ES";
+    public const string LanguageFrench = "fr-FR";
+    public const string LanguageArabic = "ar-SA";
+    public const string LanguageBengali = "bn-BD";
+    public const string LanguageRussian = "ru-RU";
     public const double DefaultWidgetWidth = 280;
     public const double DefaultWidgetHeight = 400;
     public const bool DefaultGlobalHotkeyEnabled = true;
@@ -304,6 +310,9 @@ public const int WeatherRefreshMaxMinutes = 180;
                 [nameof(AppSettings.DesktopAutoOrganizationBaselineUtc)] = DefaultPreferencePreservationReason.RuntimeState,
                 [nameof(AppSettings.DefaultManagedStorageRootPath)] = DefaultPreferencePreservationReason.Storage,
                 [nameof(AppSettings.HasCompletedOnboarding)] = DefaultPreferencePreservationReason.RuntimeState,
+                [nameof(AppSettings.OnboardingStepIndex)] = DefaultPreferencePreservationReason.RuntimeState,
+                [nameof(AppSettings.CompletedOnboardingVersion)] = DefaultPreferencePreservationReason.RuntimeState,
+                [nameof(AppSettings.HasResolvedInitialFileWidgetSetup)] = DefaultPreferencePreservationReason.RuntimeState,
                 [nameof(AppSettings.LastQuickCaptureFileWidgetId)] = DefaultPreferencePreservationReason.RuntimeState,
                 [nameof(AppSettings.LastUpdateCheckAt)] = DefaultPreferencePreservationReason.RuntimeState,
                 [nameof(AppSettings.SchemaVersion)] = DefaultPreferencePreservationReason.RuntimeState
@@ -355,6 +364,7 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.WidgetAnimationSlideDirection = WidgetAnimationSlideDirectionRight;
         settings.WidgetAnimationEasingIntensity = WidgetAnimationEasingStandard;
         settings.WidgetLayerMode = WidgetLayerModeDynamic;
+        settings.KeepWidgetsVisibleOnShowDesktop = true;
         settings.DisplayWidgetChromeMode = WidgetChromeModeOverlay;
         settings.InteractiveWidgetChromeMode = WidgetChromeModeStandard;
         settings.WidgetCollapseBehavior = WidgetCollapseBehaviorSmart;
@@ -536,14 +546,43 @@ settings.FocusClickedWidgetOnRaise = false;
             bool changed;
             lock (_lock)
             {
+                changed = false;
                 if (!loadedFromDisk)
                 {
                     ApplyDefaultPreferences(_settings);
+                    if (string.IsNullOrWhiteSpace(_settings.DefaultManagedStorageRootPath))
+                    {
+                        _settings.DefaultManagedStorageRootPath =
+                            ManagedStoragePathService.GetRecommendedPath();
+                        changed = true;
+                    }
                 }
 
                 // Run schema migrations if the loaded version is older than current
                 var migrationPipeline = new SettingsMigrationPipeline();
-                changed = migrationPipeline.RunMigrations(_settings);
+                changed |= migrationPipeline.RunMigrations(_settings);
+
+                // Schema migration treats every existing profile as having resolved
+                // the legacy default file-widget setup. Only a genuinely missing
+                // settings file represents a new profile that may still be offered
+                // the default widget on its first interactive launch. Recovery after
+                // a load failure must not manufacture new widgets.
+                bool shouldResolveInitialFileWidgetSetup =
+                    LastLoadRecoveryState == SettingsLoadRecoveryState.DefaultsAfterFailure;
+                if (LastLoadRecoveryState == SettingsLoadRecoveryState.DefaultsForMissingFile)
+                {
+                    if (_settings.HasResolvedInitialFileWidgetSetup)
+                    {
+                        _settings.HasResolvedInitialFileWidgetSetup = false;
+                        changed = true;
+                    }
+                }
+                else if (shouldResolveInitialFileWidgetSetup &&
+                         !_settings.HasResolvedInitialFileWidgetSetup)
+                {
+                    _settings.HasResolvedInitialFileWidgetSetup = true;
+                    changed = true;
+                }
 
                 changed |= NormalizePresentationSettings(_settings);
                 changed |= NormalizeAppearanceSettings(_settings);
@@ -569,6 +608,7 @@ settings.FocusClickedWidgetOnRaise = false;
             LastLoadRecoveryState = SettingsLoadRecoveryState.DefaultsAfterFailure;
             lock (_lock) _settings = new AppSettings();
             ApplyDefaultPreferences(_settings);
+            _settings.HasResolvedInitialFileWidgetSetup = true;
         }
     }
 
@@ -982,8 +1022,15 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
-        if (settings.WidgetAnimationEffect is not (
-            WidgetAnimationEffectNone or
+        if (settings.WidgetAnimationEffect == WidgetAnimationEffectNone)
+        {
+            settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
+            settings.WidgetAnimationSpeed = WidgetAnimationSpeedStandard;
+            settings.WidgetAnimationSlideDirection = WidgetAnimationSlideDirectionRight;
+            settings.WidgetAnimationEasingIntensity = WidgetAnimationEasingStandard;
+            changed = true;
+        }
+        else if (settings.WidgetAnimationEffect is not (
             WidgetAnimationEffectFade or
             WidgetAnimationEffectScaleFade or
             WidgetAnimationEffectSlideFade or
@@ -1032,27 +1079,7 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
-        if (settings.WidgetAnimationEffect == WidgetAnimationEffectNone)
-        {
-            if (settings.WidgetAnimationSpeed != WidgetAnimationSpeedStandard)
-            {
-                settings.WidgetAnimationSpeed = WidgetAnimationSpeedStandard;
-                changed = true;
-            }
-
-            if (settings.WidgetAnimationSlideDirection != WidgetAnimationSlideDirectionNone)
-            {
-                settings.WidgetAnimationSlideDirection = WidgetAnimationSlideDirectionNone;
-                changed = true;
-            }
-
-            if (settings.WidgetAnimationEasingIntensity != WidgetAnimationEasingNone)
-            {
-                settings.WidgetAnimationEasingIntensity = WidgetAnimationEasingNone;
-                changed = true;
-            }
-        }
-        else if (settings.WidgetAnimationEffect != WidgetAnimationEffectSlideFade &&
+        if (settings.WidgetAnimationEffect != WidgetAnimationEffectSlideFade &&
                  settings.WidgetAnimationSlideDirection != WidgetAnimationSlideDirectionNone)
         {
             settings.WidgetAnimationSlideDirection = WidgetAnimationSlideDirectionNone;
@@ -1723,7 +1750,8 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
-        if (settings.Language is not (LanguageSystem or LanguageChinese or LanguageEnglish or LanguageJapanese or LanguageGerman or LanguagePortuguese))
+        if (settings.Language is not (LanguageSystem or LanguageChinese or LanguageEnglish or LanguageJapanese or LanguageGerman or LanguagePortuguese
+            or LanguageHindi or LanguageSpanish or LanguageFrench or LanguageArabic or LanguageBengali or LanguageRussian))
         {
             settings.Language = LanguageSystem;
             changed = true;
@@ -1861,6 +1889,11 @@ settings.FocusClickedWidgetOnRaise = false;
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             "DeskBox");
+    }
+
+    public static string GetRecommendedManagedStorageRootPath()
+    {
+        return ManagedStoragePathService.GetRecommendedPath();
     }
 
     public static string NormalizeManagedStorageRootPath(string? path)

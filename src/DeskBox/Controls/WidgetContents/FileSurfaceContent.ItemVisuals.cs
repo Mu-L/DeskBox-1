@@ -239,12 +239,10 @@ public sealed partial class FileSurfaceContent
             deferral.Complete();
             deferral = null;
 
-            bool showOverlay = DeskBoxDragData.ShouldShowImportOverlay(sourcePaths);
-            if (showOverlay)
-            {
-                SetImportBusy(true);
-            }
-
+            BeginTrackedImport();
+            IProgress<FileService.FileTransferProgress> progress =
+                new CallbackProgress<FileService.FileTransferProgress>(
+                    ReportImportProgress);
             try
             {
                 var results = new List<FileService.FileTransferResult>();
@@ -257,7 +255,9 @@ public sealed partial class FileSurfaceContent
                     results.AddRange(await _fileService.TransferItemsWithResultAsync(
                         regularPaths,
                         targetFolder.Path,
-                        move));
+                        move,
+                        progress,
+                        ActiveImportCancellationToken));
                 }
 
                 string[] forcedCopyPaths = droppedFiles
@@ -269,7 +269,9 @@ public sealed partial class FileSurfaceContent
                     results.AddRange(await _fileService.TransferItemsWithResultAsync(
                         forcedCopyPaths,
                         targetFolder.Path,
-                        move: false));
+                        move: false,
+                        progress: progress,
+                        cancellationToken: ActiveImportCancellationToken));
                 }
 
                 if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
@@ -312,14 +314,26 @@ public sealed partial class FileSurfaceContent
                         WidgetFeedbackSeverity.Success,
                         move ? "folder-drop-move" : "folder-drop-copy"));
                 }
+
+                await CompleteTrackedImportAsync(
+                    ImportCompletionState.Completed);
             }
-            finally
+            catch (OperationCanceledException)
             {
-                if (showOverlay)
-                {
-                    SetImportBusy(false);
-                }
+                await CompleteTrackedImportAsync(
+                    ImportCompletionState.Canceled);
+                throw;
             }
+            catch
+            {
+                await CompleteTrackedImportAsync(
+                    ImportCompletionState.Failed);
+                throw;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            App.Log($"[WidgetSurface] Folder drop canceled id={WidgetId}");
         }
         catch (Exception ex)
         {
@@ -699,7 +713,9 @@ public sealed partial class FileSurfaceContent
         Windows.UI.Color accent =
             App.Current.ThemeService?.GetEffectiveAccentColor() ??
             AccentColorHelper.DefaultAccentColor;
-        WidgetItem? item = border.DataContext as WidgetItem;
+        WidgetItem? item =
+            FileItemSurface.FindOwner(border)?.DataContext as WidgetItem ??
+            border.DataContext as WidgetItem;
         _itemSurfaceStyleCache.Apply(
             border,
             state,

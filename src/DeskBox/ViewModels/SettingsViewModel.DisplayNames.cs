@@ -122,7 +122,6 @@ public partial class SettingsViewModel
     {
         return preset switch
         {
-            AnimationPresetNone => _localizationService.T("Settings.Animation.Preset.None"),
             AnimationPresetGentle => _localizationService.T("Settings.Animation.Preset.Gentle"),
             AnimationPresetEmphasized => _localizationService.T("Settings.Animation.Preset.Emphasized"),
             AnimationPresetCustom => _localizationService.T("Settings.Animation.Preset.Custom"),

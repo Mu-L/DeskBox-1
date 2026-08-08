@@ -417,6 +417,12 @@ public sealed partial class WeatherWidgetViewModel
                 "ja-JP" => new System.Globalization.CultureInfo("ja-JP"),
                 "de-DE" => new System.Globalization.CultureInfo("de-DE"),
                 "pt-BR" => new System.Globalization.CultureInfo("pt-BR"),
+                "hi-IN" => new System.Globalization.CultureInfo("hi-IN"),
+                "es-ES" => new System.Globalization.CultureInfo("es-ES"),
+                "fr-FR" => new System.Globalization.CultureInfo("fr-FR"),
+                "ar-SA" => new System.Globalization.CultureInfo("ar-SA"),
+                "bn-BD" => new System.Globalization.CultureInfo("bn-BD"),
+                "ru-RU" => new System.Globalization.CultureInfo("ru-RU"),
                 _ => new System.Globalization.CultureInfo("en-US")
             };
             return dt.ToString("ddd", culture);

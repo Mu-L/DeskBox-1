@@ -44,7 +44,7 @@
 | `store-assets-html/` | 默认不提交 | 仅作为本地 Microsoft Store 截图/图标 HTML 画布；导出的 PNG 可手动上传 Partner Center，但源目录不进应用提交 |
 | 宣传封面、产品长图、公众号配图 | 默认不提交 | README 或官网实际引用时才提交到合适目录 |
 | 新截图 | 单独确认 | README/官网引用则提交；临时测试截图不提交 |
-| `Package.appxmanifest` 的 Identity | 占位可提交为技术准备 | Partner Center 真实身份到位后必须再更新 |
+| `Package.appxmanifest` 的 Identity | 提交并逐次核对 | 已使用 Partner Center 正式身份，打包后仍需复核生成清单 |
 | Store logo/tile/splash 图片 | 可以提交 | 如果是正式 Store 包资源 |
 | 网站 SEO 文件，如 `robots.txt`、`sitemap.xml`、`llms.txt` | 不跟应用提交混在一起 | 官网上线提交时统一处理 |
 
@@ -149,7 +149,7 @@ git commit -m "Prepare .NET 10 and Store distribution channel"
 - Store 版资源不包含捐赠二维码。
 - Direct 版仍保留官网更新、网盘下载、捐赠入口。
 - Store 版隐藏 Direct 更新器和捐赠入口。
-- `Package.appxmanifest` 如果仍是占位 Identity，文档和最终说明里不能写成“可直接提交商店”。
+- 生成包内的 Package/Publisher Identity 与 Partner Center 正式身份一致。
 
 ## 八、文档维护要求
 

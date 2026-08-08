@@ -236,6 +236,7 @@
             <Border
                 x:Name="UpWheelFeedback"
                 Height="16"
+                Margin="0,2,0,0"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Top"
                 CornerRadius="7,7,0,0"
@@ -243,8 +244,8 @@
                 RenderTransformOrigin="0.5,0">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
-                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" />
-                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0.24" />
+                        <GradientStop x:Name="UpWheelFeedbackAccentStart" Offset="0" />
+                        <GradientStop x:Name="UpWheelFeedbackAccentEnd" Offset="0.24" />
                         <GradientStop Color="Transparent" Offset="1" />
                     </LinearGradientBrush>
                 </Border.Background>
@@ -255,6 +256,7 @@
             <Border
                 x:Name="DownWheelFeedback"
                 Height="16"
+                Margin="0,0,0,4"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 CornerRadius="0,0,7,7"
@@ -262,8 +264,8 @@
                 RenderTransformOrigin="0.5,1">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0">
-                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" />
-                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0.24" />
+                        <GradientStop x:Name="DownWheelFeedbackAccentStart" Offset="0" />
+                        <GradientStop x:Name="DownWheelFeedbackAccentEnd" Offset="0.24" />
                         <GradientStop Color="Transparent" Offset="1" />
                     </LinearGradientBrush>
                 </Border.Background>

@@ -57,6 +57,7 @@ public partial class SettingsViewModel
             ShowImageFilesAsIcons = settings.ShowImageFilesAsIcons;
             ShowHoverButtons = settings.ShowHoverButtons;
             ResizeSnapEnabled = settings.ResizeSnapEnabled;
+            KeepWidgetsVisibleOnShowDesktop = settings.KeepWidgetsVisibleOnShowDesktop;
             ShowListItemDetails = settings.ShowListItemDetails;
             ShowFileItemPathTooltips = settings.ShowFileItemPathTooltips;
             ApplyHoverButtonActionSelection(settings.WidgetHoverButtonActions);

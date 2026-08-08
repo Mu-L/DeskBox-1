@@ -46,7 +46,7 @@
     <comment>Anzeigename der App, im Startmenü, Store und in der Taskleiste.</comment>
   </data>
   <data name="AppDescription" xml:space="preserve">
-    <value>Leichtgewichtiges Desktop-Organisationstool für Windows 11</value>
+    <value>Leichtgewichtiges Desktop-Organisationstool für Windows 10/11</value>
     <comment>Beschreibung der App, im Store und in den App-Eigenschaften.</comment>
   </data>
 </root>

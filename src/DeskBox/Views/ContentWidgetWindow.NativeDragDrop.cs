@@ -289,6 +289,7 @@ public sealed partial class ContentWidgetWindow
         {
             if (CurrentContent is FileSurfaceContent file)
             {
+                file.SetHostWindowHandle(HWnd);
                 bool containsTemporaryFiles = batch.Files.Any(
                     droppedFile => droppedFile.ForceManagedCopy);
                 await file.ImportNativeDroppedFilesAsync(
@@ -430,6 +431,7 @@ public sealed partial class ContentWidgetWindow
                 return;
             }
 
+            file.SetHostWindowHandle(HWnd);
             await file.ImportNativeDroppedFilesAsync(paths, containsTemporaryFiles);
         }
         finally

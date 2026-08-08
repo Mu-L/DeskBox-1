@@ -107,6 +107,7 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
         InitializeComponent();
         RegisterSelectorPointerHandlers();
         RegisterKeyboardAccelerators();
+        ApplyWheelFeedbackAccent();
         CurrentTitle.RegisterPropertyChangedCallback(
             TextBlock.FontSizeProperty,
             (_, _) =>
@@ -369,9 +370,19 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
     {
         if (dependencyObject is WidgetGroupTitleSwitcher switcher)
         {
+            switcher.ApplyWheelFeedbackAccent();
             switcher.ApplyDisplayMode();
             switcher.RebuildTabs();
         }
+    }
+
+    private void ApplyWheelFeedbackAccent()
+    {
+        Color accent = TitleIconAccentColor;
+        UpWheelFeedbackAccentStart.Color = accent;
+        UpWheelFeedbackAccentEnd.Color = accent;
+        DownWheelFeedbackAccentStart.Color = accent;
+        DownWheelFeedbackAccentEnd.Color = accent;
     }
 
     private void ApplyNavigationStyle()
@@ -493,7 +504,7 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
         IdentityViewport.Width = MeasureIdentityWidth(identity);
     }
 
-    private static void SetPositionRail(
+    private void SetPositionRail(
         StackPanel host,
         IdentitySnapshot? identity)
     {
@@ -515,9 +526,7 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
                 Width = 3,
                 Height = active ? 7 : 3,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Background = ResolveThemeBrush(
-                    "AccentFillColorDefaultBrush",
-                    new SolidColorBrush(Colors.DeepSkyBlue)),
+                Background = CreateAccentBrush(),
                 CornerRadius = new CornerRadius(1.5),
                 IsHitTestVisible = false,
                 Opacity = active ? 0.94 : 0.3
@@ -605,9 +614,7 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Bottom,
                 Background = active
-                    ? ResolveThemeBrush(
-                        "AccentFillColorDefaultBrush",
-                        new SolidColorBrush(Colors.DeepSkyBlue))
+                    ? CreateAccentBrush()
                     : new SolidColorBrush(Colors.Transparent),
                 CornerRadius = new CornerRadius(1),
                 IsHitTestVisible = false
@@ -1111,6 +1118,8 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
         DetachScaleTransform.ScaleX = 1;
         DetachScaleTransform.ScaleY = 1;
     }
+
+    private Brush CreateAccentBrush() => new SolidColorBrush(TitleIconAccentColor);
 
     private static Brush ResolveThemeBrush(
         string resourceKey,

@@ -100,6 +100,50 @@
 
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
+                    <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="CapsuleMode">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE73F;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Section.CapsuleMode" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Capsule.Enabled.Description" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <ToggleSwitch
+                        Grid.Column="1"
+                        MinWidth="0"
+                        OffContent=""
+                        OnContent=""
+                        VerticalAlignment="Center"
+                        IsOn="{Binding WidgetCapsuleModeEnabled, Mode=TwoWay}" />
+                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingsGroupStyle}">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
+                    <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="WidgetGroups">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE713;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Section.WidgetGroups" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.WidgetGroups.Enabled.Description" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <ToggleSwitch
+                        Grid.Column="1"
+                        MinWidth="0"
+                        OffContent=""
+                        OnContent=""
+                        VerticalAlignment="Center"
+                        IsOn="{Binding IsWidgetGroupsEnabled, Mode=TwoWay}" />
+                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingsGroupStyle}">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceMaterialSettings">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE790;" IsHitTestVisible="False" VerticalAlignment="Center" />
@@ -147,7 +191,7 @@
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8B7;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.AppVisual.Title" />
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedDisplayWidgetChromeModeText}" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding SelectedWidgetTitleIconModeText}" />
                             </StackPanel>
                         </Grid>
                     </Button>
@@ -155,8 +199,8 @@
                         Grid.Column="1"
                         MinWidth="{StaticResource SettingsControlMinWidth}"
                         VerticalAlignment="Center"
-                        ItemsSource="{Binding AvailableDisplayWidgetChromeModeOptions}"
-                        controls:SettingsComboBox.Value="{Binding SelectedDisplayWidgetChromeMode, Mode=TwoWay}" />
+                        ItemsSource="{Binding AvailableWidgetTitleIconModeOptions}"
+                        controls:SettingsComboBox.Value="{Binding SelectedWidgetTitleIconMode, Mode=TwoWay}" />
                     <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                 </Grid>
             </Border>
@@ -181,6 +225,7 @@
                     <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                 </Grid>
             </Border>
+
         </StackPanel>
     </StackPanel>
 </UserControl>

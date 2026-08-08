@@ -404,7 +404,7 @@ public sealed partial class ContentWidgetWindow
         flyout.Items.Add(new MenuFlyoutItem
         {
             Text = localization.T("Widget.DeleteManagedInfo"),
-            Icon = new FontIcon { Glyph = "\uE8B7" },
+            Icon = new FontIcon { Glyph = "\uE897" },
             IsEnabled = false
         });
         flyout.Items.Add(CreateFileWidgetCloseAction(
@@ -417,9 +417,24 @@ public sealed partial class ContentWidgetWindow
             WidgetRemovalAction.MoveManagedFolderContentsToDesktop,
             "\uE8CA",
             isDanger: false));
-        flyout.Items.Add(CreateFileWidgetCloseAction(
-            localization.T("Widget.DeleteFolderToRecycleBin"),
-            WidgetRemovalAction.DeleteManagedFolder));
+        bool confirmFolderRecycleWhenClosed = false;
+        var recycleFolder = new MenuFlyoutItem
+        {
+            Text = localization.T("Widget.DeleteFolderToRecycleBin"),
+            Icon = new FontIcon { Glyph = "\uE74D" }
+        };
+        WidgetDangerActionStyle.Apply(recycleFolder);
+        recycleFolder.Click += (_, _) =>
+            confirmFolderRecycleWhenClosed = true;
+        flyout.Items.Add(recycleFolder);
+        flyout.Closed += (_, _) =>
+        {
+            if (confirmFolderRecycleWhenClosed)
+            {
+                DispatcherQueue.TryEnqueue(async () =>
+                    await ShowDeleteManagedFolderConfirmationAsync());
+            }
+        };
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(CreateFileWidgetCloseCancel(flyout));
         return flyout;
@@ -442,32 +457,100 @@ public sealed partial class ContentWidgetWindow
             WidgetDangerActionStyle.Apply(item);
         }
         item.Click += async (_, _) =>
-        {
-            if (_isCloseWidgetPending ||
-                App.Current.WidgetManager is not { } widgetManager)
-            {
-                return;
-            }
+            await ExecuteFileWidgetCloseActionAsync(removalAction);
+        return item;
+    }
 
-            _isCloseWidgetPending = true;
+    private async Task ShowDeleteManagedFolderConfirmationAsync()
+    {
+        if (_isCloseWidgetPending ||
+            string.IsNullOrWhiteSpace(_config.MappedFolderPath) ||
+            RootGrid.XamlRoot is null)
+        {
+            return;
+        }
+
+        string folderPath = Path.GetFullPath(_config.MappedFolderPath);
+        string folderName = Path.GetFileName(folderPath.TrimEnd(
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(folderName))
+        {
+            folderName = _config.Name;
+        }
+
+        int? itemCount = await CountTopLevelFolderEntriesAsync(folderPath);
+        LocalizationService localization = App.Current.LocalizationService;
+        string message = itemCount is int count
+            ? localization.Format(
+                "Widget.DeleteManagedFolderConfirmMessage",
+                count,
+                folderPath)
+            : localization.Format(
+                "Widget.DeleteManagedFolderConfirmMessageUnknownCount",
+                folderPath);
+        MenuFlyout confirmation =
+            WidgetCompactConfirmationMenuBuilder.CreateDeleteConfirmation(
+            new WidgetCompactConfirmationOptions(
+                localization.Format(
+                "Widget.DeleteManagedFolderConfirmTitle",
+                folderName),
+                localization.T("Widget.MoveToRecycleBin"),
+                async () => await ExecuteFileWidgetCloseActionAsync(
+                    WidgetRemovalAction.DeleteManagedFolder))
+            {
+                Message = message,
+                MessageGlyph = "\uE946",
+                CancelText = localization.T("Common.Cancel"),
+                CancelFirst = true
+            });
+        ShowFlyoutWithInteraction(confirmation, ContentWidgetShell);
+    }
+
+    private static Task<int?> CountTopLevelFolderEntriesAsync(
+        string folderPath)
+    {
+        return Task.Run<int?>(() =>
+        {
             try
             {
-                await widgetManager.RemoveWidgetAsync(
-                    _config.Id,
-                    removalAction);
+                return Directory.Exists(folderPath)
+                    ? Directory.EnumerateFileSystemEntries(folderPath).Count()
+                    : null;
             }
-            catch (Exception ex)
+            catch
             {
-                _isCloseWidgetPending = false;
-                App.Log(
-                    $"[ContentWidget] Close widget failed id={_config.Id}: {ex}");
-                await ShowErrorDialogAsync(
-                    App.Current.LocalizationService.T(
-                        "Widget.DeleteWidgetFailed"),
-                    ex.Message);
+                return null;
             }
-        };
-        return item;
+        });
+    }
+
+    private async Task ExecuteFileWidgetCloseActionAsync(
+        WidgetRemovalAction removalAction)
+    {
+        if (_isCloseWidgetPending ||
+            App.Current.WidgetManager is not { } widgetManager)
+        {
+            return;
+        }
+
+        _isCloseWidgetPending = true;
+        try
+        {
+            await widgetManager.RemoveWidgetAsync(
+                _config.Id,
+                removalAction);
+        }
+        catch (Exception ex)
+        {
+            _isCloseWidgetPending = false;
+            App.Log(
+                $"[ContentWidget] Close widget failed id={_config.Id}: {ex}");
+            await ShowErrorDialogAsync(
+                App.Current.LocalizationService.T(
+                    "Widget.DeleteWidgetFailed"),
+                ex.Message);
+        }
     }
 
     private MenuFlyoutItem CreateFileWidgetCloseCancel(MenuFlyout flyout)

@@ -28,6 +28,8 @@ public sealed record DeskBoxWidgetHostDiagnostic(
     bool Visible,
     bool Raised,
     bool Compact,
+    bool ImportBusy,
+    long? ImportBusyElapsedMilliseconds,
     DeskBoxDiagnosticRect AnimationBounds,
     DeskBoxDiagnosticRect RestingBounds);
 

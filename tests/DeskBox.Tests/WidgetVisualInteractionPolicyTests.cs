@@ -136,4 +136,52 @@ public sealed class WidgetVisualInteractionPolicyTests
                 $"Both identity layers were visible at step {step}.");
         }
     }
+
+    [Fact]
+    public void CompactProfile_ExpansionKeepsLiveContentVisible()
+    {
+        WidgetCompactTransitionVisualProfile profile =
+            WidgetCompactTransitionVisualProfile.Resolve("Smooth", 220, true);
+
+        for (int step = 0; step <= 100; step++)
+        {
+            Assert.Equal(
+                1,
+                profile.GetLiveContentOpacity(
+                    collapsing: false,
+                    progress: step / 100d));
+        }
+    }
+
+    [Fact]
+    public void CompactProfile_CollapseKeepsLiveContentAndRevealsCapsuleEarly()
+    {
+        WidgetCompactTransitionVisualProfile profile =
+            WidgetCompactTransitionVisualProfile.Resolve("Smooth", 220, true);
+
+        Assert.Equal(1, profile.GetLiveContentOpacity(collapsing: true, progress: 0));
+        Assert.Equal(1, profile.GetCompactSurfaceOpacity(collapsing: true, progress: 0));
+        Assert.Equal(1, profile.GetCompactSurfaceOpacity(collapsing: true, progress: 1));
+        Assert.Equal(0, profile.GetCompactTextOpacity(collapsing: true, progress: 0.68));
+        Assert.True(profile.GetCompactIdentityOpacity(collapsing: true, progress: 0.68) > 0);
+        Assert.True(profile.GetCompactTextOpacity(collapsing: true, progress: 0.8) > 0);
+    }
+
+    [Fact]
+    public void CompactProfile_CollapseNeverOverlapsLiveAndCompactText()
+    {
+        WidgetCompactTransitionVisualProfile profile =
+            WidgetCompactTransitionVisualProfile.Resolve("Smooth", 220, true);
+
+        for (int step = 0; step <= 100; step++)
+        {
+            double progress = step / 100d;
+            double live = profile.GetLiveContentOpacity(collapsing: true, progress);
+            double compactText = profile.GetCompactTextOpacity(collapsing: true, progress);
+
+            Assert.False(
+                live > 0.01 && compactText > 0.01,
+                $"Live and compact text overlap at step {step}.");
+        }
+    }
 }

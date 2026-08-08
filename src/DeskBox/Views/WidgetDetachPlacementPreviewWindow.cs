@@ -221,14 +221,7 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
 
     private static Color ResolveAccentColor()
     {
-        if (Application.Current.Resources.TryGetValue(
-                "SystemAccentColor",
-                out object? value) &&
-            value is Color color)
-        {
-            return color;
-        }
-
-        return Colors.DeepSkyBlue;
+        return App.Current.ThemeService?.GetEffectiveAccentColor()
+            ?? AccentColorHelper.DefaultAccentColor;
     }
 }

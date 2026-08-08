@@ -24,6 +24,39 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_MissingSettingsKeepsInitialFileWidgetSetupPending()
+    {
+        var service = new SettingsService(_settingsRoot);
+
+        await service.LoadAsync();
+
+        Assert.Equal(SettingsLoadRecoveryState.DefaultsForMissingFile, service.LastLoadRecoveryState);
+        Assert.False(service.Settings.HasResolvedInitialFileWidgetSetup);
+        Assert.Equal(
+            SettingsService.NormalizeManagedStorageRootPath(
+                SettingsService.GetRecommendedManagedStorageRootPath()),
+            service.Settings.DefaultManagedStorageRootPath);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ExistingProfilePreservesManagedStoragePath()
+    {
+        const string existingPath = @"C:\DeskBox\Existing";
+        var settings = new AppSettings
+        {
+            DefaultManagedStorageRootPath = existingPath
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(existingPath, service.Settings.DefaultManagedStorageRootPath);
+    }
+
+    [Fact]
     public async Task LoadAsync_RecoversCorruptPrimaryFromLastValidBackup()
     {
         var service = new SettingsService(_settingsRoot);
@@ -59,6 +92,7 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(SettingsLoadRecoveryState.DefaultsAfterFailure, service.LastLoadRecoveryState);
         Assert.Equal("System", service.Settings.Theme);
+        Assert.True(service.Settings.HasResolvedInitialFileWidgetSetup);
     }
 
     [Fact]
@@ -731,6 +765,29 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_MigratesRemovedNoAnimationOptionToStandardSlideFade()
+    {
+        var settings = new AppSettings
+        {
+            WidgetAnimationEffect = SettingsService.WidgetAnimationEffectNone,
+            WidgetAnimationSpeed = SettingsService.WidgetAnimationSpeedSlow,
+            WidgetAnimationSlideDirection = SettingsService.WidgetAnimationSlideDirectionNone,
+            WidgetAnimationEasingIntensity = SettingsService.WidgetAnimationEasingNone
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(SettingsService.WidgetAnimationEffectSlideFade, service.Settings.WidgetAnimationEffect);
+        Assert.Equal(SettingsService.WidgetAnimationSpeedStandard, service.Settings.WidgetAnimationSpeed);
+        Assert.Equal(SettingsService.WidgetAnimationSlideDirectionRight, service.Settings.WidgetAnimationSlideDirection);
+        Assert.Equal(SettingsService.WidgetAnimationEasingStandard, service.Settings.WidgetAnimationEasingIntensity);
+    }
+
+    [Fact]
     public async Task LoadAsync_RepairsEmptyTabSelectionsAndHiddenDefaults()
     {
         var settings = new AppSettings
@@ -815,6 +872,7 @@ public sealed class SettingsServiceTests : IDisposable
             QuickCaptureItemPreviewLineCount = 1,
             QuickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorEnterSaves,
             ResizeSnapEnabled = false,
+            KeepWidgetsVisibleOnShowDesktop = false,
             QuickCaptureTabStyle = SettingsService.WidgetTabStylePivot,
             TodoTabStyle = SettingsService.WidgetTabStylePivot,
             TodoShowFooterStats = true,
@@ -880,6 +938,10 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(SettingsService.DefaultQuickCaptureItemPreviewLineCount, newUserDefaults.QuickCaptureItemPreviewLineCount);
         Assert.Equal(newUserDefaults.QuickCaptureEditorEnterBehavior, restoredDefaults.QuickCaptureEditorEnterBehavior);
         Assert.True(restoredDefaults.ResizeSnapEnabled);
+        Assert.True(newUserDefaults.KeepWidgetsVisibleOnShowDesktop);
+        Assert.Equal(
+            newUserDefaults.KeepWidgetsVisibleOnShowDesktop,
+            restoredDefaults.KeepWidgetsVisibleOnShowDesktop);
         Assert.False(restoredDefaults.TodoShowFooterStats);
         Assert.Equal(newUserDefaults.TodoItemPreviewLineCount, restoredDefaults.TodoItemPreviewLineCount);
         Assert.Equal(SettingsService.DefaultTodoItemPreviewLineCount, newUserDefaults.TodoItemPreviewLineCount);

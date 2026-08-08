@@ -337,6 +337,17 @@ public partial class App
         }
     }
 
+    internal void ShowTrayContextMenuForOnboarding()
+    {
+        ShowTrayContextMenuFromTray();
+    }
+
+    internal async Task<bool> ToggleWidgetsForOnboardingAsync()
+    {
+        await ToggleTrayWidgetsAsync();
+        return WidgetManager?.HasVisibleWidgets == true;
+    }
+
     private DrawingPoint GetTrayContextMenuAnchorPoint(DrawingPoint fallbackPoint)
     {
         if (TryGetTrayIconIdentity(out var trayIconWindowHandle, out var trayIconId) &&

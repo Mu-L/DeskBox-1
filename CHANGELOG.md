@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.3.8 - 2026-08-08
+
+### English
+
+#### Highlights
+
+- Added Hindi, Spanish, French, Arabic, Bengali, and Russian language options. System-language detection, package resources, weather, update messages, onboarding, and core file-widget flows now recognize all six locales.
+- Standardized product wording around file widgets, folder mapping, automatic stacks, widget groups, tray creation, and Move to Recycle Bin.
+- The first file widget opens on the right, explains managed storage and folder mapping, and points users to the system tray when they need another widget.
+- Fixed pasting from the desktop into a file widget, copying or cutting multiple selected files to Explorer, and stale cut-state visuals after a completed move.
+
+#### Reliability and updates
+
+- Startup activation, command-line fallback, and interactive launches now share one policy. Startup stays silent and tray-first, while a deliberate launch remains interactive.
+- The initial file widget is created only for a genuinely new profile. Removing every file widget is respected, and settings recovery does not recreate one unexpectedly.
+- Dynamic widgets remain on the desktop when using Win+D, while still raising above other applications when explicitly invoked.
+- Uninstall now offers a safe choice between keeping application data for a later reinstall and permanently removing settings, widget layouts, notes, tasks, caches, logs, update files, and recovery snapshots. Files in the configured managed-storage location are always preserved.
+- Localized installer, dependency, upgrade, and uninstall messages now substitute paths and item counts correctly; all six new installer languages also pass the matching locale to DeskBox on first launch.
+- ARM64 updates now use their own installer URL, SHA-256, and size from the stable manifest.
+- Application, package, x64 installer, and ARM64 installer versions are aligned on 1.3.8 / 1.3.8.0.
+
+#### Localization scope
+
+- The new language packs prioritize the main file-widget, onboarding, weather, and update experiences. Less-used detailed settings temporarily fall back to English rather than mixing in unrelated Chinese text.
+- The x64 and ARM64 installers now offer the same eleven selectable interface languages as DeskBox, including localized dependency download and uninstall messages.
+
+### 中文
+
+#### 更新亮点
+
+- 新增印地语、西班牙语、法语、阿拉伯语、孟加拉语和俄语。系统语言识别、应用包资源、天气、更新提示、新手流程和核心文件格子流程均已适配。
+- 统一文件格子、文件夹映射、自动叠放、格子组、托盘创建和移入回收站等产品表述。
+- 首个文件格子默认从屏幕右侧打开，先解释收纳存储与文件夹映射的区别，并提示用户可从系统托盘新建格子。
+- 修复从桌面粘贴到格子、向资源管理器复制或剪切多个选中文件，以及剪切完成后残留错误剪切样式的问题。
+
+#### 稳定性与更新
+
+- 开机启动、命令行兼容参数和用户主动打开共用一套启动判断。开机启动继续静默驻留托盘，主动打开保持交互式体验。
+- 默认文件格子只会为真正的新用户创建一次；用户主动删除全部文件格子后不会被再次补回，设置恢复也不会意外创建新格子。
+- 使用 Win+D 时动态格子仍保留在桌面；用户主动唤起时依然可以临时显示在其他应用上方。
+- 卸载时可选择保留应用数据以便日后重新安装，或彻底删除设置、格子布局、随记、待办、缓存、日志、更新文件和恢复快照；配置的收纳路径内的真实文件始终保留。
+- 修复安装、依赖下载、升级和卸载提示中的路径与数量占位符；新增的 6 种安装器语言也会在首次启动时向 DeskBox 传递对应语言。
+- ARM64 更新会读取独立的安装包地址、SHA-256 和大小。
+- 应用、应用包、x64 安装器和 ARM64 安装器版本统一为 1.3.8 / 1.3.8.0。
+
+#### 多语言范围
+
+- 新增语言优先覆盖文件格子、新手流程、天气和更新等主要体验；少量不常用的详细设置暂时回退英文，避免出现中文混杂。
+- x64 和 ARM64 安装器现已提供与 DeskBox 相同的 11 种可选界面语言，依赖下载和卸载提示也会随语言切换。
+
 ## 1.3.7 - 2026-08-05
 
 ### English

@@ -1,8 +1,9 @@
 // Copyright (c) DeskBox. All rights reserved.
 
 using System.Diagnostics;
+using DeskBox.Helpers;
+using DeskBox.Models;
 using Microsoft.UI.Dispatching;
-using Windows.Graphics.Display;
 using System.Runtime.InteropServices;
 
 namespace DeskBox.Services;
@@ -245,21 +246,20 @@ public sealed class HardwareAdaptiveAnimationService
     /// <summary>
     /// 获取窗口所在屏幕的刷新率
     /// </summary>
-    private int GetScreenRefreshRate(IntPtr? windowHandle)
+    private static int GetScreenRefreshRate(IntPtr? windowHandle)
     {
         if (windowHandle == null || windowHandle.Value == IntPtr.Zero)
-            return 60; // 默认值
+        {
+            return WidgetDisplayRefreshRatePolicy.DefaultRefreshRateHz;
+        }
         
         try
         {
-            // 简化版：暂时返回默认值
-            // TODO: 后续使用 Windows.Graphics.Display 命名空间的 API 获取实际刷新率
-            
-            return 60; // TODO: 完善刷新率获取逻辑
+            return Win32Helper.GetDisplayRefreshRateForWindow(windowHandle.Value);
         }
         catch
         {
-            return 60; // 失败时返回默认值
+            return WidgetDisplayRefreshRatePolicy.DefaultRefreshRateHz;
         }
     }
     

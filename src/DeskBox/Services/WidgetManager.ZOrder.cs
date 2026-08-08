@@ -26,6 +26,7 @@ public sealed partial class WidgetManager
     private DateTime _suppressTrayLayerRestoreUntilUtc = DateTime.MinValue;
     private bool _hasDeskBoxForegroundSinceRaise;
     private IntPtr _foregroundAtRaiseTime;
+    private long _idlePeerOrderGeneration;
 
     // ── 50ms mouse sampler (方案 B) ──
     // Uses the HIGH bit of GetAsyncKeyState (global physical state) instead of
@@ -47,6 +48,101 @@ public sealed partial class WidgetManager
         RestoreRaisedWidgetsToDesktopLayer(force: true);
     }
 
+    internal void QueueIdleWidgetZOrderNormalization(
+        string reason,
+        TimeSpan? delay = null)
+    {
+        if (!HasUiThreadAccess())
+        {
+            App.UiDispatcherQueue.TryEnqueue(
+                () => QueueIdleWidgetZOrderNormalization(reason, delay));
+            return;
+        }
+
+        long generation = ++_idlePeerOrderGeneration;
+        TimeSpan effectiveDelay = delay ?? TimeSpan.FromMilliseconds(120);
+        App.UiDispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(effectiveDelay);
+            if (generation != _idlePeerOrderGeneration)
+            {
+                return;
+            }
+
+            NormalizeIdleWidgetZOrder(reason);
+        });
+    }
+
+    private void QueueSettledIdleWidgetZOrderNormalization(
+        string reason,
+        TimeSpan delay)
+    {
+        App.UiDispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(delay);
+            QueueIdleWidgetZOrderNormalization(reason);
+        });
+    }
+
+    private bool NormalizeIdleWidgetZOrder(string reason)
+    {
+        if (_widgetsRaisedFromTray ||
+            _isTogglingWidgetsDesktopLayer ||
+            _sessionManager.IsInteractionActive ||
+            _sessionManager.State == WidgetSessionState.Hidden)
+        {
+            App.LogVerbose(
+                $"[ZOrder] Idle normalize skipped reason={reason} " +
+                $"raised={_widgetsRaisedFromTray} toggling={_isTogglingWidgetsDesktopLayer} " +
+                $"interaction={_sessionManager.IsInteractionActive} state={_sessionManager.State}");
+            return false;
+        }
+
+        IReadOnlyList<IDesktopWidgetWindow> ordered =
+            GetWindowsInIdleHighestFirstOrder(
+                GetLoadedDesktopWindows().Where(window =>
+                    window.Visible && !window.IsRaisedAboveDesktopLayer));
+        bool applied = WidgetLayerService.ApplyPeerOrderHighestToLowest(
+            ordered.Select(window => window.WindowHandle).ToList());
+        App.LogVerbose(
+            $"[ZOrder] Idle normalize reason={reason} count={ordered.Count} " +
+            $"applied={applied} order={FormatIdlePeerOrder(ordered)}");
+        return applied;
+    }
+
+    private static IReadOnlyList<IDesktopWidgetWindow> GetWindowsInIdleHighestFirstOrder(
+        IEnumerable<IDesktopWidgetWindow> windows)
+    {
+        Dictionary<IntPtr, IDesktopWidgetWindow> byHandle = windows
+            .Where(window => window.WindowHandle != IntPtr.Zero)
+            .GroupBy(window => window.WindowHandle)
+            .ToDictionary(group => group.Key, group => group.First());
+        IReadOnlyList<IdleWidgetZOrderCandidate> ordered =
+            IdleWidgetZOrderPolicy.OrderHighestToLowest(
+                byHandle.Values.Select(window =>
+                {
+                    Windows.Foundation.Rect bounds = window.RestingAnimationBounds;
+                    return new IdleWidgetZOrderCandidate(
+                        window.WindowHandle,
+                        GetAnimationWorkAreaKey(window),
+                        bounds.Top,
+                        bounds.Left,
+                        window.Identity.SurfaceId);
+                }));
+        return ordered
+            .Select(candidate => byHandle[candidate.WindowHandle])
+            .ToList();
+    }
+
+    private static string FormatIdlePeerOrder(
+        IReadOnlyList<IDesktopWidgetWindow> windows)
+    {
+        return string.Join(
+            ',',
+            windows.Select(window =>
+                $"{window.Identity.ShortSurfaceId}@{window.RestingAnimationBounds.Top:F0}"));
+    }
+
     public void BringAllVisibleWidgetsToFront(IntPtr exceptHwnd = default)
     {
         foreach (var window in GetLoadedDesktopWindows())
@@ -66,16 +162,23 @@ public sealed partial class WidgetManager
             return;
         }
 
-        List<IDesktopWidgetWindow> windows = GetLoadedDesktopWindows()
-            .Where(window => window.Visible)
-            .ToList();
+        IReadOnlyList<IDesktopWidgetWindow> windows =
+            GetWindowsInIdleHighestFirstOrder(
+                GetLoadedDesktopWindows().Where(window => window.Visible));
         foreach (IDesktopWidgetWindow window in windows)
         {
             window.RaiseTemporarilyFromManager();
         }
 
+        bool applied = WidgetLayerService.ApplyPeerOrderHighestToLowest(
+            windows.Select(window => window.WindowHandle).ToList());
+        QueueSettledIdleWidgetZOrderNormalization(
+            $"{reason}-settled",
+            TimeSpan.FromMilliseconds(2300));
+
         App.Log(
             $"[ZOrder] BatchTemporaryRaise reason={reason} count={windows.Count} " +
+            $"applied={applied} " +
             $"handles={string.Join(',', windows.Select(window => $"0x{window.WindowHandle.ToInt64():X}"))}");
     }
 

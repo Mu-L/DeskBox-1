@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using DeskBox.Models;
 using Microsoft.Win32.SafeHandles;
 
 namespace DeskBox.Helpers;
@@ -17,6 +18,28 @@ public static partial class Win32Helper
     private const uint FileShareDelete = 0x00000004;
     private const uint OpenExisting = 3;
     private const uint FileFlagBackupSemantics = 0x02000000;
+
+    [DllImport("dcomp.dll")]
+    private static extern int DCompositionBoostCompositorClock(
+        [MarshalAs(UnmanagedType.Bool)] bool enable);
+
+    /// <summary>
+    /// Requests the DirectComposition compositor clock to run at its active
+    /// cadence while a short interactive animation is in progress. This is a
+    /// best-effort Windows capability and safely falls back on older systems.
+    /// </summary>
+    public static bool TrySetCompositorClockBoost(bool enabled)
+    {
+        try
+        {
+            return DCompositionBoostCompositorClock(enabled) >= 0;
+        }
+        catch (Exception ex) when (
+            ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return false;
+        }
+    }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle CreateFileForFinalPath(
@@ -138,6 +161,7 @@ public static partial class Win32Helper
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_FRAMECHANGED = 0x0020;
+    public const uint SWP_NOOWNERZORDER = 0x0200;
     public const int SW_HIDE = 0;
     public const int SW_SHOWNORMAL = 1;
     public const int SW_SHOWNOACTIVATE = 4;
@@ -1086,6 +1110,35 @@ public static partial class Win32Helper
         public string szDevice;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DEVMODE
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmDeviceName;
+        public short dmSpecVersion;
+        public short dmDriverVersion;
+        public short dmSize;
+        public short dmDriverExtra;
+        public int dmFields;
+        public int dmPositionX;
+        public int dmPositionY;
+        public int dmDisplayOrientation;
+        public int dmDisplayFixedOutput;
+        public short dmColor;
+        public short dmDuplex;
+        public short dmYResolution;
+        public short dmTTOption;
+        public short dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmFormName;
+        public short dmLogPixels;
+        public int dmBitsPerPel;
+        public int dmPelsWidth;
+        public int dmPelsHeight;
+        public int dmDisplayFlags;
+        public int dmDisplayFrequency;
+    }
+
     private const uint MonitorInfoPrimary = 0x00000001;
 
     public readonly record struct MonitorWorkAreaInfo(
@@ -1100,9 +1153,20 @@ public static partial class Win32Helper
     public static partial bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
+    private const int EnumCurrentSettings = -1;
 
     [LibraryImport("user32.dll")]
     public static partial IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [LibraryImport("user32.dll")]
+    public static partial IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);
+
+    [DllImport("user32.dll", EntryPoint = "EnumDisplaySettingsW", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumDisplaySettings(
+        string lpszDeviceName,
+        int iModeNum,
+        ref DEVMODE lpDevMode);
 
     private enum MonitorDpiType
     {
@@ -1213,6 +1277,48 @@ public static partial class Win32Helper
         catch (EntryPointNotFoundException)
         {
             return 1.0;
+        }
+    }
+
+    /// <summary>
+    /// Returns the refresh rate of the monitor currently containing the window.
+    /// Invalid driver values safely normalize to 60 Hz.
+    /// </summary>
+    public static int GetDisplayRefreshRateForWindow(IntPtr hWnd)
+    {
+        try
+        {
+            IntPtr monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+            if (monitor == IntPtr.Zero)
+            {
+                return WidgetDisplayRefreshRatePolicy.DefaultRefreshRateHz;
+            }
+
+            var monitorInfo = new MONITORINFOEX
+            {
+                cbSize = Marshal.SizeOf<MONITORINFOEX>(),
+                szDevice = string.Empty
+            };
+            if (!GetMonitorInfoEx(monitor, ref monitorInfo) ||
+                string.IsNullOrWhiteSpace(monitorInfo.szDevice))
+            {
+                return WidgetDisplayRefreshRatePolicy.DefaultRefreshRateHz;
+            }
+
+            var mode = new DEVMODE
+            {
+                dmDeviceName = string.Empty,
+                dmFormName = string.Empty,
+                dmSize = (short)Marshal.SizeOf<DEVMODE>()
+            };
+            return EnumDisplaySettings(monitorInfo.szDevice, EnumCurrentSettings, ref mode)
+                ? WidgetDisplayRefreshRatePolicy.Normalize((uint)Math.Max(0, mode.dmDisplayFrequency))
+                : WidgetDisplayRefreshRatePolicy.DefaultRefreshRateHz;
+        }
+        catch (Exception ex) when (
+            ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return WidgetDisplayRefreshRatePolicy.DefaultRefreshRateHz;
         }
     }
 

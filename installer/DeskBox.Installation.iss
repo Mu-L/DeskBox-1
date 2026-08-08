@@ -284,7 +284,7 @@ begin
   begin
     MessageText :=
       ExpandConstant('{cm:MultipleInstallationsTitle}') + #13#10#13#10 +
-      Format(ExpandConstant('{cm:MultipleInstallationsBody}'), [BuildInstallCandidateList]) + #13#10#13#10 +
+      FmtMessage(ExpandConstant('{cm:MultipleInstallationsBody}'), [BuildInstallCandidateList]) + #13#10#13#10 +
       ExpandConstant('{cm:MultipleInstallationsFooter}');
     Log('DeskBox installation blocked because multiple installations were detected: ' + ExistingInstallCandidates);
     if not ShouldSuppressDirectInstallMessages then
@@ -299,7 +299,7 @@ begin
        (ExplicitDirectory <> '') and
        (not SameInstallPath(ExplicitDirectory, ExistingInstallPath)) then
     begin
-      MessageText := Format(ExpandConstant('{cm:UpgradeDirectoryMismatch}'), [ExistingInstallPath, ExplicitDirectory]);
+      MessageText := FmtMessage(ExpandConstant('{cm:UpgradeDirectoryMismatch}'), [ExistingInstallPath, ExplicitDirectory]);
       Log('DeskBox installation blocked because /DIR does not match the existing install: ' + ExplicitDirectory);
       if not ShouldSuppressDirectInstallMessages then
         MsgBox(MessageText, mbError, MB_OK);

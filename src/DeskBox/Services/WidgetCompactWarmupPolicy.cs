@@ -14,6 +14,14 @@ internal readonly record struct WidgetCompactWarmupSnapshot(
 
 internal static class WidgetCompactWarmupPolicy
 {
+    public static bool IsExpansionReady(
+        bool isWarmed,
+        long warmedEpoch,
+        long memoryCleanupEpoch)
+    {
+        return isWarmed && warmedEpoch == memoryCleanupEpoch;
+    }
+
     public static bool CanRun(WidgetCompactWarmupSnapshot snapshot)
     {
         return snapshot.IsCollapseInitialized &&

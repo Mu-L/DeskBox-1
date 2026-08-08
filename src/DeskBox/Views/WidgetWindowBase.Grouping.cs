@@ -291,12 +291,34 @@ public abstract partial class WidgetWindowBase
 
         if (DispatcherQueue.HasThreadAccess)
         {
-            RefreshWidgetGroupPresentation();
+            RefreshWidgetGroupState();
         }
         else
         {
-            DispatcherQueue.TryEnqueue(() => RefreshWidgetGroupPresentation());
+            DispatcherQueue.TryEnqueue(RefreshWidgetGroupState);
         }
+    }
+
+    private void RefreshWidgetGroupState()
+    {
+        RefreshWidgetGroupPresentation();
+        if (!_collapseInitialized || IsClosing)
+        {
+            return;
+        }
+
+        // Group members share one persistent window. A behavior change or an
+        // in-place member switch replaces Config without recreating that host,
+        // so refresh the effective behavior and its hover recovery explicitly.
+        if (_lastEffectiveCollapseBehavior != EffectiveCollapseBehavior)
+        {
+            ApplyCompactTooltips();
+            ApplyEffectiveCollapseBehavior(animate: true);
+            return;
+        }
+
+        StartCompactHoverRecoveryProbe();
+        SynchronizeCompactHoverFromCurrentCursor();
     }
 
     private async void WidgetShellControl_GroupMemberInvoked(

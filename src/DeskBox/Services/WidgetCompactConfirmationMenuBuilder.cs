@@ -42,6 +42,22 @@ public static class WidgetCompactConfirmationMenuBuilder
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
+        MenuFlyoutItem? cancelItem = null;
+        if (!string.IsNullOrWhiteSpace(options.CancelText))
+        {
+            cancelItem = new MenuFlyoutItem
+            {
+                Text = options.CancelText,
+                Icon = new FontIcon { Glyph = options.CancelGlyph }
+            };
+            cancelItem.Click += (_, _) => flyout.Hide();
+        }
+
+        if (options.CancelFirst && cancelItem is not null)
+        {
+            flyout.Items.Add(cancelItem);
+        }
+
         var confirmItem = new MenuFlyoutItem
         {
             Text = options.ActionText,
@@ -54,14 +70,8 @@ public static class WidgetCompactConfirmationMenuBuilder
         confirmItem.Click += async (_, _) => await options.ConfirmedAction();
         flyout.Items.Add(confirmItem);
 
-        if (!string.IsNullOrWhiteSpace(options.CancelText))
+        if (!options.CancelFirst && cancelItem is not null)
         {
-            var cancelItem = new MenuFlyoutItem
-            {
-                Text = options.CancelText,
-                Icon = new FontIcon { Glyph = options.CancelGlyph }
-            };
-            cancelItem.Click += (_, _) => flyout.Hide();
             flyout.Items.Add(cancelItem);
         }
 
@@ -87,4 +97,6 @@ public sealed record WidgetCompactConfirmationOptions(
     public string? CancelText { get; init; }
 
     public string CancelGlyph { get; init; } = "\uE711";
+
+    public bool CancelFirst { get; init; }
 }

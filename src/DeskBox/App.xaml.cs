@@ -31,6 +31,7 @@ public partial class App : Application
     private const int TrayContextMenuFallbackOffsetPixels = 24;
     private const int TrayContextMenuEstimatedWidth = (int)TrayMenuItemWidth + 16;
     private const int BackgroundMemoryCleanupDelaySeconds = 30;
+    private const int BackgroundMemoryDeepCleanupDelaySeconds = 5 * 60;
     private const int VisibleIdleMemoryMaintenanceInitialDelaySeconds = 90;
     private const int VisibleIdleMemoryMaintenanceIntervalSeconds = 180;
     private const int SearchIndexIdleUnloadDelaySeconds = 5 * 60;
@@ -117,6 +118,7 @@ public partial class App : Application
     private DateTimeOffset _lastSettingsPersistenceNotificationAt = DateTimeOffset.MinValue;
     private string _availableUpdateVersion = string.Empty;
     private int _externalStateRecoveryScheduled;
+    private readonly bool _processStartupLaunchDetected;
 
     public static new App Current => (App)Application.Current;
 
@@ -164,7 +166,9 @@ public partial class App : Application
         JumpListService.RegisterAppUserModelId();
 
         Log("App() constructor start");
-        bool launchedForStartup = IsStartupLaunch(Environment.GetCommandLineArgs());
+        _processStartupLaunchDetected = StartupLaunchPolicy.IsStartupLaunch(
+            Environment.GetCommandLineArgs(),
+            isStartupTaskActivation: IsStartupTaskActivation());
         string? nativeNotificationActivationArguments = TryGetCurrentNativeNotificationActivationArguments();
         _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskBox_Activate_Event_7F3A9B2E");
         _singleInstanceMutex = new Mutex(true, "DeskBox_SingleInstance_Mutex_7F3A9B2E", out bool createdNew);
@@ -174,7 +178,7 @@ public partial class App : Application
             {
                 StorePendingNativeNotificationActivationArguments(nativeNotificationActivationArguments);
             }
-            else if (launchedForStartup)
+            else if (_processStartupLaunchDetected)
             {
                 Log("Another instance running; startup launch exiting silently");
                 Environment.Exit(0);
@@ -784,20 +788,18 @@ public partial class App : Application
                value.Trim() is "1" or "true" or "TRUE" or "yes" or "YES" or "on" or "ON";
     }
 
-    private static bool IsStartupLaunch(IEnumerable<string> arguments)
+    private static bool IsStartupTaskActivation()
     {
-        return arguments.Any(IsStartupArgument);
-    }
-
-    private static bool IsStartupLaunch(string? arguments)
-    {
-        return !string.IsNullOrWhiteSpace(arguments) &&
-            arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(IsStartupArgument);
-    }
-
-    private static bool IsStartupArgument(string argument)
-    {
-        return string.Equals(argument.Trim().Trim('"'), "--startup", StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            return AppInstance.GetCurrent().GetActivatedEventArgs().Kind ==
+                   ExtendedActivationKind.StartupTask;
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to inspect startup-task activation: {ex.Message}");
+            return false;
+        }
     }
 
     private static string? TryGetUpdateInstallOutcome(IReadOnlyList<string> arguments)
@@ -843,13 +845,20 @@ public partial class App : Application
         }
         _isLaunched = true;
 
-        using var perfScope = PerformanceLogger.Measure("App.OnLaunched", $"startup={IsStartupLaunch(args.Arguments)}");
+        bool startupTaskActivation = IsStartupTaskActivation();
+        bool isStartupLaunch = StartupLaunchPolicy.IsStartupLaunch(
+            Environment.GetCommandLineArgs(),
+            args.Arguments,
+            startupTaskActivation);
+        using var perfScope = PerformanceLogger.Measure(
+            "App.OnLaunched",
+            $"startup={isStartupLaunch}");
         Log("OnLaunched start");
 
         try
         {
             string? updateInstallOutcome = TryGetUpdateInstallOutcome(Environment.GetCommandLineArgs());
-            IsStartupMode = IsStartupLaunch(args.Arguments);
+            IsStartupMode = _processStartupLaunchDetected || isStartupLaunch;
             UiDispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
             WidgetSegmentedLayoutHelper.Initialize(UiDispatcherQueue);
 
@@ -942,14 +951,7 @@ public partial class App : Application
                     await DataBackupService.GetLatestRecoverySnapshotAsync());
             }
 
-            if (SettingsService.Settings.Widgets.Count(widget =>
-                    widget.WidgetKind == WidgetKind.File &&
-                    !widget.IsDisabled &&
-                    !SettingsService.Settings.DeletedWidgetIds.Contains(widget.Id)) == 0 &&
-                !IsStartupMode)
-            {
-                await WidgetManager.CreateManagedWidgetAsync(LocalizationService.T("Widget.DefaultDesktopName"));
-            }
+            await EnsureInitialFileWidgetSetupAsync(isInteractiveLaunch: !IsStartupMode);
 
             DesktopAutoOrganizationWatcher = new DesktopAutoOrganizationWatcher(
                 SettingsService,
@@ -958,12 +960,7 @@ public partial class App : Application
             DesktopAutoOrganizationWatcher.ItemOrganized += ShowDesktopAutoOrganizationNotification;
             DesktopAutoOrganizationWatcher.Start();
 
-            if (!IsStartupMode && !SettingsService.Settings.HasCompletedOnboarding)
-            {
-                SettingsService.Settings.HasCompletedOnboarding = true;
-                await SettingsService.SaveAsync();
-                ShowOnboarding();
-            }
+            await EnsureOnboardingAsync(isInteractiveLaunch: !IsStartupMode);
 
             ScheduleBackgroundUpdateCheck();
             _diagnosticsService = new AppDiagnosticsService(UiDispatcherQueue);
@@ -1820,6 +1817,12 @@ public partial class App : Application
             return;
         }
 
+        await EnsureInitialFileWidgetSetupAsync(isInteractiveLaunch: true);
+        if (await EnsureOnboardingAsync(isInteractiveLaunch: true))
+        {
+            return;
+        }
+
         if (WidgetManager is not null)
         {
             bool hasConfiguredWidgets = SettingsService.Settings.Widgets.Any(widget =>
@@ -2130,13 +2133,85 @@ public partial class App : Application
         settingsWindow.ShowSection(sectionTag);
     }
 
-    public void ShowOnboarding()
+    private async Task EnsureInitialFileWidgetSetupAsync(bool isInteractiveLaunch)
+    {
+        if (WidgetManager is null)
+        {
+            return;
+        }
+
+        AppSettings settings = SettingsService.Settings;
+        InitialFileWidgetSetupDecision decision =
+            InitialFileWidgetSetupPolicy.Evaluate(new InitialFileWidgetSetupSnapshot(
+                isInteractiveLaunch,
+                SettingsService.LastLoadRecoveryState,
+                settings.HasResolvedInitialFileWidgetSetup,
+                InitialFileWidgetSetupPolicy.HasConfiguredFileWidget(settings)));
+        Log(
+            $"[InitialFileWidgetSetup] decision={decision} interactive={isInteractiveLaunch} " +
+            $"loadState={SettingsService.LastLoadRecoveryState} " +
+            $"resolved={settings.HasResolvedInitialFileWidgetSetup}");
+
+        if (decision == InitialFileWidgetSetupDecision.ResolveExistingConfiguration)
+        {
+            settings.HasResolvedInitialFileWidgetSetup = true;
+            await SettingsService.SaveAsync();
+            return;
+        }
+
+        if (decision != InitialFileWidgetSetupDecision.CreateDefaultWidget)
+        {
+            return;
+        }
+
+        // CreateManagedWidgetAsync persists the new widget config. Set the
+        // one-time marker first so both values are written by the same save.
+        settings.HasResolvedInitialFileWidgetSetup = true;
+        try
+        {
+            await WidgetManager.CreateInitialManagedWidgetAsync(
+                LocalizationService.T("Widget.DefaultDesktopName"));
+        }
+        catch
+        {
+            // Directory creation can fail before a widget config exists. Keep
+            // the setup pending in that case so a later interactive launch can
+            // retry after the storage problem has been corrected.
+            if (!InitialFileWidgetSetupPolicy.HasConfiguredFileWidget(settings))
+            {
+                settings.HasResolvedInitialFileWidgetSetup = false;
+            }
+
+            throw;
+        }
+    }
+
+    private async Task<bool> EnsureOnboardingAsync(bool isInteractiveLaunch)
+    {
+        if (!isInteractiveLaunch || SettingsService.Settings.HasCompletedOnboarding)
+        {
+            return false;
+        }
+
+        // Completion is recorded only when the user finishes or explicitly
+        // skips the guide. Closing the window leaves the current step resumable.
+        ShowOnboarding(resumeProgress: true);
+        return true;
+    }
+
+    public void ShowOnboarding(bool resumeProgress = false)
     {
         CancelBackgroundMemoryCleanup();
+        int initialStep = resumeProgress
+            ? SettingsService.Settings.OnboardingStepIndex
+            : 0;
         bool shouldRestartIntro = _onboardingWindow is not null;
         if (_onboardingWindow is null)
         {
-            _onboardingWindow = new OnboardingWindow(SettingsService, LocalizationService);
+            _onboardingWindow = new OnboardingWindow(
+                SettingsService,
+                LocalizationService,
+                initialStep);
             _onboardingWindow.Closed += (_, _) =>
             {
                 _onboardingWindow = null;
@@ -2148,14 +2223,47 @@ public partial class App : Application
         _onboardingWindow.Activate();
         if (shouldRestartIntro)
         {
-            _onboardingWindow.RestartIntro();
+            _onboardingWindow.RestartIntro(initialStep);
         }
+    }
+
+    internal async Task<bool> ShowFirstFileWidgetForOnboardingAsync()
+    {
+        if (WidgetManager is null)
+        {
+            return false;
+        }
+
+        WidgetConfig? firstFileWidget = SettingsService.Settings.Widgets
+            .Where(widget =>
+                widget.WidgetKind == WidgetKind.File &&
+                !widget.IsDisabled &&
+                !SettingsService.Settings.DeletedWidgetIds.Contains(widget.Id))
+            .OrderByDescending(widget => widget.FollowsDefaultStoragePath)
+            .FirstOrDefault();
+        if (firstFileWidget is null)
+        {
+            return false;
+        }
+
+        return await WidgetManager.ShowWidgetAsync(
+            firstFileWidget.Id,
+            reveal: true,
+            autoRestoreOnReveal: false);
     }
 
     private static int s_lightMemoryCleanupGeneration;
     private static int s_pendingHeavyMemoryCleanup;
     private static int s_activeHeavyMemoryCleanupCount;
     private static int s_backgroundMemoryCleanupGeneration;
+    private static long s_memoryCleanupEpoch;
+
+    /// <summary>
+    /// Changes only after a process working-set trim has made previously warmed
+    /// XAML pages non-resident. A forced GC alone does not invalidate a live
+    /// capsule layout and therefore must not make every widget cold again.
+    /// </summary>
+    internal static long MemoryCleanupEpoch => Volatile.Read(ref s_memoryCleanupEpoch);
 
     private void StartVisibleIdleMemoryMaintenance()
     {
@@ -2333,8 +2441,11 @@ public partial class App : Application
         _settingsWindow is null &&
         _onboardingWindow is null &&
         _searchPopupWindow?.IsPopupVisible != true &&
-        _searchEngineService?.IsCustomIndexing != true &&
         WidgetManager?.IsWidgetInteractionActive != true &&
+        Volatile.Read(ref s_pendingHeavyMemoryCleanup) == 0 &&
+        Volatile.Read(ref s_activeHeavyMemoryCleanupCount) == 0;
+
+    internal bool CanRunCriticalCompactExpansionWarmup =>
         Volatile.Read(ref s_pendingHeavyMemoryCleanup) == 0 &&
         Volatile.Read(ref s_activeHeavyMemoryCleanupCount) == 0;
 
@@ -2343,7 +2454,8 @@ public partial class App : Application
         int generation = Interlocked.Increment(ref s_backgroundMemoryCleanupGeneration);
         PerformanceLogger.Mark(
             "BackgroundMemoryCleanupScheduled",
-            $"delaySeconds={BackgroundMemoryCleanupDelaySeconds}");
+            $"softDelaySeconds={BackgroundMemoryCleanupDelaySeconds} " +
+            $"deepDelaySeconds={BackgroundMemoryDeepCleanupDelaySeconds}");
 
         UiDispatcherQueue?.TryEnqueue(async () =>
         {
@@ -2361,29 +2473,68 @@ public partial class App : Application
                 return;
             }
 
-            bool canClean =
-                app.WidgetManager is
-                {
-                    HasVisibleWidgets: false,
-                    IsWidgetInteractionActive: false
-                } &&
-                app._settingsWindow is null &&
-                app._onboardingWindow is null &&
-                app._searchPopupWindow?.IsPopupVisible != true;
-            if (!canClean)
+            if (!app.CanRunBackgroundMemoryCleanup())
             {
                 PerformanceLogger.Mark("BackgroundMemoryCleanupSkipped", "reason=foreground-active");
                 return;
             }
 
-            PerformanceLogger.Mark("BackgroundMemoryCleanupTriggered");
-            ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+            // A short hide only suspends content activity and prunes genuinely
+            // unreachable objects. Keep live XAML/layout pages resident so a
+            // quick tray restore does not turn every capsule cold.
+            PerformanceLogger.Mark("BackgroundMemorySoftCleanupTriggered");
+            ScheduleLightMemoryCleanup(
+                requiredBackgroundGeneration: generation);
+
+            int remainingDelaySeconds = Math.Max(
+                1,
+                BackgroundMemoryDeepCleanupDelaySeconds -
+                BackgroundMemoryCleanupDelaySeconds);
+            await Task.Delay(TimeSpan.FromSeconds(remainingDelaySeconds));
+            if (generation != Volatile.Read(ref s_backgroundMemoryCleanupGeneration))
+            {
+                return;
+            }
+
+            if (app._searchEngineService?.IsCustomIndexing == true)
+            {
+                PerformanceLogger.Mark(
+                    "BackgroundMemoryDeepCleanupDeferred",
+                    "reason=search-indexing");
+                ScheduleBackgroundMemoryCleanup();
+                return;
+            }
+
+            if (!app.CanRunBackgroundMemoryCleanup())
+            {
+                PerformanceLogger.Mark(
+                    "BackgroundMemoryDeepCleanupSkipped",
+                    "reason=foreground-active");
+                return;
+            }
+
+            PerformanceLogger.Mark("BackgroundMemoryDeepCleanupTriggered");
+            ScheduleLightMemoryCleanup(
+                completedHeavyOperation: true,
+                requiredBackgroundGeneration: generation);
         });
     }
 
-    internal static void ScheduleLightMemoryCleanup(bool completedHeavyOperation = false)
+    private bool CanRunBackgroundMemoryCleanup() =>
+        WidgetManager is
+        {
+            HasVisibleWidgets: false,
+            IsWidgetInteractionActive: false
+        } &&
+        _settingsWindow is null &&
+        _onboardingWindow is null &&
+        _searchPopupWindow?.IsPopupVisible != true;
+
+    internal static void ScheduleLightMemoryCleanup(
+        bool completedHeavyOperation = false,
+        int? requiredBackgroundGeneration = null)
     {
-        if (completedHeavyOperation)
+        if (completedHeavyOperation && requiredBackgroundGeneration is null)
         {
             Interlocked.Exchange(ref s_pendingHeavyMemoryCleanup, 1);
         }
@@ -2397,12 +2548,25 @@ public partial class App : Application
                 return;
             }
 
+            // A tray restore increments the background generation. Do not let
+            // a cleanup that was armed by the previous hidden lifetime run its
+            // forced GC/heap trim after the widgets are visible again.
+            if (requiredBackgroundGeneration is int requiredGeneration &&
+                requiredGeneration !=
+                    Volatile.Read(ref s_backgroundMemoryCleanupGeneration))
+            {
+                PerformanceLogger.Mark(
+                    "BackgroundMemoryCleanupCancelled",
+                    "reason=widgets-restored");
+                return;
+            }
+
             Localized.PruneDeadTargets();
 
             var memoryInfo = GC.GetGCMemoryInfo();
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             process.Refresh();
-            bool heavyCleanupRequested =
+            bool heavyCleanupRequested = completedHeavyOperation ||
                 Interlocked.Exchange(ref s_pendingHeavyMemoryCleanup, 0) != 0;
             bool underMemoryPressure =
                 memoryInfo.HeapSizeBytes >= 256L * 1024 * 1024 ||
@@ -2463,6 +2627,11 @@ public partial class App : Application
                     {
                         await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet);
                         PerformanceLogger.SampleMemory("heavy-cleanup-working-set-trimmed");
+                        long cleanupEpoch =
+                            Interlocked.Increment(ref s_memoryCleanupEpoch);
+                        PerformanceLogger.Mark(
+                            "MemoryCleanupEpochAdvanced",
+                            $"epoch={cleanupEpoch} reason=working-set-trim");
                     }
                     else
                     {
@@ -2471,6 +2640,7 @@ public partial class App : Application
                             "reason=foreground-active");
                         PerformanceLogger.SampleMemory("heavy-cleanup-completed");
                     }
+
                 }
                 finally
                 {

@@ -58,7 +58,7 @@ public sealed partial class FileSurfaceContent :
     private string[] _activeDragSourcePaths = [];
     private bool _activeDragHasStorageItems;
     private bool _activeDragUsesVirtualStorageItems;
-    private HashSet<string>? _activeDragDesktopSnapshot;
+    private Task<HashSet<string>?>? _activeDragDesktopSnapshotTask;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private Border? _folderDropTarget;
     private Border? _stackMemberDropTarget;
@@ -67,6 +67,8 @@ public sealed partial class FileSurfaceContent :
     private string? _lastStackInputKey;
     private long _lastStackInputTick;
     private bool _isImportBusy;
+    private IntPtr _hostWindowHandle;
+    private DateTimeOffset? _importBusyStartedAtUtc;
     private bool _isDisposed;
     private bool _isReadyForReuse;
     private bool _hasBeenWindowVisible;
@@ -107,7 +109,7 @@ public sealed partial class FileSurfaceContent :
         OpenSelectionButton.Label = T("Common.Open");
         CopySelectionButton.Label = T("Common.Copy");
         CutSelectionButton.Label = T("Common.Cut");
-        DeleteSelectionButton.Label = T("Common.Delete");
+        DeleteSelectionButton.Label = T("Widget.MoveToRecycleBin");
         RenameSelectionButton.Label = T("Common.Rename");
         ToolTipService.SetToolTip(OpenSelectionButton, OpenSelectionButton.Label);
         ToolTipService.SetToolTip(CopySelectionButton, CopySelectionButton.Label);
@@ -132,6 +134,18 @@ public sealed partial class FileSurfaceContent :
     internal event Action<bool>? ImportBusyChanged;
 
     internal bool IsImportBusy => _isImportBusy;
+
+    internal long? ImportBusyElapsedMilliseconds =>
+        _isImportBusy && _importBusyStartedAtUtc is { } startedAt
+            ? Math.Max(
+                0,
+                (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds)
+            : null;
+
+    internal void SetHostWindowHandle(IntPtr windowHandle)
+    {
+        _hostWindowHandle = windowHandle;
+    }
 
     public WidgetConfig Config => ViewModel.Config;
 
@@ -202,6 +216,7 @@ public sealed partial class FileSurfaceContent :
     public void ApplyAppearance()
     {
         ViewModel.ApplyAppearancePreview();
+        ApplyAccentVisuals();
         ApplySelectionRectangleAppearance();
         UpdateItemSurfaceVisuals();
         UpdateEmptyState();
@@ -211,8 +226,22 @@ public sealed partial class FileSurfaceContent :
         FrameworkElement sender,
         object args)
     {
+        ApplyAccentVisuals();
         ApplySelectionRectangleAppearance();
         UpdateItemSurfaceVisuals();
+    }
+
+    private void ApplyAccentVisuals()
+    {
+        var accent = App.Current.ThemeService?.GetEffectiveAccentColor()
+            ?? AccentColorHelper.DefaultAccentColor;
+        ReorderInsertionAccentStop.Color = accent;
+        ReorderInsertionLine.Background = new SolidColorBrush(accent);
+        ImportProgressBar.Foreground = new SolidColorBrush(accent);
+        if (_activeImportVisualState is not ImportCompletionState.Failed)
+        {
+            ImportStateIcon.Foreground = new SolidColorBrush(accent);
+        }
     }
 
     public void OnActivated()
@@ -334,7 +363,36 @@ public sealed partial class FileSurfaceContent :
         object? sender,
         NotifyCollectionChangedEventArgs e)
     {
+        ReconcileCutStateAfterItemsChanged(e);
         UpdateEmptyState();
+    }
+
+    private void ReconcileCutStateAfterItemsChanged(
+        NotifyCollectionChangedEventArgs e)
+    {
+        WidgetItem[] removedItems = e.OldItems?
+            .OfType<WidgetItem>()
+            .ToArray() ?? [];
+        if (removedItems.Length > 0)
+        {
+            string[] replacementPaths = e.NewItems?
+                .OfType<WidgetItem>()
+                .Select(item => item.Path)
+                .ToArray() ?? [];
+            _cutClipboardPaths = FileCutStatePolicy.RemoveDepartedPaths(
+                _cutClipboardPaths,
+                removedItems.Select(item => item.Path),
+                replacementPaths);
+
+            foreach (WidgetItem item in removedItems)
+            {
+                item.IsCut = false;
+            }
+        }
+
+        // Recompute every remaining item so newly inserted or rebound surfaces
+        // never inherit a previous container's cut appearance.
+        ApplyCutState();
     }
 
     private void UpdateEmptyState()
@@ -476,14 +534,14 @@ public sealed partial class FileSurfaceContent :
             _activeDragSourcePaths = [];
             _activeDragHasStorageItems = false;
             _activeDragUsesVirtualStorageItems = false;
-            _activeDragDesktopSnapshot = null;
+            _activeDragDesktopSnapshotTask = null;
             return;
         }
 
         _activeDragSourcePaths = [];
         _activeDragHasStorageItems = false;
         _activeDragUsesVirtualStorageItems = false;
-        _activeDragDesktopSnapshot = null;
+        _activeDragDesktopSnapshotTask = null;
         ClearFolderDropTarget();
         HideSurfaceReorderInsertionIndicator();
         _isSurfaceReorderDragActive = false;
@@ -539,8 +597,8 @@ public sealed partial class FileSurfaceContent :
             ViewModel.FollowsDefaultStoragePath)
         {
             e.Data.RequestedOperation = DataPackageOperation.Move;
-            _activeDragDesktopSnapshot =
-                TryCaptureDesktopEntrySnapshot();
+            _activeDragDesktopSnapshotTask =
+                CaptureDesktopEntrySnapshotAsync();
         }
     }
 
@@ -585,12 +643,12 @@ public sealed partial class FileSurfaceContent :
         bool hasStorageItems = _activeDragHasStorageItems;
         bool usesVirtualStorageItems =
             _activeDragUsesVirtualStorageItems;
-        HashSet<string>? desktopSnapshot =
-            _activeDragDesktopSnapshot;
+        Task<HashSet<string>?>? desktopSnapshotTask =
+            _activeDragDesktopSnapshotTask;
         _activeDragSourcePaths = [];
         _activeDragHasStorageItems = false;
         _activeDragUsesVirtualStorageItems = false;
-        _activeDragDesktopSnapshot = null;
+        _activeDragDesktopSnapshotTask = null;
 
         try
         {
@@ -599,6 +657,9 @@ public sealed partial class FileSurfaceContent :
                 ViewModel.FollowsDefaultStoragePath &&
                 ShellDesktopDropTarget.IsPointerOverDesktop())
             {
+                HashSet<string>? desktopSnapshot = desktopSnapshotTask is null
+                    ? null
+                    : await desktopSnapshotTask;
                 await CompleteVirtualShortcutDesktopMoveAsync(
                     movedPaths,
                     desktopSnapshot);
@@ -661,23 +722,26 @@ public sealed partial class FileSurfaceContent :
         }
     }
 
-    private static HashSet<string>? TryCaptureDesktopEntrySnapshot()
+    private static Task<HashSet<string>?> CaptureDesktopEntrySnapshotAsync()
     {
-        try
+        return Task.Run<HashSet<string>?>(() =>
         {
-            string desktopPath = FileService.GetDesktopPaths().UserDesktop;
-            return Directory
-                .EnumerateFileSystemEntries(desktopPath)
-                .Select(Path.GetFullPath)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        }
-        catch (Exception ex)
-        {
-            App.Log(
-                $"[DragStart] Failed to capture desktop snapshot: " +
-                $"{ex.Message}");
-            return null;
-        }
+            try
+            {
+                string desktopPath = FileService.GetDesktopPaths().UserDesktop;
+                return Directory
+                    .EnumerateFileSystemEntries(desktopPath)
+                    .Select(Path.GetFullPath)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[DragStart] Failed to capture desktop snapshot: " +
+                    $"{ex.Message}");
+                return null;
+            }
+        });
     }
 
     private async Task CompleteVirtualShortcutDesktopMoveAsync(
@@ -747,60 +811,68 @@ public sealed partial class FileSurfaceContent :
             IReadOnlyList<string> sourcePaths,
             IReadOnlySet<string> desktopSnapshot)
     {
-        string desktopPath = FileService.GetDesktopPaths().UserDesktop;
-        Dictionary<string, string> sourceFingerprints = sourcePaths
-            .ToDictionary(
-                path => path,
-                ComputeFileFingerprint,
-                StringComparer.OrdinalIgnoreCase);
-
-        for (int attempt = 0; attempt < 6; attempt++)
+        // Directory enumeration and SHA-256 hashing are both unbounded file
+        // system work. Keep the full reconciliation loop off the UI thread so
+        // a slow shell extension, antivirus filter, or desktop provider cannot
+        // stall every DeskBox window after the drag completes.
+        return await Task.Run<IReadOnlySet<string>>(async () =>
         {
-            await Task.Delay(attempt == 0 ? 160 : 120);
-            string[] candidates;
-            try
-            {
-                candidates = Directory
-                    .EnumerateFiles(desktopPath, "*.lnk")
-                    .Select(Path.GetFullPath)
-                    .Where(path => !desktopSnapshot.Contains(path))
-                    .ToArray();
-            }
-            catch
-            {
-                continue;
-            }
+            string desktopPath = FileService.GetDesktopPaths().UserDesktop;
+            Dictionary<string, string> sourceFingerprints = sourcePaths
+                .ToDictionary(
+                    path => path,
+                    ComputeFileFingerprint,
+                    StringComparer.OrdinalIgnoreCase);
 
-            var candidateFingerprints = new Dictionary<string, string>(
-                StringComparer.OrdinalIgnoreCase);
-            foreach (string candidate in candidates)
+            for (int attempt = 0; attempt < 6; attempt++)
             {
+                await Task.Delay(attempt == 0 ? 160 : 120)
+                    .ConfigureAwait(false);
+                string[] candidates;
                 try
                 {
-                    candidateFingerprints[candidate] =
-                        ComputeFileFingerprint(candidate);
+                    candidates = Directory
+                        .EnumerateFiles(desktopPath, "*.lnk")
+                        .Select(Path.GetFullPath)
+                        .Where(path => !desktopSnapshot.Contains(path))
+                        .ToArray();
                 }
                 catch
                 {
+                    continue;
+                }
+
+                var candidateFingerprints = new Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (string candidate in candidates)
+                {
+                    try
+                    {
+                        candidateFingerprints[candidate] =
+                            ComputeFileFingerprint(candidate);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                var matchedSources = sourceFingerprints
+                    .Where(source => candidateFingerprints.Any(candidate =>
+                        string.Equals(
+                            source.Value,
+                            candidate.Value,
+                            StringComparison.Ordinal)))
+                    .Select(source => source.Key)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (matchedSources.Count == sourcePaths.Count ||
+                    (attempt == 5 && matchedSources.Count > 0))
+                {
+                    return matchedSources;
                 }
             }
 
-            var matchedSources = sourceFingerprints
-                .Where(source => candidateFingerprints.Any(candidate =>
-                    string.Equals(
-                        source.Value,
-                        candidate.Value,
-                        StringComparison.Ordinal)))
-                .Select(source => source.Key)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (matchedSources.Count == sourcePaths.Count ||
-                (attempt == 5 && matchedSources.Count > 0))
-            {
-                return matchedSources;
-            }
-        }
-
-        return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        });
     }
 
     private static string ComputeFileFingerprint(string path)
@@ -1369,6 +1441,14 @@ public sealed partial class FileSurfaceContent :
         ClearStackMemberDropTarget();
         ApplyDropVisual(FileDropVisualState.None);
         ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
+        if (_isImportBusy)
+        {
+            App.LogVerbose(
+                $"[WidgetSurface] Ignored overlapping file drop id={WidgetId} " +
+                "stage=before-read");
+            return;
+        }
+
         if (IsInternalReorderDrag(e.DataView))
         {
             _surfaceReorderStackKey ??= TryGetString(
@@ -1385,6 +1465,18 @@ public sealed partial class FileSurfaceContent :
         try
         {
             using DroppedFileBatch batch = await GetSurfaceDropFilesAsync(e.DataView);
+            // The host HWND also owns a native OLE drop bridge. On systems
+            // where both paths observe the same drop, the native import may
+            // have started while GetStorageItemsAsync was yielding. Do not
+            // transfer the same source a second time.
+            if (_isImportBusy)
+            {
+                App.LogVerbose(
+                    $"[WidgetSurface] Ignored overlapping file drop id={WidgetId} " +
+                    "stage=after-read");
+                return;
+            }
+
             IReadOnlyList<DroppedFilePath> droppedFiles = batch.Files;
             string[] paths = droppedFiles
                 .Select(file => file.Path)
@@ -1404,33 +1496,17 @@ public sealed partial class FileSurfaceContent :
                 string? sourceWidgetId = TryGetString(
                     e.DataView.Properties,
                     "DeskBoxSourceWidgetId");
-                bool showOverlay =
-                    DeskBoxDragData.ShouldShowImportOverlay(paths);
-                if (showOverlay)
+                IReadOnlyList<string> completedSourcePaths =
+                    await ImportDroppedFilesAsync(
+                        droppedFiles,
+                        moveWhenMapped);
+                if (moveWhenMapped == true &&
+                    sourceWidgetId is { Length: > 0 } &&
+                    App.Current?.WidgetManager is { } manager)
                 {
-                    SetImportBusy(true);
-                }
-                try
-                {
-                    IReadOnlyList<string> completedSourcePaths =
-                        await ImportDroppedFilesAsync(
-                            droppedFiles,
-                            moveWhenMapped);
-                    if (moveWhenMapped == true &&
-                        sourceWidgetId is { Length: > 0 } &&
-                        App.Current?.WidgetManager is { } manager)
-                    {
-                        await manager.NotifyItemsMovedOutAsync(
-                            sourceWidgetId,
-                            completedSourcePaths);
-                    }
-                }
-                finally
-                {
-                    if (showOverlay)
-                    {
-                        SetImportBusy(false);
-                    }
+                    await manager.NotifyItemsMovedOutAsync(
+                        sourceWidgetId,
+                        completedSourcePaths);
                 }
 
                 ShowFeedback(new(
@@ -1442,6 +1518,10 @@ public sealed partial class FileSurfaceContent :
                     WidgetFeedbackSeverity.Success,
                     "file-drop"));
             }
+        }
+        catch (OperationCanceledException)
+        {
+            App.Log($"[WidgetSurface] File drop canceled id={WidgetId}");
         }
         catch (Exception ex)
         {
@@ -1507,16 +1587,24 @@ public sealed partial class FileSurfaceContent :
         _isImportBusy = isBusy;
         if (isBusy)
         {
+            _importBusyStartedAtUtc = DateTimeOffset.UtcNow;
             ImportTitleText.Text = T(titleKey);
             ImportDescriptionText.Text = T(descriptionKey);
+            ImportProgressBar.Value = 0;
+            ImportStateIcon.Glyph = "\uE896";
+            ImportStateIcon.Foreground = ImportProgressBar.Foreground;
             ApplyDropVisual(FileDropVisualState.None);
         }
 
-        ImportOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
-        ImportProgressRing.IsActive = isBusy;
-        ItemsGrid.IsHitTestVisible = !isBusy;
-        ItemsList.IsHitTestVisible = !isBusy;
-        EmptyState.IsHitTestVisible = !isBusy;
+        ImportProgressCard.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+        ImportProgressBar.IsIndeterminate = isBusy;
+        ImportPercentText.Text = string.Empty;
+        ImportCancelButton.Visibility = Visibility.Collapsed;
+        SelectionCommandBar.IsEnabled = !isBusy;
+        if (!isBusy)
+        {
+            _importBusyStartedAtUtc = null;
+        }
         ImportBusyChanged?.Invoke(isBusy);
     }
 
@@ -1637,40 +1725,64 @@ public sealed partial class FileSurfaceContent :
         IReadOnlyList<DroppedFilePath> droppedFiles,
         bool? moveWhenMapped)
     {
+        BeginTrackedImport();
+        IProgress<FileService.FileTransferProgress> progress =
+            new CallbackProgress<FileService.FileTransferProgress>(
+                ReportImportProgress);
         var movedSourcePaths = new List<string>();
-        string[] regularPaths = droppedFiles
-            .Where(file => !file.ForceManagedCopy)
-            .Select(file => file.Path)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (regularPaths.Length > 0)
+        try
         {
-            IReadOnlyList<string> completed = await ViewModel.ImportPathsAsync(
-                regularPaths,
-                moveWhenMapped,
-                useShellProgress: moveWhenMapped == true);
-            if (moveWhenMapped == true)
+            string[] regularPaths = droppedFiles
+                .Where(file => !file.ForceManagedCopy)
+                .Select(file => file.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (regularPaths.Length > 0)
             {
-                movedSourcePaths.AddRange(completed);
+                IReadOnlyList<string> completed = await ViewModel.ImportPathsAsync(
+                    regularPaths,
+                    moveWhenMapped,
+                    useShellProgress: moveWhenMapped == true,
+                    ownerWindowHandle: _hostWindowHandle,
+                    progress: progress,
+                    cancellationToken: ActiveImportCancellationToken);
+                if (moveWhenMapped == true)
+                {
+                    movedSourcePaths.AddRange(completed);
+                }
             }
-        }
 
-        string[] managedCopyPaths = droppedFiles
-            .Where(file => file.ForceManagedCopy)
-            .Select(file => file.Path)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (managedCopyPaths.Length > 0)
+            string[] managedCopyPaths = droppedFiles
+                .Where(file => file.ForceManagedCopy)
+                .Select(file => file.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (managedCopyPaths.Length > 0)
+            {
+                // Virtual browser files and URL downloads live in a temporary
+                // directory owned by DroppedFileBatch. They must always be copied.
+                await ViewModel.ImportPathsAsync(
+                    managedCopyPaths,
+                    moveWhenMapped: false,
+                    useShellProgress: false,
+                    ownerWindowHandle: _hostWindowHandle,
+                    progress: progress,
+                    cancellationToken: ActiveImportCancellationToken);
+            }
+
+            await CompleteTrackedImportAsync(ImportCompletionState.Completed);
+            return movedSourcePaths;
+        }
+        catch (OperationCanceledException)
         {
-            // Virtual browser files and URL downloads live in a temporary
-            // directory owned by DroppedFileBatch. They must always be copied.
-            await ViewModel.ImportPathsAsync(
-                managedCopyPaths,
-                moveWhenMapped: false,
-                useShellProgress: false);
+            await CompleteTrackedImportAsync(ImportCompletionState.Canceled);
+            throw;
         }
-
-        return movedSourcePaths;
+        catch
+        {
+            await CompleteTrackedImportAsync(ImportCompletionState.Failed);
+            throw;
+        }
     }
 
     /// <summary>
@@ -1719,16 +1831,18 @@ public sealed partial class FileSurfaceContent :
                 ? false
                 : true
             : null;
-        bool showOverlay = DeskBoxDragData.ShouldShowImportOverlay(
-            droppedFiles.Select(file => file.Path).ToArray());
-        if (showOverlay)
-        {
-            SetImportBusy(true);
-        }
-
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        string importId = Guid.NewGuid().ToString("N")[..8];
+        App.Log(
+            $"[Import] Native import start id={importId} widget={WidgetId} " +
+            $"count={droppedFiles.Length} move={moveWhenMapped == true} " +
+            $"owner=0x{_hostWindowHandle.ToInt64():X}");
         try
         {
             await ImportDroppedFilesAsync(droppedFiles, moveWhenMapped);
+            App.Log(
+                $"[Import] Native import completed id={importId} widget={WidgetId} " +
+                $"count={droppedFiles.Length} elapsedMs={stopwatch.ElapsedMilliseconds}");
             ShowFeedback(new(
                 _localizationService.Format(
                     moveWhenMapped == true
@@ -1739,9 +1853,18 @@ public sealed partial class FileSurfaceContent :
                 "native-file-drop"));
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            App.Log(
+                $"[Import] Native import canceled id={importId} widget={WidgetId} " +
+                $"elapsedMs={stopwatch.ElapsedMilliseconds}");
+            return false;
+        }
         catch (Exception ex)
         {
-            App.Log($"[WidgetSurface] Native file drop failed id={WidgetId}: {ex}");
+            App.Log(
+                $"[WidgetSurface] Native file drop failed id={WidgetId} " +
+                $"import={importId} elapsedMs={stopwatch.ElapsedMilliseconds}: {ex}");
             ShowFeedback(new(
                 ex.Message,
                 WidgetFeedbackSeverity.Error,
@@ -1750,10 +1873,9 @@ public sealed partial class FileSurfaceContent :
         }
         finally
         {
-            if (showOverlay)
-            {
-                SetImportBusy(false);
-            }
+            App.Log(
+                $"[Import] Native import finalized id={importId} widget={WidgetId} " +
+                $"elapsedMs={stopwatch.ElapsedMilliseconds}");
         }
     }
 
@@ -2018,6 +2140,11 @@ public sealed partial class FileSurfaceContent :
 
     private async void Root_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (await TryHandleClipboardShortcutAsync(e))
+        {
+            return;
+        }
+
         if (await TryHandleSpacePreviewAsync(e))
         {
             return;
@@ -2062,21 +2189,6 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        if (control && e.Key is VirtualKey.C or VirtualKey.X)
-        {
-            e.Handled = true;
-            await RunAsync(() => CopySelectionToClipboardAsync(
-                cut: e.Key == VirtualKey.X));
-            return;
-        }
-
-        if (control && e.Key == VirtualKey.V)
-        {
-            e.Handled = true;
-            await RunAsync(PasteFromClipboardAsync);
-            return;
-        }
-
         if (e.Key == VirtualKey.F2 &&
             GetSelectedItems().FirstOrDefault() is { } renameTarget)
         {
@@ -2112,7 +2224,42 @@ public sealed partial class FileSurfaceContent :
         object sender,
         KeyRoutedEventArgs e)
     {
+        if (await TryHandleClipboardShortcutAsync(e))
+        {
+            return;
+        }
+
         await TryHandleSpacePreviewAsync(e);
+    }
+
+    internal async Task<bool> TryHandleClipboardShortcutAsync(
+        KeyRoutedEventArgs e)
+    {
+        if (e.Handled ||
+            e.OriginalSource is DependencyObject source &&
+            FileItemSelectionGeometry.HasAncestor<TextBox>(source) ||
+            !Win32Helper.IsKeyPressed(VirtualKey.Control))
+        {
+            return false;
+        }
+
+        bool shift = Win32Helper.IsKeyPressed(VirtualKey.Shift);
+        if (e.Key is VirtualKey.C or VirtualKey.X && !shift)
+        {
+            e.Handled = true;
+            await RunAsync(() => CopySelectionToClipboardAsync(
+                cut: e.Key == VirtualKey.X));
+            return true;
+        }
+
+        if (e.Key == VirtualKey.V)
+        {
+            e.Handled = true;
+            await RunAsync(PasteFromClipboardAsync);
+            return true;
+        }
+
+        return false;
     }
 
     private async Task<bool> TryHandleSpacePreviewAsync(KeyRoutedEventArgs e)
@@ -2286,10 +2433,27 @@ public sealed partial class FileSurfaceContent :
 
     private async Task PasteFromClipboardAsync()
     {
-        DataPackageView clipboard = Clipboard.GetContent();
-        string[] sourcePaths = GetPackagePaths(clipboard);
+        DataPackageView? clipboard = TryGetClipboardContent();
+        string[] sourcePaths = clipboard is null
+            ? []
+            : GetPackagePaths(clipboard);
+        bool move = clipboard?.RequestedOperation.HasFlag(
+            DataPackageOperation.Move) == true;
+
+        if (ShellClipboardHelper.TryGetFileDropList(
+                out string[] shellPaths,
+                out bool shellCut))
+        {
+            if (sourcePaths.Length == 0)
+            {
+                sourcePaths = shellPaths;
+            }
+
+            move |= shellCut;
+        }
+
         if (sourcePaths.Length == 0 &&
-            clipboard.Contains(StandardDataFormats.StorageItems))
+            clipboard?.Contains(StandardDataFormats.StorageItems) == true)
         {
             IReadOnlyList<IStorageItem> storageItems =
                 await clipboard.GetStorageItemsAsync();
@@ -2304,13 +2468,12 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        bool move = clipboard.RequestedOperation.HasFlag(
-            DataPackageOperation.Move);
         IReadOnlyList<string> completedSourcePaths = await ViewModel.ImportPathsAsync(
             sourcePaths,
             moveWhenMapped: move,
             useShellProgress: move);
         if (move &&
+            clipboard is not null &&
             TryGetString(clipboard.Properties, "DeskBoxSourceWidgetId")
                 is { Length: > 0 } sourceWidgetId &&
             App.Current?.WidgetManager is { } manager)
@@ -2328,6 +2491,31 @@ public sealed partial class FileSurfaceContent :
                 sourcePaths.Length),
             WidgetFeedbackSeverity.Success,
             move ? "file-move" : "file-paste"));
+    }
+
+    private static DataPackageView? TryGetClipboardContent()
+    {
+        try
+        {
+            return Clipboard.GetContent();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private bool CanPasteFromClipboard()
+    {
+        if (ShellClipboardHelper.HasFileDropList())
+        {
+            return true;
+        }
+
+        DataPackageView? clipboard = TryGetClipboardContent();
+        return clipboard is not null &&
+            (GetPackagePaths(clipboard).Length > 0 ||
+             clipboard.Contains(StandardDataFormats.StorageItems));
     }
 
     private static string[] GetPackagePaths(DataPackageView package)
@@ -2438,6 +2626,7 @@ public sealed partial class FileSurfaceContent :
         _isDisposed = true;
         _isReadyForReuse = false;
         _lifetimeCancellation.Cancel();
+        CancelAndResetTrackedImport();
         _lifetimeCancellation.Dispose();
         if (_isImportBusy)
         {

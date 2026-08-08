@@ -174,6 +174,120 @@ public sealed class FileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteTransferPlanAsync_ReportsRealByteProgress()
+    {
+        var service = new FileService();
+        string sourcePath = Path.Combine(_tempRoot, "progress-source.bin");
+        string destinationPath = Path.Combine(_tempRoot, "progress-destination.bin");
+        byte[] content = Enumerable.Range(0, 1024 * 1024 + 17)
+            .Select(index => (byte)(index % 251))
+            .ToArray();
+        await File.WriteAllBytesAsync(sourcePath, content);
+        var updates = new List<FileService.FileTransferProgress>();
+
+        var results = await service.ExecuteTransferPlanAsync(
+            [new FileService.FileTransferPlan(sourcePath, destinationPath)],
+            move: false,
+            progress: new InlineProgress<FileService.FileTransferProgress>(
+                updates.Add));
+
+        Assert.Single(results);
+        FileService.FileTransferProgress completed = Assert.Single(
+            updates.Where(update =>
+                update.Phase == FileService.FileTransferPhase.Completed));
+        Assert.Equal(content.LongLength, completed.TotalBytes);
+        Assert.Equal(content.LongLength, completed.BytesTransferred);
+        Assert.Equal(1, completed.CompletedItems);
+        Assert.Equal(100d, completed.Percentage);
+        Assert.Equal(content, await File.ReadAllBytesAsync(destinationPath));
+    }
+
+    [Fact]
+    public async Task ExecuteTransferPlanAsync_MovesFileWithProgressWithoutDeletingDestination()
+    {
+        var service = new FileService();
+        string sourcePath = Path.Combine(_tempRoot, "move-progress-source.txt");
+        string destinationPath = Path.Combine(_tempRoot, "move-progress-destination.txt");
+        const string content = "move progress must preserve the destination";
+        await File.WriteAllTextAsync(sourcePath, content);
+        long expectedBytes = new FileInfo(sourcePath).Length;
+        var updates = new List<FileService.FileTransferProgress>();
+
+        var results = await service.ExecuteTransferPlanAsync(
+            [new FileService.FileTransferPlan(sourcePath, destinationPath)],
+            move: true,
+            progress: new InlineProgress<FileService.FileTransferProgress>(
+                updates.Add));
+
+        Assert.Single(results);
+        Assert.False(File.Exists(sourcePath));
+        Assert.True(File.Exists(destinationPath));
+        Assert.Equal(content, await File.ReadAllTextAsync(destinationPath));
+        FileService.FileTransferProgress completed = Assert.Single(
+            updates.Where(update =>
+                update.Phase == FileService.FileTransferPhase.Completed));
+        Assert.Equal(expectedBytes, completed.BytesTransferred);
+        Assert.Equal(100d, completed.Percentage);
+    }
+
+    [Fact]
+    public async Task ExecuteTransferPlanAsync_MoveCollisionNeverDeletesExistingDestination()
+    {
+        var service = new FileService();
+        string sourcePath = Path.Combine(_tempRoot, "collision-source.txt");
+        string destinationPath = Path.Combine(_tempRoot, "collision-destination.txt");
+        await File.WriteAllTextAsync(sourcePath, "source");
+        await File.WriteAllTextAsync(destinationPath, "existing destination");
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            service.ExecuteTransferPlanAsync(
+                [new FileService.FileTransferPlan(sourcePath, destinationPath)],
+                move: true,
+                progress: new InlineProgress<FileService.FileTransferProgress>(
+                    _ => { })));
+
+        Assert.Equal("source", await File.ReadAllTextAsync(sourcePath));
+        Assert.Equal(
+            "existing destination",
+            await File.ReadAllTextAsync(destinationPath));
+    }
+
+    [Fact]
+    public async Task ExecuteTransferPlanAsync_CancelRemovesPartialCopy()
+    {
+        var service = new FileService();
+        string sourcePath = Path.Combine(_tempRoot, "cancel-source.bin");
+        string destinationPath = Path.Combine(_tempRoot, "cancel-destination.bin");
+        await using (FileStream source = File.Create(sourcePath))
+        {
+            source.SetLength(16L * 1024 * 1024);
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        var updates = new List<FileService.FileTransferProgress>();
+        var progress = new InlineProgress<FileService.FileTransferProgress>(update =>
+        {
+            updates.Add(update);
+            if (update.BytesTransferred > 0)
+            {
+                cancellation.Cancel();
+            }
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.ExecuteTransferPlanAsync(
+                [new FileService.FileTransferPlan(sourcePath, destinationPath)],
+                move: false,
+                progress: progress,
+                cancellationToken: cancellation.Token));
+
+        Assert.True(File.Exists(sourcePath));
+        Assert.False(File.Exists(destinationPath));
+        Assert.Contains(updates, update =>
+            update.Phase == FileService.FileTransferPhase.Canceled);
+    }
+
+    [Fact]
     public async Task ExecuteTransferPlanAsync_MovesDeepDirectoryWithoutMissingOrDuplicatingFiles()
     {
         var service = new FileService();
@@ -200,6 +314,31 @@ public sealed class FileServiceTests : IDisposable
         Assert.Equal("one", File.ReadAllText(Path.Combine(destinationDirectory, "level1", "one.txt")));
         Assert.Equal("two", File.ReadAllText(Path.Combine(destinationDirectory, "level1", "level2", "two.txt")));
         Assert.Equal("three", File.ReadAllText(Path.Combine(destinationDirectory, "level1", "level2", "level3", "three.txt")));
+    }
+
+    [Fact]
+    public async Task ExecuteTransferPlanAsync_ShellMoveCompletesAndReportsResult()
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "shell-source")).FullName;
+        string destinationDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "shell-destination")).FullName;
+        string sourcePath = Path.Combine(sourceDirectory, "note.txt");
+        string destinationPath = Path.Combine(destinationDirectory, "note.txt");
+        File.WriteAllText(sourcePath, "content");
+
+        var results = await service.ExecuteTransferPlanAsync(
+            [new FileService.FileTransferPlan(sourcePath, destinationPath)],
+            move: true,
+            useShellProgress: true,
+            ownerWindowHandle: IntPtr.Zero);
+
+        var result = Assert.Single(results);
+        Assert.Equal(sourcePath, result.SourcePath);
+        Assert.Equal(destinationPath, result.DestinationPath);
+        Assert.False(File.Exists(sourcePath));
+        Assert.Equal("content", File.ReadAllText(destinationPath));
     }
 
     [Fact]
@@ -335,5 +474,10 @@ public sealed class FileServiceTests : IDisposable
 
             Directory.Delete(_tempRoot, recursive: true);
         }
+    }
+
+    private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
+    {
+        public void Report(T value) => callback(value);
     }
 }

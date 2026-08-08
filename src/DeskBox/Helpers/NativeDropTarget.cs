@@ -103,10 +103,6 @@ public sealed class NativeDropTarget : IDisposable
     private const uint TYMED_ISTREAM = 4;
     private const int S_OK = 0;
     private const int S_FALSE = 1;
-    private const uint DROPEFFECT_NONE = 0;
-    private const uint DROPEFFECT_COPY = 1;
-    private const uint DROPEFFECT_MOVE = 2;
-    private const uint DROPEFFECT_LINK = 4;
     private const uint FILE_ATTRIBUTE_DIRECTORY = 0x10;
 
     // ── P/Invoke ──
@@ -254,23 +250,29 @@ public sealed class NativeDropTarget : IDisposable
 
         public int DragEnter(IntPtr pDataObj, uint grfKeyState, POINT pt, ref uint pdwEffect)
         {
+            uint allowedEffects = pdwEffect;
             _owner.HasVirtualFileData = _owner.TryHasVirtualFileData(pDataObj);
             _owner.HasFileData = _owner.HasVirtualFileData || _owner.TryHasHDropData(pDataObj);
             _owner.DragEnterEvent?.Invoke(pt.X, pt.Y, _owner.HasFileData);
 
-            pdwEffect = _owner.HasFileData
-                ? _owner.HasVirtualFileData ? DROPEFFECT_COPY : DROPEFFECT_COPY | DROPEFFECT_MOVE
-                : DROPEFFECT_NONE;
+            pdwEffect = NativeDropEffectPolicy.ResolveFeedbackEffect(
+                _owner.HasFileData,
+                _owner.HasVirtualFileData,
+                grfKeyState,
+                allowedEffects);
             return S_OK;
         }
 
         public int DragOver(uint grfKeyState, POINT pt, ref uint pdwEffect)
         {
+            uint allowedEffects = pdwEffect;
             _owner.DragOverEvent?.Invoke(pt.X, pt.Y);
 
-            pdwEffect = _owner.HasFileData
-                ? _owner.HasVirtualFileData ? DROPEFFECT_COPY : DROPEFFECT_COPY | DROPEFFECT_MOVE
-                : DROPEFFECT_NONE;
+            pdwEffect = NativeDropEffectPolicy.ResolveFeedbackEffect(
+                _owner.HasFileData,
+                _owner.HasVirtualFileData,
+                grfKeyState,
+                allowedEffects);
             return S_OK;
         }
 
@@ -284,6 +286,7 @@ public sealed class NativeDropTarget : IDisposable
 
         public int Drop(IntPtr pDataObj, uint grfKeyState, POINT pt, ref uint pdwEffect)
         {
+            uint allowedEffects = pdwEffect;
             var (paths, containsTemporaryFiles) = _owner.TryExtractFilePaths(pDataObj);
             _owner.HasFileData = false;
             _owner.HasVirtualFileData = false;
@@ -295,13 +298,13 @@ public sealed class NativeDropTarget : IDisposable
             if (paths.Count > 0)
             {
                 _owner.DropEvent?.Invoke(paths, pt.X, pt.Y, containsTemporaryFiles);
-                pdwEffect = containsTemporaryFiles
-                    ? DROPEFFECT_COPY
-                    : DROPEFFECT_COPY | DROPEFFECT_MOVE;
+                pdwEffect = NativeDropEffectPolicy.ResolveCompletionEffect(
+                    hasExtractedPaths: true,
+                    allowedEffects);
             }
             else
             {
-                pdwEffect = DROPEFFECT_NONE;
+                pdwEffect = NativeDropEffectPolicy.None;
             }
 
             return S_OK;

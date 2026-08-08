@@ -194,6 +194,11 @@ public sealed partial class MusicWidgetViewModel
 
     private Color GetMusicAccentColor()
     {
+        if (App.Current.ThemeService?.UsesSystemAccentColor == false)
+        {
+            return App.Current.ThemeService.GetEffectiveAccentColor();
+        }
+
         if (UseArtworkBackdrop && _hasArtworkColor)
         {
             return _artworkColor;

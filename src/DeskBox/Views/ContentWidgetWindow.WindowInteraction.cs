@@ -72,8 +72,14 @@ public sealed partial class ContentWidgetWindow
         }
     }
 
-    private void RootGrid_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    private async void RootGrid_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (CurrentContent is FileSurfaceContent fileSurface &&
+            await fileSurface.TryHandleClipboardShortcutAsync(e))
+        {
+            return;
+        }
+
         if (e.Key != Windows.System.VirtualKey.Tab ||
             !Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
         {
@@ -348,7 +354,31 @@ public sealed partial class ContentWidgetWindow
         UpdatePersistedVisibility(isVisible: true, persistVisibility);
 
         ApplyBackdropPreference();
-        _contentHost.OnWindowVisibilityChanged(true);
+        NotifyCompactHostVisibilityChanged(true);
+        QueueVisibleContentResume();
+    }
+
+    private void QueueVisibleContentResume()
+    {
+        int generation = ++_contentVisibilityGeneration;
+        RunAfterCompactExpansionReady(() =>
+        {
+            if (!Visible || generation != _contentVisibilityGeneration || IsClosing)
+            {
+                return;
+            }
+
+            _contentHost.OnWindowVisibilityChanged(true);
+            PerformanceLogger.Mark(
+                "WidgetVisibleContentResumed",
+                $"kind={_config.WidgetKind} id={_config.Id}");
+        });
+    }
+
+    private void NotifyVisibleContentSuspended()
+    {
+        _contentVisibilityGeneration++;
+        _contentHost.OnWindowVisibilityChanged(false);
     }
 
     private void UpdatePersistedVisibility(bool isVisible, bool persistVisibility)
@@ -371,5 +401,7 @@ public sealed partial class ContentWidgetWindow
         IsAtDesktopLayer = true;
         WidgetLayerService.MoveToDesktopBottom(HWnd);
         App.LogVerbose($"[ZOrder] Content PushToBottom hwnd=0x{HWnd.ToInt64():X}");
+        App.Current.WidgetManager?.QueueIdleWidgetZOrderNormalization(
+            "content-pushed-to-desktop");
     }
 }

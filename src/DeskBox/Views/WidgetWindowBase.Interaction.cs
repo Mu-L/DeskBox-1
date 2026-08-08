@@ -172,6 +172,8 @@ public abstract partial class WidgetWindowBase
         IsAtDesktopLayer = true;
         IntPtr foreground = WidgetLayerService.ClearTopMostPreservingForeground(HWnd);
         App.LogVerbose($"[ZOrder] {LogPrefix} ClearTopMostOnly hwnd=0x{HWnd.ToInt64():X} fg=0x{foreground.ToInt64():X}");
+        App.Current.WidgetManager?.QueueIdleWidgetZOrderNormalization(
+            $"{LogPrefix}-desktop-layer-restored");
     }
 
     // ── Drag logic ─────────────────────────────────────────────

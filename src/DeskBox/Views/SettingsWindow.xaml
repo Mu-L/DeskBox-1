@@ -326,28 +326,6 @@ Text="DeskBox" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
-                    Tag="CapsuleMode"
-                    svc:Localized.Key="Settings.Nav.CapsuleMode">
-                    <NavigationViewItem.Icon>
-                        <ImageIcon Style="{StaticResource SettingsNavImageIconStyle}">
-                            <ImageIcon.Source>
-                                <media:SvgImageSource UriSource="ms-appx:///Assets/SettingsNavIcons/capsule-mode.svg" />
-                            </ImageIcon.Source>
-                        </ImageIcon>
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
-                    Tag="WidgetGroups"
-                    svc:Localized.Key="Settings.Nav.WidgetGroups">
-                    <NavigationViewItem.Icon>
-                        <ImageIcon Style="{StaticResource SettingsNavImageIconStyle}">
-                            <ImageIcon.Source>
-                                <media:SvgImageSource UriSource="ms-appx:///Assets/SettingsNavIcons/widget-groups.svg" />
-                            </ImageIcon.Source>
-                        </ImageIcon>
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
                     x:Name="FileWidgetNavItem"
                     Tag="AppearanceDetail"
                     svc:Localized.Key="Settings.Nav.FileWidget">
@@ -1014,6 +992,22 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     <ComboBox Grid.Column="1" MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableManagedDropActionOptions}" controls:SettingsComboBox.Value="{Binding SelectedManagedDropAction, Mode=TwoWay}" />
                                 </Grid>
                                 <TextBox IsReadOnly="True" Text="{Binding ManagedStorageRootPath, Mode=OneWay}" TextWrapping="NoWrap" />
+                                <Border
+                                    x:Name="ManagedStoragePathWarningBorder"
+                                    Padding="12,9"
+                                    BorderBrush="#66FFB900"
+                                    BorderThickness="1"
+                                    CornerRadius="7"
+                                    Visibility="Collapsed">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                        <FontIcon FontSize="14" Foreground="#FFFFB900" Glyph="&#xE7BA;" />
+                                        <TextBlock
+                                            x:Name="ManagedStoragePathWarningText"
+                                            Grid.Column="1"
+                                            Style="{StaticResource SettingDescriptionTextStyle}"
+                                            TextWrapping="Wrap" />
+                                    </Grid>
+                                </Border>
                                 <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding QuickAccessStatusText}" />
                                 <StackPanel x:Name="PathActionsPanel" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                                     <Button x:Name="OpenPathButton" Click="OpenManagedStoragePathButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.ManagedPath.OpenTooltip">
@@ -1233,6 +1227,19 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                     Style="{StaticResource SectionPanelStyle}">
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.Interaction" />
                     <StackPanel Margin="0,8,0,0" Spacing="4">
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.WidgetLayerMode.Description"
+                            svc:Localized.HeaderKey="Settings.WidgetLayerMode.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE81E;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableWidgetLayerModeOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedWidgetLayerMode, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
                         <Border Style="{StaticResource SettingsGroupStyle}">
                             <Button Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="InteractionHotkeySettings">
                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
@@ -1331,9 +1338,9 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE742;" /></toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding ResizeSnapEnabled, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.WidgetLayerMode.Description" svc:Localized.HeaderKey="Settings.WidgetLayerMode.Title">
-                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE81E;" /></toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableWidgetLayerModeOptions}" controls:SettingsComboBox.Value="{Binding SelectedWidgetLayerMode, Mode=TwoWay}" />
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.ShowDesktopVisibility.Description" svc:Localized.HeaderKey="Settings.ShowDesktopVisibility.Title">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7F4;" /></toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding KeepWidgetsVisibleOnShowDesktop, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>

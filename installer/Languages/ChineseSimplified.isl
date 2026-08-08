@@ -321,6 +321,13 @@ WizardUninstalling=卸载状态
 [CustomMessages]
 CreateDesktopIcon=创建桌面快捷方式
 AdditionalIcons=附加快捷方式
-WindowsIntegration=Windows 集成
-AutoStart=开机时自动启动 DeskBox
+NameAndVersion=%1 版本 %2
+CreateQuickLaunchIcon=创建快速启动栏快捷方式
+ProgramOnTheWeb=访问 %1 的网站
+UninstallProgram=卸载 %1
 LaunchProgram=启动 %1
+AssocFileExtension=将 %1 与 %2 文件扩展名关联
+AssocingFileExtension=正在将 %1 与 %2 文件扩展名关联...
+AutoStartProgramGroupDescription=启动：
+AutoStartProgram=自动启动 %1
+AddonHostProgramNotFound=在所选文件夹中找不到 %1。%n%n是否仍要继续？

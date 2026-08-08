@@ -39,6 +39,8 @@ public sealed partial class WidgetShell : UserControl
             true);
     private ScalarKeyFrameAnimation? _contentDropHighlightAnimation;
     private bool _isContentDropHighlightActive;
+    private bool _isCompactCompositionTransitionActive;
+    private double _lastCompactTransitionCornerRadius = double.NaN;
 
     public void ShowFeedback(WidgetFeedbackRequest request)
     {
@@ -163,6 +165,7 @@ public sealed partial class WidgetShell : UserControl
     private bool _isResponsiveLayoutTransitionActive;
     private double _responsiveTargetContentWidth;
     private double _responsiveTargetContentHeight;
+    private bool _isTransitionContentLayoutFrozen;
     private WidgetCompactWidthTier _compactWidthTier = WidgetCompactWidthTier.Standard;
     private bool _isPointerOverShell;
     private bool _isCollapsed;
@@ -1129,14 +1132,11 @@ public sealed partial class WidgetShell : UserControl
     public void BeginResponsiveLayoutTransition(
         bool isCollapsing,
         double targetWindowWidth,
-        double targetWindowHeight)
+        double targetWindowHeight,
+        WidgetCompactExpansionAnchor expansionAnchor = WidgetCompactExpansionAnchor.LeftTop,
+        double? frozenWindowWidth = null,
+        double? frozenWindowHeight = null)
     {
-        if (_responsiveLayoutContent is null)
-        {
-            _isResponsiveLayoutTransitionActive = false;
-            return;
-        }
-
         double titleHeight = IsOverlayChromeMode
             ? 0
             : _titleBarRowHeight.GridUnitType == GridUnitType.Pixel
@@ -1145,34 +1145,81 @@ public sealed partial class WidgetShell : UserControl
         _responsiveTargetContentWidth = Math.Max(0, targetWindowWidth);
         _responsiveTargetContentHeight = Math.Max(0, targetWindowHeight - titleHeight);
         _isResponsiveLayoutTransitionActive = true;
-        _responsiveLayoutContent.BeginResponsiveLayoutTransition(
-            _responsiveTargetContentWidth,
-            _responsiveTargetContentHeight,
-            isCollapsing);
+        FreezeTransitionContentLayout(
+            Math.Max(0, frozenWindowWidth ?? targetWindowWidth),
+            Math.Max(0, (frozenWindowHeight ?? targetWindowHeight) - titleHeight),
+            expansionAnchor);
+        _responsiveLayoutContent?.BeginResponsiveLayoutTransition(
+                _responsiveTargetContentWidth,
+                _responsiveTargetContentHeight,
+                isCollapsing);
     }
 
     public void CompleteResponsiveLayoutTransition()
     {
-        if (!_isResponsiveLayoutTransitionActive || _responsiveLayoutContent is null)
+        if (!_isResponsiveLayoutTransitionActive)
         {
             return;
         }
 
-        _responsiveLayoutContent.CompleteResponsiveLayoutTransition(
-            _responsiveTargetContentWidth,
-            _responsiveTargetContentHeight);
+        RestoreTransitionContentLayout();
+        _responsiveLayoutContent?.CompleteResponsiveLayoutTransition(
+                _responsiveTargetContentWidth,
+                _responsiveTargetContentHeight);
         _isResponsiveLayoutTransitionActive = false;
     }
 
     public void CancelResponsiveLayoutTransition()
     {
-        if (!_isResponsiveLayoutTransitionActive || _responsiveLayoutContent is null)
+        if (!_isResponsiveLayoutTransitionActive)
         {
             return;
         }
 
-        _responsiveLayoutContent.CancelResponsiveLayoutTransition();
+        RestoreTransitionContentLayout();
+        _responsiveLayoutContent?.CancelResponsiveLayoutTransition();
         _isResponsiveLayoutTransitionActive = false;
+    }
+
+    private void FreezeTransitionContentLayout(
+        double contentWidth,
+        double contentHeight,
+        WidgetCompactExpansionAnchor expansionAnchor)
+    {
+        if (contentWidth <= 0 || contentHeight <= 0)
+        {
+            return;
+        }
+
+        bool anchorsRight = expansionAnchor is
+            WidgetCompactExpansionAnchor.RightTop or
+            WidgetCompactExpansionAnchor.RightBottom;
+        bool anchorsBottom = expansionAnchor is
+            WidgetCompactExpansionAnchor.LeftBottom or
+            WidgetCompactExpansionAnchor.RightBottom;
+        ShellContentPresenter.Width = contentWidth;
+        ShellContentPresenter.Height = contentHeight;
+        ShellContentPresenter.HorizontalAlignment = anchorsRight
+            ? HorizontalAlignment.Right
+            : HorizontalAlignment.Left;
+        ShellContentPresenter.VerticalAlignment = anchorsBottom
+            ? VerticalAlignment.Bottom
+            : VerticalAlignment.Top;
+        _isTransitionContentLayoutFrozen = true;
+    }
+
+    private void RestoreTransitionContentLayout()
+    {
+        if (!_isTransitionContentLayoutFrozen)
+        {
+            return;
+        }
+
+        ShellContentPresenter.Width = double.NaN;
+        ShellContentPresenter.Height = double.NaN;
+        ShellContentPresenter.HorizontalAlignment = HorizontalAlignment.Stretch;
+        ShellContentPresenter.VerticalAlignment = VerticalAlignment.Stretch;
+        _isTransitionContentLayoutFrozen = false;
     }
 
     public void SetCollapsed(bool collapsed, string contentMode)
@@ -1219,7 +1266,8 @@ public sealed partial class WidgetShell : UserControl
         double compactOuterRadius,
         double compactInnerRadius,
         double compactMediaRadius,
-        string contentMode)
+        string contentMode,
+        WidgetCompactExpansionAnchor expansionAnchor = WidgetCompactExpansionAnchor.LeftTop)
     {
         if (!_isCollapsed ||
             _isCompactTransitionActive ||
@@ -1238,7 +1286,10 @@ public sealed partial class WidgetShell : UserControl
             BeginResponsiveLayoutTransition(
                 isCollapsing: false,
                 targetWindowWidth,
-                targetWindowHeight);
+                targetWindowHeight,
+                expansionAnchor,
+                frozenWindowWidth: targetWindowWidth,
+                frozenWindowHeight: targetWindowHeight);
             prepared = PrepareCompactTransition(
                 collapsed: false,
                 expandedOuterRadius,
@@ -1273,8 +1324,13 @@ public sealed partial class WidgetShell : UserControl
             ShellContentPresenter.Arrange(
                 new Windows.Foundation.Rect(0, 0, contentSize.Width, contentSize.Height));
 
-            return ShellContentPresenter.ActualWidth > 0 &&
-                ShellContentPresenter.ActualHeight > 0;
+            // ActualWidth/ActualHeight are constrained by the still-compact
+            // native host and can remain zero even though the expanded visual
+            // tree completed Measure/Arrange at the requested target size.
+            // Reaching this point without an exception is the readiness signal;
+            // treating host-clipped ActualSize as failure caused the same hidden
+            // layout to repeat every retry interval until the user expanded it.
+            return true;
         }
         finally
         {
@@ -1323,11 +1379,30 @@ public sealed partial class WidgetShell : UserControl
 
         CollapsedChromeLayer.Visibility = Visibility.Visible;
         CollapsedChromeLayer.IsHitTestVisible = false;
-        CollapsedChromeLayer.Opacity = collapsed ? 0 : 1;
-        TitleBarGrid.Opacity = collapsed ? 1 : 0;
-        ShellContentPresenter.Opacity = collapsed ? 1 : 0;
+        CollapsedChromeLayer.Opacity = 1;
+        // Keep the real expanded tree visible while the HWND grows. The compact
+        // layer sits above it and fades away, so newly revealed pixels already
+        // contain live content instead of an empty placeholder that only appears
+        // when the transition completes.
+        TitleBarGrid.Opacity = 1;
+        ShellContentPresenter.Opacity = 1;
+        CompactIdentityHost.Opacity = collapsed ? 0 : 1;
+        CompactTextContainer.Opacity = collapsed ? 0 : 1;
+        CompactBadge.Opacity = collapsed ? 0 : 1;
+        CompactLiveIndicatorHost.Opacity = collapsed ? 0 : 1;
+        ElementCompositionPreview.SetIsTranslationEnabled(TitleBarGrid, true);
+        ElementCompositionPreview.SetIsTranslationEnabled(ShellContentPresenter, true);
+        ElementCompositionPreview.SetIsTranslationEnabled(CompactTextContainer, true);
+        TitleBarGrid.Translation = Vector3.Zero;
+        ShellContentPresenter.Translation = Vector3.Zero;
+        CompactTextContainer.Translation = collapsed
+            ? new Vector3(0, 3, 0)
+            : Vector3.Zero;
         ApplyCompactInnerCornerRadii();
         SetBackgroundCornerRadius(_transitionOuterCornerRadiusFrom);
+        _lastCompactTransitionCornerRadius = _transitionOuterCornerRadiusFrom;
+        _isCompactCompositionTransitionActive =
+            StartCompactCompositionTransition(collapsed);
         return true;
     }
 
@@ -1339,16 +1414,46 @@ public sealed partial class WidgetShell : UserControl
         }
 
         double value = Math.Clamp(progress, 0, 1);
-        (double compactOpacity, double expandedOpacity) =
-            _compactTransitionProfile.GetOpacity(collapsed, value);
-
+        double compactOpacity =
+            _compactTransitionProfile.GetCompactSurfaceOpacity(collapsed, value);
         CollapsedChromeLayer.Opacity = compactOpacity;
-        TitleBarGrid.Opacity = expandedOpacity;
-        ShellContentPresenter.Opacity = expandedOpacity;
-        SetBackgroundCornerRadius(Lerp(
+
+        // Expansion reveals the already-laid-out live tree as the physical
+        // window grows. Collapse may still fade that tree beneath the incoming
+        // compact layer, but the expand path must never hold it at opacity zero.
+        double liveContentOpacity =
+            _compactTransitionProfile.GetLiveContentOpacity(collapsed, value);
+        TitleBarGrid.Opacity = liveContentOpacity;
+        ShellContentPresenter.Opacity = liveContentOpacity;
+        float liveContentTranslationY = (float)
+            _compactTransitionProfile.GetLiveContentTranslationY(collapsed, value);
+        TitleBarGrid.Translation = new Vector3(0, liveContentTranslationY, 0);
+        ShellContentPresenter.Translation = new Vector3(0, liveContentTranslationY, 0);
+
+        double compactIdentityOpacity =
+            _compactTransitionProfile.GetCompactIdentityOpacity(collapsed, value);
+        double compactTextOpacity =
+            _compactTransitionProfile.GetCompactTextOpacity(collapsed, value);
+        CompactIdentityHost.Opacity = compactIdentityOpacity;
+        CompactTextContainer.Opacity = compactTextOpacity;
+        CompactBadge.Opacity = compactTextOpacity;
+        CompactLiveIndicatorHost.Opacity = compactTextOpacity;
+        CompactTextContainer.Translation = new Vector3(
+            0,
+            (float)(3 * (1 - compactTextOpacity)),
+            0);
+
+        double cornerRadius = Lerp(
             _transitionOuterCornerRadiusFrom,
             _transitionOuterCornerRadiusTo,
-            value));
+            value);
+        if (double.IsNaN(_lastCompactTransitionCornerRadius) ||
+            Math.Abs(cornerRadius - _lastCompactTransitionCornerRadius) >= 0.75 ||
+            value >= 1)
+        {
+            SetBackgroundCornerRadius(cornerRadius);
+            _lastCompactTransitionCornerRadius = cornerRadius;
+        }
 
         // Full-bleed background: fade out earlier during expand, fade in later during collapse
         bool hasFullBleed = _compactPresentation?.UseFullBleedBackground == true &&
@@ -1372,8 +1477,11 @@ public sealed partial class WidgetShell : UserControl
 
             CompactFullBleedBackground.Opacity = fullBleedOpacity;
             CompactFullBleedOverlay.Opacity = fullBleedOpacity;
-            FullBleedScaleTransform.ScaleX = fullBleedScale;
-            FullBleedScaleTransform.ScaleY = fullBleedScale;
+            if (!_isCompactCompositionTransitionActive)
+            {
+                FullBleedScaleTransform.ScaleX = fullBleedScale;
+                FullBleedScaleTransform.ScaleY = fullBleedScale;
+            }
         }
     }
 
@@ -1381,6 +1489,90 @@ public sealed partial class WidgetShell : UserControl
 
     private static double Lerp(double start, double end, double progress) =>
         start + ((end - start) * Math.Clamp(progress, 0, 1));
+
+    private bool StartCompactCompositionTransition(bool collapsed)
+    {
+        if (!_compactTransitionProfile.IsAnimated ||
+            _compactTransitionProfile.DurationMilliseconds <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            bool hasFullBleed = _compactPresentation?.UseFullBleedBackground == true &&
+                _compactPresentation.Thumbnail is not null;
+            if (hasFullBleed)
+            {
+                StartCompactScaleAnimation(
+                    CompactFullBleedBackground,
+                    progress => ResolveFullBleedTransition(collapsed, progress).Scale);
+            }
+
+            return hasFullBleed;
+        }
+        catch (Exception ex)
+        {
+            StopCompactCompositionTransitionAnimations();
+            App.LogVerbose($"[Compact] Composition visual fallback: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void StartCompactScaleAnimation(
+        FrameworkElement element,
+        Func<double, double> valueSelector)
+    {
+        Visual visual = ElementCompositionPreview.GetElementVisual(element);
+        visual.CenterPoint = new Vector3(visual.Size.X / 2, visual.Size.Y / 2, 0);
+        Vector3KeyFrameAnimation animation = visual.Compositor.CreateVector3KeyFrameAnimation();
+        animation.Duration = TimeSpan.FromMilliseconds(
+            _compactTransitionProfile.DurationMilliseconds);
+        const int sampleCount = 24;
+        for (int step = 0; step <= sampleCount; step++)
+        {
+            double timeProgress = step / (double)sampleCount;
+            double easedProgress = _compactTransitionProfile.EaseProgress(timeProgress);
+            float scale = (float)valueSelector(easedProgress);
+            animation.InsertKeyFrame((float)timeProgress, new Vector3(scale, scale, 1));
+        }
+
+        visual.StartAnimation("Scale", animation);
+    }
+
+    private static (double Opacity, double Scale) ResolveFullBleedTransition(
+        bool collapsed,
+        double progress)
+    {
+        if (collapsed)
+        {
+            double opacity = SmoothStep(Math.Clamp((progress - 0.5) / 0.5, 0, 1));
+            return (opacity, Lerp(0.98, 1, opacity));
+        }
+
+        double expandingOpacity = 1 - SmoothStep(Math.Clamp(progress / 0.35, 0, 1));
+        return (expandingOpacity, Lerp(1, 1.02, 1 - expandingOpacity));
+    }
+
+    private void StopCompactCompositionTransitionAnimations()
+    {
+        foreach (FrameworkElement element in new FrameworkElement[]
+        {
+            CollapsedChromeLayer,
+            TitleBarGrid,
+            ShellContentPresenter,
+            CompactFullBleedBackground,
+            CompactFullBleedOverlay
+        })
+        {
+            Visual visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.StopAnimation("Opacity");
+            visual.StopAnimation("Scale");
+            visual.Scale = Vector3.One;
+        }
+
+        _isCompactCompositionTransitionActive = false;
+    }
 
     public void CompleteCompactTransition(bool collapsed, string contentMode)
     {
@@ -1404,9 +1596,18 @@ public sealed partial class WidgetShell : UserControl
 
     private void ResetCompactTransitionVisuals()
     {
+        StopCompactCompositionTransitionAnimations();
+        _lastCompactTransitionCornerRadius = double.NaN;
         TitleBarGrid.Opacity = 1;
         ShellContentPresenter.Opacity = 1;
         CollapsedChromeLayer.Opacity = 1;
+        CompactIdentityHost.Opacity = 1;
+        CompactTextContainer.Opacity = 1;
+        CompactBadge.Opacity = 1;
+        CompactLiveIndicatorHost.Opacity = 1;
+        TitleBarGrid.Translation = Vector3.Zero;
+        ShellContentPresenter.Translation = Vector3.Zero;
+        CompactTextContainer.Translation = Vector3.Zero;
         CollapsedChromeLayer.IsHitTestVisible = true;
         FullBleedScaleTransform.ScaleX = 1;
         FullBleedScaleTransform.ScaleY = 1;
@@ -1587,7 +1788,9 @@ public sealed partial class WidgetShell : UserControl
             CompactBadgeText.Text = presentation.BadgeText;
             CompactBadge.Background = presentation.BadgeIsWarning
                 ? new SolidColorBrush(Windows.UI.Color.FromArgb(0xE6, 0xD8, 0x3B, 0x01))
-                : (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
+                : new SolidColorBrush(
+                    App.Current.ThemeService?.GetEffectiveAccentColor() ??
+                    AccentColorHelper.DefaultAccentColor);
         }
 
         // Visual effects
@@ -1959,7 +2162,8 @@ public sealed partial class WidgetShell : UserControl
                 else
                 {
                     // Normal: accent → green based on completion
-                    var accent = (Windows.UI.Color)Microsoft.UI.Xaml.Application.Current.Resources["SystemAccentColor"];
+                    var accent = App.Current.ThemeService?.GetEffectiveAccentColor()
+                        ?? AccentColorHelper.DefaultAccentColor;
                     byte r = (byte)(accent.R + (0x22 - accent.R) * value);
                     byte g = (byte)(accent.G + (0xC5 - accent.G) * value);
                     byte b = (byte)(accent.B + (0x5E - accent.B) * value);

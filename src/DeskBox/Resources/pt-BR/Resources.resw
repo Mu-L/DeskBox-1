@@ -46,7 +46,7 @@
     <comment>Nome de exibição do app, no menu Iniciar, Store e barra de tarefas.</comment>
   </data>
   <data name="AppDescription" xml:space="preserve">
-    <value>Ferramenta leve de organização de desktop para Windows 11</value>
+    <value>Ferramenta leve de organização de desktop para Windows 10/11</value>
     <comment>Descrição do app, na Store e nas propriedades do app.</comment>
   </data>
 </root>

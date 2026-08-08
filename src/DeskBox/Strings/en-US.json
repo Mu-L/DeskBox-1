@@ -239,9 +239,11 @@
     "Settings.TrayIcon.Black": "White",
     "Settings.TrayIcon.White": "Black",
     "Settings.WidgetLayerMode.Title": "Widget layer",
-    "Settings.WidgetLayerMode.Description": "Use dynamic summon, or keep widgets above desktop icons (experimental)",
+    "Settings.WidgetLayerMode.Description": "Use dynamic summon, or keep widgets above desktop icons",
     "Settings.WidgetLayerMode.Dynamic": "Dynamic layer",
-    "Settings.WidgetLayerMode.DesktopPinned": "Desktop pinned (experimental)",
+    "Settings.WidgetLayerMode.DesktopPinned": "Desktop pinned",
+    "Settings.ShowDesktopVisibility.Title": "Keep widgets visible with Win+D",
+    "Settings.ShowDesktopVisibility.Description": "Keeps widgets on the desktop when Show Desktop is used. Turn this off to hide them with regular windows. Desktop-pinned mode always keeps them visible.",
     "Settings.Language.Title": "Language",
     "Settings.Language.Description": "Change the DeskBox interface language",
     "Settings.SystemAccent.Title": "Use Windows accent color",
@@ -275,23 +277,23 @@
     "Settings.CollapseBehavior.Title": "Expand behavior",
     "Settings.CollapseBehavior.Description": "Expand by clicking, or automatically when the pointer rests over the title area",
     "Settings.CollapseBehavior.Expanded": "Keep expanded",
-    "Settings.CollapseBehavior.Click": "Click to expand (recommended)",
+    "Settings.CollapseBehavior.Click": "Click to expand",
     "Settings.CollapseBehavior.Smart": "Expand on hover",
-    "Settings.CollapseBehavior.Manual": "Click to expand (recommended)",
+    "Settings.CollapseBehavior.Manual": "Click to expand",
     "Settings.CollapseBehavior.Auto": "Expand on hover",
     "Settings.Capsule.WidthMode.Title": "Width relationship",
     "Settings.Capsule.WidthMode.Description": "Choose whether the capsule and expanded widget use the same width",
-    "Settings.Capsule.WidthMode.Aligned": "Keep same width (recommended)",
+    "Settings.Capsule.WidthMode.Aligned": "Keep same width",
     "Settings.Capsule.WidthMode.Independent": "Adjust independently",
     "Settings.CollapsedStyle.Title": "Capsule style",
     "Settings.CollapsedStyle.Description": "Pill uses a lower height and fully rounded ends; other styles control content density and width",
     "Settings.CollapsedStyle.Pill": "Pill",
-    "Settings.CollapsedStyle.Smart": "Smart (recommended)",
+    "Settings.CollapsedStyle.Smart": "Smart",
     "Settings.CollapsedStyle.Summary": "Summary",
     "Settings.CollapsedStyle.Minimal": "Minimal",
     "Settings.CompactContent.Title": "Show when collapsed",
     "Settings.CompactContent.Description": "Show key information, a brief summary, or only the icon and title",
-    "Settings.CompactContent.Smart": "Key information (recommended)",
+    "Settings.CompactContent.Smart": "Key information",
     "Settings.CompactContent.Summary": "Brief summary",
     "Settings.CompactContent.Minimal": "Icon and title only",
     "Settings.CompactPrivacy.Title": "Hide content details",
@@ -314,14 +316,14 @@
     "Settings.Capsule.Placement.Right": "Right of screen",
     "Settings.Capsule.Direction.Title": "Advanced direction",
     "Settings.Capsule.Direction.Description": "Auto chooses horizontal or vertical from the bar position and normally needs no adjustment",
-    "Settings.Capsule.Direction.Auto": "Auto (recommended)",
+    "Settings.Capsule.Direction.Auto": "Auto",
     "Settings.Capsule.Direction.Horizontal": "Horizontal",
     "Settings.Capsule.Direction.Vertical": "Vertical",
     "Settings.Capsule.Spacing.Title": "Capsule spacing",
     "Settings.Capsule.Spacing.Description": "Adjust the distance between neighboring capsules in the combined bar",
     "Settings.Capsule.Animation.Title": "Expand and collapse animation",
     "Settings.Capsule.Animation.Description": "Choose how the transition feels when capsules expand and collapse",
-    "Settings.Capsule.Animation.Smooth": "Standard (recommended)",
+    "Settings.Capsule.Animation.Smooth": "Standard",
     "Settings.Capsule.Animation.Slow": "Relaxed",
     "Settings.Capsule.Animation.Snappy": "Quick",
     "Settings.Capsule.Animation.Custom": "Custom",
@@ -337,14 +339,14 @@
     "Settings.Capsule.HoverResponse.Title": "Hover response",
     "Settings.Capsule.HoverResponse.Description": "Control how long the pointer rests over the title before expanding and how long it waits before collapsing",
     "Settings.Capsule.HoverResponse.Sensitive": "Sensitive",
-    "Settings.Capsule.HoverResponse.Balanced": "Balanced (recommended)",
+    "Settings.Capsule.HoverResponse.Balanced": "Balanced",
     "Settings.Capsule.HoverResponse.PreventAccidental": "Prevent accidental expansion",
     "Settings.Capsule.HoverResponse.Custom": "Custom",
     "Settings.Capsule.Appearance.Title": "Capsule appearance",
     "Settings.Capsule.Appearance.Description": "Adjust how media is presented inside capsules",
     "Settings.Capsule.MediaCorner.Title": "Music artwork corners",
     "Settings.Capsule.MediaCorner.Description": "Only adjusts artwork corners inside music capsules without changing the widget shape",
-    "Settings.Capsule.MediaCorner.FollowWidget": "Follow widget (recommended)",
+    "Settings.Capsule.MediaCorner.FollowWidget": "Follow widget",
     "Settings.Capsule.MediaCorner.Square": "Square",
     "Settings.Capsule.MediaCorner.Small": "Small radius",
     "Settings.Capsule.MediaCorner.Round": "Round",
@@ -377,9 +379,9 @@
     "Settings.Density.Title": "Display density",
     "Settings.Density.Description": "Choose compact, standard, or relaxed, then expand for individual controls",
     "Settings.Density.Compact": "Compact",
-    "Settings.Density.Standard": "Standard (recommended)",
+    "Settings.Density.Standard": "Standard",
     "Settings.Density.Relaxed": "Relaxed",
-    "Settings.Density.Custom": "Custom (expand to adjust)",
+    "Settings.Density.Custom": "Custom",
     "Settings.Density.Scale.Title": "Overall density",
     "Settings.Density.Scale.Description": "Adjust row spacing and padding in Todo, Notes, and file lists",
     "Settings.MaterialIntensity.Title": "Material intensity",
@@ -412,9 +414,9 @@
     "Settings.WidgetTitleIcon.Color": "Color",
     "Settings.WidgetTitleIcon.Hidden": "Hidden",
     "Settings.WidgetTitleIcon.TextLabel": "Text label",
-    "WidgetTitleIcon.Label.Default": "Box",
-    "WidgetTitleIcon.Label.ManagedStorage": "Store",
-    "WidgetTitleIcon.Label.MappedFolder": "Map",
+    "WidgetTitleIcon.Label.Default": "File widget",
+    "WidgetTitleIcon.Label.ManagedStorage": "Storage folder",
+    "WidgetTitleIcon.Label.MappedFolder": "Folder mapping",
     "WidgetTitleIcon.Label.QuickCapture": "Note",
     "WidgetTitleIcon.Label.Todo": "Todo",
     "WidgetTitleIcon.Label.Music": "Music",
@@ -459,9 +461,9 @@
     "Settings.Animation.Easing.Strong": "Strong",
     "Settings.Animation.Preset.None": "Off",
     "Settings.Animation.Preset.Gentle": "Gentle",
-    "Settings.Animation.Preset.Standard": "Standard (recommended)",
+    "Settings.Animation.Preset.Standard": "Standard",
     "Settings.Animation.Preset.Emphasized": "Emphasized",
-    "Settings.Animation.Preset.Custom": "Custom (expand to adjust)",
+    "Settings.Animation.Preset.Custom": "Custom",
     "Settings.Opacity.Title": "Background opacity",
     "Settings.Opacity.Description": "Adjust how much of the background shows through acrylic materials",
     "Settings.IconSize.Title": "Icon size",
@@ -761,11 +763,11 @@
     "Settings.Section.Maintenance": "Diagnostics & Maintenance",
     "Settings.AutoStart.Title": "Launch at startup",
     "Settings.AutoStart.Description": "Start DeskBox in the background after Windows sign-in",
-    "Settings.Onboarding.Title": "Onboarding",
-    "Settings.Onboarding.Description": "Review storage and setup",
-    "Settings.Onboarding.Tooltip": "Open DeskBox onboarding",
+    "Settings.Onboarding.Title": "Getting started",
+    "Settings.Onboarding.Description": "Review file storage, folder mapping, file safety, and tray actions",
+    "Settings.Onboarding.Tooltip": "Open the DeskBox getting-started guide",
     "Settings.DataBackup.Title": "Settings & content backup",
-    "Settings.DataBackup.Description": "Settings, widgets, Todo, and Quick Capture; file widgets excluded",
+    "Settings.DataBackup.Description": "Includes settings, widget configurations, Quick Capture, Todo, and attachments stored by DeskBox; excludes file widgets and actual files in storage folders",
     "Settings.DataBackup.Export": "Export backup",
     "Settings.DataBackup.Tooltip": "Export DeskBox settings, Todo, and Quick Capture as an integrity-checked ZIP backup",
     "Settings.DataBackup.Restore": "Restore backup",
@@ -1001,15 +1003,23 @@
     "Onboarding.Start": "Get Started",
     "Onboarding.Reconfigure": "Reconfigure",
     "Onboarding.Intro.Title": "DeskBox",
-    "Onboarding.Intro.Body": "Add a lightweight organizing layer to the Windows desktop for viewing, storing, and quickly accessing everyday content.",
+    "Onboarding.Intro.Body": "Organize files in desktop widgets.",
     "Onboarding.Step1.Eyebrow": "Welcome",
     "Onboarding.Step1.Title": "A lightweight organizing layer on your desktop",
     "Onboarding.Step1.Body": "DeskBox doesn't replace your Windows desktop. It puts files, search, and everyday tools into lightweight widgets — visible when you need them, quiet when you don't.",
     "Onboarding.Step1.Hint1": "Doesn't replace Windows desktop — every action is reversible",
     "Onboarding.Step1.Hint2": "Widgets can be freely moved and resized",
-    "Onboarding.Step2.Eyebrow": "Feature Widgets",
-    "Onboarding.Step2.Title": "Add more tools when you are ready",
-    "Onboarding.Step2.Body": "Start with file widgets and learn the basics. Add Todo, Quick Capture, Music, Weather, or Global Search later when you need them.",
+  "Onboarding.Step2.Eyebrow": "CREATE WIDGETS",
+  "Onboarding.Step2.Title": "Create more widgets from the tray",
+  "Onboarding.Step2.Body": "Right-click the DeskBox icon in the taskbar notification area whenever you want to create a widget.",
+  "Onboarding.Step2.TrayActionTitle": "Right-click the DeskBox tray icon",
+  "Onboarding.Step2.TrayActionBody": "If it is hidden, first open Show hidden icons on the taskbar",
+  "Onboarding.Step2.RightClick": "Right-click",
+  "Onboarding.Step2.NewWidgetTitle": "New widget",
+  "Onboarding.Step2.NewWidgetBody": "Collect files dragged in from the desktop",
+    "Onboarding.Step2.ConnectFolderTitle": "Folder mapping",
+  "Onboarding.Step2.ConnectFolderBody": "Show the contents of an existing folder",
+  "Onboarding.Step2.FeatureHint": "Enable Todo, Quick Capture, and other feature widgets as needed in Settings",
     "Onboarding.Step2.Hint1": "You can add or remove feature widgets anytime in Settings",
     "Onboarding.Step2.FeatureListTitle": "Optional feature widgets",
     "Onboarding.Step2.FeatureList": "Todo · Quick Capture · Music · Weather · Global Search",
@@ -1053,9 +1063,9 @@
     "Onboarding.Step4.AutoLocationSubOption": "Auto-detect my location",
     "Onboarding.Step5.Eyebrow": "Ready",
     "Onboarding.Step5.Title": "You're all set",
-    "Onboarding.Step5.Body": "An empty file widget has been created on your desktop. Try dragging some files into it.",
+  "Onboarding.Step5.Body": "An empty file widget is ready on the right side of your screen. Try dragging some files into it.",
     "Onboarding.Step5.Hint1": "Drag desktop files into a widget to organize instantly",
-    "Onboarding.Step5.Hint2": "Right-click the tray icon for more options",
+  "Onboarding.Step5.Hint2": "Need another widget? Right-click the DeskBox tray icon and choose New widget",
     "Onboarding.Step5.HotkeyTitle": "Global hotkey",
     "Onboarding.Step5.HotkeyDescription": "Press the hotkey to quickly show or hide all widgets",
     "Onboarding.Step5.HotkeyChange": "Change",
@@ -1138,8 +1148,8 @@
     "JumpList.NewFolderWidget": "New Folder Widget",
     "JumpList.OpenSettings": "Open Settings",
     "JumpList.OpenStorage": "Open Storage Folder",
-    "Widget.DefaultName": "Deskbox",
-    "Widget.DefaultNameShort": "Deskbox",
+    "Widget.DefaultName": "DeskBox",
+    "Widget.DefaultNameShort": "DeskBox",
     "Widget.DefaultDesktopName": "My Desktop",
     "Widget.ManagedFolderBaseName": "Managed Widget",
     "Widget.MappedShortcutBaseName": "Mapped Folder",
@@ -1147,13 +1157,23 @@
     "Widget.Migration.Description": "Please wait",
     "Widget.Import.Title": "Importing",
     "Widget.Import.Description": "Processing dropped files",
+    "Widget.Import.Preparing": "Preparing import…",
+    "Widget.Import.Finalizing": "Finishing import…",
+    "Widget.Import.Completed": "Import complete",
+    "Widget.Import.Canceled": "Import canceled",
+    "Widget.Import.Failed": "Import failed",
+    "Widget.Import.Failed.Description": "Some files may not have been imported. Check the error message.",
+    "Widget.Import.Canceling": "Canceling…",
+    "Widget.Import.Canceling.Description": "Removing unfinished files",
+    "Widget.Import.Progress.Items": "{0}/{1} items",
+    "Widget.Import.Progress.Remaining": "{0} remaining",
     "Widget.NewFolderName": "New Folder",
     "Widget.Mode.Managed": "Managed",
     "Widget.Mode.Mapped": "Mapped",
     "Widget.ModeInfo": "Widget type: {0} widget",
     "Widget.Mode.ManagedDescription": "Managed widget. Dropped files are automatically organized into the default storage path.",
     "Widget.Mode.MappedDescription": "Folder mapping widget. It directly displays the contents of a selected folder.",
-    "Widget.Empty.ManagedTitle": "Nothing stored yet",
+    "Widget.Empty.ManagedTitle": "No files here yet",
     "Widget.Empty.MappedTitle": "This folder is empty",
     "Widget.Empty.ManagedText": "Drop files here and DeskBox will automatically {0} them to {1}.",
     "Widget.Empty.MappedText": "Contents from {0} will appear here.",
@@ -1290,13 +1310,16 @@
     "Widget.MovedToRecycleBin": "Moved {0} item(s) to Recycle Bin",
     "Widget.MovedBackToDesktop": "Moved {0} item(s) back to Desktop",
     "Widget.MovedToDesktop": "Moved {0} item(s) to Desktop",
-    "Widget.DeleteWidgetTitle": "Delete \"{0}\"",
-    "Widget.DeleteWidgetNote": "Only remove the widget. Original files stay untouched.",
-    "Widget.DeleteWidgetConfirm": "Delete Widget",
-    "Widget.DeleteManagedInfo": "Choose how to handle the managed folder",
-    "Widget.KeepManagedFolder": "Keep managed folder",
-    "Widget.MoveBackThenDeleteFolder": "Move contents back, then delete empty folder",
-    "Widget.DeleteFolderToRecycleBin": "Delete folder and move files to Recycle Bin",
+    "Widget.DeleteWidgetTitle": "Close \"{0}\"",
+    "Widget.DeleteWidgetNote": "Only close this widget. The folder and its files will not change.",
+    "Widget.DeleteWidgetConfirm": "Close widget",
+    "Widget.DeleteManagedInfo": "What should happen to the files in this widget?",
+    "Widget.KeepManagedFolder": "Keep files",
+    "Widget.MoveBackThenDeleteFolder": "Move files to Desktop",
+    "Widget.DeleteFolderToRecycleBin": "Also delete all files",
+    "Widget.DeleteManagedFolderConfirmTitle": "Move \"{0}\" to Recycle Bin?",
+    "Widget.DeleteManagedFolderConfirmMessage": "This folder currently contains {0} item(s).\n\n{1}\n\nThe widget will close and the entire folder will move to Recycle Bin. You can restore it from there.",
+    "Widget.DeleteManagedFolderConfirmMessageUnknownCount": "The widget will close and the entire folder and its contents will move to Recycle Bin.\n\n{0}\n\nYou can restore it from there.",
     "Widget.Error.OperationIncomplete": "The operation did not complete.",
     "Widget.Error.FileWidgetPathConflict": "This folder cannot be used because its path is the same as, contains, or is contained by the storage path of file widget \"{0}\". Choose a non-overlapping folder.",
     "Widget.Error.UnsafeFolderTransfer": "A folder cannot be copied or moved into itself or one of its subfolders.",
@@ -1527,6 +1550,7 @@
     "Search.Menu.AttachToTodo": "Attach to Todo",
     "Search.Menu.SaveToNote": "Save to Note",
     "Search.Menu.CopyPath": "Copy Path",
+    "Search.Delete.Action": "Move to Recycle Bin",
     "Search.Action.AttachedToTodo": "Attached to todo",
     "Search.Action.AttachFailed": "Could not attach to todo",
     "Search.Action.SavedToNote": "Saved to note",
@@ -1703,7 +1727,7 @@
     "Size.Unit.GB": "GB",
     "Size.Unit.KB": "KB",
     "Size.Unit.MB": "MB",
-    "Settings.WidgetGroupNavigation.Auto": "Auto (recommended)",
+    "Settings.WidgetGroupNavigation.Auto": "Auto",
     "Settings.WidgetGroupNavigation.Description": "Used for new groups and groups set to follow the default",
     "Settings.WidgetGroupNavigation.Stack": "Stack switcher",
     "Settings.WidgetGroupNavigation.Tabs": "Tab strip",
@@ -1984,4 +2008,80 @@
     ,"Settings.Diagnostics.SuccessBody": "The diagnostic package was saved to:\n{0}\n\nPlease review the archive before sharing it."
     ,"Settings.Diagnostics.FailedTitle": "Couldn't export diagnostics"
     ,"Settings.Diagnostics.FailedBody": "Check the destination folder permissions and available disk space, then try again.\n\n{0}"
+    ,"Onboarding.SkipAll": "Skip all"
+    ,"Onboarding.Task.Step1.Title": "Your first file widget is on the right"
+    ,"Onboarding.Task.Step1.Body": "A file widget is a place to organize files on your desktop. Put frequently used files in it, then show or hide it anytime."
+    ,"Onboarding.Task.Step1.LocationTitle": "Where it is"
+    ,"Onboarding.Task.Step1.LocationBody": "The widget starts on the right side of the current display. You can move and resize it."
+    ,"Onboarding.Task.Step1.LocalTitle": "Uses a local folder"
+    ,"Onboarding.Task.Step1.LocalBody": "DeskBox uses local folders directly and does not upload files on its own."
+    ,"Onboarding.Task.Step1.ToggleTitle": "Show or hide it anytime"
+    ,"Onboarding.Task.Step1.ToggleBody": "Hide the widget when you do not need it, then show it again with the shortcut or tray icon."
+    ,"Onboarding.Task.Step2.Title": "Choose where collected files are stored"
+    ,"Onboarding.Task.Step2.Body": "A collection widget is not a shortcut. Files you drag or paste are moved or copied into the storage path below. Every collection widget creates its own folder under this path."
+    ,"Onboarding.Task.Step2.ManagedTitle": "Collection widget"
+    ,"Onboarding.Task.Step2.ManagedBody": "Files in every collection widget are physically stored in their own folder under the path above."
+    ,"Onboarding.Task.Step2.MappedTitle": "Folder mapping"
+    ,"Onboarding.Task.Step2.MappedBody": "Show an existing folder as a widget. Files stay in their original location, and widget actions affect them directly."
+    ,"Onboarding.Task.Step2.TransferTitle": "What happens when you add files"
+    ,"Onboarding.Task.Step2.TransferSummary": "Current setting: {0} files into the matching widget folder under this path."
+    ,"Onboarding.Task.Step2.ShowWidget": "Show widget"
+    ,"Onboarding.Task.Step2.StatusReady": "Select “Show widget” to display it on the right."
+    ,"Onboarding.Task.Step2.StatusShown": "The file widget is visible on the right."
+    ,"Onboarding.Task.Step2.StatusUnavailable": "No file widget was found. You can create one later by right-clicking the tray icon."
+    ,"Onboarding.Task.Step3.Title": "Try adding one file"
+    ,"Onboarding.Task.Step3.Body": "Drag, paste, or select “Add file.”"
+    ,"Onboarding.Task.Step3.DragTitle": "Drag a file"
+    ,"Onboarding.Task.Step3.DragBody": "Drag a file from the desktop or File Explorer into the widget."
+    ,"Onboarding.Task.Step3.PasteTitle": "Paste a file"
+    ,"Onboarding.Task.Step3.PasteBody": "Copy a file, select the widget, then press Ctrl+V."
+    ,"Onboarding.Task.Step3.AddTitle": "Add a file"
+    ,"Onboarding.Task.Step3.AddBody": "Select “Add file” in the widget, then choose a file."
+    ,"Onboarding.Task.Step3.TryButton": "Show widget and try"
+    ,"Onboarding.Task.Step3.StatusReady": "Select the button to show the widget on the right, then drag or paste a file."
+    ,"Onboarding.Task.Step3.StatusShown": "The widget is visible on the right. Select “Next” when you are done."
+    ,"Onboarding.Task.Step3.SkipTip": "You can continue without adding a file now."
+    ,"Onboarding.Task.Step4.Title": "Show, hide, and create widgets"
+    ,"Onboarding.Task.Step4.Body": "Use the shortcut or the DeskBox icon at the right of the taskbar to show, hide, or create widgets."
+    ,"Onboarding.Task.Step4.ToggleTitle": "Show or hide widgets"
+    ,"Onboarding.Task.Step4.ToggleBody": "Press {0}, or left-click the DeskBox tray icon."
+    ,"Onboarding.Task.Step4.ToggleButton": "Hide or show"
+    ,"Onboarding.Task.Step4.TrayTitle": "Create a widget"
+    ,"Onboarding.Task.Step4.TrayBody": "Find the DeskBox icon at the right of the taskbar. If it is hidden, expand the hidden icons, then right-click it and choose a widget."
+    ,"Onboarding.Task.Step4.TrayButton": "Open tray menu"
+    ,"Onboarding.Task.Step4.ManagedEntry": "New widget: create a separate file collection"
+    ,"Onboarding.Task.Step4.MappedEntry": "New folder mapping: show an existing folder as a widget"
+    ,"Onboarding.Task.Step4.FeatureEntry": "Feature widget: add To Do, Notes, Weather, or Music"
+    ,"Onboarding.Task.Step4.StatusReady": "Try either action now, or continue to the next step."
+    ,"Onboarding.Task.Step4.StatusToggled": "The widgets were toggled. Select again to restore the previous state."
+    ,"Onboarding.Task.Step4.StatusHidden": "Widgets are hidden. Select again to show them."
+    ,"Onboarding.Task.Step4.StatusShown": "Widgets are visible. Select again to hide them."
+    ,"Onboarding.Task.Step4.StatusTrayOpened": "The tray menu is open. You can create widgets here anytime."
+    ,"Onboarding.Task.Step5.Title": "You are ready to use DeskBox"
+    ,"Onboarding.Task.Step5.Body": "You now know the basic file widget actions."
+    ,"Onboarding.Task.Step5.Done1": "Know where the first file widget is"
+    ,"Onboarding.Task.Step5.Done2": "Drag, paste, and add files"
+    ,"Onboarding.Task.Step5.Done3": "Show or hide widgets with the shortcut or tray icon"
+    ,"Onboarding.Task.Step5.Done4": "Create widgets from the tray menu"
+    ,"Onboarding.Task.Step5.OptionalTitle": "Continue setup (optional)"
+    ,"Onboarding.Task.Step5.OptionalBody": "You can open these later. There is no need to configure them now."
+    ,"Onboarding.Task.Step5.Organize": "Organize desktop"
+    ,"Onboarding.Task.Step5.Appearance": "Adjust appearance"
+    ,"Onboarding.Task.Step5.Settings": "Open Settings"
+    ,"Widget.Empty.ActionsHint": "Drag files or press Ctrl+V to paste"
+    ,"Onboarding.Task.Step2.PathTitle": "Actual file location"
+    ,"Onboarding.Task.Step2.ChangePath": "Change location"
+    ,"Onboarding.Task.Step2.ConfirmPath": "Use this path"
+    ,"Onboarding.Task.Step2.PathConfirmed": "Path confirmed"
+    ,"Onboarding.Task.Step2.SpaceUnknown": "space unknown"
+    ,"Onboarding.Task.Step2.PathMeta.System": "System drive · {0} free"
+    ,"Onboarding.Task.Step2.PathMeta.NonSystem": "Non-system drive · {0} free"
+    ,"Onboarding.Task.Step2.PathMeta.Removable": "Removable drive · {0} free"
+    ,"Onboarding.Task.Step2.PathMeta.Network": "Network location"
+    ,"Onboarding.Task.Step2.PathMeta.Unknown": "Drive status unavailable"
+    ,"Onboarding.Task.Step2.Warning.SystemDrive": "This path is on the system drive. Organizing the desktop will not free space on C:. Choose another drive if possible."
+    ,"Onboarding.Task.Step2.Warning.SystemDriveOnly": "No other local drive with enough free space was found. You can continue with the system drive and migrate later in Settings."
+    ,"Onboarding.Task.Step2.Warning.CloudSync": "DeskBox does not upload files itself. If this is a OneDrive or other synced folder, that service may sync the files."
+    ,"Onboarding.Task.Step2.Warning.Removable": "Files in collection widgets will be unavailable while this drive is disconnected."
+    ,"Onboarding.Task.Step2.Warning.Network": "Files in collection widgets will be unavailable while this network location is disconnected."
 }

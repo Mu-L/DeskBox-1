@@ -346,6 +346,12 @@ public static class WeatherCodeMapper
             "ja-JP" => GetDescriptionJa(code),
             "de-DE" => GetDescriptionDe(code),
             "pt-BR" => GetDescriptionPt(code),
+            "hi-IN" => GetDescriptionHi(code),
+            "es-ES" => GetDescriptionEs(code),
+            "fr-FR" => GetDescriptionFr(code),
+            "ar-SA" => GetDescriptionAr(code),
+            "bn-BD" => GetDescriptionBn(code),
+            "ru-RU" => GetDescriptionRu(code),
             _ => GetDescriptionEn(code)
         };
     }
@@ -455,6 +461,90 @@ public static class WeatherCodeMapper
             96 => "Trovoada com granizo",
             99 => "Trovoada com granizo forte",
             _ => "Desconhecido"
+        };
+    }
+
+    private static string GetDescriptionHi(int code)
+    {
+        return code switch
+        {
+            0 => "साफ आसमान", 1 => "अधिकतर साफ", 2 => "आंशिक बादल", 3 => "बादल छाए",
+            45 => "कोहरा", 48 => "पाला कोहरा", 51 or 53 or 61 => "हल्की बारिश",
+            55 or 63 => "मध्यम बारिश", 65 => "तेज़ बारिश", 56 or 57 or 66 or 67 => "जमने वाली बारिश",
+            71 => "हल्की बर्फ", 73 => "मध्यम बर्फ", 75 => "तेज़ बर्फ", 77 => "बर्फ के कण",
+            80 or 81 => "बारिश की बौछारें", 82 => "तेज़ बारिश की बौछारें", 85 => "बर्फीली बौछारें",
+            86 => "तेज़ बर्फीली बौछारें", 95 => "गरज के साथ बारिश", 96 => "ओलों के साथ गरज",
+            99 => "भारी ओलों के साथ गरज", _ => "अज्ञात"
+        };
+    }
+
+    private static string GetDescriptionEs(int code)
+    {
+        return code switch
+        {
+            0 => "Cielo despejado", 1 => "Principalmente despejado", 2 => "Parcialmente nublado", 3 => "Cubierto",
+            45 => "Niebla", 48 => "Niebla helada", 51 or 53 or 61 => "Lluvia ligera",
+            55 or 63 => "Lluvia moderada", 65 => "Lluvia intensa", 56 or 57 or 66 or 67 => "Lluvia helada",
+            71 => "Nieve ligera", 73 => "Nieve moderada", 75 => "Nieve intensa", 77 => "Granos de nieve",
+            80 or 81 => "Chubascos", 82 => "Chubascos intensos", 85 => "Chubascos de nieve",
+            86 => "Chubascos de nieve intensos", 95 => "Tormenta", 96 => "Tormenta con granizo",
+            99 => "Tormenta con granizo intenso", _ => "Desconocido"
+        };
+    }
+
+    private static string GetDescriptionFr(int code)
+    {
+        return code switch
+        {
+            0 => "Ciel dégagé", 1 => "Globalement dégagé", 2 => "Partiellement nuageux", 3 => "Couvert",
+            45 => "Brouillard", 48 => "Brouillard givrant", 51 or 53 or 61 => "Pluie légère",
+            55 or 63 => "Pluie modérée", 65 => "Forte pluie", 56 or 57 or 66 or 67 => "Pluie verglaçante",
+            71 => "Neige légère", 73 => "Neige modérée", 75 => "Forte neige", 77 => "Neige en grains",
+            80 or 81 => "Averses", 82 => "Fortes averses", 85 => "Averses de neige",
+            86 => "Fortes averses de neige", 95 => "Orage", 96 => "Orage avec grêle",
+            99 => "Orage avec forte grêle", _ => "Inconnu"
+        };
+    }
+
+    private static string GetDescriptionAr(int code)
+    {
+        return code switch
+        {
+            0 => "سماء صافية", 1 => "صحو غالبًا", 2 => "غائم جزئيًا", 3 => "غائم",
+            45 => "ضباب", 48 => "ضباب متجمد", 51 or 53 or 61 => "أمطار خفيفة",
+            55 or 63 => "أمطار متوسطة", 65 => "أمطار غزيرة", 56 or 57 or 66 or 67 => "أمطار متجمدة",
+            71 => "ثلوج خفيفة", 73 => "ثلوج متوسطة", 75 => "ثلوج غزيرة", 77 => "حبيبات ثلج",
+            80 or 81 => "زخات مطر", 82 => "زخات مطر غزيرة", 85 => "زخات ثلج",
+            86 => "زخات ثلج غزيرة", 95 => "عواصف رعدية", 96 => "عواصف رعدية مع بَرَد",
+            99 => "عواصف رعدية مع بَرَد شديد", _ => "غير معروف"
+        };
+    }
+
+    private static string GetDescriptionBn(int code)
+    {
+        return code switch
+        {
+            0 => "পরিষ্কার আকাশ", 1 => "প্রধানত পরিষ্কার", 2 => "আংশিক মেঘলা", 3 => "মেঘাচ্ছন্ন",
+            45 => "কুয়াশা", 48 => "জমাট কুয়াশা", 51 or 53 or 61 => "হালকা বৃষ্টি",
+            55 or 63 => "মাঝারি বৃষ্টি", 65 => "ভারী বৃষ্টি", 56 or 57 or 66 or 67 => "বরফ জমা বৃষ্টি",
+            71 => "হালকা তুষার", 73 => "মাঝারি তুষার", 75 => "ভারী তুষার", 77 => "তুষারকণা",
+            80 or 81 => "বৃষ্টির ঝাপটা", 82 => "ভারী বৃষ্টির ঝাপটা", 85 => "তুষারের ঝাপটা",
+            86 => "ভারী তুষারের ঝাপটা", 95 => "বজ্রঝড়", 96 => "শিলাসহ বজ্রঝড়",
+            99 => "ভারী শিলাসহ বজ্রঝড়", _ => "অজানা"
+        };
+    }
+
+    private static string GetDescriptionRu(int code)
+    {
+        return code switch
+        {
+            0 => "Ясное небо", 1 => "Преимущественно ясно", 2 => "Переменная облачность", 3 => "Пасмурно",
+            45 => "Туман", 48 => "Изморозь", 51 or 53 or 61 => "Небольшой дождь",
+            55 or 63 => "Умеренный дождь", 65 => "Сильный дождь", 56 or 57 or 66 or 67 => "Ледяной дождь",
+            71 => "Небольшой снег", 73 => "Умеренный снег", 75 => "Сильный снег", 77 => "Снежная крупа",
+            80 or 81 => "Ливневый дождь", 82 => "Сильный ливень", 85 => "Снегопад",
+            86 => "Сильный снегопад", 95 => "Гроза", 96 => "Гроза с градом",
+            99 => "Гроза с сильным градом", _ => "Неизвестно"
         };
     }
 }

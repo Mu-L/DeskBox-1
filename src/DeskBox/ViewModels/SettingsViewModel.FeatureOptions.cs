@@ -744,7 +744,21 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
 
     public string[] AvailableThemes { get; } = [ThemeSystem, ThemeLight, ThemeDark];
     public string[] AvailableThemeDisplayNames => _cachedThemeDisplayNames ??= AvailableThemes.Select(GetThemeDisplayName).ToArray();
-    public string[] AvailableLanguages { get; } = [SettingsService.LanguageSystem, SettingsService.LanguageChinese, SettingsService.LanguageEnglish, LocalizationService.LanguageJapanese, LocalizationService.LanguageGerman, LocalizationService.LanguagePortuguese];
+    public string[] AvailableLanguages { get; } =
+    [
+        SettingsService.LanguageSystem,
+        SettingsService.LanguageChinese,
+        SettingsService.LanguageEnglish,
+        LocalizationService.LanguageJapanese,
+        LocalizationService.LanguageGerman,
+        LocalizationService.LanguagePortuguese,
+        LocalizationService.LanguageHindi,
+        LocalizationService.LanguageSpanish,
+        LocalizationService.LanguageFrench,
+        LocalizationService.LanguageArabic,
+        LocalizationService.LanguageBengali,
+        LocalizationService.LanguageRussian
+    ];
     public string[] AvailableLanguageDisplayNames => _cachedLanguageDisplayNames ??= AvailableLanguages.Select(_localizationService.GetLanguageDisplayName).ToArray();
     public string[] AvailableWidgetCornerPreferences { get; } =
         [CornerDefault, CornerSmall, CornerRound, CornerSquare];
@@ -802,7 +816,6 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
         _cachedMusicDisplayModeDisplayNames ??= AvailableMusicDisplayModes.Select(GetMusicDisplayModeDisplayName).ToArray();
     public string[] AvailableAnimationPresets { get; } =
     [
-        AnimationPresetNone,
         AnimationPresetGentle,
         AnimationPresetStandard,
         AnimationPresetEmphasized,
@@ -815,8 +828,7 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
         SettingsService.WidgetAnimationEffectSlideFade,
         SettingsService.WidgetAnimationEffectFade,
         SettingsService.WidgetAnimationEffectScaleFade,
-        SettingsService.WidgetAnimationEffectZoom,
-        SettingsService.WidgetAnimationEffectNone
+        SettingsService.WidgetAnimationEffectZoom
     ];
     public string[] AvailableWidgetAnimationEffectDisplayNames => _cachedWidgetAnimationEffectDisplayNames ??= AvailableWidgetAnimationEffects.Select(GetWidgetAnimationEffectDisplayName).ToArray();
     public string[] AvailableWidgetAnimationSpeeds { get; } =

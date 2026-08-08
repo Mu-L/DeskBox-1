@@ -44,7 +44,7 @@ internal static partial class ShellDesktopDropTarget
         return hasDesktopClass;
     }
 
-    private static bool IsDesktopWindow(IntPtr window)
+    internal static bool IsDesktopWindow(IntPtr window)
     {
         if (window == IntPtr.Zero)
         {

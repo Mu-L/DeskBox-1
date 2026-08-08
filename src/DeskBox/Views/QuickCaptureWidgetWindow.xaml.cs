@@ -132,6 +132,7 @@ public sealed partial class QuickCaptureWidgetWindow :
     private List<DroppedFilePath> _pendingDetailAttachments = [];
     private long _detailTransitionGeneration;
     private long _statusToastGeneration;
+    private long _visibleContentResumeGeneration;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;
     private MenuFlyout? _pendingDeleteConfirmFlyout;
@@ -322,7 +323,23 @@ public sealed partial class QuickCaptureWidgetWindow :
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
-        QueueBackdropRefresh();
+        NotifyCompactHostVisibilityChanged(true);
+        QueueVisibleContentResume();
+    }
+
+    private void QueueVisibleContentResume()
+    {
+        long generation = ++_visibleContentResumeGeneration;
+        RunAfterCompactExpansionReady(() =>
+        {
+            if (!Visible || IsClosing || generation != _visibleContentResumeGeneration)
+            {
+                return;
+            }
+
+            ViewModel.RefreshAfterViewReady();
+            QueueBackdropRefresh();
+        });
     }
 
     public void PushToBottom()
@@ -330,6 +347,8 @@ public sealed partial class QuickCaptureWidgetWindow :
         _isAtDesktopLayer = true;
         WidgetLayerService.MoveToDesktopBottom(_hWnd);
         App.LogVerbose($"[ZOrder] QuickCapture PushToBottom hwnd=0x{_hWnd.ToInt64():X}");
+        App.Current.WidgetManager?.QueueIdleWidgetZOrderNormalization(
+            "quick-capture-pushed-to-desktop");
     }
 
     public void ShowPreparedAtDesktopLayer(bool persistVisibility = true)
@@ -347,7 +366,8 @@ public sealed partial class QuickCaptureWidgetWindow :
             _settingsService.SaveDebounced();
         }
 
-        QueueBackdropRefresh();
+        NotifyCompactHostVisibilityChanged(true);
+        QueueVisibleContentResume();
         PushToBottom();
     }
 
@@ -390,7 +410,8 @@ public sealed partial class QuickCaptureWidgetWindow :
             _settingsService.SaveDebounced();
         }
 
-        QueueBackdropRefresh();
+        NotifyCompactHostVisibilityChanged(true);
+        QueueVisibleContentResume();
 
         DispatcherQueue.TryEnqueue(async () =>
         {
@@ -528,7 +549,8 @@ _isHideAnimationRunning = true;
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
-        QueueBackdropRefresh();
+        NotifyCompactHostVisibilityChanged(true);
+        QueueVisibleContentResume();
         PlayTrayRaiseAnimationAfterFirstFrame();
 
         if (!autoRestore)
@@ -986,6 +1008,8 @@ _isHideAnimationRunning = true;
         WidgetLayerService.ClearTopMost(_hWnd);
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
         _appWindow.Hide();
+        _visibleContentResumeGeneration++;
+        NotifyCompactHostVisibilityChanged(false);
         _trayAnimation.RevealWindowForTrayShow();
         _trayAnimation.RestoreVisualState();
         _trayAnimation.RestoreWindowPosition();

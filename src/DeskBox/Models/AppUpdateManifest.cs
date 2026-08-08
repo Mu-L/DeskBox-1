@@ -9,10 +9,17 @@ public sealed class AppUpdateManifest
     public string MinimumSupportedVersion { get; set; } = string.Empty;
     public bool Mandatory { get; set; }
     public string DownloadUrl { get; set; } = string.Empty;
+    /// <summary>
+    /// Optional architecture-specific installer metadata. Older manifests can
+    /// continue to use the primary fields for a single architecture.
+    /// </summary>
+    public string Arm64DownloadUrl { get; set; } = string.Empty;
     public string ManualDownloadUrl { get; set; } = string.Empty;
     public string MirrorUrl { get; set; } = string.Empty;
     public string Sha256 { get; set; } = string.Empty;
+    public string Arm64Sha256 { get; set; } = string.Empty;
     public long Size { get; set; }
+    public long Arm64Size { get; set; }
     public string ReleaseNotesUrl { get; set; } = string.Empty;
     public Dictionary<string, string> Summary { get; set; } = [];
     /// <summary>
@@ -85,12 +92,18 @@ public sealed class AppUpdateManifest
     }
 
     /// <summary>
-    /// Applies the product's deterministic language policy: Chinese users
-    /// prefer Chinese and fall back to English; every other language uses
-    /// English because English is the only guaranteed non-Chinese locale.
+    /// Returns the best available release note for the requested locale.
+    /// Exact and language-level translations are preferred, followed by
+    /// Chinese for Chinese users and English for every other locale.
     /// </summary>
     public string GetLocalizedReleaseNotes(string cultureName)
     {
+        string localized = GetReleaseNotesForLocale(cultureName);
+        if (!string.IsNullOrWhiteSpace(localized))
+        {
+            return localized;
+        }
+
         bool isChinese = cultureName.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
         if (isChinese)
         {

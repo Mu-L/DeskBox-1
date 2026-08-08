@@ -526,11 +526,9 @@ public sealed partial class QuickCaptureWidgetWindow
 
         var highlighter = new TextHighlighter
         {
-            Background = GetBrushResourceOrFallback(
-                "SystemAccentColorLight2Brush",
-                WithAlpha(
-                    App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor,
-                    0x44)),
+            Background = new SolidColorBrush(WithAlpha(
+                App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor,
+                0x44)),
             Foreground = GetBrushResourceOrFallback(
                 "TextFillColorPrimaryBrush",
                 textBlock.ActualTheme == ElementTheme.Dark ? Colors.White : Colors.Black)

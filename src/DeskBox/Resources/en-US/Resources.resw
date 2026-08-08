@@ -46,7 +46,7 @@
     <comment>App display name shown in Start Menu, Store, and taskbar.</comment>
   </data>
   <data name="AppDescription" xml:space="preserve">
-    <value>Lightweight desktop organizer for Windows 11</value>
+    <value>Lightweight desktop organizer for Windows 10/11</value>
     <comment>App description shown in Store and app properties.</comment>
   </data>
 </root>

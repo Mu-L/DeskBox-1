@@ -37,16 +37,25 @@ public sealed partial class WidgetManager
             loadedGroupedFileCount);
         DeskBoxWidgetHostDiagnostic[] hosts = windows
             .OrderBy(window => window.Identity.SurfaceId, StringComparer.Ordinal)
-            .Select((window, index) => new DeskBoxWidgetHostDiagnostic(
-                index + 1,
-                window.Identity.WidgetKind,
-                window.Identity.LogKind,
-                window.Identity.IsGroupSurface,
-                window.Visible,
-                window.IsRaisedAboveDesktopLayer,
-                window.IsCompactArrangementActive,
-                ToDiagnosticRect(window.AnimationBounds),
-                ToDiagnosticRect(window.RestingAnimationBounds)))
+            .Select((window, index) =>
+            {
+                FileSurfaceContent? fileSurface = _contentWidgets.Values
+                    .FirstOrDefault(contentWindow =>
+                        contentWindow.WindowHandle == window.WindowHandle)
+                    ?.CurrentContent as FileSurfaceContent;
+                return new DeskBoxWidgetHostDiagnostic(
+                    index + 1,
+                    window.Identity.WidgetKind,
+                    window.Identity.LogKind,
+                    window.Identity.IsGroupSurface,
+                    window.Visible,
+                    window.IsRaisedAboveDesktopLayer,
+                    window.IsCompactArrangementActive,
+                    fileSurface?.IsImportBusy == true,
+                    fileSurface?.ImportBusyElapsedMilliseconds,
+                    ToDiagnosticRect(window.AnimationBounds),
+                    ToDiagnosticRect(window.RestingAnimationBounds));
+            })
             .ToArray();
 
         return new DeskBoxWidgetManagerDiagnostic(

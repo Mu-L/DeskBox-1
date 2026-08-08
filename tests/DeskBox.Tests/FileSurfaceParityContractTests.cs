@@ -74,18 +74,53 @@ public sealed class FileSurfaceParityContractTests
         Assert.Equal("Transparent", (string?)stops.First().Attribute("Color"));
         Assert.Equal("Transparent", (string?)stops.Last().Attribute("Color"));
         Assert.Contains(stops, stop =>
-            ((string?)stop.Attribute("Color"))?.Contains("SystemAccentColor", StringComparison.Ordinal) == true);
+            (string?)stop.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) ==
+            "ReorderInsertionAccentStop");
+    }
+
+    [Fact]
+    public void UnifiedFileSurface_UsesNonBlockingBottomTransferProgress()
+    {
+        string root = FindRepositoryRoot();
+        XDocument document = XDocument.Load(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        XElement card = document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "ImportProgressCard");
+        Assert.Equal("Bottom", (string?)card.Attribute("VerticalAlignment"));
+        Assert.Equal("Collapsed", (string?)card.Attribute("Visibility"));
+        Assert.Contains(card.Descendants(), element =>
+            (string?)element.Attribute(x + "Name") == "ImportProgressBar");
+        Assert.Contains(card.Descendants(), element =>
+            (string?)element.Attribute(x + "Name") == "ImportCancelButton" &&
+            (string?)element.Attribute("Click") == "ImportCancelButton_Click");
+        Assert.DoesNotContain(document.Descendants(), element =>
+            (string?)element.Attribute(x + "Name") == "ImportOverlay");
     }
 
     [Fact]
     public void SharedItemSurface_OwnsDetailAndPathPresentation()
     {
+        string root = FindRepositoryRoot();
         string xaml = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
+            root,
             "src/DeskBox/Controls/FileItemSurface.xaml"));
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/FileItemSurface.xaml.cs"));
 
         Assert.Contains("ListItemDetailVisibility", xaml, StringComparison.Ordinal);
         Assert.Contains("ShowFileItemPathTooltips", xaml, StringComparison.Ordinal);
+        Assert.Contains(
+            "DataContextChanged += FileItemSurface_DataContextChanged",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "VisualStateChanged?.Invoke",
+            source,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -182,13 +217,15 @@ public sealed class FileSurfaceParityContractTests
 
         string[] markers =
         [
+            "CreateMenuItem(\"Common.Refresh\"",
+            "CreateMenuItem(\"Common.Paste\"",
             "CreateMenuItem(\"Common.NewFolder\"",
             "\"Widget.OpenStorageFolder\"",
             "flyout.Items.Add(hostItems.TitleStyleItem)",
             "var viewAndSort = new MenuFlyoutSubItem",
             "flyout.Items.Add(CreateStackSettingsMenu())",
-            "flyout.Items.Add(hostItems.CloseWidgetItem)",
-            "CreateMenuItem(\"Common.Refresh\""
+            "flyout.Items.Add(new MenuFlyoutSeparator())",
+            "flyout.Items.Add(hostItems.CloseWidgetItem)"
         ];
 
         int previousIndex = -1;

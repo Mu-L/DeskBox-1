@@ -149,6 +149,25 @@ public sealed class RuntimeActivityPolicyTests
     }
 
     [Theory]
+    [InlineData(true, 4, 4, true)]
+    [InlineData(false, 4, 4, false)]
+    [InlineData(true, 3, 4, false)]
+    [InlineData(true, -1, 0, false)]
+    public void WidgetCompactWarmupPolicy_RejectsReadinessFromAnOlderMemoryEpoch(
+        bool isWarmed,
+        long warmedEpoch,
+        long memoryCleanupEpoch,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WidgetCompactWarmupPolicy.IsExpansionReady(
+                isWarmed,
+                warmedEpoch,
+                memoryCleanupEpoch));
+    }
+
+    [Theory]
     [InlineData(nameof(WidgetCompactWarmupSnapshot.IsCollapseInitialized))]
     [InlineData(nameof(WidgetCompactWarmupSnapshot.IsCollapsed))]
     [InlineData(nameof(WidgetCompactWarmupSnapshot.IsExpansionWarmed))]

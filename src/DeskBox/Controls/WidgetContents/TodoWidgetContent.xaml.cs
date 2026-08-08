@@ -144,6 +144,9 @@ public sealed partial class TodoWidgetContent : UserControl
         ApplySelectionRectangleStyle();
         RegisterColorFilterHandledEvents();
         RefreshFilterButtons();
+        App.Current.ThemeService.AppearanceChanged -= OnThemeAppearanceChanged;
+        App.Current.ThemeService.AppearanceChanged += OnThemeAppearanceChanged;
+        ApplySegmentedStyle();
     }
 
     private void TodoWidgetContent_Unloaded(object sender, RoutedEventArgs e)
@@ -154,6 +157,7 @@ public sealed partial class TodoWidgetContent : UserControl
         }
 
         App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;
+        App.Current.ThemeService.AppearanceChanged -= OnThemeAppearanceChanged;
         _copyTapGeneration++;
         _detailTransitionGeneration++;
         DetailPageTransitionHelper.Reset(DetailPage);
@@ -163,6 +167,17 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private void TodoFilterSegmented_Loaded(object sender, RoutedEventArgs e)
     {
+        ApplySegmentedStyle();
+    }
+
+    private void OnThemeAppearanceChanged()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(OnThemeAppearanceChanged);
+            return;
+        }
+
         ApplySegmentedStyle();
     }
 

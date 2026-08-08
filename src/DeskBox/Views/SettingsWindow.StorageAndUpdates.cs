@@ -100,6 +100,37 @@ public sealed partial class SettingsWindow
         }
 
         ViewModel.UpdateManagedStorageRootPath(normalizedPath);
+        RefreshManagedStoragePathWarning();
+    }
+
+    private void RefreshManagedStoragePathWarning()
+    {
+        ManagedStoragePathAssessment assessment =
+            ManagedStoragePathService.AssessPath(ViewModel.ManagedStorageRootPath);
+        var warnings = new List<string>();
+        if (assessment.IsSystemDrive)
+        {
+            warnings.Add(_localizationService.T(assessment.HasSuitableNonSystemDrive
+                ? "Onboarding.Task.Step2.Warning.SystemDrive"
+                : "Onboarding.Task.Step2.Warning.SystemDriveOnly"));
+        }
+        if (assessment.IsCloudSynced)
+        {
+            warnings.Add(_localizationService.T("Onboarding.Task.Step2.Warning.CloudSync"));
+        }
+        if (assessment.DriveType == DriveType.Removable)
+        {
+            warnings.Add(_localizationService.T("Onboarding.Task.Step2.Warning.Removable"));
+        }
+        else if (assessment.DriveType == DriveType.Network)
+        {
+            warnings.Add(_localizationService.T("Onboarding.Task.Step2.Warning.Network"));
+        }
+
+        ManagedStoragePathWarningText.Text = string.Join(Environment.NewLine, warnings);
+        ManagedStoragePathWarningBorder.Visibility = warnings.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void OpenManagedStoragePathButton_Click(object sender, RoutedEventArgs e)

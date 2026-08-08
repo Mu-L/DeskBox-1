@@ -3,7 +3,19 @@ const
   DeskBoxProcessName = 'DeskBox.exe';
   DeskBoxDataSettingsPath = '{localappdata}\DeskBox\data\settings.json';
   DeskBoxDefaultManagedStorageRootPath = '{%USERPROFILE}\DeskBox';
+  DeskBoxAppDataRootPath = '{localappdata}\DeskBox';
+  DeskBoxRecoveryRootPath = '{localappdata}\DeskBox-Recovery';
+  DeskBoxTemporaryRootPath = '{%TEMP}\DeskBox';
+  DeskBoxProductRegistryKey = 'Software\DeskBox';
   DeskBoxStartupRunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  DeskBoxAppUserModelId = 'DeskBox.DeskBox';
+  DeskBoxAppUserModelIdRegistryKey = 'Software\Classes\AppUserModelId';
+  DeskBoxNotificationSettingsRegistryKey = 'Software\Microsoft\Windows\CurrentVersion\Notifications\Settings';
+  DeskBoxClassesClsidRegistryKey = 'Software\Classes\CLSID';
+  DeskBoxPurgeUserDataParameter = '/PURGEUSERDATA';
+
+var
+  PurgeDeskBoxAppData: Boolean;
 
 function TrimString(Value: string): string;
 begin
@@ -165,7 +177,7 @@ begin
   end;
 
   if DisplayedCount > 12 then
-    Result := Result + '  ' + Format(ExpandConstant('{cm:MoreItems}'), [DisplayedCount - 12]) + #13#10;
+    Result := Result + '  ' + FmtMessage(ExpandConstant('{cm:MoreItems}'), [IntToStr(DisplayedCount - 12)]) + #13#10;
 end;
 
 function ConfirmManagedStoragePreserved: Boolean;
@@ -189,11 +201,78 @@ begin
   MessageText :=
     ExpandConstant('{cm:ConfirmStorageTitle}') + ':' + #13#10 +
     FolderPath + #13#10#13#10 +
-    Format(ExpandConstant('{cm:ConfirmStorageBody}'), [FolderCount, FileCount]) + #13#10#13#10 +
+    FmtMessage(ExpandConstant('{cm:ConfirmStorageBody}'), [IntToStr(FolderCount), IntToStr(FileCount)]) + #13#10#13#10 +
     Summary +
     ExpandConstant('{cm:ConfirmStorageFooter}');
 
-  Result := MsgBox(MessageText, mbConfirmation, MB_YESNO) = IDYES;
+  Result := SuppressibleMsgBox(
+    MessageText,
+    mbConfirmation,
+    MB_YESNO or MB_DEFBUTTON2,
+    IDYES) = IDYES;
+end;
+
+function HasUninstallParameter(ParameterName: string): Boolean;
+var
+  Index: Integer;
+begin
+  Result := False;
+  for Index := 1 to ParamCount do
+  begin
+    if CompareText(ParamStr(Index), ParameterName) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+function ChooseAppDataRemoval: Boolean;
+var
+  Choice: Integer;
+  DataPaths: string;
+  ButtonLabels: TArrayOfString;
+begin
+  Result := False;
+  PurgeDeskBoxAppData := HasUninstallParameter(DeskBoxPurgeUserDataParameter);
+  if PurgeDeskBoxAppData then
+  begin
+    Log('DeskBox uninstall will purge application data because /PURGEUSERDATA was specified.');
+    Result := True;
+    Exit;
+  end;
+
+  DataPaths :=
+    ExpandConstant(DeskBoxAppDataRootPath) + #13#10 +
+    ExpandConstant(DeskBoxRecoveryRootPath);
+  ButtonLabels := [
+    ExpandConstant('{cm:KeepAppDataButton}'),
+    ExpandConstant('{cm:RemoveAppDataButton}')];
+  Choice := SuppressibleTaskDialogMsgBox(
+    ExpandConstant('{cm:AppDataChoiceTitle}'),
+    FmtMessage(ExpandConstant('{cm:ConfirmRemoveAppData}'), [DataPaths]),
+    mbConfirmation,
+    MB_YESNOCANCEL,
+    ButtonLabels,
+    0,
+    IDYES);
+
+  case Choice of
+    IDYES:
+      begin
+        PurgeDeskBoxAppData := False;
+        Log('DeskBox uninstall will preserve application data and recovery snapshots.');
+        Result := True;
+      end;
+    IDNO:
+      begin
+        PurgeDeskBoxAppData := True;
+        Log('DeskBox uninstall will permanently remove application data and recovery snapshots.');
+        Result := True;
+      end;
+    else
+      Log('DeskBox uninstall was cancelled at the application data choice.');
+  end;
 end;
 
 procedure StopDeskBoxProcess;
@@ -270,9 +349,159 @@ begin
   end;
 end;
 
+function DeleteExpectedDirectory(
+  Path: string;
+  ExpectedPath: string;
+  ExpectedLeafName: string): Boolean;
+begin
+  Result := False;
+  if (not SameInstallPath(Path, ExpectedPath)) or
+     (CompareText(
+        ExtractFileName(RemoveBackslashUnlessRoot(Path)),
+        ExpectedLeafName) <> 0) then
+  begin
+    Log('DeskBox uninstall refused to delete an unexpected directory: ' + Path);
+    Exit;
+  end;
+
+  Result := True;
+  if DirExists(Path) then
+  begin
+    Result := DelTree(Path, True, True, True);
+    if Result then
+      Log('DeskBox uninstall removed directory: ' + Path)
+    else
+      Log('DeskBox uninstall could not completely remove directory: ' + Path);
+  end;
+end;
+
+procedure AppendFailedCleanupPath(var FailedPaths: string; Path: string);
+begin
+  if FailedPaths <> '' then
+    FailedPaths := FailedPaths + #13#10;
+  FailedPaths := FailedPaths + Path;
+end;
+
+procedure RemoveDeskBoxDataDirectories;
+var
+  AppDataPath: string;
+  RecoveryPath: string;
+  TemporaryPath: string;
+  FailedPaths: string;
+begin
+  FailedPaths := '';
+  TemporaryPath := ExpandConstant(DeskBoxTemporaryRootPath);
+  if not DeleteExpectedDirectory(
+      TemporaryPath,
+      ExpandConstant(DeskBoxTemporaryRootPath),
+      'DeskBox') then
+    AppendFailedCleanupPath(FailedPaths, TemporaryPath);
+
+  if PurgeDeskBoxAppData then
+  begin
+    AppDataPath := ExpandConstant(DeskBoxAppDataRootPath);
+    RecoveryPath := ExpandConstant(DeskBoxRecoveryRootPath);
+    if not DeleteExpectedDirectory(
+        AppDataPath,
+        ExpandConstant(DeskBoxAppDataRootPath),
+        'DeskBox') then
+      AppendFailedCleanupPath(FailedPaths, AppDataPath);
+    if not DeleteExpectedDirectory(
+        RecoveryPath,
+        ExpandConstant(DeskBoxRecoveryRootPath),
+        'DeskBox-Recovery') then
+      AppendFailedCleanupPath(FailedPaths, RecoveryPath);
+
+  end;
+
+  if RegKeyExists(HKEY_CURRENT_USER, DeskBoxProductRegistryKey) and
+     not RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, DeskBoxProductRegistryKey) then
+    Log('DeskBox uninstall could not remove the DeskBox product registry key.');
+
+  if FailedPaths <> '' then
+    SuppressibleMsgBox(
+      FmtMessage(ExpandConstant('{cm:AppDataCleanupFailed}'), [FailedPaths]),
+      mbError,
+      MB_OK,
+      IDOK);
+end;
+
+function NotificationRegistrationTargetsCurrentInstall(ActivatorId: string): Boolean;
+var
+  LocalServerPath: string;
+  ExecutablePath: string;
+begin
+  Result := False;
+  if ActivatorId = '' then
+    Exit;
+
+  if not RegQueryStringValue(
+      HKEY_CURRENT_USER,
+      DeskBoxClassesClsidRegistryKey + '\' + ActivatorId + '\LocalServer32',
+      '',
+      LocalServerPath) then
+    Exit;
+
+  ExecutablePath := ExtractExecutablePath(LocalServerPath);
+  Result :=
+    SameInstallPath(ExtractFileDir(ExecutablePath), ExpandConstant('{app}')) and
+    (CompareText(ExtractFileName(ExecutablePath), DeskBoxProcessName) = 0);
+end;
+
+procedure RemoveNotificationRegistration;
+var
+  AppUserModelKey: string;
+  ActivatorId: string;
+  IconPath: string;
+  PathAppUserModelId: string;
+  OwnsRegistration: Boolean;
+begin
+  AppUserModelKey := DeskBoxAppUserModelIdRegistryKey + '\' + DeskBoxAppUserModelId;
+  ActivatorId := '';
+  IconPath := '';
+  RegQueryStringValue(HKEY_CURRENT_USER, AppUserModelKey, 'CustomActivator', ActivatorId);
+  RegQueryStringValue(HKEY_CURRENT_USER, AppUserModelKey, 'IconUri', IconPath);
+  OwnsRegistration :=
+    (ActivatorId = '') or
+    NotificationRegistrationTargetsCurrentInstall(ActivatorId);
+  if IconPath = '' then
+    IconPath := ExpandConstant(
+      '{localappdata}\Microsoft\WindowsAppSDK\DeskBox.DeskBox.png');
+
+  PathAppUserModelId := ExpandConstant('{app}\' + DeskBoxProcessName);
+  StringChangeEx(PathAppUserModelId, '\', '.', True);
+  RegDeleteKeyIncludingSubkeys(
+    HKEY_CURRENT_USER,
+    DeskBoxAppUserModelIdRegistryKey + '\' + PathAppUserModelId);
+
+  if OwnsRegistration then
+  begin
+    if ActivatorId <> '' then
+      RegDeleteKeyIncludingSubkeys(
+        HKEY_CURRENT_USER,
+        DeskBoxClassesClsidRegistryKey + '\' + ActivatorId);
+    RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, AppUserModelKey);
+    RegDeleteKeyIncludingSubkeys(
+      HKEY_CURRENT_USER,
+      DeskBoxNotificationSettingsRegistryKey + '\' + DeskBoxAppUserModelId);
+
+    if (IconPath <> '') and
+       SameInstallPath(
+         ExtractFileDir(IconPath),
+         ExpandConstant('{localappdata}\Microsoft\WindowsAppSDK')) then
+      DeleteFile(IconPath);
+
+    Log('DeskBox uninstall removed the notification registration owned by this installation.');
+  end
+  else if ActivatorId <> '' then
+    Log('DeskBox uninstall preserved a notification registration owned by another DeskBox executable.');
+end;
+
 function InitializeUninstall: Boolean;
 begin
   Result := ConfirmManagedStoragePreserved;
+  if Result then
+    Result := ChooseAppDataRemoval;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -285,6 +514,11 @@ begin
     RemoveStartupRegistryEntry;
     RemoveTaskbarPinnedShortcut;
     RemoveAppCompatFlag;
-    Log('DeskBox uninstall kept local app data directory and recovery snapshots.');
+    RemoveNotificationRegistration;
+    RemoveDeskBoxDataDirectories;
+    if PurgeDeskBoxAppData then
+      Log('DeskBox uninstall removed local app data and recovery snapshots.')
+    else
+      Log('DeskBox uninstall kept local app data and recovery snapshots.');
   end;
 end;

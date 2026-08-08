@@ -140,7 +140,8 @@ public abstract partial class WidgetWindowBase : Window
     /// DeskBox temporarily raises normal-band windows without leaving them
     /// permanently topmost.
     /// </summary>
-    public bool IsRaisedAboveDesktopLayer => !IsAtDesktopLayer;
+    public bool IsRaisedAboveDesktopLayer =>
+        !IsAtDesktopLayer || _isRaisedForExpandedState;
 
     /// <summary>The opacity value (0–1) used for backdrop tinting.</summary>
     protected abstract double WidgetOpacity { get; }

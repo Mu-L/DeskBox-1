@@ -34,6 +34,17 @@ public sealed partial class SettingsWindow
             return;
         }
 
+        if (e.PropertyName == nameof(SettingsViewModel.ManagedStorageRootPath))
+        {
+            if (!DispatcherQueue.HasThreadAccess)
+            {
+                DispatcherQueue.TryEnqueue(RefreshManagedStoragePathWarning);
+                return;
+            }
+
+            RefreshManagedStoragePathWarning();
+        }
+
     }
 
     private void OnLanguageChanged()
@@ -67,6 +78,7 @@ public sealed partial class SettingsWindow
         RefreshFeatureWidgetList();
         ViewModel.RefreshGlobalHotkeyState();
         RefreshGlobalHotkeyControls();
+        RefreshManagedStoragePathWarning();
         if (TryGetSectionRoute(_currentSettingsSection, out SettingsSectionRoute? route))
         {
             UpdateBreadcrumb(route);

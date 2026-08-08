@@ -2,6 +2,7 @@ using DeskBox.Helpers;
 using DeskBox.Models;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Windows.Storage;
 using System.Collections.Concurrent;
@@ -49,7 +50,7 @@ internal static class FolderSnapshotStatusPolicy
 /// <summary>
 /// Provides file system operations: enumerate files, resolve shortcuts, get icons.
 /// </summary>
-public sealed class FileService
+public sealed partial class FileService
 {
     private const string UnsafeFolderTransferFallbackMessage =
         "A folder cannot be copied or moved into itself or one of its subfolders.";
@@ -79,6 +80,8 @@ public sealed class FileService
     private const ushort FofNoConfirmation = 0x0010;
     private const ushort FofNoErrorUi = 0x0400;
     private const ushort FofSilent = 0x0004;
+    private static readonly TimeSpan ShellMoveRecoveryProbeDelay =
+        TimeSpan.FromSeconds(15);
 
     public FileService(LocalizationService? localizationService = null)
     {
@@ -927,12 +930,18 @@ public sealed class FileService
     /// <summary>
     /// Move or copy the given files or folders into a destination folder and return the realized destination paths.
     /// </summary>
-    public async Task<IReadOnlyList<FileTransferResult>> TransferItemsWithResultAsync(IEnumerable<string> sourcePaths, string destinationFolder, bool move)
+    public async Task<IReadOnlyList<FileTransferResult>> TransferItemsWithResultAsync(
+        IEnumerable<string> sourcePaths,
+        string destinationFolder,
+        bool move,
+        IProgress<FileTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         // Directory.Exists/File.Exists can block for a disconnected UNC or
         // network provider. Keep all planning and probing off the UI thread.
         var plans = await Task.Run(() =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string normalizedDestinationFolder = Path.GetFullPath(destinationFolder);
             var normalizedSourcePaths = sourcePaths
                 .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -957,9 +966,13 @@ public sealed class FileService
                     path,
                     GetAvailablePath(Path.Combine(normalizedDestinationFolder, Path.GetFileName(path)), reservedPaths)))
                 .ToList();
-        });
+        }, cancellationToken);
 
-        return await ExecuteTransferPlanAsync(plans, move);
+        return await ExecuteTransferPlanAsync(
+            plans,
+            move,
+            progress: progress,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -968,10 +981,14 @@ public sealed class FileService
     public async Task<IReadOnlyList<FileTransferResult>> ExecuteTransferPlanAsync(
         IEnumerable<FileTransferPlan> plans,
         bool move,
-        bool useShellProgress = false)
+        bool useShellProgress = false,
+        IntPtr ownerWindowHandle = default,
+        IProgress<FileTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         var operations = await Task.Run(() =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var plannedOperations = plans
                 .Where(plan => !string.IsNullOrWhiteSpace(plan.SourcePath) && !string.IsNullOrWhiteSpace(plan.DestinationPath))
                 .Select(plan => new TransferOperation(
@@ -984,11 +1001,22 @@ public sealed class FileService
 
             EnsureSafeDirectoryTransfers(plannedOperations);
             return plannedOperations;
-        });
+        }, cancellationToken);
+
+        if (progress is not null || cancellationToken.CanBeCanceled)
+        {
+            return await ExecuteManagedTransferPlanWithProgressAsync(
+                operations,
+                move,
+                progress,
+                cancellationToken);
+        }
 
         if (move && useShellProgress)
         {
-            return await ExecuteShellMovePlanAsync(operations);
+            return await ExecuteShellMovePlanAsync(
+                operations,
+                ownerWindowHandle);
         }
 
         var completedOperations = new List<TransferOperation>(operations.Count);
@@ -1027,7 +1055,9 @@ public sealed class FileService
             .ToList();
     }
 
-    private async Task<IReadOnlyList<FileTransferResult>> ExecuteShellMovePlanAsync(IReadOnlyList<TransferOperation> operations)
+    private async Task<IReadOnlyList<FileTransferResult>> ExecuteShellMovePlanAsync(
+        IReadOnlyList<TransferOperation> operations,
+        IntPtr ownerWindowHandle)
     {
         if (operations.Count == 0)
         {
@@ -1044,11 +1074,63 @@ public sealed class FileService
             }
         }
 
-        await Task.Run(() =>
+        var stopwatch = Stopwatch.StartNew();
+        App.Log(
+            $"[FileTransfer] Shell move start count={operations.Count} " +
+            $"owner=0x{ownerWindowHandle.ToInt64():X}");
+
+        Task shellMoveTask = Task.Run(() =>
         {
             EnsureSafeDirectoryTransfers(operations);
-            MoveEntriesWithShellProgress(operations);
+            MoveEntriesWithShellProgress(
+                operations,
+                ownerWindowHandle);
         });
+
+        Task firstCompletion = await Task.WhenAny(
+            shellMoveTask,
+            Task.Delay(ShellMoveRecoveryProbeDelay));
+        if (ReferenceEquals(firstCompletion, shellMoveTask))
+        {
+            await shellMoveTask;
+            App.Log(
+                $"[FileTransfer] Shell move returned count={operations.Count} " +
+                $"elapsedMs={stopwatch.ElapsedMilliseconds}");
+        }
+        else
+        {
+            bool allCompleted = await Task.Run(() =>
+                AreAllShellMovesCompleted(operations.Select(operation =>
+                    new FileTransferPlan(
+                        operation.SourcePath,
+                        operation.DestinationPath))));
+            if (allCompleted)
+            {
+                // Some shell extensions finish the filesystem move but leave
+                // SHFileOperation waiting on hidden bookkeeping/UI. The import
+                // must not keep covering the widget once every requested move
+                // is already complete. Observe the late task so any eventual
+                // failure is logged instead of becoming unobserved.
+                App.Log(
+                    $"[FileTransfer] Shell move recovered from pending call " +
+                    $"count={operations.Count} elapsedMs={stopwatch.ElapsedMilliseconds}");
+                _ = ObserveLateShellMoveCompletionAsync(
+                    shellMoveTask,
+                    operations.Count,
+                    stopwatch);
+            }
+            else
+            {
+                App.Log(
+                    $"[FileTransfer] Shell move still active count={operations.Count} " +
+                    $"elapsedMs={stopwatch.ElapsedMilliseconds} " +
+                    $"owner=0x{ownerWindowHandle.ToInt64():X}");
+                await shellMoveTask;
+                App.Log(
+                    $"[FileTransfer] Shell move returned after extended wait " +
+                    $"count={operations.Count} elapsedMs={stopwatch.ElapsedMilliseconds}");
+            }
+        }
 
         return await Task.Run(() => operations
             .Where(operation => IsCompletedShellMove(
@@ -1058,11 +1140,42 @@ public sealed class FileService
             .ToList());
     }
 
+    private static async Task ObserveLateShellMoveCompletionAsync(
+        Task shellMoveTask,
+        int operationCount,
+        Stopwatch stopwatch)
+    {
+        try
+        {
+            await shellMoveTask.ConfigureAwait(false);
+            App.Log(
+                $"[FileTransfer] Pending shell move call eventually returned " +
+                $"count={operationCount} elapsedMs={stopwatch.ElapsedMilliseconds}");
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[FileTransfer] Pending shell move call failed after filesystem " +
+                $"completion count={operationCount} " +
+                $"elapsedMs={stopwatch.ElapsedMilliseconds}: {ex}");
+        }
+    }
+
     internal static bool IsCompletedShellMove(string sourcePath, string destinationPath)
     {
         return (File.Exists(destinationPath) || Directory.Exists(destinationPath)) &&
                !File.Exists(sourcePath) &&
                !Directory.Exists(sourcePath);
+    }
+
+    internal static bool AreAllShellMovesCompleted(
+        IEnumerable<FileTransferPlan> plans)
+    {
+        FileTransferPlan[] materialized = plans.ToArray();
+        return materialized.Length > 0 &&
+               materialized.All(plan => IsCompletedShellMove(
+                   plan.SourcePath,
+                   plan.DestinationPath));
     }
 
     /// <summary>
@@ -1145,9 +1258,13 @@ public sealed class FileService
         }
     }
 
-    private static void MoveEntriesWithShellProgress(IReadOnlyList<TransferOperation> operations)
+    private static void MoveEntriesWithShellProgress(
+        IReadOnlyList<TransferOperation> operations,
+        IntPtr ownerWindowHandle)
     {
-        if (TryMoveEntriesToSameFolderWithShellProgress(operations))
+        if (TryMoveEntriesToSameFolderWithShellProgress(
+                operations,
+                ownerWindowHandle))
         {
             return;
         }
@@ -1163,11 +1280,13 @@ public sealed class FileService
                 {
                     var fileOperation = new ShFileOperation
                     {
-                        WindowHandle = IntPtr.Zero,
+                        WindowHandle = ownerWindowHandle,
                         Function = FoMove,
                         From = fromPointer,
                         To = toPointer,
-                        Flags = FofNoConfirmMkDir
+                        Flags = FofNoConfirmMkDir |
+                                FofNoConfirmation |
+                                FofNoErrorUi
                     };
 
                     int result = SHFileOperation(ref fileOperation);
@@ -1185,7 +1304,9 @@ public sealed class FileService
         }
     }
 
-    private static bool TryMoveEntriesToSameFolderWithShellProgress(IReadOnlyList<TransferOperation> operations)
+    private static bool TryMoveEntriesToSameFolderWithShellProgress(
+        IReadOnlyList<TransferOperation> operations,
+        IntPtr ownerWindowHandle)
     {
         if (operations.Count == 0)
         {
@@ -1217,11 +1338,13 @@ public sealed class FileService
             {
                 var fileOperation = new ShFileOperation
                 {
-                    WindowHandle = IntPtr.Zero,
+                    WindowHandle = ownerWindowHandle,
                     Function = FoMove,
                     From = fromPointer,
                     To = toPointer,
-                    Flags = FofNoConfirmMkDir
+                    Flags = FofNoConfirmMkDir |
+                            FofNoConfirmation |
+                            FofNoErrorUi
                 };
 
                 int result = SHFileOperation(ref fileOperation);

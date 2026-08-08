@@ -35,19 +35,19 @@ public sealed partial class OnboardingWindow
         _ = ChangeStoragePathAsync();
     }
 
-    private async Task ChangeStoragePathAsync()
+    private async Task<bool> ChangeStoragePathAsync()
     {
         string? folderPath = FolderPickerService.PickFolder(_hWnd);
         if (string.IsNullOrWhiteSpace(folderPath))
         {
-            return;
+            return false;
         }
 
         string normalizedPath = SettingsService.NormalizeManagedStorageRootPath(folderPath);
         string currentPath = SettingsService.NormalizeManagedStorageRootPath(_settingsService.Settings.DefaultManagedStorageRootPath);
         if (string.Equals(normalizedPath, currentPath, StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            return false;
         }
 
         int affectedCount = App.Current.WidgetManager?.GetDefaultManagedStorageWidgetCount() ?? 0;
@@ -73,7 +73,7 @@ public sealed partial class OnboardingWindow
 
             if (await dialog.ShowAsync() != ContentDialogResult.Primary)
             {
-                return;
+                return false;
             }
         }
 
@@ -101,7 +101,7 @@ public sealed partial class OnboardingWindow
                     };
                     await errorDialog.ShowAsync();
                 }
-                return;
+                return false;
             }
         }
 
@@ -109,6 +109,7 @@ public sealed partial class OnboardingWindow
         _settingsService.SaveDebounced();
         Step4PathText.Text = normalizedPath;
         InvalidateDesktopOrganizationPlan();
+        return true;
     }
 
     private async void Step4PinToggle_Toggled(object sender, RoutedEventArgs e)

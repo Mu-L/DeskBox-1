@@ -58,7 +58,7 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
     public FileItemSurface()
     {
         InitializeComponent();
-        DataContextChanged += (_, _) => NotifyPresentationChanged();
+        DataContextChanged += FileItemSurface_DataContextChanged;
     }
 
     public event EventHandler<FileItemSurfaceVisualStateChangedEventArgs>? VisualStateChanged;
@@ -217,6 +217,21 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
 
     private void LayoutContext_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        NotifyPresentationChanged();
+    }
+
+    private void FileItemSurface_DataContextChanged(
+        FrameworkElement sender,
+        DataContextChangedEventArgs args)
+    {
+        // ListView virtualization can reuse a loaded surface for a different
+        // item without raising Loaded again. Reset pointer state and ask the
+        // host to reapply all item-dependent styling, especially cut opacity.
+        _visualState = FileItemSurfaceVisualState.Normal;
+        VisualStateChanged?.Invoke(
+            this,
+            new FileItemSurfaceVisualStateChangedEventArgs(_visualState));
+        OnPropertyChanged(nameof(VisualState));
         NotifyPresentationChanged();
     }
 

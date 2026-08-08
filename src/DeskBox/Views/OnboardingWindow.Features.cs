@@ -20,15 +20,8 @@ public sealed partial class OnboardingWindow
 {
     private void SetupStep2Features()
     {
-        // Feature widgets are intentionally configured after the core setup.
-        // The onboarding page is informational only, so a first-time user is
-        // not asked to make five independent feature choices before learning
-        // the file-widget model.
-    }
-
-    private void OpenFeatureWidgetsSettingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        App.Current.ShowSettings("FeatureWidgets");
+        // This page teaches the stable tray entry point. It intentionally does
+        // not open a live menu or create another widget during onboarding.
     }
 
     // ════════════════════════════════════════════════════════════

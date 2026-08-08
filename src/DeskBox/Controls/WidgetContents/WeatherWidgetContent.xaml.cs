@@ -1,6 +1,7 @@
 using DeskBox.ViewModels;
 using DeskBox.Models;
 using DeskBox.Services;
+using DeskBox.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
@@ -47,6 +48,7 @@ public sealed partial class WeatherWidgetContent : UserControl
     {
         UpdateRichSkinTextTheme();
         UpdateWeatherPalette();
+        ApplySegmentedAccent();
     }
 
     private void FindRefreshIcons()
@@ -85,6 +87,9 @@ public sealed partial class WeatherWidgetContent : UserControl
         UpdateRichSkinTextTheme();
         UpdateWeatherPalette();
         UpdateWeatherViewSelection();
+        App.Current.ThemeService.AppearanceChanged -= OnThemeAppearanceChanged;
+        App.Current.ThemeService.AppearanceChanged += OnThemeAppearanceChanged;
+        ApplySegmentedAccent();
 
         // Ensure the layout mode reflects the actual control size.
         // SizeChanged may fire with 0x0 before the control is fully laid out.
@@ -97,7 +102,26 @@ public sealed partial class WeatherWidgetContent : UserControl
     private void WeatherWidgetContent_Unloaded(object sender, RoutedEventArgs e)
     {
         _isViewLoaded = false;
+        App.Current.ThemeService.AppearanceChanged -= OnThemeAppearanceChanged;
         try { _refreshRotationStoryboard?.Stop(); } catch { }
+    }
+
+    private void OnThemeAppearanceChanged()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(OnThemeAppearanceChanged);
+            return;
+        }
+
+        ApplySegmentedAccent();
+    }
+
+    private void ApplySegmentedAccent()
+    {
+        AccentResourceScope.Apply(
+            WeatherViewSegmented,
+            App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor);
     }
 
     private void UpdateWeatherPalette()

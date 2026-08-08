@@ -1,4 +1,5 @@
 using DeskBox.Contracts;
+using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.ViewModels;
@@ -421,9 +422,9 @@ public sealed partial class QuickCaptureSurfaceContent :
                 Color.FromArgb(0x28, 0x78, 0x9E, 0xFF))
             : new SolidColorBrush(Colors.Transparent);
         border.BorderBrush = active
-            ? ResolveBrush(
-                "AccentFillColorDefaultBrush",
-                Colors.DeepSkyBlue)
+            ? new SolidColorBrush(
+                App.Current.ThemeService?.GetEffectiveAccentColor() ??
+                AccentColorHelper.DefaultAccentColor)
             : new SolidColorBrush(Colors.Transparent);
         border.BorderThickness = new Thickness(active ? 1 : 0);
     }

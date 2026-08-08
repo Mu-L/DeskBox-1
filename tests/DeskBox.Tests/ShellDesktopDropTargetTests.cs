@@ -13,6 +13,12 @@ public sealed class ShellDesktopDropTargetTests
         Assert.Null(exception);
     }
 
+    [Fact]
+    public void IsDesktopWindow_RejectsMissingWindow()
+    {
+        Assert.False(ShellDesktopDropTarget.IsDesktopWindow(IntPtr.Zero));
+    }
+
     [Theory]
     [InlineData("Progman")]
     [InlineData("WorkerW")]

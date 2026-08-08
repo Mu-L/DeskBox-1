@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using DeskBox.Helpers;
+using DeskBox.Models;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -50,23 +51,11 @@ public sealed class WidgetTrayAnimationController
     private double _preparedOffsetY;
     private float _preparedOpacity = RestingOpacity;
     private float _preparedScale = RestingScale;
+    private int _preparedRefreshRateHz = WidgetDisplayRefreshRatePolicy.DefaultRefreshRateHz;
     private EventHandler<object>? _contentReadyRenderingHandler;
     private int _contentReadyFrameCount;
     private long _contentReadyGeneration;
     private Action? _contentReadyAction;
-
-    // ──【强制满帧率模式】直接以显示器刷新率为目标，不做任何节流 ──
-    // 策略：获取显示器实际刷新率并直接使用，确保视觉流畅
-    private const int MaxFPS_HighPriority = 240;   // 最大可能帧率（VRR 上限）
-    private const int MaxFPS_Normal = 240;         // 始终满帧！
-    private const double HighPriorityDurationMs = 999999.0;  // 几乎无限时
-    
-    private DateTime _lastRenderTime = DateTime.MinValue;
-    private TimeSpan _elapsedSinceStart;
-    private int _targetFPS = MaxFPS_HighPriority;
-    private double _minFrameIntervalMs = 8.33;     // 120fps 的帧间隔
-    private DateTime _animationStartTime;
-    // ── 强制满帧率模式结束 ──
 
     private bool _isRendering;
     private Stopwatch? _renderStopwatch;
@@ -79,6 +68,8 @@ public sealed class WidgetTrayAnimationController
     private long _renderGeneration;
     private string _renderEasingIntensity = string.Empty;
     private Action? _renderCompleted;
+    private IDisposable? _renderClockBoostLease;
+    private WidgetTrayAnimationFrameTracker? _renderFrameTracker;
     private Microsoft.UI.Composition.Compositor? _cachedCompositor;
 
     public WidgetTrayAnimationController(
@@ -306,6 +297,10 @@ public sealed class WidgetTrayAnimationController
 
     public void PrepareVisualState(double offsetX, double offsetY, float opacity, float scale)
     {
+        // Capture the destination monitor while the HWND still rests there.
+        // Show animations move the native window off-screen during preparation,
+        // where a later monitor lookup could otherwise return the wrong display.
+        _preparedRefreshRateHz = Win32Helper.GetDisplayRefreshRateForWindow(_windowHandle);
         _preparedOffsetX = offsetX;
         _preparedOffsetY = offsetY;
         _preparedOpacity = opacity;
@@ -443,8 +438,12 @@ public sealed class WidgetTrayAnimationController
         _renderCompleted = completed;
         _renderStopwatch = Stopwatch.StartNew();
         _isRendering = true;
-        _animationStartTime = DateTime.UtcNow;
-        
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        _renderFrameTracker = new WidgetTrayAnimationFrameTracker(
+            startedTimestamp,
+            [_preparedRefreshRateHz]);
+        _renderClockBoostLease = CompositorClockBoostCoordinator.Acquire();
+
         // Use the same easing for window position interpolation.
         _renderEasingIntensity = easingIntensity;
 
@@ -547,6 +546,7 @@ public sealed class WidgetTrayAnimationController
             FromOffsetY = fromOffsetY,
             ToOffsetX = toOffsetX,
             ToOffsetY = toOffsetY,
+            RefreshRateHz = _preparedRefreshRateHz,
             IsValid = () => capturedGeneration == Generation,
             Completed = () => CompleteAnimation(toOffsetX, toOffsetY, isShowing, capturedGeneration, completed)
         };
@@ -577,39 +577,27 @@ public sealed class WidgetTrayAnimationController
         return current;
     }
 
-    private void OnRenderingFrame(object sender, object e)
+    private void OnRenderingFrame(object? sender, object e)
     {
         try // ✅ 添加异常保护防止渲染线程崩溃
         {
             if (!_isRendering || _renderGeneration != Generation)
             {
-                StopRendering();
+                StopRendering("superseded");
                 return;
             }
 
             var stopwatch = _renderStopwatch;
             if (stopwatch is null)
             {
-                StopRendering();
+                StopRendering("invalid-clock");
                 return;
             }
 
-            // ──【强制满帧模式】直接渲染，不跳过任何帧 ──
-            // 策略：确保每一帧都渲染，充分利用显示器刷新率
-            _elapsedSinceStart = stopwatch.Elapsed;
-            _targetFPS = MaxFPS_HighPriority;  // 始终保持最高帧率
-            
-            _minFrameIntervalMs = 1000.0 / _targetFPS;
-            
-            // ⚠️ 关键修改：禁用帧率节流逻辑，允许尽可能快的渲染
-            // if (timeSinceLastRender.TotalMilliseconds < _minFrameIntervalMs)
-            // {
-            //     return;  // 禁用帧率限制
-            // }
-            
-            // 更新最后一次渲染时间（但不停止帧率）
-            _lastRenderTime = DateTime.UtcNow;
-            // ── 强制满帧模式结束 ──
+            // Rendering is the compositor-paced clock. Do not impose a 60 Hz
+            // timer or a synthetic FPS cap; record every callback against the
+            // destination display's real frame budget instead.
+            _renderFrameTracker?.RecordFrame(Stopwatch.GetTimestamp());
 
             double rawProgress = Math.Clamp(stopwatch.Elapsed.TotalMilliseconds / _renderDurationMs, 0.0, 1.0);
             double easedProgress = WidgetAnimationSettings.Ease(rawProgress, _renderEasingIntensity, _renderIsShowing);
@@ -624,7 +612,7 @@ public sealed class WidgetTrayAnimationController
                 return;
             }
 
-            StopRendering();
+            StopRendering("completed");
 
             CompleteAnimation(
                 _renderToOffsetX,
@@ -637,11 +625,11 @@ public sealed class WidgetTrayAnimationController
         {
             // 记录异常日志但不让渲染线程崩溃
             App.Log($"[WidgetTrayAnimationController] Frame exception: {ex.Message}\n{ex.StackTrace}");
-            StopRendering(); // 安全停止动画，防止状态不一致
+            StopRendering("failed"); // 安全停止动画，防止状态不一致
         }
     }
 
-    private void StopRendering()
+    private void StopRendering(string outcome = "cancelled")
     {
         if (!_isRendering)
         {
@@ -651,13 +639,17 @@ public sealed class WidgetTrayAnimationController
         _isRendering = false;
         _renderStopwatch = null;
         CompositionTarget.Rendering -= OnRenderingFrame;
-        
-        // ── 强制满帧模式：重置帧率节流状态 ──
-        _lastRenderTime = DateTime.MinValue;
-        _elapsedSinceStart = TimeSpan.Zero;
-        _targetFPS = MaxFPS_HighPriority;  // 重置为最高帧率
-        _minFrameIntervalMs = 1000.0 / _targetFPS;
-        // ── 强制满帧模式结束 ──
+        WidgetTrayAnimationFrameTracker? tracker = _renderFrameTracker;
+        _renderFrameTracker = null;
+        WidgetTrayAnimationDiagnostics.Report(
+            tracker,
+            Stopwatch.GetTimestamp(),
+            _renderIsShowing,
+            outcome,
+            $"window:0x{_windowHandle.ToInt64():X}",
+            _log);
+        _renderClockBoostLease?.Dispose();
+        _renderClockBoostLease = null;
     }
 
     public void Stop()
@@ -760,7 +752,7 @@ public sealed class WidgetTrayAnimationController
         double finalOffsetY,
         bool isShowing,
         long generation,
-        Action completed)
+        Action? completed)
     {
         if (generation != Generation)
         {
@@ -771,7 +763,7 @@ public sealed class WidgetTrayAnimationController
         SetOffsetOverride(null, null);
         RestoreDwmTransitions();
         _log($"AnimateCompleted mode={(isShowing ? "show" : "hide")} gen={generation}");
-        completed();
+        completed?.Invoke();
     }
 
     private void ApplyWindowOffset(double offsetX, double offsetY)

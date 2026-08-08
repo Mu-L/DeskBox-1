@@ -161,6 +161,12 @@ public sealed class ThemeService
             return;
         }
 
+        if (!rootElement.DispatcherQueue.HasThreadAccess)
+        {
+            _ = rootElement.DispatcherQueue.TryEnqueue(() => ApplyToWindow(window));
+            return;
+        }
+
         var theme = CurrentTheme;
         if (theme == ElementTheme.Default)
         {
@@ -168,6 +174,7 @@ public sealed class ThemeService
         }
 
         rootElement.RequestedTheme = theme;
+        AccentResourceScope.Apply(rootElement, GetEffectiveAccentColor());
 
         var hWnd = WindowNative.GetWindowHandle(window);
         if (hWnd == IntPtr.Zero)

@@ -176,12 +176,17 @@ public sealed partial class WidgetManager
 
     public void BeginWidgetInteraction(string reason)
     {
+        _idlePeerOrderGeneration++;
         _sessionManager.BeginInteraction(reason);
     }
 
     public void EndWidgetInteraction(string reason)
     {
         _sessionManager.EndInteraction(reason);
+        if (!_sessionManager.IsInteractionActive)
+        {
+            QueueIdleWidgetZOrderNormalization(reason);
+        }
     }
 
     public event Action<string>? WidgetRemoved;
@@ -526,6 +531,8 @@ public sealed partial class WidgetManager
                 App.Log($"[WidgetManager] Failed to refresh widget desktop layer {FormatHostWindow(window)}: {ex}");
             }
         }
+
+        QueueIdleWidgetZOrderNormalization(reason);
     }
 
     private void ApplyAppearancePreview()
@@ -624,7 +631,17 @@ public sealed partial class WidgetManager
     /// <summary>
     /// Create a new widget backed by the default managed storage root.
     /// </summary>
-    public async Task CreateManagedWidgetAsync(string? name = null)
+    public Task CreateManagedWidgetAsync(string? name = null)
+    {
+        return CreateManagedWidgetCoreAsync(name, placeForFirstRun: false);
+    }
+
+    internal Task CreateInitialManagedWidgetAsync(string? name = null)
+    {
+        return CreateManagedWidgetCoreAsync(name, placeForFirstRun: true);
+    }
+
+    private async Task CreateManagedWidgetCoreAsync(string? name, bool placeForFirstRun)
     {
         name = string.IsNullOrWhiteSpace(name)
             ? _localizationService.T("Widget.DefaultName")
@@ -644,6 +661,23 @@ public sealed partial class WidgetManager
             Width = _settingsService.Settings.DefaultWidgetWidth,
             Height = _settingsService.Settings.DefaultWidgetHeight
         };
+
+        if (placeForFirstRun)
+        {
+            Windows.Graphics.PointInt32 pointerPosition = new(0, 0);
+            if (Win32Helper.GetCursorPos(out Win32Helper.POINT cursor))
+            {
+                pointerPosition = new Windows.Graphics.PointInt32(cursor.X, cursor.Y);
+            }
+
+            var workArea = DisplayArea.GetFromPoint(
+                pointerPosition,
+                DisplayAreaFallback.Primary).WorkArea;
+            InitialFileWidgetPlacementPolicy.Apply(
+                config,
+                workArea,
+                WidgetPositioningService.GetDpiScale(workArea));
+        }
 
         _settingsService.Settings.Widgets.Add(config);
         await _settingsService.SaveAsync();
@@ -972,6 +1006,8 @@ public sealed partial class WidgetManager
             }
 
             PlayPreparedTrayShowAnimations(windowsToAnimate);
+            _sessionManager.MarkDesktopResting("set-all-visible");
+            NormalizeIdleWidgetZOrder("set-all-visible");
             SaveBatchVisibilityState();
             App.LogVerbose($"[TrayBatch] SetAllVisible completed visible=true prepared={windowsToShow.Count} shown={shownWindows.Count}");
             return;
@@ -1037,6 +1073,7 @@ public sealed partial class WidgetManager
         }
 
         await Task.Yield();
+        QueueIdleWidgetZOrderNormalization("display-topology-restored");
     }
 
     /// <summary>
@@ -1435,6 +1472,7 @@ public sealed partial class WidgetManager
         SetWidgetsRaisedFromTray(false);
         _trayRaiseBatchGeneration++;
         StopTrayLayerRestoreMonitor();
+        NormalizeIdleWidgetZOrder("raised-session-restored");
     }
 
     /// <summary>

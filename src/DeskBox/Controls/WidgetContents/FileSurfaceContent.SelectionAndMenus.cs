@@ -370,6 +370,26 @@ public sealed partial class FileSurfaceContent
         string? mappedFolderPath = ViewModel.MappedFolderPath;
         bool hasMappedFolder =
             !string.IsNullOrWhiteSpace(mappedFolderPath);
+
+        MenuFlyoutItem refresh =
+            CreateMenuItem("Common.Refresh", "\uE72C");
+        refresh.Click += async (_, _) =>
+        {
+            flyout.Hide();
+            await RunAsync(RefreshAsync);
+        };
+        flyout.Items.Add(refresh);
+
+        MenuFlyoutItem paste =
+            CreateMenuItem("Common.Paste", "\uE77F");
+        paste.IsEnabled = hasMappedFolder && CanPasteFromClipboard();
+        paste.Click += async (_, _) =>
+        {
+            flyout.Hide();
+            await RunAsync(PasteFromClipboardAsync);
+        };
+        flyout.Items.Add(paste);
+
         MenuFlyoutItem newFolder =
             CreateMenuItem("Common.NewFolder", "\uE8B7");
         newFolder.IsEnabled = hasMappedFolder;
@@ -455,17 +475,9 @@ public sealed partial class FileSurfaceContent
 
         if (hostItems.CloseWidgetItem is not null)
         {
+            flyout.Items.Add(new MenuFlyoutSeparator());
             flyout.Items.Add(hostItems.CloseWidgetItem);
         }
-
-        MenuFlyoutItem refresh =
-            CreateMenuItem("Common.Refresh", "\uE72C");
-        refresh.Click += async (_, _) =>
-        {
-            flyout.Hide();
-            await RunAsync(RefreshAsync);
-        };
-        flyout.Items.Add(refresh);
         return flyout;
     }
 

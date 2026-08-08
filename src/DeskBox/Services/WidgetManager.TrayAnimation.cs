@@ -129,7 +129,7 @@ public sealed partial class WidgetManager
             // topmost until the next toggle, covering whatever the user clicks.
             StartTrayLayerRestoreMonitor(shownWindows.Count > 0);
             QueueTrayRaiseTopMostConfirmation(shownWindows);
-            ActivateLastRaisedWindow(shownWindows);
+            ActivateIdleHighestWindow(shownWindows);
             SaveBatchVisibilityState();
             App.LogVerbose($"[TrayBatch] Raise completed raised={_widgetsRaisedFromTray} prepared={windowsToRaise.Count} shown={shownWindows.Count} animated={windowsToAnimate.Count}");
             return _widgetsRaisedFromTray;
@@ -464,9 +464,9 @@ public sealed partial class WidgetManager
         return displayArea.WorkArea;
     }
 
-    private static void ActivateLastRaisedWindow(IReadOnlyList<IDesktopWidgetWindow> windows)
+    private static void ActivateIdleHighestWindow(IReadOnlyList<IDesktopWidgetWindow> windows)
     {
-        if (windows.LastOrDefault() is not { } window)
+        if (GetWindowsInIdleHighestFirstOrder(windows).FirstOrDefault() is not { } window)
         {
             return;
         }
@@ -499,11 +499,15 @@ public sealed partial class WidgetManager
             return;
         }
 
-        var visibleWindows = windows.Where(window => window.Visible).ToList();
-        IntPtr activeHandle = visibleWindows.LastOrDefault()?.WindowHandle ?? IntPtr.Zero;
+        IReadOnlyList<IDesktopWidgetWindow> visibleWindows =
+            GetWindowsInIdleHighestFirstOrder(
+                windows.Where(window => window.Visible));
+        IntPtr activeHandle = visibleWindows.FirstOrDefault()?.WindowHandle ?? IntPtr.Zero;
         WidgetLayerService.BringGroupTemporarilyToFront(
             visibleWindows.Select(window => window.WindowHandle).ToList(),
             activeHandle);
+        WidgetLayerService.ApplyPeerOrderHighestToLowest(
+            visibleWindows.Select(window => window.WindowHandle).ToList());
     }
 
     private void SaveBatchVisibilityState()

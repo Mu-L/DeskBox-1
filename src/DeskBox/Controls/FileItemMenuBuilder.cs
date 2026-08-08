@@ -121,7 +121,7 @@ public static class FileItemMenuBuilder
 
         flyout.Items.Add(new MenuFlyoutSeparator());
         MenuFlyoutItem delete = actions.CreateMenuItem(
-            "Common.Delete",
+            "Widget.MoveToRecycleBin",
             "\uE74D");
         delete.Click += async (_, _) =>
         {
@@ -200,7 +200,7 @@ public static class FileItemMenuBuilder
 
         flyout.Items.Add(new MenuFlyoutSeparator());
         MenuFlyoutItem delete = actions.CreateMenuItem(
-            "Common.Delete",
+            "Widget.MoveToRecycleBin",
             "\uE74D");
         delete.Click += async (_, _) =>
         {

@@ -40,7 +40,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string BorderThin = SettingsService.WidgetBorderStyleThin;
     private const string BorderMedium = SettingsService.WidgetBorderStyleMedium;
     private const string BorderThick = SettingsService.WidgetBorderStyleThick;
-    private const string AnimationPresetNone = "None";
     private const string AnimationPresetGentle = "Gentle";
     private const string AnimationPresetStandard = "Standard";
     private const string AnimationPresetEmphasized = "Emphasized";
@@ -166,6 +165,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     [ObservableProperty] private bool _showImageFilesAsIcons;
     [ObservableProperty] private bool _showHoverButtons = true;
     [ObservableProperty] private bool _resizeSnapEnabled = true;
+    [ObservableProperty] private bool _keepWidgetsVisibleOnShowDesktop = true;
     [ObservableProperty] private bool _showHoverActionLockPosition;
     [ObservableProperty] private bool _showHoverActionLockSize;
     [ObservableProperty] private bool _showHoverActionAdd;
@@ -259,6 +259,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _showImageFilesAsIcons = settings.ShowImageFilesAsIcons;
         _showHoverButtons = settings.ShowHoverButtons;
         _resizeSnapEnabled = settings.ResizeSnapEnabled;
+        _keepWidgetsVisibleOnShowDesktop = settings.KeepWidgetsVisibleOnShowDesktop;
         ApplyHoverButtonActionSelection(settings.WidgetHoverButtonActions);
         _showListItemDetails = settings.ShowListItemDetails;
         _showFileItemPathTooltips = settings.ShowFileItemPathTooltips;
@@ -599,11 +600,6 @@ _ = RefreshQuickAccessStateAsync();
     {
         (string effect, string speed, string direction, string easing) = preset switch
         {
-            AnimationPresetNone => (
-                SettingsService.WidgetAnimationEffectNone,
-                SettingsService.WidgetAnimationSpeedStandard,
-                SettingsService.WidgetAnimationSlideDirectionNone,
-                SettingsService.WidgetAnimationEasingNone),
             AnimationPresetGentle => (
                 SettingsService.WidgetAnimationEffectFade,
                 SettingsService.WidgetAnimationSpeedRelaxed,
@@ -653,11 +649,6 @@ _ = RefreshQuickAccessStateAsync();
 
     private string ResolveAnimationPreset()
     {
-        if (_selectedWidgetAnimationEffect == SettingsService.WidgetAnimationEffectNone)
-        {
-            return AnimationPresetNone;
-        }
-
         if (_selectedWidgetAnimationEffect == SettingsService.WidgetAnimationEffectFade &&
             _selectedWidgetAnimationSpeed == SettingsService.WidgetAnimationSpeedRelaxed &&
             _selectedWidgetAnimationEasingIntensity == SettingsService.WidgetAnimationEasingLight)

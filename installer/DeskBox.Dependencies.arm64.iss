@@ -260,7 +260,7 @@ begin
 
   DependencyInstallPage.SetProgress(Step - 1, StepCount);
   DependencyInstallPage.SetText(
-    Format(ExpandConstant('{cm:InstallingDependency}'), [DisplayName]),
+    FmtMessage(ExpandConstant('{cm:InstallingDependency}'), [DisplayName]),
     '');
 
   if not ShellExec('runas', InstallerPath, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then

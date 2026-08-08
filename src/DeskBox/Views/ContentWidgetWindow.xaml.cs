@@ -49,6 +49,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
 
     private bool _isVisibleOnDesktop;
+    private int _contentVisibilityGeneration;
     private SearchHistoryService? _subscribedSearchHistoryService;
 
     public ContentWidgetWindow(
@@ -824,10 +825,11 @@ IsHideAnimationRunning = true;
         WidgetLayerService.ClearTopMost(HWnd);
         Win32Helper.ShowWindow(HWnd, Win32Helper.SW_HIDE);
         AppWindow.Hide();
+        NotifyCompactHostVisibilityChanged(false);
         TrayAnimation.RestoreVisualState();
         TrayAnimation.RestoreWindowPosition();
         _contentHost.OnDeactivated();
-        _contentHost.OnWindowVisibilityChanged(false);
+        NotifyVisibleContentSuspended();
     }
 
     public void CloseWindow()
@@ -896,6 +898,11 @@ IsHideAnimationRunning = true;
 
     private void AttachHostContextMenuSource(IWidgetContent content)
     {
+        if (content is FileSurfaceContent fileSurface)
+        {
+            fileSurface.SetHostWindowHandle(HWnd);
+        }
+
         if (_hostContextMenuSource is not null)
         {
             _hostContextMenuSource.HostContextMenuOpening -=

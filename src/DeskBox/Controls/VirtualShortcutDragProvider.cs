@@ -75,6 +75,41 @@ internal static class VirtualShortcutDragProvider
                    fileExists(path));
     }
 
+    internal static bool RequiresStorageBrokerBypass(
+        IReadOnlyList<string> sourcePaths,
+        Func<string, bool>? fileExists = null,
+        Func<string, System.IO.FileAttributes>? getAttributes = null)
+    {
+        if (!CanProvide(sourcePaths, fileExists))
+        {
+            return false;
+        }
+
+        getAttributes ??= File.GetAttributes;
+        foreach (string path in sourcePaths)
+        {
+            try
+            {
+                System.IO.FileAttributes attributes = getAttributes(path);
+                if ((attributes &
+                     (System.IO.FileAttributes.Hidden |
+                      System.IO.FileAttributes.System)) != 0)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // If even the attributes cannot be read, asking the WinRT
+                // broker for this path is both unlikely to succeed and unsafe
+                // to wait on from the UI STA.
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static async void CopySourceToStreamAsync(
         string sourcePath,
         StreamedFileDataRequest request)

@@ -20,7 +20,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -30,6 +30,7 @@ public sealed class SettingsMigrationPipeline
         _migrations.Add(new Migration_0_To_1());
         _migrations.Add(new Migration_1_To_2());
         _migrations.Add(new Migration_2_To_3());
+        _migrations.Add(new Migration_3_To_4());
     }
 
     /// <summary>
@@ -166,5 +167,21 @@ internal sealed class Migration_2_To_3 : ISettingsMigration
                 group.WheelSwitchEnabled = null;
             }
         }
+    }
+}
+
+/// <summary>
+/// Marks the legacy default file-widget experience as already resolved. Existing
+/// profiles must never receive a new default widget merely because they currently
+/// contain no file widgets. SettingsService resets this flag only when it knows
+/// that the settings file did not exist and a genuinely new profile was created.
+/// </summary>
+internal sealed class Migration_3_To_4 : ISettingsMigration
+{
+    public int FromVersion => 3;
+
+    public void Migrate(AppSettings settings)
+    {
+        settings.HasResolvedInitialFileWidgetSetup = true;
     }
 }

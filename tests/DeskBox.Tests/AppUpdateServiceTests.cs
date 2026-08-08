@@ -35,6 +35,46 @@ public sealed class AppUpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public void ManifestInstallerSelection_UsesIndependentArm64Metadata()
+    {
+        var manifest = new AppUpdateManifest
+        {
+            Version = "1.3.8",
+            DownloadUrl = "https://example.com/DeskBox_Setup_1.3.8_x64.exe",
+            Sha256 = new string('A', 64),
+            Size = 101,
+            Arm64DownloadUrl = "https://example.com/DeskBox_Setup_1.3.8_arm64.exe",
+            Arm64Sha256 = new string('B', 64),
+            Arm64Size = 202
+        };
+
+        Assert.True(AppUpdateService.TrySelectInstallerForArchitecture(manifest, "arm64"));
+        Assert.EndsWith("_arm64.exe", manifest.DownloadUrl, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new string('B', 64), manifest.Sha256);
+        Assert.Equal(202, manifest.Size);
+    }
+
+    [Fact]
+    public void ManifestInstallerSelection_LeavesPrimaryMetadataForX64()
+    {
+        var manifest = new AppUpdateManifest
+        {
+            Version = "1.3.8",
+            DownloadUrl = "https://example.com/DeskBox_Setup_1.3.8_x64.exe",
+            Sha256 = new string('A', 64),
+            Size = 101,
+            Arm64DownloadUrl = "https://example.com/DeskBox_Setup_1.3.8_arm64.exe",
+            Arm64Sha256 = new string('B', 64),
+            Arm64Size = 202
+        };
+
+        Assert.True(AppUpdateService.TrySelectInstallerForArchitecture(manifest, "x64"));
+        Assert.EndsWith("_x64.exe", manifest.DownloadUrl, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new string('A', 64), manifest.Sha256);
+        Assert.Equal(101, manifest.Size);
+    }
+
+    [Fact]
     public void LocalizedSummary_PrefersEnglishWhenLocaleIsMissing()
     {
         var manifest = new AppUpdateManifest

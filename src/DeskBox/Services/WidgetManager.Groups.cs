@@ -1557,6 +1557,7 @@ public sealed partial class WidgetManager
             }
         }
         _settingsService.SaveDebounced(notifySubscribers: false);
+        RaiseWidgetGroupsChanged();
     }
 
     public bool SetWidgetGroupVisibility(

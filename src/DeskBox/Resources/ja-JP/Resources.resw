@@ -46,7 +46,7 @@
     <comment>アプリの表示名。スタートメニュー、ストア、タスクバーに表示されます。</comment>
   </data>
   <data name="AppDescription" xml:space="preserve">
-    <value>Windows 11 向け軽量デスクトップ整理ツール</value>
+    <value>Windows 10/11 向け軽量デスクトップ整理ツール</value>
     <comment>アプリの説明。ストアとアプリのプロパティに表示されます。</comment>
   </data>
 </root>

@@ -109,6 +109,40 @@ public sealed class FolderRefreshPolicyTests
         }
     }
 
+    [Fact]
+    public void ShellMoveBatchCompletion_RequiresEveryMoveToBeComplete()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            $"DeskBox-shell-batch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string firstSource = Path.Combine(root, "first-source.txt");
+            string firstDestination = Path.Combine(root, "first-destination.txt");
+            string secondSource = Path.Combine(root, "second-source.txt");
+            string secondDestination = Path.Combine(root, "second-destination.txt");
+            File.WriteAllText(firstDestination, "first");
+            File.WriteAllText(secondSource, "second");
+            File.WriteAllText(secondDestination, "second");
+
+            var plans = new[]
+            {
+                new FileService.FileTransferPlan(firstSource, firstDestination),
+                new FileService.FileTransferPlan(secondSource, secondDestination)
+            };
+
+            Assert.False(FileService.AreAllShellMovesCompleted(plans));
+
+            File.Delete(secondSource);
+            Assert.True(FileService.AreAllShellMovesCompleted(plans));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(WatcherChangeTypes.Deleted, (int)FolderEntryRefreshStatus.NotFound, true)]
     [InlineData(WatcherChangeTypes.Changed, (int)FolderEntryRefreshStatus.NotFound, false)]

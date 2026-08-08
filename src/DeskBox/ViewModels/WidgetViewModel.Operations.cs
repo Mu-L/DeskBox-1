@@ -55,7 +55,10 @@ public partial class WidgetViewModel
     public async Task<IReadOnlyList<string>> ImportPathsAsync(
         IEnumerable<string> paths,
         bool? moveWhenMapped = null,
-        bool useShellProgress = false)
+        bool useShellProgress = false,
+        IntPtr ownerWindowHandle = default,
+        IProgress<FileService.FileTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         var normalizedPaths = paths
             .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -70,7 +73,15 @@ public partial class WidgetViewModel
         EnsureFolderBackedConfig();
         MappedFolderPath = Config.MappedFolderPath;
         bool shouldMove = moveWhenMapped ?? ShouldMoveManagedItems();
-        var historyEntry = await _organizerService.OrganizeDropAsync(Config, Name, normalizedPaths, shouldMove, useShellProgress);
+        var historyEntry = await _organizerService.OrganizeDropAsync(
+            Config,
+            Name,
+            normalizedPaths,
+            shouldMove,
+            useShellProgress,
+            ownerWindowHandle,
+            progress,
+            cancellationToken);
 
         if (shouldMove)
         {

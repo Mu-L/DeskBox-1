@@ -378,9 +378,7 @@ public sealed partial class TodoWidgetContent
         bool isCompleted = itemRoot is FrameworkElement { DataContext: TodoItemViewModel { IsCompleted: true } };
         if (FindVisualChild<Border>(itemRoot, "TodoCompletionBox") is { } completionBox)
         {
-            Brush completionAccentBrush = GetBrushResourceOrFallback(
-                "AccentTextFillColorPrimaryBrush",
-                accentColor);
+            Brush completionAccentBrush = new SolidColorBrush(accentColor);
             completionBox.Background = isCompleted
                 ? completionAccentBrush
                 : new SolidColorBrush(Colors.Transparent);
@@ -425,9 +423,7 @@ public sealed partial class TodoWidgetContent
 
         bool isDark = ActualTheme == ElementTheme.Dark;
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor;
-        Brush completionAccentBrush = GetBrushResourceOrFallback(
-            "AccentTextFillColorPrimaryBrush",
-            accentColor);
+        Brush completionAccentBrush = new SolidColorBrush(accentColor);
         DetailCompletionBox.Background = item.IsCompleted
             ? completionAccentBrush
             : new SolidColorBrush(Colors.Transparent);
