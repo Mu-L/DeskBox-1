@@ -18,7 +18,6 @@ public sealed partial class WidgetGroupTitleSwitcher
         TimeSpan.FromMilliseconds(220);
     private DateTimeOffset _pointerEnteredAt;
     private DateTimeOffset _lastWheelSwitchAt;
-    private DateTimeOffset _pendingWheelTargetAt;
     private string? _pendingWheelTargetId;
     private double _wheelAccumulator;
     private bool _pickerOpen;
@@ -535,20 +534,12 @@ public sealed partial class WidgetGroupTitleSwitcher
         if (origin == WidgetGroupSwitchOrigin.Wheel &&
             !string.IsNullOrWhiteSpace(_pendingWheelTargetId))
         {
-            if (DateTimeOffset.UtcNow - _pendingWheelTargetAt <=
-                TimeSpan.FromMilliseconds(1200))
+            int pendingIndex = FindMemberIndex(
+                _presentation.Members,
+                _pendingWheelTargetId);
+            if (pendingIndex >= 0)
             {
-                int pendingIndex = FindMemberIndex(
-                    _presentation.Members,
-                    _pendingWheelTargetId);
-                if (pendingIndex >= 0)
-                {
-                    activeIndex = pendingIndex;
-                }
-            }
-            else
-            {
-                _pendingWheelTargetId = null;
+                activeIndex = pendingIndex;
             }
         }
         if (activeIndex < 0)
@@ -560,7 +551,8 @@ public sealed partial class WidgetGroupTitleSwitcher
                 _presentation.Members.Count,
                 delta,
                 out int targetIndex,
-                wrap: origin == WidgetGroupSwitchOrigin.Keyboard))
+                wrap: origin is WidgetGroupSwitchOrigin.Keyboard or
+                    WidgetGroupSwitchOrigin.Wheel))
         {
             return false;
         }
@@ -569,12 +561,10 @@ public sealed partial class WidgetGroupTitleSwitcher
         if (origin == WidgetGroupSwitchOrigin.Wheel)
         {
             // The manager commits ActiveMemberId only after preparation,
-            // persistence and the content transition. Keep a short-lived
-            // optimistic target so another wheel detent does not calculate
-            // from the stale committed member and repeatedly cancel the same
-            // request.
+            // persistence and the content transition. Keep the optimistic
+            // target until the manager commits or rejects it so slow members
+            // cannot repeatedly restart the same request.
             _pendingWheelTargetId = targetId;
-            _pendingWheelTargetAt = DateTimeOffset.UtcNow;
         }
         else
         {
@@ -587,6 +577,34 @@ public sealed partial class WidgetGroupTitleSwitcher
                 targetId,
                 origin));
         return true;
+    }
+
+    internal void NotifyMemberInvocationCompleted(
+        string widgetId,
+        bool succeeded)
+    {
+        if (!string.Equals(
+                _pendingWheelTargetId,
+                widgetId,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (succeeded &&
+            !string.Equals(
+                _presentation?.ActiveMemberId,
+                widgetId,
+                StringComparison.Ordinal))
+        {
+            // A coalesced duplicate reports success while the original
+            // request is still preparing. Keep its optimistic cursor until
+            // the committed presentation catches up.
+            return;
+        }
+
+        _pendingWheelTargetId = null;
+        _wheelAccumulator = 0;
     }
 
     private void ReconcilePendingWheelTarget(
@@ -602,9 +620,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         if (string.Equals(
                 presentation.ActiveMemberId,
                 _pendingWheelTargetId,
-                StringComparison.Ordinal) ||
-            DateTimeOffset.UtcNow - _pendingWheelTargetAt >
-                TimeSpan.FromMilliseconds(1200))
+                StringComparison.Ordinal))
         {
             _pendingWheelTargetId = null;
         }

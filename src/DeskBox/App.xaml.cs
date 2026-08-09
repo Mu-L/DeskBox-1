@@ -91,6 +91,8 @@ public partial class App : Application
     private MenuFlyoutItem? _trayExitItem;
     private SettingsWindow? _settingsWindow;
     private OnboardingWindow? _onboardingWindow;
+    internal event Action<int>? OnboardingFileImportCompleted;
+    internal event Action<bool>? OnboardingWidgetsVisibilityChanged;
     private NativeAppNotificationService? _nativeNotificationService;
     private TodoReminderService? _todoReminderService;
     private DisplayAreaWatcherService? _displayAreaWatcher;
@@ -2250,6 +2252,17 @@ public partial class App : Application
             firstFileWidget.Id,
             reveal: true,
             autoRestoreOnReveal: false);
+    }
+
+    internal bool HasVisibleWidgetsForOnboarding =>
+        WidgetManager?.HasVisibleWidgets == true;
+
+    internal void NotifyOnboardingFileImportCompleted(int importedItemCount)
+    {
+        if (importedItemCount > 0 && _onboardingWindow is not null)
+        {
+            OnboardingFileImportCompleted?.Invoke(importedItemCount);
+        }
     }
 
     private static int s_lightMemoryCleanupGeneration;

@@ -90,6 +90,13 @@ public sealed partial class FileSurfaceContent
         }
 
         ListViewBase listView = GetActiveItemsView();
+        _pendingPointerDragItems = listView.SelectedItems.Contains(item)
+            ? listView.SelectedItems
+                .OfType<WidgetItem>()
+                .Where(selected => selected is not WidgetStackItem)
+                .Distinct()
+                .ToArray()
+            : [];
         ClearOtherWidgetSelections();
         FileItemSelectionBehavior.ApplyPointerSelection(
             listView,
@@ -192,6 +199,10 @@ public sealed partial class FileSurfaceContent
         }
 
         var deferral = e.GetDeferral();
+        // Surface-level and folder-target drops share the same acquisition
+        // phase. Show preparation feedback before resolving StorageItems so a
+        // large external payload never leaves the widget looking frozen.
+        BeginTrackedImport();
         try
         {
             using DroppedFileBatch batch = await GetSurfaceDropFilesAsync(e.DataView);
@@ -239,7 +250,7 @@ public sealed partial class FileSurfaceContent
             deferral.Complete();
             deferral = null;
 
-            BeginTrackedImport();
+            EnsureTrackedImportStarted();
             IProgress<FileService.FileTransferProgress> progress =
                 new CallbackProgress<FileService.FileTransferProgress>(
                     ReportImportProgress);
@@ -334,6 +345,11 @@ public sealed partial class FileSurfaceContent
         catch (OperationCanceledException)
         {
             App.Log($"[WidgetSurface] Folder drop canceled id={WidgetId}");
+            if (_activeImportCancellation is not null)
+            {
+                await CompleteTrackedImportAsync(
+                    ImportCompletionState.Canceled);
+            }
         }
         catch (Exception ex)
         {
@@ -342,9 +358,18 @@ public sealed partial class FileSurfaceContent
                 $"{T("Widget.MoveToFolderFailed")}: {ex.Message}",
                 WidgetFeedbackSeverity.Error,
                 "folder-drop-error"));
+            if (_activeImportCancellation is not null)
+            {
+                await CompleteTrackedImportAsync(
+                    ImportCompletionState.Failed);
+            }
         }
         finally
         {
+            if (_activeImportCancellation is not null)
+            {
+                CancelAndResetTrackedImport();
+            }
             deferral?.Complete();
         }
     }

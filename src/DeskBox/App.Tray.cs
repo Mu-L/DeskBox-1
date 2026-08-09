@@ -587,6 +587,10 @@ public partial class App
 
         await WidgetManager.ToggleWidgetsFromTrayAsync("tray-toggle");
         UpdateTrayLayerStateText(WidgetManager.WidgetsRaisedFromTray);
+        if (_onboardingWindow is not null)
+        {
+            OnboardingWidgetsVisibilityChanged?.Invoke(WidgetManager.HasVisibleWidgets);
+        }
     }
 
     private void UpdateTrayLayerStateText(bool raised)

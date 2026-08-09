@@ -16,6 +16,26 @@ public readonly record struct FileItemDragPackageResult(
 /// </summary>
 public static class FileItemDragPackage
 {
+    public static IReadOnlyList<WidgetItem> ResolveDraggedItems(
+        IReadOnlyList<WidgetItem> eventItems,
+        IReadOnlyList<WidgetItem> selectedItems)
+    {
+        WidgetItem[] distinctEventItems = eventItems.Distinct().ToArray();
+        WidgetItem[] distinctSelectedItems = selectedItems.Distinct().ToArray();
+        if (distinctSelectedItems.Length <= 1 || distinctEventItems.Length == 0)
+        {
+            return distinctEventItems;
+        }
+
+        // Some WinUI ListView input paths report only the pointer anchor in
+        // DragItemsStarting even though it belongs to a larger selection. The
+        // visible selection is authoritative whenever the event anchor is one
+        // of its members.
+        return distinctEventItems.Any(distinctSelectedItems.Contains)
+            ? distinctSelectedItems
+            : distinctEventItems;
+    }
+
     public static bool TryPrepare(
         DataPackage dataPackage,
         IReadOnlyList<WidgetItem> draggedItems,

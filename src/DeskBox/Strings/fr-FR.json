@@ -2083,5 +2083,9 @@
     "Onboarding.Task.Step2.Warning.SystemDriveOnly": "Aucun autre disque local avec assez d’espace n’a été trouvé. Vous pouvez utiliser le disque système et migrer plus tard dans les paramètres.",
     "Onboarding.Task.Step2.Warning.CloudSync": "DeskBox ne téléverse pas les fichiers lui-même. Si ce dossier est synchronisé par OneDrive ou un autre service, ce service peut les synchroniser.",
     "Onboarding.Task.Step2.Warning.Removable": "Les fichiers des widgets seront indisponibles tant que ce lecteur sera déconnecté.",
-    "Onboarding.Task.Step2.Warning.Network": "Les fichiers des widgets seront indisponibles tant que cet emplacement réseau sera déconnecté."
+    "Onboarding.Task.Step2.Warning.Network": "Les fichiers des widgets seront indisponibles tant que cet emplacement réseau sera déconnecté.",
+    "Onboarding.Task.SkipPractice": "Ignorer l’exercice",
+    "Onboarding.Task.Continue": "Continuer",
+    "Onboarding.Task.Step3.StatusCompleted": "Terminé : le fichier a été déplacé dans le widget de rangement.",
+    "Onboarding.Task.Step4.StatusCompleted": "Terminé : vous avez masqué puis réaffiché les widgets."
 }

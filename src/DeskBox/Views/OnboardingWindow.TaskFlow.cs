@@ -10,7 +10,15 @@ namespace DeskBox.Views;
 
 public sealed partial class OnboardingWindow
 {
+    private const string StatusInfoGlyph = "\uE946";
+    private const string StatusCompleteGlyph = "\uE73E";
+    private const string StatusHiddenGlyph = "\uE890";
+    private const string StatusVisibleGlyph = "\uE8A7";
+
     private bool _isPracticePlacementActive;
+    private bool _hasCompletedFilePractice;
+    private bool _hasHiddenWidgetsDuringPractice;
+    private bool _hasCompletedVisibilityPractice;
 
     private void SetupTaskStep1()
     {
@@ -20,17 +28,8 @@ public sealed partial class OnboardingWindow
     {
         string storagePath = SettingsService.NormalizeManagedStorageRootPath(
             _settingsService.Settings.DefaultManagedStorageRootPath);
-        string action = string.Equals(
-            _settingsService.Settings.ManagedDropAction,
-            SettingsService.ManagedDropActionCopy,
-            StringComparison.Ordinal)
-            ? _localizationService.T("Common.Copy")
-            : _localizationService.T("Common.Move");
 
         TaskStep2StoragePathText.Text = storagePath;
-        TaskStep2TransferText.Text = _localizationService.Format(
-            "Onboarding.Task.Step2.TransferSummary",
-            action);
 
         ManagedStoragePathAssessment assessment = ManagedStoragePathService.AssessPath(storagePath);
         string freeSpace = assessment.AvailableFreeSpace is long availableFreeSpace
@@ -75,18 +74,15 @@ public sealed partial class OnboardingWindow
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        bool confirmed = IsTaskStoragePathConfirmed(storagePath);
-        TaskStep2ConfirmPathButton.Content = _localizationService.T(confirmed
-            ? "Onboarding.Task.Step2.PathConfirmed"
-            : "Onboarding.Task.Step2.ConfirmPath");
-        TaskStep2ConfirmPathButton.IsEnabled = !confirmed;
-        NextButton.IsEnabled = confirmed;
     }
 
     private void SetupTaskStep3()
     {
-        TaskStep3StatusText.Text = _localizationService.T(
-            "Onboarding.Task.Step3.StatusReady");
+        SetTaskStep3Status(
+            _hasCompletedFilePractice
+                ? "Onboarding.Task.Step3.StatusCompleted"
+                : "Onboarding.Task.Step3.StatusReady",
+            _hasCompletedFilePractice ? StatusCompleteGlyph : StatusInfoGlyph);
     }
 
     private void SetupTaskStep4()
@@ -99,8 +95,23 @@ public sealed partial class OnboardingWindow
         TaskStep4HotkeyText.Text = _localizationService.Format(
             "Onboarding.Task.Step4.ToggleBody",
             hotkeyText);
-        TaskStep4StatusText.Text = _localizationService.T(
-            "Onboarding.Task.Step4.StatusReady");
+        if (!_hasCompletedVisibilityPractice &&
+            global::DeskBox.App.Current.HasVisibleWidgetsForOnboarding == false)
+        {
+            _hasHiddenWidgetsDuringPractice = true;
+        }
+
+        SetTaskStep4Status(
+            _hasCompletedVisibilityPractice
+                ? "Onboarding.Task.Step4.StatusCompleted"
+                : _hasHiddenWidgetsDuringPractice
+                    ? "Onboarding.Task.Step4.StatusHidden"
+                    : "Onboarding.Task.Step4.StatusReady",
+            _hasCompletedVisibilityPractice
+                ? StatusCompleteGlyph
+                : _hasHiddenWidgetsDuringPractice
+                    ? StatusHiddenGlyph
+                    : StatusInfoGlyph);
     }
 
     private void SetupTaskStep5()
@@ -114,28 +125,8 @@ public sealed partial class OnboardingWindow
         TaskStep2ChangePathButton.IsEnabled = true;
         if (changed)
         {
-            _confirmedTaskStoragePath = null;
+            SetupTaskStep2();
         }
-
-        SetupTaskStep2();
-    }
-
-    private void TaskStep2ConfirmPath_Click(object sender, RoutedEventArgs e)
-    {
-        _confirmedTaskStoragePath = SettingsService.NormalizeManagedStorageRootPath(
-            _settingsService.Settings.DefaultManagedStorageRootPath);
-        SetupTaskStep2();
-    }
-
-    private bool IsTaskStoragePathConfirmed(string? storagePath = null)
-    {
-        string normalizedPath = SettingsService.NormalizeManagedStorageRootPath(
-            storagePath ?? _settingsService.Settings.DefaultManagedStorageRootPath);
-        return !string.IsNullOrWhiteSpace(_confirmedTaskStoragePath) &&
-               string.Equals(
-                   normalizedPath,
-                   _confirmedTaskStoragePath,
-                   StringComparison.OrdinalIgnoreCase);
     }
 
     private async void TaskStep3TryWidget_Click(object sender, RoutedEventArgs e)
@@ -144,26 +135,27 @@ public sealed partial class OnboardingWindow
         PlaceWindowForWidgetPractice();
         bool shown = await global::DeskBox.App.Current.ShowFirstFileWidgetForOnboardingAsync();
         TaskStep3TryButton.IsEnabled = true;
-        TaskStep3StatusText.Text = _localizationService.T(shown
-            ? "Onboarding.Task.Step3.StatusShown"
-            : "Onboarding.Task.Step2.StatusUnavailable");
+        if (!_hasCompletedFilePractice)
+        {
+            SetTaskStep3Status(
+                shown
+                    ? "Onboarding.Task.Step3.StatusShown"
+                    : "Onboarding.Task.Step2.StatusUnavailable",
+                shown ? StatusVisibleGlyph : StatusInfoGlyph);
+        }
     }
 
     private async void TaskStep4ToggleWidgets_Click(object sender, RoutedEventArgs e)
     {
         TaskStep4ToggleButton.IsEnabled = false;
-        bool hasVisibleWidgets = await global::DeskBox.App.Current.ToggleWidgetsForOnboardingAsync();
+        await global::DeskBox.App.Current.ToggleWidgetsForOnboardingAsync();
         TaskStep4ToggleButton.IsEnabled = true;
-        TaskStep4StatusText.Text = _localizationService.T(hasVisibleWidgets
-            ? "Onboarding.Task.Step4.StatusShown"
-            : "Onboarding.Task.Step4.StatusHidden");
     }
 
     private void TaskStep4OpenTrayMenu_Click(object sender, RoutedEventArgs e)
     {
         global::DeskBox.App.Current.ShowTrayContextMenuForOnboarding();
-        TaskStep4StatusText.Text = _localizationService.T(
-            "Onboarding.Task.Step4.StatusTrayOpened");
+        SetTaskStep4Status("Onboarding.Task.Step4.StatusTrayOpened", StatusVisibleGlyph);
     }
 
     private async void TaskStep5OrganizeDesktop_Click(object sender, RoutedEventArgs e)
@@ -182,6 +174,67 @@ public sealed partial class OnboardingWindow
     {
         await CompleteOnboardingAsync();
         global::DeskBox.App.Current.ShowSettings();
+    }
+
+    private void OnOnboardingFileImportCompleted(int importedItemCount)
+    {
+        if (_stepIndex != 1 || importedItemCount <= 0)
+        {
+            return;
+        }
+
+        _hasCompletedFilePractice = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            SetTaskStep3Status("Onboarding.Task.Step3.StatusCompleted", StatusCompleteGlyph);
+            UpdateFooterState();
+        });
+    }
+
+    private void OnOnboardingWidgetsVisibilityChanged(bool hasVisibleWidgets)
+    {
+        if (_stepIndex != 2)
+        {
+            return;
+        }
+
+        if (!hasVisibleWidgets)
+        {
+            _hasHiddenWidgetsDuringPractice = true;
+        }
+        else if (_hasHiddenWidgetsDuringPractice)
+        {
+            _hasCompletedVisibilityPractice = true;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            string statusKey = _hasCompletedVisibilityPractice
+                ? "Onboarding.Task.Step4.StatusCompleted"
+                : hasVisibleWidgets
+                    ? "Onboarding.Task.Step4.StatusShown"
+                    : "Onboarding.Task.Step4.StatusHidden";
+            SetTaskStep4Status(
+                statusKey,
+                _hasCompletedVisibilityPractice
+                    ? StatusCompleteGlyph
+                    : hasVisibleWidgets
+                        ? StatusVisibleGlyph
+                        : StatusHiddenGlyph);
+            UpdateFooterState();
+        });
+    }
+
+    private void SetTaskStep3Status(string localizationKey, string glyph)
+    {
+        TaskStep3StatusIcon.Glyph = glyph;
+        TaskStep3StatusText.Text = _localizationService.T(localizationKey);
+    }
+
+    private void SetTaskStep4Status(string localizationKey, string glyph)
+    {
+        TaskStep4StatusIcon.Glyph = glyph;
+        TaskStep4StatusText.Text = _localizationService.T(localizationKey);
     }
 
     private void PlaceWindowForWidgetPractice()

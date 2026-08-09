@@ -48,6 +48,24 @@ internal sealed class WidgetGroupSwitchRequestCoordinator
         }
     }
 
+    public bool IsCurrentTarget(string groupId, string targetWidgetId)
+    {
+        if (string.IsNullOrWhiteSpace(groupId) ||
+            string.IsNullOrWhiteSpace(targetWidgetId))
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            return _currentRequests.TryGetValue(groupId, out var current) &&
+                   string.Equals(
+                       current.TargetWidgetId,
+                       targetWidgetId,
+                       StringComparison.Ordinal);
+        }
+    }
+
     public void Complete(WidgetGroupSwitchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

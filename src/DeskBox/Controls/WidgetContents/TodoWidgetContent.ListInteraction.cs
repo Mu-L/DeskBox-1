@@ -36,7 +36,28 @@ public sealed partial class TodoWidgetContent
             return;
         }
 
-                if (e.Key == VirtualKey.Escape && HasCopySelection())
+        if (e.Key == VirtualKey.Delete)
+        {
+            IReadOnlyList<TodoItemViewModel> selectedItems =
+                GetSelectedCopyItemsInVisibleOrder();
+            if (selectedItems.Count > 0)
+            {
+                e.Handled = true;
+                if (selectedItems.Count == 1)
+                {
+                    ShowDeleteItemConfirmation(selectedItems[0], TodoListView);
+                }
+                else
+                {
+                    ShowDeleteSelectedConfirmation(
+                        selectedItems.Select(item => item.Id).ToArray(),
+                        TodoListView);
+                }
+                return;
+            }
+        }
+
+        if (e.Key == VirtualKey.Escape && HasCopySelection())
         {
             ClearCopySelection();
             e.Handled = true;

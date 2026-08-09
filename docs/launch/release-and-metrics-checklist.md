@@ -1,13 +1,13 @@
-# DeskBox 1.3.8 International Launch Checklist
+# DeskBox 1.3.9 International Launch Checklist
 
-This checklist treats 1.3.8 as the only application, website, update-manifest, and distribution version for the campaign. Later small application fixes may change the repository, but campaign copy should not drift to another version unless a new public installer is intentionally released.
+This checklist treats 1.3.9 as the only application, website, update-manifest, and distribution version for the campaign. Later small application fixes may change the repository, but campaign copy should not drift to another version unless a new public installer is intentionally released.
 
 ## Release gate
 
 - [ ] x64 unit tests pass with `Platform=x64`.
 - [ ] Canonical Debug build starts from this repository and its executable path is verified.
 - [ ] x64 and ARM64 Release publishes use matching platform and runtime identifiers.
-- [ ] Both Inno Setup installers compile with version 1.3.8.
+- [ ] Both Inno Setup installers compile with version 1.3.9.
 - [ ] SHA-256 and size are recorded for both installers.
 - [ ] Authenticode status is recorded for both installers.
 - [ ] GitHub Release notes contain no candidate wording, open-issue status, or pending artifact placeholders.
@@ -15,7 +15,7 @@ This checklist treats 1.3.8 as the only application, website, update-manifest, a
 - [ ] SmartScreen is tested on a clean Windows machine or Windows Sandbox after signing and public hosting.
 - [ ] Win+D is tested in dynamic and desktop-pinned modes; GitHub issue #47 remains open during validation.
 - [ ] Stable update manifest selects independent x64 and ARM64 URL, SHA-256, and size values.
-- [ ] Direct upgrade from 1.3.7 preserves settings, widgets, storage, and installation path.
+- [ ] Direct upgrade from 1.3.8 preserves settings, widgets, storage, and installation path.
 - [ ] A genuinely new profile receives one initial file widget on interactive launch.
 - [ ] A startup launch does not show onboarding; the next interactive launch shows it once.
 - [ ] Deleting all file widgets does not recreate one after restart.
@@ -35,8 +35,8 @@ This checklist treats 1.3.8 as the only application, website, update-manifest, a
 
 ## Permanent distribution nodes
 
-- [ ] Publish DeskBox 1.3.8 GitHub Release assets and SHA-256 sidecars.
-- [ ] Update every configured Microsoft Store listing locale to v1.3.8; do not upload the older v1.3.7 export or the v1.3.9 draft export.
+- [ ] Publish DeskBox 1.3.9 GitHub Release assets and SHA-256 sidecars.
+- [ ] Update every configured Microsoft Store listing locale to v1.3.9; do not upload an older v1.3.8 export.
 - [ ] Submit and validate `TianyuZhu.DeskBox` in `microsoft/winget-pkgs`.
 - [ ] Add DeskBox to AlternativeTo and request comparison links to relevant desktop organizers.
 - [ ] Create Product Hunt product and maker profiles; schedule only after the press page is live.

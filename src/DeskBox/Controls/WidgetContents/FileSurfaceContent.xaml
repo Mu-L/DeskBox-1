@@ -332,6 +332,9 @@
                     <VisualState.Setters>
                         <Setter Target="ImportStateIcon.Glyph" Value="&#xE895;" />
                         <Setter Target="ImportCancelButton.IsEnabled" Value="False" />
+                        <Setter Target="ImportCancelButton.Visibility" Value="Collapsed" />
+                        <Setter Target="ImportCancelProgressRing.IsActive" Value="True" />
+                        <Setter Target="ImportCancelProgressRing.Visibility" Value="Visible" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="ImportSuccessState">
@@ -613,6 +616,18 @@
                         Click="ImportCancelButton_Click">
                         <FontIcon FontSize="13" Glyph="&#xE711;" />
                     </Button>
+                    <ProgressRing
+                        x:Name="ImportCancelProgressRing"
+                        Grid.Row="0"
+                        Grid.RowSpan="3"
+                        Grid.Column="3"
+                        Width="20"
+                        Height="20"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsActive="False"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed" />
 
                     <ProgressBar
                         x:Name="ImportProgressBar"

@@ -96,8 +96,123 @@ public sealed class FileSurfaceParityContractTests
         Assert.Contains(card.Descendants(), element =>
             (string?)element.Attribute(x + "Name") == "ImportCancelButton" &&
             (string?)element.Attribute("Click") == "ImportCancelButton_Click");
+        Assert.Contains(card.Descendants(), element =>
+            (string?)element.Attribute(x + "Name") ==
+            "ImportCancelProgressRing");
         Assert.DoesNotContain(document.Descendants(), element =>
             (string?)element.Attribute(x + "Name") == "ImportOverlay");
+    }
+
+    [Fact]
+    public void ImportCancellation_AcknowledgesImmediatelyAndIgnoresStaleProgress()
+    {
+        string root = FindRepositoryRoot();
+        string progressUi = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ImportProgress.cs"));
+        string fileService = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/FileService.cs"));
+
+        Assert.Contains("_isImportCancellationPending", progressUi, StringComparison.Ordinal);
+        Assert.Contains("ShowImportCancelingState();", progressUi, StringComparison.Ordinal);
+        Assert.Contains("await Task.Run(cancellation.Cancel);", progressUi, StringComparison.Ordinal);
+        Assert.Contains(
+            "() => ExecuteManagedTransferPlanWithProgressAsync(",
+            fileService,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HeadlessCrossVolumeMoves_UseManagedChunkedTransfer()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/Services/FileService.cs"));
+
+        int crossVolumeGuard = source.IndexOf(
+            "operations.Any(operation => !CanUseAtomicMove(",
+            StringComparison.Ordinal);
+        Assert.True(crossVolumeGuard >= 0);
+        int managedTransfer = source.IndexOf(
+            "() => ExecuteManagedTransferPlanWithProgressAsync(",
+            crossVolumeGuard,
+            StringComparison.Ordinal);
+        int legacyLoop = source.IndexOf(
+            "var completedOperations = new List<TransferOperation>",
+            crossVolumeGuard,
+            StringComparison.Ordinal);
+
+        Assert.True(managedTransfer > crossVolumeGuard);
+        Assert.True(legacyLoop > managedTransfer);
+    }
+
+    [Fact]
+    public void ExternalDrop_ShowsPreparationBeforeResolvingStorageItems()
+    {
+        string root = FindRepositoryRoot();
+        string surface = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        string itemVisuals = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs"));
+
+        AssertMethodOrdersPreparationBeforePayloadRead(surface, "Root_Drop");
+        AssertMethodOrdersPreparationBeforePayloadRead(itemVisuals, "ItemSurface_Drop");
+        Assert.Contains(
+            "EnsureTrackedImportStarted();",
+            surface,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("PasteFromClipboardAsync")]
+    [InlineData("PickAndImportFilesAsync")]
+    public void NonDragImportEntries_UseTrackedCancelableProgress(
+        string methodName)
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        string methodMarker = "private async Task " + methodName;
+        int methodStart = source.IndexOf(methodMarker, StringComparison.Ordinal);
+        Assert.True(methodStart >= 0);
+        int nextMethod = source.IndexOf(
+            "\n    private ",
+            methodStart + methodMarker.Length,
+            StringComparison.Ordinal);
+        string method = source[methodStart..(nextMethod < 0
+            ? source.Length
+            : nextMethod)];
+
+        Assert.Contains(
+            "ImportPathsWithTrackedProgressAsync(",
+            method,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ViewModel.ImportPathsAsync(",
+            method,
+            StringComparison.Ordinal);
+    }
+
+    private static void AssertMethodOrdersPreparationBeforePayloadRead(
+        string source,
+        string methodName)
+    {
+        int method = source.IndexOf(methodName, StringComparison.Ordinal);
+        int begin = source.IndexOf(
+            "BeginTrackedImport();",
+            method,
+            StringComparison.Ordinal);
+        int read = source.IndexOf(
+            "GetSurfaceDropFilesAsync(e.DataView)",
+            method,
+            StringComparison.Ordinal);
+
+        Assert.True(method >= 0);
+        Assert.True(begin > method);
+        Assert.True(read > begin);
     }
 
     [Fact]

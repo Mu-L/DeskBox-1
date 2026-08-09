@@ -45,7 +45,6 @@ public sealed partial class OnboardingWindow : Window
     private bool _isSubclassInstalled;
     private bool _isAnimating;
     private bool _isRecordingHotkey;
-    private string? _confirmedTaskStoragePath;
     private readonly Win32Helper.SubclassProc _windowSubclassProc;
 
     // Accent color preset list
@@ -62,6 +61,8 @@ public sealed partial class OnboardingWindow : Window
         _windowSubclassProc = WindowSubclassProc;
         InitializeComponent();
         _localizationService.LanguageChanged += OnLanguageChanged;
+        App.Current.OnboardingFileImportCompleted += OnOnboardingFileImportCompleted;
+        App.Current.OnboardingWidgetsVisibilityChanged += OnOnboardingWidgetsVisibilityChanged;
 
         WindowsCompatibilityService.ApplySafeBackdrop(this);
 
@@ -98,7 +99,7 @@ public sealed partial class OnboardingWindow : Window
             DispatcherQueue.TryEnqueue(async () =>
             {
                 int introGeneration = _introGeneration;
-                await Task.Delay(5200);
+                await Task.Delay(4000);
                 if (introGeneration == _introGeneration &&
                     IntroOverlay.Visibility == Visibility.Visible &&
                     (StepContainer.Opacity <= 0.01 ||
@@ -131,6 +132,8 @@ public sealed partial class OnboardingWindow : Window
             IntroMarkHost.Children.Clear();
             RemoveMinimumSizeHook();
             _localizationService.LanguageChanged -= OnLanguageChanged;
+            App.Current.OnboardingFileImportCompleted -= OnOnboardingFileImportCompleted;
+            App.Current.OnboardingWidgetsVisibilityChanged -= OnOnboardingWidgetsVisibilityChanged;
         };
     }
 
@@ -217,16 +220,15 @@ public sealed partial class OnboardingWindow : Window
     //  Step Navigation
     // ════════════════════════════════════════════════════════════
 
-    private static readonly int StepCount = 5;
+    private static readonly int StepCount = 4;
 
     private FrameworkElement GetStepPanel(int index) => index switch
     {
-        0 => TaskStep1Panel,
-        1 => TaskStep2Panel,
-        2 => TaskStep3Panel,
-        3 => TaskStep4Panel,
-        4 => TaskStep5Panel,
-        _ => TaskStep1Panel
+        0 => TaskStep2Panel,
+        1 => TaskStep3Panel,
+        2 => TaskStep4Panel,
+        3 => TaskStep5Panel,
+        _ => TaskStep2Panel
     };
 
     private void BackButton_Click(object sender, RoutedEventArgs e)
@@ -279,7 +281,7 @@ public sealed partial class OnboardingWindow : Window
             return;
         }
 
-        if (_stepIndex == 2 && newStep != 2)
+        if (_stepIndex == 1 && newStep != 1)
         {
             RestoreWindowAfterWidgetPractice();
         }
@@ -403,21 +405,28 @@ public sealed partial class OnboardingWindow : Window
     /// </summary>
     private void SetupStep(bool animate)
     {
+        if (!animate)
+        {
+            for (int index = 0; index < StepCount; index++)
+            {
+                GetStepPanel(index).Visibility = index == _stepIndex
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+        }
+
         switch (_stepIndex)
         {
             case 0:
-                SetupTaskStep1();
-                break;
-            case 1:
                 SetupTaskStep2();
                 break;
-            case 2:
+            case 1:
                 SetupTaskStep3();
                 break;
-            case 3:
+            case 2:
                 SetupTaskStep4();
                 break;
-            case 4:
+            case 3:
                 SetupTaskStep5();
                 break;
         }
@@ -600,10 +609,15 @@ public sealed partial class OnboardingWindow : Window
         BackButton.IsEnabled = _stepIndex > 0;
         SkipButton.Content = _localizationService.T("Onboarding.SkipAll");
         BackButton.Content = _localizationService.T("Onboarding.Back");
-        NextButton.Content = _stepIndex == StepCount - 1
-            ? _localizationService.T("Onboarding.Start")
-            : _localizationService.T("Onboarding.Next");
-        NextButton.IsEnabled = _stepIndex != 1 || IsTaskStoragePathConfirmed();
+        NextButton.Content = _stepIndex switch
+        {
+            _ when _stepIndex == StepCount - 1 => _localizationService.T("Onboarding.Start"),
+            1 when !_hasCompletedFilePractice => _localizationService.T("Onboarding.Task.SkipPractice"),
+            2 when !_hasCompletedVisibilityPractice => _localizationService.T("Onboarding.Task.SkipPractice"),
+            1 or 2 => _localizationService.T("Onboarding.Task.Continue"),
+            _ => _localizationService.T("Onboarding.Next")
+        };
+        NextButton.IsEnabled = true;
         SkipButton.Visibility = _stepIndex == StepCount - 1 ? Visibility.Collapsed : Visibility.Visible;
         UpdateProgressDots();
     }

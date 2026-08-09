@@ -2483,9 +2483,23 @@ public sealed partial class SearchPopupWindow : Window
             return;
         }
 
+        bool pointerIsOnDragHandle =
+            item is not null &&
+            row is not null &&
+            IsPointerOnIcon(source, row);
+        bool preserveSelectionForDrag =
+            item is not null &&
+            SearchResultSelectionPolicy.ShouldPreserveSelectionForDrag(
+                _multiSelectedItems.Contains(item),
+                _multiSelectedItems.Count,
+                pointerIsOnDragHandle);
+
         if (item is not null && isLeft)
         {
-            ClearMultiSelection();
+            if (!preserveSelectionForDrag)
+            {
+                ClearMultiSelection();
+            }
             SelectResultItem(item, row);
             _selectionAnchorIndex = _viewModel.CurrentResults.IndexOf(item);
         }
@@ -2504,7 +2518,7 @@ public sealed partial class SearchPopupWindow : Window
         _pressedItem = item;
 
         // Drag is initiated only from the icon column, not the entire row.
-        if (item is not null && row is not null && IsPointerOnIcon(e.OriginalSource as DependencyObject, row))
+        if (item is not null && row is not null && pointerIsOnDragHandle)
         {
             _dragCandidate = item;
             _dragSourceRow = row;
@@ -2547,10 +2561,28 @@ public sealed partial class SearchPopupWindow : Window
         _dragOccurred = true;
         var item = _dragCandidate;
         var row = _dragSourceRow;
+        IReadOnlyList<SearchResultItem> draggedItems =
+            SearchResultSelectionPolicy.ResolveDraggedItems(
+                item,
+                _viewModel.CurrentResults
+                    .Where(_multiSelectedItems.Contains)
+                    .ToList());
+        string[] draggedPaths = draggedItems
+            .Select(result => result.DetailPath)
+            .Where(path =>
+                !string.IsNullOrWhiteSpace(path) &&
+                (File.Exists(path) || Directory.Exists(path)))
+            .Select(path => path!)
+            .ToArray();
+        if (draggedPaths.Length != draggedItems.Count)
+        {
+            draggedItems = [item];
+            draggedPaths = [item.DetailPath!];
+        }
 
         // The icon itself is the drag source, so the shell drag visual remains
         // compact and the rest of the row never becomes a wide drag surface.
-        var dragSource = FindIconDragSource(row) ?? (UIElement?)row;
+        UIElement dragSource = FindIconDragSource(row) ?? row;
 
         Windows.Foundation.TypedEventHandler<UIElement, DragStartingEventArgs> handler = null!;
         handler = async (_, args) =>
@@ -2558,9 +2590,18 @@ public sealed partial class SearchPopupWindow : Window
             var deferral = args.GetDeferral();
             try
             {
-                args.Data.Properties.Title = item.Title;
+                args.Data.Properties.Title = draggedPaths.Length == 1
+                    ? item.Title
+                    : draggedPaths.Length.ToString();
                 args.Data.RequestedOperation = DataPackageOperation.Copy;
-                await SetDragPayloadAsync(args.Data, item.DetailPath!);
+                if (draggedPaths.Length == 1)
+                {
+                    await SetDragPayloadAsync(args.Data, draggedPaths[0]);
+                }
+                else
+                {
+                    await SetDragPayloadAsync(args.Data, draggedPaths.ToList());
+                }
             }
             finally
             {

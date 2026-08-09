@@ -2083,5 +2083,9 @@
     "Onboarding.Task.Step2.Warning.SystemDriveOnly": "No se encontró otra unidad local con espacio suficiente. Puedes usar la unidad del sistema y migrar más adelante desde Configuración.",
     "Onboarding.Task.Step2.Warning.CloudSync": "DeskBox no sube archivos por sí mismo. Si esta es una carpeta de OneDrive u otro servicio, ese servicio puede sincronizarlos.",
     "Onboarding.Task.Step2.Warning.Removable": "Los archivos de los widgets no estarán disponibles mientras esta unidad esté desconectada.",
-    "Onboarding.Task.Step2.Warning.Network": "Los archivos de los widgets no estarán disponibles mientras esta ubicación de red esté desconectada."
+    "Onboarding.Task.Step2.Warning.Network": "Los archivos de los widgets no estarán disponibles mientras esta ubicación de red esté desconectada.",
+    "Onboarding.Task.SkipPractice": "Omitir práctica",
+    "Onboarding.Task.Continue": "Continuar",
+    "Onboarding.Task.Step3.StatusCompleted": "Listo: el archivo se movió al widget de almacenamiento.",
+    "Onboarding.Task.Step4.StatusCompleted": "Listo: ocultaste los widgets y volviste a mostrarlos."
 }

@@ -325,17 +325,29 @@ public abstract partial class WidgetWindowBase
         object? sender,
         WidgetGroupMemberEventArgs e)
     {
-        if (!string.Equals(e.WidgetId, Config.Id, StringComparison.Ordinal) &&
-            App.Current?.WidgetManager is { } manager)
+        if (App.Current?.WidgetManager is not { } manager)
         {
-            try
-            {
-                await manager.SwitchWidgetGroupMemberAsync(e.WidgetId, e.Origin);
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[WidgetGroup] Switch failed target={e.WidgetId}: {ex}");
-            }
+            return;
+        }
+
+        bool succeeded = false;
+        try
+        {
+            // Selecting the currently visible member while another one is
+            // still loading is a valid request to cancel that pending switch.
+            succeeded = await manager.SwitchWidgetGroupMemberAsync(
+                e.WidgetId,
+                e.Origin);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[WidgetGroup] Switch failed target={e.WidgetId}: {ex}");
+        }
+        finally
+        {
+            WidgetShellControl.NotifyGroupMemberInvocationCompleted(
+                e.WidgetId,
+                succeeded);
         }
     }
 

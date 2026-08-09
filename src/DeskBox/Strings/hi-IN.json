@@ -2083,5 +2083,9 @@
     "Onboarding.Task.Step2.Warning.SystemDriveOnly": "पर्याप्त खाली जगह वाली कोई दूसरी स्थानीय ड्राइव नहीं मिली। आप सिस्टम ड्राइव का उपयोग कर सकते हैं और बाद में सेटिंग्स से स्थान बदल सकते हैं।",
     "Onboarding.Task.Step2.Warning.CloudSync": "DeskBox स्वयं फ़ाइलें अपलोड नहीं करता। OneDrive या अन्य सिंक फ़ोल्डर चुनने पर वह सेवा फ़ाइलें सिंक कर सकती है।",
     "Onboarding.Task.Step2.Warning.Removable": "यह ड्राइव अलग होने पर संग्रह विजेट की फ़ाइलें उपलब्ध नहीं होंगी।",
-    "Onboarding.Task.Step2.Warning.Network": "नेटवर्क स्थान अलग होने पर संग्रह विजेट की फ़ाइलें उपलब्ध नहीं होंगी।"
+    "Onboarding.Task.Step2.Warning.Network": "नेटवर्क स्थान अलग होने पर संग्रह विजेट की फ़ाइलें उपलब्ध नहीं होंगी।",
+    "Onboarding.Task.SkipPractice": "अभ्यास छोड़ें",
+    "Onboarding.Task.Continue": "जारी रखें",
+    "Onboarding.Task.Step3.StatusCompleted": "पूरा हुआ: फ़ाइल संग्रह विजेट में स्थानांतरित हो गई।",
+    "Onboarding.Task.Step4.StatusCompleted": "पूरा हुआ: आपने विजेट छिपाए और फिर दिखाए।"
 }

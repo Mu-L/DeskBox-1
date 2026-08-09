@@ -314,7 +314,8 @@ public static class DeskBoxDragData
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string path in paths)
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            if (string.IsNullOrWhiteSpace(path) ||
+                (!File.Exists(path) && !Directory.Exists(path)))
             {
                 continue;
             }

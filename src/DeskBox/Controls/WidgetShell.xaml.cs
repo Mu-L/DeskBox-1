@@ -4078,6 +4078,15 @@ public sealed partial class WidgetShell : UserControl
         return GroupTitleSwitcher.HandleNativeWheel(delta);
     }
 
+    internal void NotifyGroupMemberInvocationCompleted(
+        string widgetId,
+        bool succeeded)
+    {
+        GroupTitleSwitcher.NotifyMemberInvocationCompleted(
+            widgetId,
+            succeeded);
+    }
+
     private void TitleBarGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         TitlePointerPressed?.Invoke(this, e);

@@ -29,6 +29,9 @@ public sealed partial class QuickCaptureSurfaceContent :
     private readonly LocalizationService _localizationService;
     private string _lastFocusTarget = "Root";
     private string? _pendingFocusTarget;
+    private QuickCaptureItemViewModel[] _pendingPointerDragItems = [];
+    private readonly List<string> _draggedQuickCaptureItemIds = [];
+    private bool _isInternalQuickCaptureDrag;
     private bool _isDisposed;
 
     public QuickCaptureSurfaceContent(
@@ -199,12 +202,19 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
 
         ViewModel.SelectedView = mode;
+        ItemsList.SelectedItems.Clear();
         UpdateSelectedViewVisual();
     }
 
     private async void ItemsList_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not QuickCaptureItemViewModel item)
+        {
+            return;
+        }
+
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control) ||
+            Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift))
         {
             return;
         }
@@ -275,8 +285,283 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
     }
 
+    private void QuickCaptureItem_PointerPressed(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement
+            {
+                DataContext: QuickCaptureItemViewModel item
+            } ||
+            !e.GetCurrentPoint(ItemsList).Properties.IsLeftButtonPressed ||
+            !ItemsList.SelectedItems.Contains(item))
+        {
+            _pendingPointerDragItems = [];
+            return;
+        }
+
+        _pendingPointerDragItems = ItemsList.SelectedItems
+            .OfType<QuickCaptureItemViewModel>()
+            .ToArray();
+    }
+
+    private void QuickCaptureItem_PointerReleased(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        _pendingPointerDragItems = [];
+    }
+
+    private void ItemsList_DragItemsStarting(
+        object sender,
+        DragItemsStartingEventArgs e)
+    {
+        QuickCaptureItemViewModel[] eventItems = e.Items
+            .OfType<QuickCaptureItemViewModel>()
+            .ToArray();
+        IReadOnlyList<QuickCaptureItemViewModel> selectedItems =
+            _pendingPointerDragItems.Length > 1
+                ? _pendingPointerDragItems
+                : ItemsList.SelectedItems
+                    .OfType<QuickCaptureItemViewModel>()
+                    .ToArray();
+        _pendingPointerDragItems = [];
+        IReadOnlyList<QuickCaptureItemViewModel> draggedItems =
+            QuickCaptureDragPackage.ResolveDraggedItems(
+                eventItems,
+                selectedItems);
+        if (!QuickCaptureDragPackage.TryPrepare(
+                e.Data,
+                draggedItems,
+                _localizationService))
+        {
+            e.Cancel = true;
+            ResetInternalQuickCaptureDrag();
+            return;
+        }
+
+        _draggedQuickCaptureItemIds.Clear();
+        _draggedQuickCaptureItemIds.AddRange(
+            draggedItems.Select(item => item.Id));
+        _isInternalQuickCaptureDrag = true;
+        e.Data.RequestedOperation =
+            DataPackageOperation.Copy |
+            DataPackageOperation.Move;
+    }
+
+    private void ItemsList_DragItemsCompleted(
+        ListViewBase sender,
+        DragItemsCompletedEventArgs args)
+    {
+        _draggedQuickCaptureItemIds.Clear();
+        DispatcherQueue.TryEnqueue(() => _isInternalQuickCaptureDrag = false);
+    }
+
+    private void QuickCaptureTab_DragOver(object sender, DragEventArgs e)
+    {
+        if (!_isInternalQuickCaptureDrag ||
+            sender is not FrameworkElement { Tag: string tag } ||
+            !TryGetQuickCaptureTabTarget(tag, out QuickCaptureViewMode target) ||
+            !ViewModel.CanApplyTabDrop(GetDraggedQuickCaptureItems(), target))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        e.Handled = true;
+        e.AcceptedOperation = DataPackageOperation.Move;
+        e.DragUIOverride.IsGlyphVisible = true;
+    }
+
+    private async void QuickCaptureTab_Drop(object sender, DragEventArgs e)
+    {
+        IReadOnlyList<QuickCaptureItemViewModel> draggedItems =
+            GetDraggedQuickCaptureItems();
+        if (!_isInternalQuickCaptureDrag ||
+            sender is not FrameworkElement { Tag: string tag } ||
+            !TryGetQuickCaptureTabTarget(tag, out QuickCaptureViewMode target) ||
+            !ViewModel.CanApplyTabDrop(draggedItems, target))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        e.Handled = true;
+        var deferral = e.GetDeferral();
+        try
+        {
+            int changedCount = await ViewModel.ApplyTabDropAsync(
+                draggedItems,
+                target);
+            e.AcceptedOperation = changedCount > 0
+                ? DataPackageOperation.Move
+                : DataPackageOperation.None;
+            if (changedCount > 0)
+            {
+                ViewModel.SelectedView = target;
+                ItemsList.SelectedItems.Clear();
+                UpdateSelectedViewVisual();
+            }
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private IReadOnlyList<QuickCaptureItemViewModel> GetDraggedQuickCaptureItems()
+    {
+        HashSet<string> draggedIds = _draggedQuickCaptureItemIds.ToHashSet(
+            StringComparer.Ordinal);
+        return ViewModel.Items
+            .Where(item => draggedIds.Contains(item.Id))
+            .ToList();
+    }
+
+    private static bool TryGetQuickCaptureTabTarget(
+        string tag,
+        out QuickCaptureViewMode target)
+    {
+        target = tag switch
+        {
+            "Pinned" => QuickCaptureViewMode.Pinned,
+            "Records" => QuickCaptureViewMode.Records,
+            _ => QuickCaptureViewMode.Recent
+        };
+        return target != QuickCaptureViewMode.Recent;
+    }
+
+    private void ResetInternalQuickCaptureDrag()
+    {
+        _draggedQuickCaptureItemIds.Clear();
+        _isInternalQuickCaptureDrag = false;
+    }
+
+    private async void ItemsList_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        bool controlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
+        if (controlPressed && e.Key == Windows.System.VirtualKey.A)
+        {
+            ItemsList.SelectAll();
+            e.Handled = true;
+            return;
+        }
+
+        if (controlPressed && e.Key == Windows.System.VirtualKey.C)
+        {
+            await CopySelectedQuickCaptureItemsAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Windows.System.VirtualKey.Delete)
+        {
+            IReadOnlyList<QuickCaptureItemViewModel> selectedItems =
+                GetSelectedQuickCaptureItemsInVisibleOrder();
+            if (selectedItems.Count > 0)
+            {
+                e.Handled = true;
+                await DeleteSelectedQuickCaptureItemsAsync(selectedItems);
+            }
+            return;
+        }
+
+        if (e.Key == Windows.System.VirtualKey.Escape && ItemsList.SelectedItems.Count > 0)
+        {
+            ItemsList.SelectedItems.Clear();
+            e.Handled = true;
+        }
+    }
+
+    private IReadOnlyList<QuickCaptureItemViewModel>
+        GetSelectedQuickCaptureItemsInVisibleOrder()
+    {
+        HashSet<QuickCaptureItemViewModel> selectedItems = ItemsList.SelectedItems
+            .OfType<QuickCaptureItemViewModel>()
+            .ToHashSet();
+        return ViewModel.Items
+            .Where(selectedItems.Contains)
+            .ToList();
+    }
+
+    private Task CopySelectedQuickCaptureItemsAsync()
+    {
+        IReadOnlyList<QuickCaptureItemViewModel> selectedItems =
+            GetSelectedQuickCaptureItemsInVisibleOrder();
+        if (selectedItems.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        string text = selectedItems.Count == 1
+            ? QuickCaptureClipboardFormatter.FormatSingle(
+                selectedItems[0],
+                _localizationService)
+            : QuickCaptureClipboardFormatter.FormatBatch(
+                selectedItems,
+                _localizationService);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return Task.CompletedTask;
+        }
+
+        var dataPackage = new DataPackage
+        {
+            RequestedOperation = DataPackageOperation.Copy
+        };
+        dataPackage.SetText(text);
+        Clipboard.SetContent(dataPackage);
+        Clipboard.Flush();
+        RaiseFeedback(
+            _localizationService.Format(
+                "QuickCapture.CopiedCount",
+                selectedItems.Count),
+            WidgetFeedbackSeverity.Success,
+            "quick-copy-selected");
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteSelectedQuickCaptureItemsAsync(
+        IReadOnlyList<QuickCaptureItemViewModel> selectedItems)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = _localizationService.Format(
+                "QuickCapture.DeleteSelectedConfirm.Title",
+                selectedItems.Count),
+            PrimaryButtonText = T("Common.Delete"),
+            CloseButtonText = T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        IReadOnlyList<QuickCaptureDeletedItemSnapshot> deletedItems =
+            await ViewModel.DeleteItemsAsync(
+                selectedItems.Select(item => item.Id),
+                selectedItems.All(item => item.IsRecent));
+        ItemsList.SelectedItems.Clear();
+        if (deletedItems.Count > 0)
+        {
+            RaiseFeedback(
+                _localizationService.Format(
+                    "QuickCapture.DeletedCount",
+                    deletedItems.Count),
+                WidgetFeedbackSeverity.Success,
+                "quick-delete-selected");
+        }
+    }
+
     private void Root_DragOver(object sender, DragEventArgs e)
     {
+        if (_isInternalQuickCaptureDrag)
+        {
+            return;
+        }
+
         if (DeskBoxDragData.HasDroppedFiles(e.DataView) ||
             e.DataView.Contains(DeskBoxDragData.TextFormat) ||
             e.DataView.Contains(StandardDataFormats.Text) ||
@@ -292,6 +577,11 @@ public sealed partial class QuickCaptureSurfaceContent :
 
     private async void Root_Drop(object sender, DragEventArgs e)
     {
+        if (_isInternalQuickCaptureDrag)
+        {
+            return;
+        }
+
         var deferral = e.GetDeferral();
         try
         {
@@ -338,7 +628,8 @@ public sealed partial class QuickCaptureSurfaceContent :
         object sender,
         DragEventArgs e)
     {
-        if (!DeskBoxDragData.HasDroppedFiles(e.DataView) ||
+        if (_isInternalQuickCaptureDrag ||
+            !DeskBoxDragData.HasDroppedFiles(e.DataView) ||
             sender is not Border border)
         {
             return;

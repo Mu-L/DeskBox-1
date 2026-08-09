@@ -2084,4 +2084,8 @@
     ,"Onboarding.Task.Step2.Warning.CloudSync": "DeskBox does not upload files itself. If this is a OneDrive or other synced folder, that service may sync the files."
     ,"Onboarding.Task.Step2.Warning.Removable": "Files in collection widgets will be unavailable while this drive is disconnected."
     ,"Onboarding.Task.Step2.Warning.Network": "Files in collection widgets will be unavailable while this network location is disconnected."
+    ,"Onboarding.Task.SkipPractice": "Skip practice"
+    ,"Onboarding.Task.Continue": "Continue"
+    ,"Onboarding.Task.Step3.StatusCompleted": "Done: the file was moved into the collection widget."
+    ,"Onboarding.Task.Step4.StatusCompleted": "Done: you hid the widgets and brought them back."
 }

@@ -79,6 +79,7 @@ public abstract partial class WidgetWindowBase
     private int _collapseAnimationDurationMs;
     private long _collapseAnimationGeneration;
     private long _compactLayerRestoreGeneration;
+    private long _expandedWidgetLayerLeaseGeneration;
     private long _compactExpansionRequestGeneration;
     private PendingCompactExpansion? _pendingCompactExpansion;
     private WidgetCompactAnimationFrameTracker? _compactAnimationFrameTracker;
@@ -606,6 +607,7 @@ public abstract partial class WidgetWindowBase
         CancelPendingCompactExpansion();
         CancelTimer(ref _compactExpansionReadyCallbackDeadlineTimer);
         CancelDeferredExpandedLayerRestore();
+        ReleaseExpandedWidgetLayerLease("compact-cleanup");
         CancelPendingTitleBarClickCollapse();
         StopCollapseAnimation();
         WidgetShellControl.CancelResponsiveLayoutTransition();
@@ -1468,8 +1470,17 @@ public abstract partial class WidgetWindowBase
 
     private void ApplyEffectiveCollapseBehavior(bool animate)
     {
+        WidgetCollapseBehavior previousBehavior = _lastEffectiveCollapseBehavior;
         ApplyCollapseBehaviorVisuals();
         WidgetCollapseBehavior behavior = EffectiveCollapseBehavior;
+        bool enteredSmartBehavior =
+            previousBehavior != WidgetCollapseBehavior.Smart &&
+            behavior == WidgetCollapseBehavior.Smart;
+        if (enteredSmartBehavior)
+        {
+            SynchronizeCompactPointerStateForSmartEntry();
+        }
+
         WidgetCompactInteractionSnapshot snapshot = CaptureCompactInteractionSnapshot();
         bool desiredCollapsed = EffectiveCollapseBehavior switch
         {
@@ -1480,16 +1491,45 @@ public abstract partial class WidgetWindowBase
                 : WidgetCompactInteractionPolicy.CanAutoCollapse(behavior, snapshot),
             _ => false
         };
-        SetCollapsedState(desiredCollapsed, persistManualState: false, animate: animate);
-        if (desiredCollapsed)
+        // A global mode switch can affect every HWND in the same dispatcher
+        // turn. Settling that bulk transition immediately avoids running many
+        // expensive live-resize animations concurrently; ordinary hover/click
+        // transitions continue to use the configured animation.
+        bool shouldAnimateTransition = animate && !enteredSmartBehavior;
+        SetCollapsedState(
+            desiredCollapsed,
+            persistManualState: false,
+            animate: shouldAnimateTransition);
+        WidgetCompactInteractionSnapshot appliedSnapshot = CaptureCompactInteractionSnapshot();
+        if (desiredCollapsed && _targetCollapsed)
         {
             QueueCompactExpansionWarmup();
-            // SetCollapsedState may defer while a context menu/flyout is still
-            // active. Recovery registration is safe and must not depend on the
-            // state transition being accepted in that same call.
             StartCompactHoverRecoveryProbe();
             SynchronizeCompactHoverFromCurrentCursor();
         }
+        else if (WidgetCompactInteractionPolicy.ShouldRetryAutoCollapse(
+            behavior,
+            appliedSnapshot))
+        {
+            ScheduleSmartCollapse(SmartCollapseProbeMs);
+        }
+    }
+
+    private void SynchronizeCompactPointerStateForSmartEntry()
+    {
+        WidgetCompactInteractionSnapshot synchronized =
+            WidgetCompactInteractionPolicy.SynchronizeForSmartEntry(
+                CaptureCompactInteractionSnapshot(),
+                IsPointerPhysicallyInsideWindow());
+
+        _isPointerOverWidget = synchronized.IsPointerInside;
+        _isPointerOverCompactExpansionZone = synchronized.IsExpansionZoneActive;
+        _isPointerOverCompactMoveHandle = synchronized.IsPointerOverMoveHandle;
+        _isPointerOverCompactActions = synchronized.IsPointerOverActions;
+        _suppressSmartExpansionUntilPointerExit = synchronized.SuppressHoverExpansion;
+        CancelTimer(ref _collapseHoverTimer);
+        CancelTimer(ref _collapseLeaveTimer);
+        UpdateCompactViewState();
     }
 
     private void ApplyCollapseBehaviorVisuals()
@@ -2297,7 +2337,9 @@ public abstract partial class WidgetWindowBase
         }
         long generation = ++_collapseAnimationGeneration;
 
-        if (durationMs <= 0 || BoundsEqual(from, to))
+        if (durationMs <= 0 ||
+            BoundsEqual(from, to) ||
+            !WidgetCompactAnimationCoordinator.HasBoundsTransitionCapacity)
         {
             // Instant transition: no rendering frames will fire, so apply
             // the backdrop synchronously (no animation to stutter).
@@ -2337,7 +2379,7 @@ public abstract partial class WidgetWindowBase
         _isCollapseAnimationRendering = true;
         _collapseAnimationFrameRegistration?.Dispose();
         _collapseAnimationFrameRegistration =
-            WidgetCompactAnimationCoordinator.Register(CollapseAnimationRendering);
+            WidgetCompactAnimationCoordinator.RegisterBoundsTransition(CollapseAnimationRendering);
         ScheduleTimer(
             ref _collapseAnimationWatchdogTimer,
             Math.Max(300, durationMs + 320),
@@ -2982,6 +3024,7 @@ public abstract partial class WidgetWindowBase
             {
                 WidgetLayerService.BringAbovePeerWidgets(HWnd);
             }
+            AcquireExpandedWidgetLayerLease("expanded-state-reasserted");
             return;
         }
 
@@ -2992,6 +3035,8 @@ public abstract partial class WidgetWindowBase
         if (App.Current.WidgetManager is { WidgetsRaisedFromTray: true })
         {
             WidgetLayerService.BringAbovePeerWidgets(HWnd);
+            HoldExpandedPeerLayerLease(restoreDesktopLayer: false);
+            AcquireExpandedWidgetLayerLease("expanded-state-tray-raised");
             return;
         }
 
@@ -3013,6 +3058,7 @@ public abstract partial class WidgetWindowBase
             if (WidgetLayerService.TryBringAbovePeerWidgetsBehindForeground(HWnd))
             {
                 HoldExpandedPeerLayerLease(restoreDesktopLayer: false);
+                AcquireExpandedWidgetLayerLease("expanded-state-behind-foreground");
                 App.LogVerbose(
                     $"[ZOrder] RaiseForExpandedState: preserved foreign foreground " +
                     $"hwnd=0x{HWnd.ToInt64():X}");
@@ -3027,6 +3073,7 @@ public abstract partial class WidgetWindowBase
                 WidgetLayerService.BringAbovePeerWidgets(HWnd);
             }
             HoldExpandedPeerLayerLease(restoreDesktopLayer: false);
+            AcquireExpandedWidgetLayerLease("expanded-state-floating");
             return;
         }
 
@@ -3035,6 +3082,24 @@ public abstract partial class WidgetWindowBase
         {
             WidgetLayerService.BringAbovePeerWidgets(HWnd);
         }
+        AcquireExpandedWidgetLayerLease("expanded-state-desktop");
+    }
+
+    private void AcquireExpandedWidgetLayerLease(string reason)
+    {
+        _expandedWidgetLayerLeaseGeneration =
+            App.Current.WidgetManager?.AcquireExpandedWidgetLayer(HWnd, reason) ?? 0;
+    }
+
+    private bool ReleaseExpandedWidgetLayerLease(string reason)
+    {
+        long generation = _expandedWidgetLayerLeaseGeneration;
+        _expandedWidgetLayerLeaseGeneration = 0;
+        return generation > 0 &&
+            App.Current.WidgetManager?.ReleaseExpandedWidgetLayer(
+                HWnd,
+                generation,
+                reason) == true;
     }
 
     private void HoldExpandedPeerLayerLease(bool restoreDesktopLayer)
@@ -3163,8 +3228,7 @@ public abstract partial class WidgetWindowBase
         _restoreDesktopLayerAfterExpandedState = false;
         if (!restoreDesktopLayer)
         {
-            App.Current.WidgetManager?.QueueIdleWidgetZOrderNormalization(
-                "expanded-peer-layer-released");
+            ReleaseExpandedWidgetLayerLease("expanded-peer-layer-released");
             return;
         }
 
@@ -3172,8 +3236,7 @@ public abstract partial class WidgetWindowBase
         RestoreDesktopLayerWhenIdle = false;
         IsAtDesktopLayer = true;
         WidgetLayerService.MoveToDesktopBottom(HWnd);
-        App.Current.WidgetManager?.QueueIdleWidgetZOrderNormalization(
-            "expanded-state-restored");
+        ReleaseExpandedWidgetLayerLease("expanded-state-restored");
     }
 
     private void ScheduleSmartCollapse(int? delayMs = null)

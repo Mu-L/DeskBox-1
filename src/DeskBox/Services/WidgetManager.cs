@@ -557,7 +557,7 @@ public sealed partial class WidgetManager
     }
 
     /// <summary>
-    /// Restore all visible file widgets from saved configuration.
+    /// Restore every enabled widget for the new application session.
     /// </summary>
     public async Task RestoreWidgetsAsync()
     {
@@ -567,14 +567,17 @@ public sealed partial class WidgetManager
         DeduplicateFeatureWidgets();
         NormalizeWidgetGroupsForRuntime();
 
-        var visibleConfigs = _settingsService.Settings.Widgets.Where(widget =>
-                widget.IsVisible &&
-                !widget.IsDisabled &&
-                !IsDeleted(widget.Id) &&
-                WidgetGroupSettings.IsActiveMember(_settingsService.Settings, widget.Id))
-            .ToList();
+        // A process shutdown closes every HWND. Closed handlers historically
+        // persisted that teardown as IsVisible=false, which made the next
+        // launch restore nothing. Startup is a new visible session: restore
+        // every enabled surface, independently of the previous visibility
+        // flag, and synchronize group-level visibility before creating HWNDs.
+        IReadOnlyList<WidgetConfig> enabledConfigs =
+            WidgetStartupRestorePolicy.SelectEnabledWidgets(
+                _settingsService.Settings,
+                IsDeleted);
 
-        foreach (var unsupportedConfig in visibleConfigs.Where(widget => !_widgetRegistry.CanCreateWindow(widget.WidgetKind)))
+        foreach (var unsupportedConfig in enabledConfigs.Where(widget => !_widgetRegistry.CanCreateWindow(widget.WidgetKind)))
         {
             string reason = _widgetRegistry.IsKnown(unsupportedConfig.WidgetKind)
                 ? "not-implemented-yet"
@@ -582,9 +585,16 @@ public sealed partial class WidgetManager
             App.Log($"[WidgetManager] Skipping widget restore reason={reason} widget={FormatWidget(unsupportedConfig)}");
         }
 
-        var configs = visibleConfigs.Where(widget =>
+        var configs = enabledConfigs.Where(widget =>
                 _widgetRegistry.IsAvailableForSession(widget, _settingsService.Settings))
             .ToList();
+
+        if (WidgetStartupRestorePolicy.MarkVisible(
+                _settingsService.Settings,
+                configs))
+        {
+            _settingsService.SaveDebounced(notifySubscribers: false);
+        }
 
         using var perfScope = PerformanceLogger.Measure("WidgetManager.RestoreWidgets", $"count={configs.Count}");
         foreach (var config in configs)
@@ -1565,6 +1575,14 @@ public sealed partial class WidgetManager
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _settingsService.AppearancePreviewChanged -= ApplyAppearancePreview;
         _themeService.AppearanceChanged -= ApplyAppearancePreview;
+
+        // CloseAll is process teardown, not a user visibility command. Suppress
+        // every Closed handler so shutdown cannot turn visible widgets into a
+        // persisted hidden state just before the final settings flush.
+        foreach (WidgetConfig widget in _settingsService.Settings.Widgets)
+        {
+            _suppressClosedVisibilityPersistence.Add(widget.Id);
+        }
 
         _fileWidgets.Clear();
 

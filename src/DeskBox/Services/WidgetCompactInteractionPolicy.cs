@@ -34,6 +34,24 @@ internal readonly record struct WidgetCompactInteractionSnapshot(
 
 internal static class WidgetCompactInteractionPolicy
 {
+    public static WidgetCompactInteractionSnapshot SynchronizeForSmartEntry(
+        WidgetCompactInteractionSnapshot snapshot,
+        bool isPointerPhysicallyInside)
+    {
+        return snapshot with
+        {
+            // Routed pointer events belong to the previous expanded layout and
+            // can be left unmatched while widgets are created, moved, resized,
+            // or covered by a flyout. The native cursor position is the only
+            // authoritative whole-window state when Smart mode is entered.
+            IsPointerInside = isPointerPhysicallyInside,
+            IsExpansionZoneActive = false,
+            IsPointerOverMoveHandle = false,
+            IsPointerOverActions = false,
+            SuppressHoverExpansion = false
+        };
+    }
+
     public static bool CanHoverExpand(
         WidgetCollapseBehavior behavior,
         WidgetCompactInteractionSnapshot snapshot)
@@ -58,6 +76,18 @@ internal static class WidgetCompactInteractionPolicy
             !snapshot.IsPinned &&
             !snapshot.IsPointerInside &&
             !snapshot.HasActiveInteraction;
+    }
+
+    public static bool ShouldRetryAutoCollapse(
+        WidgetCollapseBehavior behavior,
+        WidgetCompactInteractionSnapshot snapshot)
+    {
+        // Pointer presence and active interactions are transient blockers. An
+        // expanded Smart widget must keep probing until those blockers clear;
+        // otherwise a missed PointerExited event can strand it open forever.
+        return behavior == WidgetCollapseBehavior.Smart &&
+            !snapshot.IsCollapsed &&
+            !snapshot.IsPinned;
     }
 
     public static WidgetCompactViewState ResolveViewState(

@@ -263,15 +263,32 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
-        if (ItemsListView.SelectedItem is not QuickCaptureItemViewModel item)
-        {
-            return;
-        }
-
         if (e.Key == Windows.System.VirtualKey.Delete)
         {
-            e.Handled = true;
-            ShowQuickCaptureDeleteConfirmFlyout(item, ItemsListView);
+            IReadOnlyList<QuickCaptureItemViewModel> selectedItems =
+                GetSelectedQuickCaptureItemsInVisibleOrder();
+            if (selectedItems.Count > 1)
+            {
+                e.Handled = true;
+                ShowQuickCaptureDeleteSelectedConfirmFlyout(
+                    selectedItems.Select(item => item.Id).ToArray(),
+                    selectedItems.All(item => item.IsRecent),
+                    ItemsListView);
+                return;
+            }
+
+            QuickCaptureItemViewModel? deleteItem = selectedItems.SingleOrDefault() ??
+                ItemsListView.SelectedItem as QuickCaptureItemViewModel;
+            if (deleteItem is not null)
+            {
+                e.Handled = true;
+                ShowQuickCaptureDeleteConfirmFlyout(deleteItem, ItemsListView);
+                return;
+            }
+        }
+
+        if (ItemsListView.SelectedItem is not QuickCaptureItemViewModel item)
+        {
             return;
         }
 

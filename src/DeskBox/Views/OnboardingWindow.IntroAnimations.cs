@@ -18,6 +18,8 @@ namespace DeskBox.Views;
 
 public sealed partial class OnboardingWindow
 {
+    private const int IntroAnimationTargetMilliseconds = 2500;
+
     private void PrepareIntroContent()
     {
         IntroTitleText.Text = _localizationService.T("Onboarding.Intro.Title");
@@ -66,7 +68,7 @@ public sealed partial class OnboardingWindow
         try
         {
             var animationTask = RunIntroAnimationAsync(introGeneration, backLayer, middleLayer, frontLayer);
-            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+            var timeoutTask = Task.Delay(TimeSpan.FromMilliseconds(IntroAnimationTargetMilliseconds + 1000));
             if (await Task.WhenAny(animationTask, timeoutTask) == timeoutTask)
             {
                 App.Log("[Onboarding] Intro animation timed out; showing main content fallback.");
@@ -98,33 +100,33 @@ public sealed partial class OnboardingWindow
         UIElement middleLayer,
         UIElement frontLayer)
     {
-        await AnimateIntroLayerAsync(introGeneration, backLayer, -36, -18, 0, 0, 0.9, 1, 380);
-        await Task.Delay(70);
+        await AnimateIntroLayerAsync(introGeneration, backLayer, -36, -18, 0, 0, 0.9, 1, 260);
+        await Task.Delay(40);
         if (introGeneration != _introGeneration) return;
-        await AnimateIntroLayerAsync(introGeneration, middleLayer, -14, -8, 0, 0, 0.93, 1, 340);
-        await Task.Delay(70);
+        await AnimateIntroLayerAsync(introGeneration, middleLayer, -14, -8, 0, 0, 0.93, 1, 240);
+        await Task.Delay(40);
         if (introGeneration != _introGeneration) return;
-        await AnimateIntroLayerAsync(introGeneration, frontLayer, 28, 18, 0, 0, 0.95, 1, 340);
-        if (introGeneration != _introGeneration) return;
-
-        await AnimateIntroElementAsync(introGeneration, IntroTitleText, 0, 1, 0, 0, 8, 0, 1, 1, 200);
-        await AnimateIntroElementAsync(introGeneration, IntroBodyText, 0, 1, 0, 0, 8, 0, 1, 1, 200);
-        await Task.Delay(380);
+        await AnimateIntroLayerAsync(introGeneration, frontLayer, 28, 18, 0, 0, 0.95, 1, 240);
         if (introGeneration != _introGeneration) return;
 
-        _ = AnimateIntroElementAsync(introGeneration, IntroTitleText, 1, 0, 0, 0, 0, -6, 1, 0.98, 180);
-        _ = AnimateIntroElementAsync(introGeneration, IntroBodyText, 1, 0, 0, 0, 0, -6, 1, 0.98, 180);
-        _ = AnimateIntroElementAsync(introGeneration, StepContainer, 0, 1, 0, 0, 8, 0, 0.995, 1, 360);
-        _ = AnimateIntroElementAsync(introGeneration, FooterNav, 0, 1, 0, 0, 8, 0, 1, 1, 320);
-        _ = AnimateIntroElementAsync(introGeneration, BrandLogoHost, 0, 1, 0, 0, 0, 0, 1, 1, 240);
+        await AnimateIntroElementAsync(introGeneration, IntroTitleText, 0, 1, 0, 0, 8, 0, 1, 1, 180);
+        await AnimateIntroElementAsync(introGeneration, IntroBodyText, 0, 1, 0, 0, 8, 0, 1, 1, 160);
+        await Task.Delay(640);
+        if (introGeneration != _introGeneration) return;
+
+        _ = AnimateIntroElementAsync(introGeneration, IntroTitleText, 1, 0, 0, 0, 0, -6, 1, 0.98, 100);
+        _ = AnimateIntroElementAsync(introGeneration, IntroBodyText, 1, 0, 0, 0, 0, -6, 1, 0.98, 100);
+        _ = AnimateIntroElementAsync(introGeneration, StepContainer, 0, 1, 0, 0, 8, 0, 0.995, 1, 220);
+        _ = AnimateIntroElementAsync(introGeneration, FooterNav, 0, 1, 0, 0, 8, 0, 1, 1, 200);
+        _ = AnimateIntroElementAsync(introGeneration, BrandLogoHost, 0, 1, 0, 0, 0, 0, 1, 1, 160);
         var target = GetIntroMarkTargetTransform();
         await AnimateIntroElementAsync(
             introGeneration,
             IntroMarkHost,
-            1, 0.98, 0, target.TranslateX, 0, target.TranslateY, 1, target.Scale, 620);
+            1, 0.98, 0, target.TranslateX, 0, target.TranslateY, 1, target.Scale, 500);
         if (introGeneration != _introGeneration) return;
 
-        await AnimateIntroElementAsync(introGeneration, IntroOverlay, 1, 0, 0, 0, 0, 0, 1, 1, 220);
+        await AnimateIntroElementAsync(introGeneration, IntroOverlay, 1, 0, 0, 0, 0, 0, 1, 1, 200);
     }
 
     private Task AnimateIntroLayerAsync(

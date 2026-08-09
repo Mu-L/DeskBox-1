@@ -7,6 +7,22 @@ namespace DeskBox.Services;
 /// </summary>
 internal static class SearchResultSelectionPolicy
 {
+    internal static bool ShouldPreserveSelectionForDrag(
+        bool itemIsSelected,
+        int selectedItemCount,
+        bool pointerIsOnDragHandle) =>
+        itemIsSelected && selectedItemCount > 1 && pointerIsOnDragHandle;
+
+    internal static IReadOnlyList<T> ResolveDraggedItems<T>(
+        T anchor,
+        IReadOnlyList<T> selectedItems)
+    {
+        T[] distinctSelectedItems = selectedItems.Distinct().ToArray();
+        return distinctSelectedItems.Length > 1 && distinctSelectedItems.Contains(anchor)
+            ? distinctSelectedItems
+            : [anchor];
+    }
+
     internal static bool ShouldStartRubberBand(
         bool isLeftButtonPressed,
         bool isOverResultRow,

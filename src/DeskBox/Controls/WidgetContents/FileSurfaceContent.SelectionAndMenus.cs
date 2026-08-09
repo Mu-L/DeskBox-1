@@ -106,6 +106,7 @@ public sealed partial class FileSurfaceContent
 
         bool wasBoxSelecting = _isBoxSelecting;
         FinishBoxSelection(listView);
+        _pendingPointerDragItems = [];
         if (wasBoxSelecting)
         {
             listView.ReleasePointerCapture(e.Pointer);

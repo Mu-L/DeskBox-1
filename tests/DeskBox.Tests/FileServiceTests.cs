@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DeskBox.Services;
 
 namespace DeskBox.Tests;
@@ -230,6 +231,51 @@ public sealed class FileServiceTests : IDisposable
         Assert.Equal(100d, completed.Percentage);
     }
 
+    [Theory]
+    [InlineData(@"E:\source.bin", @"E:\folder\destination.bin", true)]
+    [InlineData(@"F:\source.bin", @"E:\folder\destination.bin", false)]
+    [InlineData(@"\\server\share\source.bin", @"\\server\share\folder\destination.bin", true)]
+    [InlineData(@"\\server\share-a\source.bin", @"\\server\share-b\destination.bin", false)]
+    public void CanUseAtomicMove_RequiresMatchingFileSystemRoot(
+        string sourcePath,
+        string destinationPath,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            FileService.CanUseAtomicMove(sourcePath, destinationPath));
+    }
+
+    [Fact]
+    public void FileTransferProgress_UnknownTotalBeforeFirstCompletionIsIndeterminate()
+    {
+        var progress = new FileService.FileTransferProgress(
+            FileService.FileTransferPhase.Transferring,
+            "folder",
+            CompletedItems: 0,
+            TotalItems: 1,
+            BytesTransferred: 1024,
+            TotalBytes: null,
+            BytesPerSecond: 512,
+            EstimatedRemaining: null);
+
+        Assert.Null(progress.Percentage);
+    }
+
+    [Fact]
+    public void DeleteSourceFileAfterCopy_ClearsReadOnlyBeforeDeleting()
+    {
+        string sourcePath = Path.Combine(_tempRoot, "read-only-source.txt");
+        File.WriteAllText(sourcePath, "content");
+        FileAttributes attributes = File.GetAttributes(sourcePath) |
+            FileAttributes.ReadOnly;
+        File.SetAttributes(sourcePath, attributes);
+
+        FileService.DeleteSourceFileAfterCopy(sourcePath, attributes);
+
+        Assert.False(File.Exists(sourcePath));
+    }
+
     [Fact]
     public async Task ExecuteTransferPlanAsync_MoveCollisionNeverDeletesExistingDestination()
     {
@@ -283,8 +329,300 @@ public sealed class FileServiceTests : IDisposable
 
         Assert.True(File.Exists(sourcePath));
         Assert.False(File.Exists(destinationPath));
-        Assert.Contains(updates, update =>
+        int cancelingIndex = updates.FindIndex(update =>
+            update.Phase == FileService.FileTransferPhase.Canceling);
+        int canceledIndex = updates.FindIndex(update =>
             update.Phase == FileService.FileTransferPhase.Canceled);
+        Assert.True(cancelingIndex >= 0);
+        Assert.True(canceledIndex > cancelingIndex);
+    }
+
+    [Fact]
+    public async Task ExecuteTransferPlanAsync_CancelDuringPreparationReportsTerminalCancellation()
+    {
+        var service = new FileService();
+        string sourcePath = Path.Combine(_tempRoot, "prepare-cancel-source.bin");
+        string destinationPath = Path.Combine(_tempRoot, "prepare-cancel-destination.bin");
+        await File.WriteAllTextAsync(sourcePath, "content");
+
+        using var cancellation = new CancellationTokenSource();
+        var updates = new List<FileService.FileTransferProgress>();
+        var progress = new InlineProgress<FileService.FileTransferProgress>(update =>
+        {
+            updates.Add(update);
+            if (update.Phase == FileService.FileTransferPhase.Preparing)
+            {
+                cancellation.Cancel();
+            }
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.ExecuteTransferPlanAsync(
+                [new FileService.FileTransferPlan(sourcePath, destinationPath)],
+                move: false,
+                progress: progress,
+                cancellationToken: cancellation.Token));
+
+        Assert.True(File.Exists(sourcePath));
+        Assert.False(File.Exists(destinationPath));
+        Assert.Equal(
+            [
+                FileService.FileTransferPhase.Preparing,
+                FileService.FileTransferPhase.Canceling,
+                FileService.FileTransferPhase.Canceled
+            ],
+            updates.Select(update => update.Phase).ToArray());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteTransferPlanAsync_CancelAfterFirstItemRollsBackCompletedBatch(
+        bool move)
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, move ? "move-source" : "copy-source")).FullName;
+        string destinationDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, move ? "move-destination" : "copy-destination")).FullName;
+        string firstSource = Path.Combine(sourceDirectory, "first.txt");
+        string secondSource = Path.Combine(sourceDirectory, "second.txt");
+        string firstDestination = Path.Combine(destinationDirectory, "first.txt");
+        string secondDestination = Path.Combine(destinationDirectory, "second.txt");
+        await File.WriteAllTextAsync(firstSource, "first");
+        await File.WriteAllTextAsync(secondSource, "second");
+
+        using var cancellation = new CancellationTokenSource();
+        var progress = new InlineProgress<FileService.FileTransferProgress>(update =>
+        {
+            if (update.CompletedItems == 1)
+            {
+                cancellation.Cancel();
+            }
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.ExecuteTransferPlanAsync(
+                [
+                    new FileService.FileTransferPlan(firstSource, firstDestination),
+                    new FileService.FileTransferPlan(secondSource, secondDestination)
+                ],
+                move,
+                progress: progress,
+                cancellationToken: cancellation.Token));
+
+        Assert.Equal("first", await File.ReadAllTextAsync(firstSource));
+        Assert.Equal("second", await File.ReadAllTextAsync(secondSource));
+        Assert.False(File.Exists(firstDestination));
+        Assert.False(File.Exists(secondDestination));
+    }
+
+    [Fact]
+    public async Task ExecuteTransferPlanAsync_ManySmallFilesThrottlesProgressCallbacks()
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "many-small-source")).FullName;
+        string destinationDirectory = Path.Combine(
+            _tempRoot,
+            "many-small-destination");
+        const int fileCount = 120;
+        for (int index = 0; index < fileCount; index++)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceDirectory, $"item-{index:D3}.txt"),
+                index.ToString());
+        }
+
+        var updates = new List<FileService.FileTransferProgress>();
+        await service.ExecuteTransferPlanAsync(
+            [new FileService.FileTransferPlan(sourceDirectory, destinationDirectory)],
+            move: false,
+            progress: new InlineProgress<FileService.FileTransferProgress>(
+                updates.Add));
+
+        Assert.Equal(
+            fileCount,
+            Directory.EnumerateFiles(destinationDirectory).Count());
+        Assert.True(
+            updates.Count < fileCount,
+            $"Expected throttled progress, received {updates.Count} updates.");
+    }
+
+    [Fact]
+    [Trait("Category", "Hardware")]
+    public async Task ExecuteTransferPlanAsync_RealCrossVolumeMoveReportsProgressAndCancelsPromptly()
+    {
+        string? sourceVolume = Environment.GetEnvironmentVariable(
+            "DESKBOX_TEST_SOURCE_VOLUME");
+        string? destinationVolume = Environment.GetEnvironmentVariable(
+            "DESKBOX_TEST_DESTINATION_VOLUME");
+        if (string.IsNullOrWhiteSpace(sourceVolume) ||
+            string.IsNullOrWhiteSpace(destinationVolume))
+        {
+            return;
+        }
+
+        string runId = Guid.NewGuid().ToString("N");
+        string sourceTestRoot = Path.Combine(
+            Path.GetFullPath(sourceVolume),
+            "DeskBox-TransferTests");
+        string destinationTestRoot = Path.Combine(
+            Path.GetFullPath(destinationVolume),
+            "DeskBox-TransferTests");
+        string sourceDirectory = Path.Combine(sourceTestRoot, runId);
+        string destinationDirectory = Path.Combine(
+            destinationTestRoot,
+            runId);
+        Directory.CreateDirectory(sourceDirectory);
+        Directory.CreateDirectory(destinationDirectory);
+
+        try
+        {
+            var service = new FileService();
+            const long fileLength = 128L * 1024 * 1024;
+            string successSource = Path.Combine(sourceDirectory, "success.bin");
+            string successDestination = Path.Combine(
+                destinationDirectory,
+                "success.bin");
+            await using (FileStream file = File.Create(successSource))
+            {
+                file.SetLength(fileLength);
+            }
+
+            Assert.False(FileService.CanUseAtomicMove(
+                successSource,
+                successDestination));
+            var successUpdates = new List<FileService.FileTransferProgress>();
+            IReadOnlyList<FileService.FileTransferResult> results =
+                await service.ExecuteTransferPlanAsync(
+                    [new FileService.FileTransferPlan(
+                        successSource,
+                        successDestination)],
+                    move: true,
+                    progress: new InlineProgress<FileService.FileTransferProgress>(
+                        successUpdates.Add));
+
+            Assert.Single(results);
+            Assert.False(File.Exists(successSource));
+            Assert.Equal(fileLength, new FileInfo(successDestination).Length);
+            Assert.Contains(successUpdates, update =>
+                update.Phase == FileService.FileTransferPhase.Transferring &&
+                update.BytesTransferred > 0 &&
+                update.BytesTransferred < fileLength);
+
+            string cancelSource = Path.Combine(sourceDirectory, "cancel.bin");
+            string cancelDestination = Path.Combine(
+                destinationDirectory,
+                "cancel.bin");
+            await using (FileStream file = File.Create(cancelSource))
+            {
+                file.SetLength(fileLength);
+            }
+
+            using var cancellation = new CancellationTokenSource();
+            var cancelUpdates = new List<FileService.FileTransferProgress>();
+            var stopwatch = Stopwatch.StartNew();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                service.ExecuteTransferPlanAsync(
+                    [new FileService.FileTransferPlan(
+                        cancelSource,
+                        cancelDestination)],
+                    move: true,
+                    progress: new InlineProgress<FileService.FileTransferProgress>(
+                        update =>
+                        {
+                            cancelUpdates.Add(update);
+                            if (update.BytesTransferred > 0)
+                            {
+                                cancellation.Cancel();
+                            }
+                        }),
+                    cancellationToken: cancellation.Token));
+            stopwatch.Stop();
+
+            Assert.True(File.Exists(cancelSource));
+            Assert.False(File.Exists(cancelDestination));
+            Assert.Contains(cancelUpdates, update =>
+                update.Phase == FileService.FileTransferPhase.Canceled);
+            Assert.True(
+                stopwatch.Elapsed < TimeSpan.FromSeconds(10),
+                $"Cross-volume cancellation took {stopwatch.Elapsed}.");
+
+            string batchFirstSource = Path.Combine(
+                sourceDirectory,
+                "batch-first.bin");
+            string batchSecondSource = Path.Combine(
+                sourceDirectory,
+                "batch-second.bin");
+            string batchFirstDestination = Path.Combine(
+                destinationDirectory,
+                "batch-first.bin");
+            string batchSecondDestination = Path.Combine(
+                destinationDirectory,
+                "batch-second.bin");
+            await using (FileStream file = File.Create(batchFirstSource))
+            {
+                file.SetLength(16L * 1024 * 1024);
+            }
+            await using (FileStream file = File.Create(batchSecondSource))
+            {
+                file.SetLength(fileLength);
+            }
+
+            using var batchCancellation = new CancellationTokenSource();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                service.ExecuteTransferPlanAsync(
+                    [
+                        new FileService.FileTransferPlan(
+                            batchFirstSource,
+                            batchFirstDestination),
+                        new FileService.FileTransferPlan(
+                            batchSecondSource,
+                            batchSecondDestination)
+                    ],
+                    move: true,
+                    progress: new InlineProgress<FileService.FileTransferProgress>(
+                        update =>
+                        {
+                            if (update.CompletedItems == 1)
+                            {
+                                batchCancellation.Cancel();
+                            }
+                        }),
+                    cancellationToken: batchCancellation.Token));
+
+            Assert.Equal(
+                16L * 1024 * 1024,
+                new FileInfo(batchFirstSource).Length);
+            Assert.Equal(fileLength, new FileInfo(batchSecondSource).Length);
+            Assert.False(File.Exists(batchFirstDestination));
+            Assert.False(File.Exists(batchSecondDestination));
+        }
+        finally
+        {
+            if (Directory.Exists(sourceDirectory))
+            {
+                Directory.Delete(sourceDirectory, recursive: true);
+            }
+
+            if (Directory.Exists(destinationDirectory))
+            {
+                Directory.Delete(destinationDirectory, recursive: true);
+            }
+
+            if (Directory.Exists(sourceTestRoot) &&
+                !Directory.EnumerateFileSystemEntries(sourceTestRoot).Any())
+            {
+                Directory.Delete(sourceTestRoot, recursive: false);
+            }
+
+            if (Directory.Exists(destinationTestRoot) &&
+                !Directory.EnumerateFileSystemEntries(destinationTestRoot).Any())
+            {
+                Directory.Delete(destinationTestRoot, recursive: false);
+            }
+        }
     }
 
     [Fact]

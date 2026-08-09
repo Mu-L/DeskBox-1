@@ -100,6 +100,15 @@ public static class WidgetGroupNavigationInteractionPolicy
         double wheelDelta,
         out int direction)
     {
+        // Precision touchpads can emit a small counter-delta when inertia
+        // settles or the user reverses direction. Start a fresh gesture when
+        // the sign changes so stale input cannot swallow the new intent.
+        if (accumulator != 0 &&
+            Math.Sign(accumulator) != Math.Sign(wheelDelta))
+        {
+            accumulator = 0;
+        }
+
         accumulator += wheelDelta;
         if (Math.Abs(accumulator) < WheelStep)
         {

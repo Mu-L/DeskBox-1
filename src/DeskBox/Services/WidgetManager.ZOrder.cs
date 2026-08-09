@@ -37,6 +37,83 @@ public sealed partial class WidgetManager
     // to consume.
     private bool _lastMouseButtonsDown;
     private bool _outsideMousePressObserved;
+    private WidgetExpandedLayerLease _expandedWidgetLayerLease;
+
+    internal long AcquireExpandedWidgetLayer(IntPtr windowHandle, string reason)
+    {
+        if (windowHandle == IntPtr.Zero || !Win32Helper.IsWindow(windowHandle))
+        {
+            return 0;
+        }
+
+        _expandedWidgetLayerLease = WidgetExpandedLayerLeasePolicy.Acquire(
+            _expandedWidgetLayerLease,
+            windowHandle);
+        _idlePeerOrderGeneration++;
+
+        List<IntPtr> peerOrder = [windowHandle];
+        peerOrder.AddRange(
+            GetWindowsInIdleHighestFirstOrder(
+                    GetLoadedDesktopWindows().Where(window =>
+                        window.Visible && window.WindowHandle != windowHandle))
+                .Select(window => window.WindowHandle));
+        bool applied = WidgetLayerService.EnsurePeerOrderHighestToLowest(peerOrder);
+        App.LogVerbose(
+            $"[ZOrder] Expanded lease acquired reason={reason} " +
+            $"generation={_expandedWidgetLayerLease.Generation} " +
+            $"owner=0x{windowHandle.ToInt64():X} peers={peerOrder.Count} applied={applied}");
+        return _expandedWidgetLayerLease.Generation;
+    }
+
+    internal bool ReleaseExpandedWidgetLayer(
+        IntPtr windowHandle,
+        long generation,
+        string reason)
+    {
+        if (!WidgetExpandedLayerLeasePolicy.Owns(
+            _expandedWidgetLayerLease,
+            windowHandle,
+            generation))
+        {
+            App.LogVerbose(
+                $"[ZOrder] Expanded lease release ignored reason={reason} " +
+                $"generation={generation} owner=0x{windowHandle.ToInt64():X} " +
+                $"activeGeneration={_expandedWidgetLayerLease.Generation} " +
+                $"activeOwner=0x{_expandedWidgetLayerLease.WindowHandle.ToInt64():X}");
+            return false;
+        }
+
+        _expandedWidgetLayerLease = WidgetExpandedLayerLeasePolicy.Release(
+            _expandedWidgetLayerLease,
+            windowHandle,
+            generation);
+        App.LogVerbose(
+            $"[ZOrder] Expanded lease released reason={reason} " +
+            $"generation={generation} owner=0x{windowHandle.ToInt64():X}");
+        QueueIdleWidgetZOrderNormalization(reason);
+        return true;
+    }
+
+    private bool HasActiveExpandedWidgetLayerLease()
+    {
+        if (!_expandedWidgetLayerLease.IsActive)
+        {
+            return false;
+        }
+
+        bool ownerVisible = GetLoadedDesktopWindows().Any(window =>
+            window.Visible &&
+            window.WindowHandle == _expandedWidgetLayerLease.WindowHandle);
+        if (ownerVisible)
+        {
+            return true;
+        }
+
+        _expandedWidgetLayerLease = new WidgetExpandedLayerLease(
+            IntPtr.Zero,
+            _expandedWidgetLayerLease.Generation);
+        return false;
+    }
 
     public void RestoreRaisedWidgetsToDesktopLayer()
     {
@@ -89,12 +166,14 @@ public sealed partial class WidgetManager
         if (_widgetsRaisedFromTray ||
             _isTogglingWidgetsDesktopLayer ||
             _sessionManager.IsInteractionActive ||
-            _sessionManager.State == WidgetSessionState.Hidden)
+            _sessionManager.State == WidgetSessionState.Hidden ||
+            HasActiveExpandedWidgetLayerLease())
         {
             App.LogVerbose(
                 $"[ZOrder] Idle normalize skipped reason={reason} " +
                 $"raised={_widgetsRaisedFromTray} toggling={_isTogglingWidgetsDesktopLayer} " +
-                $"interaction={_sessionManager.IsInteractionActive} state={_sessionManager.State}");
+                $"interaction={_sessionManager.IsInteractionActive} state={_sessionManager.State} " +
+                $"expandedOwner=0x{_expandedWidgetLayerLease.WindowHandle.ToInt64():X}");
             return false;
         }
 
