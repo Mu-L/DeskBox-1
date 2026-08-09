@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.3.8-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.8)
+[![最新版本](https://img.shields.io/badge/release-1.3.9-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.9)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.8) 下载 DeskBox 1.3.8：
+在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.9) 下载 DeskBox 1.3.9。
 
-- [DeskBox 1.3.8 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.8/DeskBox_Setup_1.3.8_x64.exe)——适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.3.8 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.8/DeskBox_Setup_1.3.8_arm64.exe)——适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.3.9 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.9/DeskBox_Setup_1.3.9_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.3.9 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.9/DeskBox_Setup_1.3.9_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -101,18 +101,17 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.3.8 更新亮点
+## 1.3.9 更新亮点
 
-- **新增 6 种界面语言**：在简体中文、英语、日语、德语和巴西葡萄牙语之外，新增印地语、西班牙语、法语、阿拉伯语、孟加拉语和俄语，优先覆盖文件格子、新手流程、天气和更新等主要体验；少量详细设置暂时使用英文显示。
-- **商店术语同步**：文件格子、文件夹映射、自动叠放、格子组、托盘创建和移入回收站等表述在应用内统一。
-- **新手流程更聚焦**：首个格子固定从屏幕右侧开始，明确解释收纳格子与文件夹映射，并告诉用户如何从托盘菜单新建格子。
-- **粘贴与选择状态修复**：格子支持直接粘贴，多文件复制/剪切会保留完整选择，剪切完成后会清理误显示的剪切样式。
-- **开机启动与首次运行更可靠**：Windows 开机启动继续驻留托盘，主动打开保持交互式体验；用户主动删除文件格子后不会被自动补回。
-- **更安全的首次运行**：默认文件格子只会为真正的新用户创建一次。用户主动删光文件格子后不会再次被补回，配置恢复失败时也不会凭空生成内容。
-- **Win+D 不再隐藏动态格子**：两种桌面层级模式在静止时都附着到资源管理器桌面图标层；动态格子被唤起时仍会临时脱离，同时保留原有前景交互。
-- **ARM64 原生更新链路**：客户端会从稳定版清单读取 ARM64 安装包地址、SHA-256 与大小，不再依赖 GitHub API 回退。
+- **胶囊展开更稳定。** 开启悬停自动展开时会重新读取真实鼠标位置，延迟收起会自动重试，同时限制并发尺寸动画。当前展开的胶囊会保持在其他 DeskBox 格子上方。
+- **启动后直接看到格子。** 每次启动都会恢复所有已启用的独立格子，以及每个格子组当前使用的页面，并以临时前景状态显示。
+- **多选拖拽保持完整。** 文件格子、搜索结果、独立随记和组内随记都会拖动完整选择。文件与文件夹混合选择也不会丢项。
+- **批量键盘操作补齐。** 在随记和待办中按 Delete 会处理当前全部选中项，不再只处理焦点所在的一项。
+- **大文件进度更诚实。** 准备阶段尚未算出总大小时会显示不确定进度。点击取消后立即进入取消中状态，并在可能的情况下撤回这一批已经完成的操作。
+- **格子组滚轮切换恢复正常。** 标题滚轮可以循环切换，并会等到当前切换真正完成后再处理下一个目标。
+- **新手引导更短也更直观。** 流程调整为一屏介绍、两次可跳过的真实练习和结束选择，明确说明默认拖入会移动文件，练习只在真实操作成功后完成。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.8 发布说明](docs/releases/v1.3.8.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.9 发布说明](docs/releases/v1.3.9.md)。
 
 ## 当前界面
 
@@ -215,8 +214,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.3.8_x64.exe
-Output\DeskBox_Setup_1.3.8_arm64.exe
+Output\DeskBox_Setup_1.3.9_x64.exe
+Output\DeskBox_Setup_1.3.9_arm64.exe
 ```
 
 ## 项目结构

@@ -138,6 +138,7 @@ public sealed partial class QuickCaptureWidgetWindow :
     private MenuFlyout? _pendingDeleteConfirmFlyout;
     private string? _copySelectionAnchorId;
     private string? _draggedQuickCaptureItemId;
+    private readonly List<string> _draggedQuickCaptureItemIds = [];
     private bool _isInternalQuickCaptureDrag;
     private bool _internalQuickCaptureDragCanReorder;
     private bool _quickCaptureTabDropHandled;

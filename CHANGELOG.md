@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.3.9 - 2026-08-09
+
+### English
+
+#### Capsule mode and startup
+
+- Smart auto-hide now synchronizes from the physical pointer when the mode is entered, retries collapses deferred by menus or interaction, and limits concurrent bounds animations during bulk state changes.
+- The currently expanded capsule holds an explicit peer-layer lease so another DeskBox widget cannot cover it. Stale collapse callbacks cannot release the newer expanded widget.
+- A new application session restores every enabled standalone widget and the active member of each widget group. Shutdown no longer persists process teardown as a user-requested hidden state.
+- Group-title wheel navigation wraps and retains its pending member until preparation, persistence, and content switching finish.
+
+#### Selection, drag, and keyboard parity
+
+- Dragging from a multi-selection now preserves the full batch in file widgets, search results, standalone Quick Capture, and grouped Quick Capture.
+- Internal drag payloads retain mixed file and folder paths instead of dropping folders when files are present.
+- Quick Capture tab drops apply every dragged item, and Delete handles all selected Quick Capture or Todo rows.
+
+#### Large transfers and cancellation
+
+- Transfer UI appears during preparation, uses indeterminate progress while byte totals are unknown, and ignores stale callbacks from an earlier operation.
+- Pressing Cancel immediately changes the card to an explicit canceling state with a progress indicator. The transfer pipeline reports canceling and canceled phases in order.
+- Cross-volume moves use cancellable streamed copies. Same-volume moves keep their atomic path, read-only source files can be removed safely, progress callbacks are throttled for large batches, and canceled batches roll back completed work where possible.
+
+#### First-run experience
+
+- The onboarding flow is reduced to one introduction, two optional real exercises, and a final choice. Forced path confirmation and repeated explanation panels are removed.
+- Managed file drops are explained as Move by default. File and visibility exercises complete only after their actual operation succeeds.
+- The 2.5-second DeskBox logo sequence remains, while each step now pairs concise text with native icons, state diagrams, and icon-backed progress feedback.
+- Application, package, x64 installer, and ARM64 installer versions are aligned on 1.3.9 / 1.3.9.0.
+
+### 中文
+
+#### 胶囊模式与启动恢复
+
+- 进入悬停自动展开时会按真实鼠标位置同步状态。菜单或交互暂时阻止收起后会继续重试，批量切换时也会限制同时执行的尺寸动画。
+- 当前展开的胶囊会持有独立的同级窗口层级。旧的收起回调无法清除后来展开的格子，其他 DeskBox 格子也不会盖住当前内容。
+- 新的应用会话会恢复所有已启用的独立格子，以及每个格子组当前使用的成员。退出进程不再把窗口关闭误记为用户主动隐藏。
+- 格子组标题滚轮支持循环切换，并会保留待切换目标，直到准备、保存和内容切换全部结束。
+
+#### 多选拖拽与键盘操作
+
+- 从文件格子、搜索结果、独立随记和组内随记拖出多选内容时，会保留完整选择。
+- 内部拖拽同时包含文件与文件夹时，所有路径都会进入同一批载荷。
+- 随记拖到标签页时会处理全部选中项。在随记或待办中按 Delete 也会处理当前全部选择。
+
+#### 大文件进度与取消
+
+- 准备传输时就会显示进度界面。总字节数尚未确定时使用不确定进度，也不会接收上一轮任务遗留的回调。
+- 点击取消后，界面立即显示取消中和进度指示。传输层会依次报告取消中与已取消。
+- 跨盘移动改为可取消的流式复制，同盘移动继续使用原子操作。只读源文件可以安全删除，大批小文件会限制进度回调频率，取消整批任务时会尽量撤回已经完成的内容。
+
+#### 新手引导
+
+- 引导调整为一屏介绍、两次可跳过的真实练习和结束选择，去掉强制路径确认与重复说明。
+- 收纳格子的默认拖入行为明确为移动。文件练习和显隐练习只有在真实操作成功后才完成。
+- DeskBox Logo 动画保留为 2.5 秒，每一步加入原生图标、状态示意和带图标的进度反馈。
+- 应用、应用包、x64 安装器和 ARM64 安装器版本统一为 1.3.9 / 1.3.9.0。
+
 ## 1.3.8 - 2026-08-08
 
 ### English

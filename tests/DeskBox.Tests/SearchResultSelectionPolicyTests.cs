@@ -5,6 +5,44 @@ namespace DeskBox.Tests;
 public sealed class SearchResultSelectionPolicyTests
 {
     [Theory]
+    [InlineData(true, 2, true, true)]
+    [InlineData(true, 1, true, false)]
+    [InlineData(false, 2, true, false)]
+    [InlineData(true, 2, false, false)]
+    public void DragAnchor_PreservesOnlyARealMultiSelectionOnTheDragHandle(
+        bool itemIsSelected,
+        int selectedItemCount,
+        bool pointerIsOnDragHandle,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            SearchResultSelectionPolicy.ShouldPreserveSelectionForDrag(
+                itemIsSelected,
+                selectedItemCount,
+                pointerIsOnDragHandle));
+    }
+
+    [Fact]
+    public void ResolveDraggedItems_UsesTheFullSelectionForASelectedAnchor()
+    {
+        object first = new();
+        object second = new();
+        object third = new();
+
+        Assert.Equal(
+            [first, second, third],
+            SearchResultSelectionPolicy.ResolveDraggedItems(
+                second,
+                [first, second, third]));
+        Assert.Equal(
+            [second],
+            SearchResultSelectionPolicy.ResolveDraggedItems(
+                second,
+                [first, third]));
+    }
+
+    [Theory]
     [InlineData(true, false, false, true)]
     [InlineData(true, true, false, false)]
     [InlineData(true, false, true, false)]

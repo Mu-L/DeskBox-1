@@ -2083,5 +2083,9 @@
   "Onboarding.Task.Step2.Warning.SystemDriveOnly": "পর্যাপ্ত খালি স্থানসহ অন্য কোনো স্থানীয় ড্রাইভ পাওয়া যায়নি। সিস্টেম ড্রাইভ ব্যবহার করে পরে সেটিংস থেকে স্থানান্তর করতে পারবেন।",
   "Onboarding.Task.Step2.Warning.CloudSync": "DeskBox নিজে ফাইল আপলোড করে না। এটি OneDrive বা অন্য সিঙ্ক ফোল্ডার হলে সংশ্লিষ্ট সেবা ফাইল সিঙ্ক করতে পারে।",
   "Onboarding.Task.Step2.Warning.Removable": "এই ড্রাইভ সংযুক্ত না থাকলে সংগ্রহ উইজেটের ফাইল পাওয়া যাবে না।",
-  "Onboarding.Task.Step2.Warning.Network": "নেটওয়ার্ক অবস্থান বিচ্ছিন্ন থাকলে সংগ্রহ উইজেটের ফাইল পাওয়া যাবে না।"
+  "Onboarding.Task.Step2.Warning.Network": "নেটওয়ার্ক অবস্থান বিচ্ছিন্ন থাকলে সংগ্রহ উইজেটের ফাইল পাওয়া যাবে না।",
+  "Onboarding.Task.SkipPractice": "অনুশীলন এড়িয়ে যান",
+  "Onboarding.Task.Continue": "চালিয়ে যান",
+  "Onboarding.Task.Step3.StatusCompleted": "সম্পন্ন: ফাইল সংগ্রহ উইজেটে সরানো হয়েছে।",
+  "Onboarding.Task.Step4.StatusCompleted": "সম্পন্ন: আপনি উইজেট লুকিয়ে আবার দেখিয়েছেন।"
 }

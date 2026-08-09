@@ -359,6 +359,13 @@ public sealed partial class QuickCaptureWidgetViewModel
         };
     }
 
+    public bool CanApplyTabDrop(
+        IReadOnlyList<QuickCaptureItemViewModel> items,
+        QuickCaptureViewMode target)
+    {
+        return items.Count > 0 && items.Any(item => CanApplyTabDrop(item, target));
+    }
+
     public async Task<bool> ApplyTabDropAsync(
         QuickCaptureItemViewModel item,
         QuickCaptureViewMode target)
@@ -378,6 +385,45 @@ public sealed partial class QuickCaptureWidgetViewModel
         return await _quickCaptureService.SetPinnedAsync(
             item.Id,
             isPinned: target == QuickCaptureViewMode.Pinned);
+    }
+
+    public async Task<int> ApplyTabDropAsync(
+        IReadOnlyList<QuickCaptureItemViewModel> items,
+        QuickCaptureViewMode target)
+    {
+        QuickCaptureItemViewModel[] actionableItems = items
+            .Where(item => CanApplyTabDrop(item, target))
+            .GroupBy(item => item.Id, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+        if (actionableItems.Length == 0)
+        {
+            return 0;
+        }
+
+        int changedCount = 0;
+        foreach (QuickCaptureItemViewModel recentItem in actionableItems.Where(item => item.IsRecent))
+        {
+            if (await _quickCaptureService.SaveRecentItemToRecordsAsync(
+                    recentItem.Id,
+                    pin: target == QuickCaptureViewMode.Pinned) is not null)
+            {
+                changedCount++;
+            }
+        }
+
+        string[] recordIds = actionableItems
+            .Where(item => !item.IsRecent)
+            .Select(item => item.Id)
+            .ToArray();
+        if (recordIds.Length > 0)
+        {
+            changedCount += await _quickCaptureService.SetPinnedAsync(
+                recordIds,
+                isPinned: target == QuickCaptureViewMode.Pinned);
+        }
+
+        return changedCount;
     }
 
     public Task<bool> SetAppearanceAsync(

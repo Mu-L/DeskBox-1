@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace DeskBox.Services;
 
@@ -9,6 +11,7 @@ public sealed partial class FileService
         Preparing,
         Transferring,
         Finalizing,
+        Canceling,
         Completed,
         Canceled,
         Failed
@@ -36,7 +39,7 @@ public sealed partial class FileService
                         100d);
                 }
 
-                if (TotalItems > 0)
+                if (TotalItems > 0 && CompletedItems > 0)
                 {
                     return Math.Clamp(
                         CompletedItems * 100d / TotalItems,
@@ -59,21 +62,23 @@ public sealed partial class FileService
             CancellationToken cancellationToken)
     {
         var reporter = new TransferProgressReporter(progress, operations.Count);
-        reporter.Report(FileTransferPhase.Preparing, force: true);
-
-        Dictionary<string, TransferWorkEstimate> estimates =
-            await Task.Run(
-                () => EstimateTransferWork(operations, cancellationToken),
-                cancellationToken);
-        reporter.SetTotalBytes(
-            estimates.Values.All(estimate => estimate.IsExact)
-                ? estimates.Values.Sum(estimate => estimate.Bytes)
-                : null);
-        reporter.Report(FileTransferPhase.Transferring, force: true);
-
         var completedOperations = new List<TransferOperation>(operations.Count);
         try
         {
+            reporter.Report(FileTransferPhase.Preparing, force: true);
+            Dictionary<string, TransferWorkEstimate> estimates =
+                await Task.Run(
+                    () => EstimateTransferWork(operations, cancellationToken),
+                    cancellationToken);
+            reporter.SetTotalBytes(
+                estimates.Values.All(estimate => estimate.IsExact)
+                    ? estimates.Values.Sum(estimate => estimate.Bytes)
+                    : null);
+            App.Log(
+                $"[FileTransfer] Managed start count={operations.Count} " +
+                $"move={move} totalBytes={reporter.TotalBytes?.ToString() ?? "unknown"}");
+            reporter.Report(FileTransferPhase.Transferring, force: true);
+
             foreach (TransferOperation operation in operations)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -110,11 +115,30 @@ public sealed partial class FileService
 
             reporter.Report(FileTransferPhase.Finalizing, force: true);
             reporter.Report(FileTransferPhase.Completed, force: true);
+            App.Log(
+                $"[FileTransfer] Managed completed count={operations.Count} " +
+                $"move={move} bytes={reporter.BytesTransferred} " +
+                $"elapsedMs={reporter.ElapsedMilliseconds}");
+
+            return completedOperations
+                .Select(operation => new FileTransferResult(
+                    operation.SourcePath,
+                    operation.DestinationPath))
+                .ToList();
         }
         catch (OperationCanceledException)
         {
-            reporter.Report(FileTransferPhase.Canceled, force: true);
+            App.Log(
+                $"[FileTransfer] Managed canceling count={operations.Count} " +
+                $"move={move} bytes={reporter.BytesTransferred} " +
+                $"elapsedMs={reporter.ElapsedMilliseconds}");
+            reporter.Report(FileTransferPhase.Canceling, force: true);
             await RollbackTransfersAsync(completedOperations, move);
+            reporter.Report(FileTransferPhase.Canceled, force: true);
+            App.Log(
+                $"[FileTransfer] Managed canceled count={operations.Count} " +
+                $"move={move} rollbackCount={completedOperations.Count} " +
+                $"elapsedMs={reporter.ElapsedMilliseconds}");
             throw;
         }
         catch
@@ -123,12 +147,6 @@ public sealed partial class FileService
             await RollbackTransfersAsync(completedOperations, move);
             throw;
         }
-
-        return completedOperations
-            .Select(operation => new FileTransferResult(
-                operation.SourcePath,
-                operation.DestinationPath))
-            .ToList();
     }
 
     private static Dictionary<string, TransferWorkEstimate> EstimateTransferWork(
@@ -341,7 +359,7 @@ public sealed partial class FileService
         }
 
         CopyFileMetadata(sourceInfo, destinationFilePath);
-        reporter.Report(FileTransferPhase.Transferring, force: true);
+        reporter.Report(FileTransferPhase.Transferring, force: false);
     }
 
     private static async Task MoveFileWithProgressAsync(
@@ -359,13 +377,26 @@ public sealed partial class FileService
         // incorrectly treated as a cross-volume move failure.
         long sourceLength = sourceInfo.Length;
 
+        bool canUseAtomicMove = CanUseAtomicMove(
+            sourceFilePath,
+            destinationFilePath);
+        App.Log(
+            $"[FileTransfer] File move mode=" +
+            $"{(canUseAtomicMove ? "atomic" : "chunked-cross-volume")} " +
+            $"name='{sourceInfo.Name}' bytes={sourceLength} " +
+            $"sourceRoot='{Path.GetPathRoot(sourceFilePath)}' " +
+            $"destinationRoot='{Path.GetPathRoot(destinationFilePath)}'");
+
         try
         {
-            await Task.Run(
-                () => File.Move(sourceFilePath, destinationFilePath),
-                cancellationToken);
-            reporter.AddBytes(sourceLength, sourceInfo.Name, force: true);
-            return;
+            if (canUseAtomicMove)
+            {
+                await Task.Run(
+                    () => File.Move(sourceFilePath, destinationFilePath),
+                    cancellationToken);
+                reporter.AddBytes(sourceLength, sourceInfo.Name, force: true);
+                return;
+            }
         }
         catch (IOException) when (
             File.Exists(sourceFilePath) &&
@@ -382,7 +413,12 @@ public sealed partial class FileService
             cancellationToken);
         try
         {
-            await Task.Run(() => File.Delete(sourceFilePath), cancellationToken);
+            FileAttributes sourceAttributes = sourceInfo.Attributes;
+            await Task.Run(
+                () => DeleteSourceFileAfterCopy(
+                    sourceFilePath,
+                    sourceAttributes),
+                cancellationToken);
         }
         catch
         {
@@ -390,6 +426,99 @@ public sealed partial class FileService
             throw;
         }
     }
+
+    internal static void DeleteSourceFileAfterCopy(
+        string sourceFilePath,
+        FileAttributes originalAttributes)
+    {
+        bool clearedReadOnly = originalAttributes.HasFlag(
+            FileAttributes.ReadOnly);
+        if (clearedReadOnly)
+        {
+            File.SetAttributes(
+                sourceFilePath,
+                originalAttributes & ~FileAttributes.ReadOnly);
+        }
+
+        try
+        {
+            File.Delete(sourceFilePath);
+        }
+        catch
+        {
+            if (clearedReadOnly && File.Exists(sourceFilePath))
+            {
+                File.SetAttributes(sourceFilePath, originalAttributes);
+            }
+
+            throw;
+        }
+    }
+
+    internal static bool CanUseAtomicMove(
+        string sourcePath,
+        string destinationPath)
+    {
+        try
+        {
+            string? sourceRoot = GetComparableVolumeRoot(
+                sourcePath,
+                useParentPath: false);
+            string? destinationRoot = GetComparableVolumeRoot(
+                destinationPath,
+                useParentPath: true);
+            return !string.IsNullOrWhiteSpace(sourceRoot) &&
+                   !string.IsNullOrWhiteSpace(destinationRoot) &&
+                   string.Equals(
+                       Path.TrimEndingDirectorySeparator(sourceRoot),
+                       Path.TrimEndingDirectorySeparator(destinationRoot),
+                       StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // An uncertain path identity must use the observable chunked path.
+            return false;
+        }
+    }
+
+    private static string? GetComparableVolumeRoot(
+        string path,
+        bool useParentPath)
+    {
+        string fullPath = Path.GetFullPath(path);
+        string candidatePath = useParentPath
+            ? Path.GetDirectoryName(fullPath) ?? fullPath
+            : fullPath;
+
+        // UNC share roots already identify the effective volume and should not
+        // trigger a network probe just to compare two paths.
+        if (OperatingSystem.IsWindows() &&
+            !candidatePath.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            var volumePath = new StringBuilder(512);
+            if (GetVolumePathName(
+                    candidatePath,
+                    volumePath,
+                    (uint)volumePath.Capacity))
+            {
+                return volumePath.ToString();
+            }
+        }
+
+        return Path.GetPathRoot(fullPath);
+    }
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "GetVolumePathNameW",
+        CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumePathName(
+        string fileName,
+        StringBuilder volumePathName,
+        uint bufferLength);
 
     private static async Task CopyDirectoryWithProgressAsync(
         string sourceDirectory,
@@ -454,14 +583,16 @@ public sealed partial class FileService
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destinationDirectory)!);
         cancellationToken.ThrowIfCancellationRequested();
-        TransferWorkEstimate work = estimate ?? EstimateTransferWork(
+        bool canUseAtomicMove = CanUseAtomicMove(
             sourceDirectory,
-            cancellationToken);
-
+            destinationDirectory);
         try
         {
-            if (!Directory.Exists(destinationDirectory))
+            if (canUseAtomicMove && !Directory.Exists(destinationDirectory))
             {
+                TransferWorkEstimate work = estimate ?? EstimateTransferWork(
+                    sourceDirectory,
+                    cancellationToken);
                 await Task.Run(
                     () => Directory.Move(sourceDirectory, destinationDirectory),
                     cancellationToken);
@@ -583,10 +714,16 @@ public sealed partial class FileService
             _totalBytes = totalBytes is >= 0 ? totalBytes : null;
         }
 
+        public long BytesTransferred => _bytesTransferred;
+
+        public long? TotalBytes => _totalBytes;
+
+        public long ElapsedMilliseconds => _stopwatch.ElapsedMilliseconds;
+
         public void SetCurrentItem(string? itemName)
         {
             _currentItemName = itemName;
-            Report(FileTransferPhase.Transferring, force: true);
+            Report(FileTransferPhase.Transferring, force: false);
         }
 
         public void AddBytes(long bytes, string? itemName, bool force = false)

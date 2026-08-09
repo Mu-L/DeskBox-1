@@ -884,6 +884,19 @@ public sealed partial class WidgetManager
             return false;
         }
 
+        if (_widgetGroupSwitchRequests.IsCurrentTarget(
+                requestedGroup.SurfaceId,
+                targetWidgetId))
+        {
+            // Do not cancel and rebuild the exact same slow switch. The
+            // in-flight request already represents the latest user intent.
+            App.LogVerbose(
+                $"[WidgetGroup] Coalesced duplicate switch " +
+                $"surface={requestedGroup.SurfaceId} target={targetWidgetId} " +
+                $"origin={origin}");
+            return true;
+        }
+
         WidgetGroupSwitchRequest request = _widgetGroupSwitchRequests.Begin(
             requestedGroup.SurfaceId,
             targetWidgetId,

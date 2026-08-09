@@ -2083,5 +2083,9 @@
   "Onboarding.Task.Step2.Warning.SystemDriveOnly": "Другой локальный диск с достаточным свободным местом не найден. Можно использовать системный диск и перенести данные позже в настройках.",
   "Onboarding.Task.Step2.Warning.CloudSync": "DeskBox сам не загружает файлы. Если это папка OneDrive или другого сервиса, файлы могут синхронизироваться этим сервисом.",
   "Onboarding.Task.Step2.Warning.Removable": "Файлы виджетов будут недоступны, пока этот диск отключён.",
-  "Onboarding.Task.Step2.Warning.Network": "Файлы виджетов будут недоступны, пока сетевое расположение отключено."
+  "Onboarding.Task.Step2.Warning.Network": "Файлы виджетов будут недоступны, пока сетевое расположение отключено.",
+  "Onboarding.Task.SkipPractice": "Пропустить практику",
+  "Onboarding.Task.Continue": "Продолжить",
+  "Onboarding.Task.Step3.StatusCompleted": "Готово: файл перемещён в виджет хранения.",
+  "Onboarding.Task.Step4.StatusCompleted": "Готово: вы скрыли виджеты и снова их показали."
 }

@@ -150,6 +150,7 @@ public static class WidgetLayerService
                     Win32Helper.SWP_NOMOVE |
                         Win32Helper.SWP_NOSIZE |
                         Win32Helper.SWP_NOACTIVATE |
+                        Win32Helper.SWP_NOOWNERZORDER |
                         Win32Helper.SWP_SHOWWINDOW);
             }
 
@@ -186,7 +187,74 @@ public static class WidgetLayerService
             Win32Helper.SWP_NOMOVE |
                 Win32Helper.SWP_NOSIZE |
                 Win32Helper.SWP_NOACTIVATE |
+                Win32Helper.SWP_NOOWNERZORDER |
                 Win32Helper.SWP_SHOWWINDOW);
+    }
+
+    /// <summary>
+    /// Applies and verifies an explicit peer order for an expanded capsule.
+    /// A successful SetWindowPos call is not sufficient for windows owned by
+    /// Explorer because Windows may still preserve an older owner-group order.
+    /// </summary>
+    public static bool EnsurePeerOrderHighestToLowest(
+        IReadOnlyList<IntPtr> windowHandles)
+    {
+        List<IntPtr> handles = windowHandles
+            .Where(handle => handle != IntPtr.Zero && Win32Helper.IsWindow(handle))
+            .Distinct()
+            .ToList();
+        if (handles.Count < 2)
+        {
+            return handles.Count == 1;
+        }
+
+        IntPtr activeWindow = handles[0];
+        _ = ApplyPeerOrderHighestToLowest(handles);
+        if (IsHighestPeer(activeWindow, handles))
+        {
+            return true;
+        }
+
+        bool raised = TryBringAbovePeerWidgetsAtDesktopLayer(activeWindow) ||
+            TryBringAbovePeerWidgetsBehindForeground(activeWindow);
+        if (!raised)
+        {
+            BringAbovePeerWidgets(activeWindow);
+        }
+
+        bool reapplied = ApplyPeerOrderHighestToLowest(handles);
+        bool verified = IsHighestPeer(activeWindow, handles);
+        App.LogVerbose(
+            $"[ZOrder] Expanded peer order fallback " +
+            $"active=0x{activeWindow.ToInt64():X} " +
+            $"raised={raised} reapplied={reapplied} verified={verified}");
+        return verified;
+    }
+
+    public static bool IsHighestPeer(
+        IntPtr windowHandle,
+        IReadOnlyCollection<IntPtr> peerWindowHandles)
+    {
+        if (windowHandle == IntPtr.Zero || !Win32Helper.IsWindow(windowHandle))
+        {
+            return false;
+        }
+
+        HashSet<IntPtr> peers = peerWindowHandles
+            .Where(handle => handle != IntPtr.Zero && handle != windowHandle)
+            .ToHashSet();
+        IntPtr current = Win32Helper.GetWindow(windowHandle, Win32Helper.GW_HWNDPREV);
+        while (current != IntPtr.Zero)
+        {
+            if (peers.Contains(current))
+            {
+                return false;
+            }
+
+            current = Win32Helper.GetWindow(current, Win32Helper.GW_HWNDPREV);
+        }
+
+        return true;
     }
 
     /// <summary>

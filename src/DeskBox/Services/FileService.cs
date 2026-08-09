@@ -1005,11 +1005,16 @@ public sealed partial class FileService
 
         if (progress is not null || cancellationToken.CanBeCanceled)
         {
-            return await ExecuteManagedTransferPlanWithProgressAsync(
-                operations,
-                move,
-                progress,
-                cancellationToken);
+            // Keep synchronous filesystem probes, partial-file cleanup and
+            // rollback off the caller's synchronization context. In the UI the
+            // progress callback marshals updates back through DispatcherQueue.
+            return await Task.Run(
+                () => ExecuteManagedTransferPlanWithProgressAsync(
+                    operations,
+                    move,
+                    progress,
+                    cancellationToken),
+                CancellationToken.None);
         }
 
         if (move && useShellProgress)
@@ -1017,6 +1022,23 @@ public sealed partial class FileService
             return await ExecuteShellMovePlanAsync(
                 operations,
                 ownerWindowHandle);
+        }
+
+        if (move && operations.Any(operation => !CanUseAtomicMove(
+                operation.SourcePath,
+                operation.DestinationPath)))
+        {
+            // Headless callers such as desktop organization and storage
+            // migration still need to avoid File.Move's opaque cross-volume
+            // copy. They may not display byte progress, but the transfer stays
+            // on DeskBox's chunked, logged and rollback-safe implementation.
+            return await Task.Run(
+                () => ExecuteManagedTransferPlanWithProgressAsync(
+                    operations,
+                    move: true,
+                    progress: null,
+                    CancellationToken.None),
+                CancellationToken.None);
         }
 
         var completedOperations = new List<TransferOperation>(operations.Count);
@@ -1635,15 +1657,24 @@ public sealed partial class FileService
 
     private static async Task RollbackTransfersAsync(IEnumerable<TransferOperation> completedOperations, bool move)
     {
-        foreach (var operation in completedOperations.Reverse())
+        TransferOperation[] rollbackOperations = completedOperations
+            .Reverse()
+            .ToArray();
+        var reporter = new TransferProgressReporter(
+            progress: null,
+            totalItems: rollbackOperations.Length);
+        foreach (var operation in rollbackOperations)
         {
             try
             {
                 if (move)
                 {
-                    await Task.Run(() => MoveEntryAsync(
+                    await MoveEntryWithProgressAsync(
                         operation.DestinationPath,
-                        operation.SourcePath));
+                        operation.SourcePath,
+                        estimate: null,
+                        reporter,
+                        CancellationToken.None);
                 }
                 else
                 {

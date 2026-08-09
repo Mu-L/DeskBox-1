@@ -10,11 +10,12 @@ namespace DeskBox.Controls.WidgetContents;
 public sealed partial class FileSurfaceContent
 {
     private static readonly TimeSpan ImportCardShowDelay =
-        TimeSpan.FromMilliseconds(220);
+        TimeSpan.FromMilliseconds(120);
     private CancellationTokenSource? _activeImportCancellation;
     private CancellationTokenSource? _importCardDelayCancellation;
     private ImportCompletionState? _activeImportVisualState;
     private bool _importCardWasShown;
+    private bool _isImportCancellationPending;
 
     private CancellationToken ActiveImportCancellationToken =>
         _activeImportCancellation?.Token ?? CancellationToken.None;
@@ -29,11 +30,14 @@ public sealed partial class FileSurfaceContent
         _importCardDelayCancellation = new CancellationTokenSource();
         _activeImportVisualState = null;
         _importCardWasShown = false;
+        _isImportCancellationPending = false;
 
         ImportProgressCard.Visibility = Visibility.Collapsed;
         ImportCancelButton.Visibility = Visibility.Visible;
         ImportCancelButton.IsEnabled = true;
         ImportCancelButton.IsTabStop = true;
+        ImportCancelProgressRing.IsActive = false;
+        ImportCancelProgressRing.Visibility = Visibility.Collapsed;
         ToolTipService.SetToolTip(ImportCancelButton, T("Common.Cancel"));
         AutomationProperties.SetName(ImportCancelButton, T("Common.Cancel"));
         ImportTitleText.Text = T("Widget.Import.Preparing");
@@ -48,6 +52,14 @@ public sealed partial class FileSurfaceContent
         ImportBusyChanged?.Invoke(true);
 
         _ = ShowImportCardAfterDelayAsync(_importCardDelayCancellation.Token);
+    }
+
+    private void EnsureTrackedImportStarted()
+    {
+        if (_activeImportCancellation is null)
+        {
+            BeginTrackedImport();
+        }
     }
 
     private async Task ShowImportCardAfterDelayAsync(
@@ -98,6 +110,16 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
+        // Progress callbacks are queued from the transfer worker. Once the
+        // user has requested cancellation, an older transferring callback
+        // must not overwrite the visible "canceling" acknowledgement.
+        if (_isImportCancellationPending &&
+            progress.Phase is not FileService.FileTransferPhase.Canceling and
+            not FileService.FileTransferPhase.Canceled)
+        {
+            return;
+        }
+
         switch (progress.Phase)
         {
             case FileService.FileTransferPhase.Preparing:
@@ -124,6 +146,14 @@ public sealed partial class FileSurfaceContent
                     "ImportLoadingState",
                     false);
                 break;
+            case FileService.FileTransferPhase.Canceling:
+                ShowImportCancelingState();
+                return;
+            case FileService.FileTransferPhase.Canceled:
+                // The import owner presents the short terminal state after
+                // rollback has completed. Keep the animated acknowledgement
+                // visible until then.
+                return;
         }
 
         double? percentage = progress.Percentage;
@@ -131,7 +161,9 @@ public sealed partial class FileSurfaceContent
         if (percentage is { } value)
         {
             ImportProgressBar.Value = value;
-            ImportPercentText.Text = $"{value:0}%";
+            ImportPercentText.Text = value is > 0 and < 1
+                ? "<1%"
+                : $"{value:0}%";
         }
         else
         {
@@ -267,20 +299,48 @@ public sealed partial class FileSurfaceContent
         CancelAndResetTrackedImport();
     }
 
-    private void ImportCancelButton_Click(object sender, RoutedEventArgs e)
+    private async void ImportCancelButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
         if (_activeImportCancellation is null ||
-            _activeImportCancellation.IsCancellationRequested)
+            _activeImportCancellation.IsCancellationRequested ||
+            _isImportCancellationPending)
         {
             return;
         }
 
+        CancellationTokenSource cancellation = _activeImportCancellation;
+        ShowImportCancelingState();
+
+        // CancellationTokenSource.Cancel invokes registrations synchronously.
+        // Run those callbacks away from the UI thread so the acknowledgement
+        // and progress animation can render immediately, even when aborting an
+        // active disk request takes a while.
+        try
+        {
+            await Task.Run(cancellation.Cancel);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The transfer may have completed between the click and the worker
+            // receiving the cancellation request.
+        }
+        catch (AggregateException ex)
+        {
+            App.Log($"[FileTransfer] Cancellation callback failed: {ex}");
+        }
+    }
+
+    private void ShowImportCancelingState()
+    {
+        _isImportCancellationPending = true;
+        ShowImportCard();
         ImportTitleText.Text = T("Widget.Import.Canceling");
         ImportDescriptionText.Text = T("Widget.Import.Canceling.Description");
         ImportPercentText.Text = string.Empty;
         ImportProgressBar.IsIndeterminate = true;
         VisualStateManager.GoToState(this, "ImportCancelingState", false);
-        _activeImportCancellation.Cancel();
     }
 
     private void ImportProgressCard_SizeChanged(
@@ -312,9 +372,12 @@ public sealed partial class FileSurfaceContent
         ImportProgressCard.Visibility = Visibility.Collapsed;
         ImportCancelButton.Visibility = Visibility.Visible;
         ImportCancelButton.IsEnabled = true;
+        ImportCancelProgressRing.IsActive = false;
+        ImportCancelProgressRing.Visibility = Visibility.Collapsed;
         SelectionCommandBar.IsEnabled = true;
         _importCardWasShown = false;
         _activeImportVisualState = null;
+        _isImportCancellationPending = false;
 
         bool wasBusy = _isImportBusy;
         _isImportBusy = false;

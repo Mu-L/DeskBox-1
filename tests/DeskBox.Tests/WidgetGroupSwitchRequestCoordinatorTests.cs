@@ -61,6 +61,21 @@ public sealed class WidgetGroupSwitchRequestCoordinatorTests
     }
 
     [Fact]
+    public void IsCurrentTarget_RecognizesDuplicateIntentWithoutCancelingIt()
+    {
+        var coordinator = new WidgetGroupSwitchRequestCoordinator();
+        WidgetGroupSwitchRequest request = coordinator.Begin(
+            "surface",
+            "member-a",
+            WidgetGroupSwitchOrigin.Wheel);
+
+        Assert.True(coordinator.IsCurrentTarget("surface", "member-a"));
+        Assert.False(coordinator.IsCurrentTarget("surface", "member-b"));
+        Assert.False(request.CancellationToken.IsCancellationRequested);
+        Assert.True(coordinator.IsCurrent(request));
+    }
+
+    [Fact]
     public void CompletingSupersededRequest_DoesNotRemoveLatestRequest()
     {
         var coordinator = new WidgetGroupSwitchRequestCoordinator();

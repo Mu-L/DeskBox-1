@@ -2083,5 +2083,9 @@
     "Onboarding.Task.Step2.Warning.SystemDriveOnly": "十分な空き容量がある他のローカルドライブが見つかりません。システムドライブを使用し、後で設定から移行できます。",
     "Onboarding.Task.Step2.Warning.CloudSync": "DeskBox 自体はファイルをアップロードしません。OneDrive などの同期フォルダーを選ぶと、そのサービスによって同期される場合があります。",
     "Onboarding.Task.Step2.Warning.Removable": "このドライブを取り外している間、収納ウィジェットのファイルは使用できません。",
-    "Onboarding.Task.Step2.Warning.Network": "ネットワーク接続が切れている間、収納ウィジェットのファイルは使用できません。"
+    "Onboarding.Task.Step2.Warning.Network": "ネットワーク接続が切れている間、収納ウィジェットのファイルは使用できません。",
+    "Onboarding.Task.SkipPractice": "練習をスキップ",
+    "Onboarding.Task.Continue": "続ける",
+    "Onboarding.Task.Step3.StatusCompleted": "完了：ファイルを収納ウィジェットへ移動しました。",
+    "Onboarding.Task.Step4.StatusCompleted": "完了：ウィジェットを非表示にして、もう一度表示しました。"
 }

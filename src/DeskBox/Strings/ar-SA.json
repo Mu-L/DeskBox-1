@@ -2083,5 +2083,9 @@
   "Onboarding.Task.Step2.Warning.SystemDriveOnly": "لم يتم العثور على محرك محلي آخر بمساحة كافية. يمكنك استخدام محرك النظام ونقل التخزين لاحقًا من الإعدادات.",
   "Onboarding.Task.Step2.Warning.CloudSync": "لا يرفع DeskBox الملفات بنفسه. إذا كان هذا مجلد OneDrive أو مجلدًا متزامنًا آخر فقد تزامنه تلك الخدمة.",
   "Onboarding.Task.Step2.Warning.Removable": "لن تتوفر ملفات أدوات التخزين أثناء فصل هذا المحرك.",
-  "Onboarding.Task.Step2.Warning.Network": "لن تتوفر ملفات أدوات التخزين أثناء انقطاع موقع الشبكة."
+  "Onboarding.Task.Step2.Warning.Network": "لن تتوفر ملفات أدوات التخزين أثناء انقطاع موقع الشبكة.",
+  "Onboarding.Task.SkipPractice": "تخطي التدريب",
+  "Onboarding.Task.Continue": "متابعة",
+  "Onboarding.Task.Step3.StatusCompleted": "تم: نُقلت الملفات إلى أداة التخزين.",
+  "Onboarding.Task.Step4.StatusCompleted": "تم: أخفيت الأدوات ثم أظهرتها مرة أخرى."
 }

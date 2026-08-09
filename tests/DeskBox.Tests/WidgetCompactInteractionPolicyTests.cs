@@ -5,6 +5,51 @@ namespace DeskBox.Tests;
 public sealed class WidgetCompactInteractionPolicyTests
 {
     [Fact]
+    public void SynchronizeForSmartEntry_ReplacesStaleRoutedPointerState()
+    {
+        WidgetCompactInteractionSnapshot stale = CollapsedSnapshot() with
+        {
+            IsCollapsed = false,
+            IsPointerInside = true,
+            IsExpansionZoneActive = true,
+            IsPointerOverMoveHandle = true,
+            IsPointerOverActions = true,
+            SuppressHoverExpansion = true
+        };
+
+        WidgetCompactInteractionSnapshot synchronized =
+            WidgetCompactInteractionPolicy.SynchronizeForSmartEntry(
+                stale,
+                isPointerPhysicallyInside: false);
+
+        Assert.False(synchronized.IsPointerInside);
+        Assert.False(synchronized.IsExpansionZoneActive);
+        Assert.False(synchronized.IsPointerOverMoveHandle);
+        Assert.False(synchronized.IsPointerOverActions);
+        Assert.False(synchronized.SuppressHoverExpansion);
+        Assert.True(WidgetCompactInteractionPolicy.CanAutoCollapse(
+            WidgetCollapseBehavior.Smart,
+            synchronized));
+    }
+
+    [Fact]
+    public void SynchronizeForSmartEntry_PreservesRealPointerPresence()
+    {
+        WidgetCompactInteractionSnapshot synchronized =
+            WidgetCompactInteractionPolicy.SynchronizeForSmartEntry(
+                CollapsedSnapshot() with { IsCollapsed = false },
+                isPointerPhysicallyInside: true);
+
+        Assert.True(synchronized.IsPointerInside);
+        Assert.False(WidgetCompactInteractionPolicy.CanAutoCollapse(
+            WidgetCollapseBehavior.Smart,
+            synchronized));
+        Assert.True(WidgetCompactInteractionPolicy.ShouldRetryAutoCollapse(
+            WidgetCollapseBehavior.Smart,
+            synchronized));
+    }
+
+    [Fact]
     public void CanHoverExpand_OnlyAllowsUnblockedSmartContentHover()
     {
         WidgetCompactInteractionSnapshot snapshot = CollapsedSnapshot() with
@@ -56,6 +101,30 @@ public sealed class WidgetCompactInteractionPolicyTests
         Assert.False(WidgetCompactInteractionPolicy.CanAutoCollapse(
             WidgetCollapseBehavior.Smart,
             snapshot with { IsPinned = true }));
+    }
+
+    [Fact]
+    public void ShouldRetryAutoCollapse_OnlyStopsForSettledPinnedOrNonSmartWidgets()
+    {
+        WidgetCompactInteractionSnapshot expanded = CollapsedSnapshot() with
+        {
+            IsCollapsed = false,
+            IsPointerInside = true,
+            InteractionDepth = 1
+        };
+
+        Assert.True(WidgetCompactInteractionPolicy.ShouldRetryAutoCollapse(
+            WidgetCollapseBehavior.Smart,
+            expanded));
+        Assert.False(WidgetCompactInteractionPolicy.ShouldRetryAutoCollapse(
+            WidgetCollapseBehavior.Smart,
+            expanded with { IsCollapsed = true }));
+        Assert.False(WidgetCompactInteractionPolicy.ShouldRetryAutoCollapse(
+            WidgetCollapseBehavior.Smart,
+            expanded with { IsPinned = true }));
+        Assert.False(WidgetCompactInteractionPolicy.ShouldRetryAutoCollapse(
+            WidgetCollapseBehavior.Click,
+            expanded));
     }
 
     [Theory]

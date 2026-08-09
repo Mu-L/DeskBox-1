@@ -34,6 +34,7 @@ public sealed partial class QuickCaptureWidgetWindow
     private void ItemsListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
         QuickCaptureItemViewModel? item = e.Items.OfType<QuickCaptureItemViewModel>().FirstOrDefault();
+        _draggedQuickCaptureItemIds.Clear();
         if (item is null)
         {
             _draggedQuickCaptureItemId = null;
@@ -45,10 +46,16 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
-        bool canReorder = !item.IsRecent &&
+        IReadOnlyList<QuickCaptureItemViewModel> draggedItems =
+            QuickCaptureDragPackage.ResolveDraggedItems(
+                [item],
+                GetSelectedQuickCaptureItemsInVisibleOrder());
+        bool canReorder = draggedItems.Count == 1 &&
+                          !item.IsRecent &&
                           ViewModel.SelectedView is QuickCaptureViewMode.Records or QuickCaptureViewMode.Pinned &&
                           !ViewModel.HasSearchText;
-        _draggedQuickCaptureItemId = item.Id;
+        _draggedQuickCaptureItemIds.AddRange(draggedItems.Select(entry => entry.Id));
+        _draggedQuickCaptureItemId = canReorder ? item.Id : null;
         _isInternalQuickCaptureDrag = true;
         _internalQuickCaptureDragCanReorder = canReorder;
         _quickCaptureTabDropHandled = false;
@@ -57,8 +64,12 @@ public sealed partial class QuickCaptureWidgetWindow
 
         try
         {
-            if (!TryPrepareQuickCaptureDragPackage(e.Data, item))
+            if (!QuickCaptureDragPackage.TryPrepare(
+                    e.Data,
+                    draggedItems,
+                    _localizationService))
             {
+                _draggedQuickCaptureItemIds.Clear();
                 _draggedQuickCaptureItemId = null;
                 _isInternalQuickCaptureDrag = false;
                 _internalQuickCaptureDragCanReorder = false;
@@ -73,6 +84,7 @@ public sealed partial class QuickCaptureWidgetWindow
         {
             App.Log($"[QuickCaptureWidget] Failed to start drag: {ex}");
             _draggedQuickCaptureItemId = null;
+            _draggedQuickCaptureItemIds.Clear();
             _isInternalQuickCaptureDrag = false;
             _internalQuickCaptureDragCanReorder = false;
             _internalQuickCaptureDragView = null;
@@ -87,6 +99,7 @@ public sealed partial class QuickCaptureWidgetWindow
         bool canReorder = _internalQuickCaptureDragCanReorder;
         bool tabDropHandled = _quickCaptureTabDropHandled;
         _draggedQuickCaptureItemId = null;
+        _draggedQuickCaptureItemIds.Clear();
         _internalQuickCaptureDragView = null;
         _internalQuickCaptureDragCanReorder = false;
         _quickCaptureTabDropHandled = false;
@@ -116,12 +129,12 @@ public sealed partial class QuickCaptureWidgetWindow
     private void QuickCaptureTab_DragOver(object sender, DragEventArgs e)
     {
         if (!_isInternalQuickCaptureDrag ||
-            string.IsNullOrWhiteSpace(_draggedQuickCaptureItemId) ||
+            _draggedQuickCaptureItemIds.Count == 0 ||
             sender is not FrameworkElement { Tag: string tag } ||
-            ViewModel.Items.FirstOrDefault(item =>
-                string.Equals(item.Id, _draggedQuickCaptureItemId, StringComparison.Ordinal)) is not { } item ||
             !TryGetQuickCaptureTabTarget(tag, out QuickCaptureViewMode target) ||
-            !ViewModel.CanApplyTabDrop(item, target))
+            !ViewModel.CanApplyTabDrop(
+                GetDraggedQuickCaptureItems(),
+                target))
         {
             e.AcceptedOperation = DataPackageOperation.None;
             return;
@@ -138,12 +151,11 @@ public sealed partial class QuickCaptureWidgetWindow
     private async void QuickCaptureTab_Drop(object sender, DragEventArgs e)
     {
         if (!_isInternalQuickCaptureDrag ||
-            string.IsNullOrWhiteSpace(_draggedQuickCaptureItemId) ||
+            _draggedQuickCaptureItemIds.Count == 0 ||
             sender is not FrameworkElement { Tag: string tag } ||
             !TryGetQuickCaptureTabTarget(tag, out QuickCaptureViewMode target) ||
-            ViewModel.Items.FirstOrDefault(item =>
-                string.Equals(item.Id, _draggedQuickCaptureItemId, StringComparison.Ordinal)) is not { } item ||
-            !ViewModel.CanApplyTabDrop(item, target))
+            GetDraggedQuickCaptureItems() is not { Count: > 0 } draggedItems ||
+            !ViewModel.CanApplyTabDrop(draggedItems, target))
         {
             e.AcceptedOperation = DataPackageOperation.None;
             return;
@@ -154,9 +166,9 @@ public sealed partial class QuickCaptureWidgetWindow
         var deferral = e.GetDeferral();
         try
         {
-            bool changed = await ViewModel.ApplyTabDropAsync(item, target);
-            e.AcceptedOperation = changed ? DataPackageOperation.Move : DataPackageOperation.None;
-            if (changed)
+            int changedCount = await ViewModel.ApplyTabDropAsync(draggedItems, target);
+            e.AcceptedOperation = changedCount > 0 ? DataPackageOperation.Move : DataPackageOperation.None;
+            if (changedCount > 0)
             {
                 SelectView(target);
                 ShowStatusToast(_localizationService.T(target == QuickCaptureViewMode.Pinned
@@ -179,6 +191,15 @@ public sealed partial class QuickCaptureWidgetWindow
             _ => QuickCaptureViewMode.Recent
         };
         return target != QuickCaptureViewMode.Recent;
+    }
+
+    private IReadOnlyList<QuickCaptureItemViewModel> GetDraggedQuickCaptureItems()
+    {
+        HashSet<string> draggedIds = _draggedQuickCaptureItemIds.ToHashSet(
+            StringComparer.Ordinal);
+        return ViewModel.Items
+            .Where(item => draggedIds.Contains(item.Id))
+            .ToList();
     }
 
     private static void ApplyItemMaterialSurface(DependencyObject itemRoot, QuickCaptureItemViewModel item)
@@ -557,78 +578,4 @@ public sealed partial class QuickCaptureWidgetWindow
         return text.Length <= 34 ? text : $"{text[..34].Trim()}...";
     }
 
-    private bool TryPrepareQuickCaptureDragPackage(DataPackage dataPackage, QuickCaptureItemViewModel item)
-    {
-        dataPackage.RequestedOperation = DataPackageOperation.Copy;
-        var selectedItems = GetSelectedQuickCaptureItemsInVisibleOrder();
-        if (selectedItems.Count > 1 && item.IsCopySelected)
-        {
-            string text = FormatQuickCaptureBatch(selectedItems);
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return false;
-            }
-
-            DeskBoxDragData.SetText(dataPackage, text, DeskBoxDragData.SourceQuickCapture);
-            dataPackage.Properties.Title = _localizationService.Format("QuickCapture.CopiedCount", selectedItems.Count);
-            return true;
-        }
-
-        if (item.Type == QuickCaptureItemType.Image &&
-            !string.IsNullOrWhiteSpace(item.ImagePath) &&
-            File.Exists(item.ImagePath))
-        {
-            string imagePath = item.ImagePath;
-            Uri? imageUri = TryCreateImageUri(imagePath);
-            if (imageUri is not null)
-            {
-                dataPackage.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromUri(imageUri));
-            }
-
-            dataPackage.SetDataProvider(StandardDataFormats.StorageItems, async request =>
-            {
-                var deferral = request.GetDeferral();
-                try
-                {
-                    StorageFile file = await StorageFile.GetFileFromPathAsync(imagePath);
-                    request.SetData(new List<IStorageItem> { file });
-                }
-                catch (Exception ex)
-                {
-                    App.Log($"[QuickCaptureWidget] Failed to provide dragged image: {ex}");
-                }
-                finally
-                {
-                    deferral.Complete();
-                }
-            });
-            if (!string.IsNullOrWhiteSpace(item.Body) &&
-                !string.Equals(item.Body, "Image", StringComparison.Ordinal))
-            {
-                DeskBoxDragData.SetText(dataPackage, item.Body, DeskBoxDragData.SourceQuickCapture);
-            }
-
-            dataPackage.Properties.Title = Path.GetFileName(imagePath);
-            return true;
-        }
-
-        if (item.Type == QuickCaptureItemType.Link &&
-            Uri.TryCreate(item.Url ?? item.Body, UriKind.Absolute, out var uri))
-        {
-            DeskBoxDragData.SetText(dataPackage, item.Body, DeskBoxDragData.SourceQuickCapture);
-            dataPackage.SetWebLink(uri);
-            dataPackage.SetUri(uri);
-            dataPackage.Properties.Title = item.Body;
-            return true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(item.Body))
-        {
-            DeskBoxDragData.SetText(dataPackage, item.Body, DeskBoxDragData.SourceQuickCapture);
-            dataPackage.Properties.Title = item.Body;
-            return true;
-        }
-
-        return false;
-    }
 }

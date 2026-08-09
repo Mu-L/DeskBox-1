@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.3.8-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.8)
+[![Latest release](https://img.shields.io/badge/release-1.3.9-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.9)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ The six newer language packs prioritize the main file-widget and onboarding flow
 
 ## Download
 
-Download DeskBox 1.3.8 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.8):
+Download DeskBox 1.3.9 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.9):
 
-- [DeskBox 1.3.8 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.8/DeskBox_Setup_1.3.8_x64.exe) — most Intel and AMD PCs.
-- [DeskBox 1.3.8 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.8/DeskBox_Setup_1.3.8_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.3.9 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.9/DeskBox_Setup_1.3.9_x64.exe) — most Intel and AMD PCs.
+- [DeskBox 1.3.9 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.9/DeskBox_Setup_1.3.9_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
@@ -101,18 +101,17 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
 - Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
-## What is new in 1.3.8
+## What is new in 1.3.9
 
-- **Six more interface languages:** Hindi, Spanish, French, Arabic, Bengali, and Russian are now available for the main file-widget, onboarding, weather, and update flows; less-used detailed settings safely use English while localization continues.
-- **Store-aligned terminology:** file widgets, folder mapping, automatic stacks, widget groups, tray creation, and recycle-bin actions use the same product language across the app.
-- **Safer file-widget onboarding:** the first widget starts on the right, explains managed storage versus folder mapping, and shows how to create another widget from the tray menu.
-- **Clipboard and selection fixes:** paste actions are available from file widgets, multi-file shell copy/cut preserves the full selection, and cut styling is cleared after a completed move.
-- **Reliable startup and first run:** Windows startup remains tray-first, normal launches remain interactive, and intentionally removed file widgets are never recreated.
-- **A safer first run:** the default file widget is created only for a genuinely new profile and only once. Deleting all file widgets no longer causes DeskBox to recreate one later, and settings recovery never manufactures new content.
-- **Win+D no longer hides dynamic widgets:** both desktop-layer modes rest inside Explorer's desktop icon layer. Dynamic widgets still detach temporarily when raised, preserving the existing foreground interaction.
-- **Native ARM64 update selection:** the client reads the ARM64 installer URL, SHA-256, and size from the stable manifest instead of depending on the GitHub API fallback.
+- **Predictable capsule behavior:** entering smart auto-hide now starts from the real pointer position, retries a deferred collapse, limits simultaneous resize animations, and keeps the currently expanded capsule above its DeskBox peers.
+- **Visible widgets after launch:** every enabled standalone widget and the active surface of each widget group returns for a new application session, with a temporary foreground presentation so the restored layout is immediately visible.
+- **Complete multi-item drag:** file widgets, search results, standalone Quick Capture, and grouped Quick Capture preserve the full selection when dragging. Mixed file-and-folder batches remain intact.
+- **Consistent batch keyboard actions:** Delete now applies to the selected Quick Capture and Todo items instead of only the drag anchor or focused row.
+- **Honest large-transfer feedback:** progress appears before expensive preparation finishes, stays indeterminate while the byte total is unknown, and changes to an explicit canceling state as soon as Cancel is pressed. Canceled batches roll back completed work where possible.
+- **Reliable group-title scrolling:** mouse-wheel navigation wraps through group members and keeps its pending target until the switch actually completes.
+- **Shorter visual onboarding:** the first-run guide is now one introduction, two optional real exercises, and a final choice. It states that managed drops move files by default and confirms practice only after the real operation succeeds.
 
-Read the full [changelog](CHANGELOG.md) or the [1.3.8 release notes](docs/releases/v1.3.8.md).
+Read the full [changelog](CHANGELOG.md) or the [1.3.9 release notes](docs/releases/v1.3.9.md).
 
 ## Current interface
 
@@ -215,8 +214,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.3.8_x64.exe
-Output\DeskBox_Setup_1.3.8_arm64.exe
+Output\DeskBox_Setup_1.3.9_x64.exe
+Output\DeskBox_Setup_1.3.9_arm64.exe
 ```
 
 ## Project layout

@@ -11,17 +11,44 @@ namespace DeskBox.Services;
 /// </summary>
 internal static class WidgetCompactAnimationCoordinator
 {
+    internal const int MaximumConcurrentBoundsTransitions = 2;
+
     private static readonly Dictionary<long, Action> FrameCallbacks = [];
+    private static readonly HashSet<long> BoundsTransitionRegistrations = [];
     private static long s_nextRegistrationId;
     private static bool s_isRenderingSubscribed;
     private static IDisposable? s_clockBoostLease;
 
     public static IDisposable Register(Action frameCallback)
     {
+        return RegisterCore(frameCallback, isBoundsTransition: false);
+    }
+
+    public static bool HasBoundsTransitionCapacity =>
+        WidgetCompactAnimationConcurrencyPolicy.ShouldAnimate(
+            BoundsTransitionRegistrations.Count,
+            MaximumConcurrentBoundsTransitions);
+
+    public static IDisposable RegisterBoundsTransition(Action frameCallback)
+    {
+        if (!HasBoundsTransitionCapacity)
+        {
+            throw new InvalidOperationException("No compact bounds-transition animation slot is available.");
+        }
+
+        return RegisterCore(frameCallback, isBoundsTransition: true);
+    }
+
+    private static IDisposable RegisterCore(Action frameCallback, bool isBoundsTransition)
+    {
         ArgumentNullException.ThrowIfNull(frameCallback);
 
         long registrationId = ++s_nextRegistrationId;
         FrameCallbacks.Add(registrationId, frameCallback);
+        if (isBoundsTransition)
+        {
+            BoundsTransitionRegistrations.Add(registrationId);
+        }
         if (!s_isRenderingSubscribed)
         {
             s_isRenderingSubscribed = true;
@@ -58,6 +85,7 @@ internal static class WidgetCompactAnimationCoordinator
     private static void Unregister(long registrationId)
     {
         FrameCallbacks.Remove(registrationId);
+        BoundsTransitionRegistrations.Remove(registrationId);
         if (FrameCallbacks.Count != 0 || !s_isRenderingSubscribed)
         {
             return;
@@ -81,5 +109,15 @@ internal static class WidgetCompactAnimationCoordinator
                 Unregister(id);
             }
         }
+    }
+}
+
+internal static class WidgetCompactAnimationConcurrencyPolicy
+{
+    public static bool ShouldAnimate(int activeTransitions, int maximumConcurrentTransitions)
+    {
+        return maximumConcurrentTransitions > 0 &&
+            activeTransitions >= 0 &&
+            activeTransitions < maximumConcurrentTransitions;
     }
 }

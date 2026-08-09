@@ -2083,5 +2083,9 @@
     "Onboarding.Task.Step2.Warning.SystemDriveOnly": "Es wurde kein anderes lokales Laufwerk mit ausreichend Speicherplatz gefunden. Sie können das Systemlaufwerk verwenden und später in den Einstellungen umziehen.",
     "Onboarding.Task.Step2.Warning.CloudSync": "DeskBox lädt selbst keine Dateien hoch. In einem OneDrive- oder anderen Synchronisierungsordner kann der jeweilige Dienst die Dateien synchronisieren.",
     "Onboarding.Task.Step2.Warning.Removable": "Die Dateien der Ablage-Widgets sind nicht verfügbar, wenn dieses Laufwerk getrennt ist.",
-    "Onboarding.Task.Step2.Warning.Network": "Die Dateien der Ablage-Widgets sind nicht verfügbar, wenn der Netzwerkspeicherort getrennt ist."
+    "Onboarding.Task.Step2.Warning.Network": "Die Dateien der Ablage-Widgets sind nicht verfügbar, wenn der Netzwerkspeicherort getrennt ist.",
+    "Onboarding.Task.SkipPractice": "Übung überspringen",
+    "Onboarding.Task.Continue": "Weiter",
+    "Onboarding.Task.Step3.StatusCompleted": "Geschafft: Die Datei wurde in das Ablage-Widget verschoben.",
+    "Onboarding.Task.Step4.StatusCompleted": "Geschafft: Sie haben die Widgets ausgeblendet und wieder angezeigt."
 }

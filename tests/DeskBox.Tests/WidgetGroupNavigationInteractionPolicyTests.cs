@@ -175,6 +175,27 @@ public sealed class WidgetGroupNavigationInteractionPolicyTests
     }
 
     [Fact]
+    public void Wheel_DirectionReversalStartsANewGesture()
+    {
+        double accumulator = -80;
+
+        Assert.False(
+            WidgetGroupNavigationInteractionPolicy.TryConsumeWheelStep(
+                ref accumulator,
+                40,
+                out _));
+        Assert.Equal(40, accumulator);
+        Assert.True(
+            WidgetGroupNavigationInteractionPolicy.TryConsumeWheelStep(
+                ref accumulator,
+                80,
+                out int direction));
+
+        Assert.Equal(-1, direction);
+        Assert.Equal(0, accumulator);
+    }
+
+    [Fact]
     public void PositionRail_MapsTwoAndThreeMembersOneToOne()
     {
         IReadOnlyList<WidgetGroupPositionRailSlot> two =

@@ -33,8 +33,11 @@
                 MinWidth="0"
                 MinHeight="26"
                 Padding="6,2"
+                AllowDrop="True"
                 Click="ViewButton_Click"
                 Content="{Binding RecordsTabText}"
+                DragOver="QuickCaptureTab_DragOver"
+                Drop="QuickCaptureTab_Drop"
                 Tag="Records"
                 UseSystemFocusVisuals="True" />
             <Button
@@ -43,8 +46,11 @@
                 MinWidth="0"
                 MinHeight="26"
                 Padding="6,2"
+                AllowDrop="True"
                 Click="ViewButton_Click"
                 Content="{Binding PinnedTabText}"
+                DragOver="QuickCaptureTab_DragOver"
+                Drop="QuickCaptureTab_Drop"
                 Tag="Pinned"
                 UseSystemFocusVisuals="True"
                 Visibility="{Binding PinnedTabVisibility}" />
@@ -122,10 +128,14 @@
             <ListView
                 x:Name="ItemsList"
                 Background="Transparent"
+                CanDragItems="True"
+                DragItemsCompleted="ItemsList_DragItemsCompleted"
+                DragItemsStarting="ItemsList_DragItemsStarting"
                 IsItemClickEnabled="True"
                 ItemClick="ItemsList_ItemClick"
                 ItemsSource="{Binding Items}"
-                SelectionMode="None"
+                KeyDown="ItemsList_KeyDown"
+                SelectionMode="Extended"
                 Visibility="{Binding ListVisibility}">
                 <ListView.ItemTemplate>
                     <DataTemplate>
@@ -138,7 +148,9 @@
                             CornerRadius="7"
                             DragLeave="QuickCaptureItem_DragLeave"
                             DragOver="QuickCaptureItem_DragOver"
-                            Drop="QuickCaptureItem_Drop">
+                            Drop="QuickCaptureItem_Drop"
+                            PointerPressed="QuickCaptureItem_PointerPressed"
+                            PointerReleased="QuickCaptureItem_PointerReleased">
                             <Grid
                                 MinHeight="46"
                                 Padding="8,6"
