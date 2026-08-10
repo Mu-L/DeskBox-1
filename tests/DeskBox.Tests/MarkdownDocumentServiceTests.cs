@@ -59,6 +59,15 @@ public sealed class MarkdownDocumentServiceTests
         Assert.DoesNotContain("**", text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ToSafeHtml_RendersMarkdownButNeverPassesRawHtmlThrough()
+    {
+        string html = _service.ToSafeHtml("**safe**<script>alert(1)</script>");
+
+        Assert.Contains("<strong>safe</strong>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", html, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("https://example.com", true)]
     [InlineData("http://example.com", true)]

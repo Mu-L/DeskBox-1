@@ -616,6 +616,10 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     QuickCaptureShowCreatedTime = true;
                     QuickCaptureItemPreviewLineCount = SettingsService.DefaultQuickCaptureItemPreviewLineCount;
                     QuickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
+                    QuickCaptureDefaultFormat = SettingsService.QuickCaptureFormatMarkdown;
+                    QuickCaptureWideLayout = SettingsService.QuickCaptureWideLayoutAuto;
+                    QuickCaptureWideOpenMode = SettingsService.QuickCaptureWideOpenReading;
+                    QuickCaptureAllowRemoteImages = false;
                     SelectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
                     SelectedQuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
                     QuickCaptureShowTabBar = true;
@@ -628,6 +632,10 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     _settingsService.Settings.QuickCaptureShowCreatedTime = true;
                     _settingsService.Settings.QuickCaptureItemPreviewLineCount = SettingsService.DefaultQuickCaptureItemPreviewLineCount;
                     _settingsService.Settings.QuickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
+                    _settingsService.Settings.QuickCaptureDefaultFormat = SettingsService.QuickCaptureFormatMarkdown;
+                    _settingsService.Settings.QuickCaptureWideLayout = SettingsService.QuickCaptureWideLayoutAuto;
+                    _settingsService.Settings.QuickCaptureWideOpenMode = SettingsService.QuickCaptureWideOpenReading;
+                    _settingsService.Settings.QuickCaptureAllowRemoteImages = false;
                     _settingsService.Settings.QuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
                     _settingsService.Settings.QuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
                     _settingsService.Settings.QuickCaptureShowTabBar = true;

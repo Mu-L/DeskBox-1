@@ -50,6 +50,26 @@ public sealed class MasterDetailLayoutPolicyTests
         Assert.Equal(0, forced.SplitterWidth);
     }
 
+    [Fact]
+    public void Resolve_ForcedDualPaneNeverFallsBackToSinglePane()
+    {
+        MasterDetailLayoutSnapshot atSafetyMinimum = _policy.Resolve(
+            588,
+            false,
+            forceDualPane: true);
+        MasterDetailLayoutSnapshot narrow = _policy.Resolve(
+            300,
+            false,
+            forceDualPane: true);
+
+        Assert.True(atSafetyMinimum.IsDualPane);
+        Assert.Equal(240, atSafetyMinimum.MasterWidth);
+        Assert.Equal(340, atSafetyMinimum.DetailWidth);
+        Assert.True(narrow.IsDualPane);
+        Assert.Equal(8, narrow.SplitterWidth);
+        Assert.Equal(292, narrow.MasterWidth + narrow.DetailWidth, precision: 6);
+    }
+
     [Theory]
     [InlineData(0, MasterDetailLayoutMode.DualPane)]
     [InlineData(150, MasterDetailLayoutMode.DualPane)]

@@ -102,6 +102,15 @@ public partial class SettingsViewModel
     public IReadOnlyList<SettingsOption> AvailableEditorEnterBehaviorOptions =>
         CreateSelectionOptions(AvailableEditorEnterBehaviors, AvailableEditorEnterBehaviorDisplayNames);
 
+    public IReadOnlyList<SettingsOption> AvailableQuickCaptureFormatOptions =>
+        CreateSelectionOptions(AvailableQuickCaptureFormats, AvailableQuickCaptureFormatDisplayNames);
+
+    public IReadOnlyList<SettingsOption> AvailableQuickCaptureWideLayoutOptions =>
+        CreateSelectionOptions(AvailableQuickCaptureWideLayouts, AvailableQuickCaptureWideLayoutDisplayNames);
+
+    public IReadOnlyList<SettingsOption> AvailableQuickCaptureWideOpenModeOptions =>
+        CreateSelectionOptions(AvailableQuickCaptureWideOpenModes, AvailableQuickCaptureWideOpenModeDisplayNames);
+
     public IReadOnlyList<SettingsOption> AvailableTodoNewTaskPositionOptions =>
         CreateSelectionOptions(AvailableTodoNewTaskPositions, AvailableTodoNewTaskPositionDisplayNames);
 
@@ -206,6 +215,9 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableQuickCaptureTabStyleOptions));
         OnPropertyChanged(nameof(AvailableItemPreviewLineCountOptions));
         OnPropertyChanged(nameof(AvailableEditorEnterBehaviorOptions));
+        OnPropertyChanged(nameof(AvailableQuickCaptureFormatOptions));
+        OnPropertyChanged(nameof(AvailableQuickCaptureWideLayoutOptions));
+        OnPropertyChanged(nameof(AvailableQuickCaptureWideOpenModeOptions));
         OnPropertyChanged(nameof(AvailableTodoNewTaskPositionOptions));
         OnPropertyChanged(nameof(AvailableTodoLayoutModeOptions));
         OnPropertyChanged(nameof(AvailableAttachmentStorageModeOptions));

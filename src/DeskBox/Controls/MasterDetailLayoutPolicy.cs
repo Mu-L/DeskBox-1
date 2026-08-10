@@ -66,7 +66,22 @@ public sealed class MasterDetailLayoutPolicy
         double availableWidth,
         bool wasDualPane,
         double? requestedMasterWidth = null,
-        MasterDetailLayoutPreference preference = MasterDetailLayoutPreference.Auto)
+        bool forceSinglePane = false,
+        bool forceDualPane = false)
+    {
+        MasterDetailLayoutPreference preference = forceSinglePane
+            ? MasterDetailLayoutPreference.SinglePane
+            : forceDualPane
+                ? MasterDetailLayoutPreference.DualPane
+                : MasterDetailLayoutPreference.Auto;
+        return Resolve(availableWidth, wasDualPane, requestedMasterWidth, preference);
+    }
+
+    public MasterDetailLayoutSnapshot Resolve(
+        double availableWidth,
+        bool wasDualPane,
+        double? requestedMasterWidth,
+        MasterDetailLayoutPreference preference)
     {
         double width = double.IsFinite(availableWidth)
             ? Math.Max(0, availableWidth)

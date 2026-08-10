@@ -14,9 +14,12 @@ public sealed partial class QuickCaptureWidgetWindow
 {
     private void DetailCopyButton_Click(object sender, RoutedEventArgs e)
     {
-        string content = string.IsNullOrWhiteSpace(DetailBodyTextBox.Text)
-            ? DetailTitleTextBox.Text.Trim()
-            : DetailBodyTextBox.Text.Trim();
+        string sourceContent = string.IsNullOrWhiteSpace(DetailBodyTextBox.Text)
+            ? DetailTitleTextBox.Text
+            : DetailBodyTextBox.Text;
+        string copyContent = _detailContentFormat == TextContentFormat.Markdown
+            ? _markdownDocumentService.ToPlainText(sourceContent)
+            : sourceContent;
         IEnumerable<TodoAttachment> attachments = _detailItem?.Attachments
             .Select(attachment => attachment.Attachment) ??
             _pendingDetailAttachments.Select(file => new TodoAttachment
@@ -26,7 +29,7 @@ public sealed partial class QuickCaptureWidgetWindow
                 Type = AttachmentStorageService.GetAttachmentType(file.Path)
             });
         string text = QuickCaptureClipboardFormatter.FormatContent(
-            content,
+            copyContent,
             attachments,
             _localizationService);
         if (string.IsNullOrWhiteSpace(text))
@@ -36,6 +39,15 @@ public sealed partial class QuickCaptureWidgetWindow
 
         var dataPackage = new DataPackage();
         dataPackage.SetText(text);
+        if (_detailContentFormat == TextContentFormat.Markdown &&
+            !string.IsNullOrWhiteSpace(sourceContent))
+        {
+            string html = _markdownDocumentService.ToSafeHtml(sourceContent);
+            if (!string.IsNullOrWhiteSpace(html))
+            {
+                dataPackage.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(html));
+            }
+        }
         Clipboard.SetContent(dataPackage);
         Clipboard.Flush();
         App.Current.QuickCaptureService?.MarkClipboardTextWrittenByDeskBox(text);
@@ -44,6 +56,11 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private async void DetailAddFileButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!_isDetailEditing || _detailItem?.IsRecent == true)
+        {
+            return;
+        }
+
         var picker = new FileOpenPicker
         {
             SuggestedStartLocation = PickerLocationId.Desktop
@@ -61,7 +78,7 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private async Task AddFilesToCurrentDetailAsync(IReadOnlyList<DroppedFilePath> files)
     {
-        if (files.Count == 0)
+        if (files.Count == 0 || !_isDetailEditing || _detailItem?.IsRecent == true)
         {
             return;
         }
@@ -77,6 +94,9 @@ public sealed partial class QuickCaptureWidgetWindow
                 }
             }
             RefreshDetailAttachmentList();
+            MarkDetailDirty();
+            _detailAutoSaveTimer?.Stop();
+            _detailAutoSaveTimer?.Start();
             return;
         }
 
@@ -114,6 +134,11 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private async void DetailRemoveAttachmentButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!_isDetailEditing || _detailItem?.IsRecent == true)
+        {
+            return;
+        }
+
         if (sender is not FrameworkElement { DataContext: TodoAttachmentViewModel attachment })
         {
             return;
@@ -121,9 +146,15 @@ public sealed partial class QuickCaptureWidgetWindow
 
         if (_isCreatingDetail || _detailItem is null)
         {
-            _pendingDetailAttachments.RemoveAll(file =>
+            int removed = _pendingDetailAttachments.RemoveAll(file =>
                 string.Equals(file.Path, attachment.FilePath, StringComparison.OrdinalIgnoreCase));
             RefreshDetailAttachmentList();
+            if (removed > 0)
+            {
+                MarkDetailDirty();
+                _detailAutoSaveTimer?.Stop();
+                _detailAutoSaveTimer?.Start();
+            }
             return;
         }
 

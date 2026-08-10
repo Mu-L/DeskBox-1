@@ -10,12 +10,24 @@
 
     <UserControl.Resources>
         <Style x:Key="MarkdownFormattingButtonStyle" TargetType="AppBarButton">
-            <Setter Property="Width" Value="34" />
-            <Setter Property="Height" Value="34" />
-            <Setter Property="MinWidth" Value="34" />
-            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="CornerRadius" Value="5" />
             <Setter Property="UseSystemFocusVisuals" Value="True" />
+        </Style>
+        <Style x:Key="MarkdownFormattingIconStyle" TargetType="FontIcon">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <!-- Segoe glyphs sit slightly below their visual center at this size. -->
+            <Setter Property="Margin" Value="0,-2,0,0" />
         </Style>
     </UserControl.Resources>
 
@@ -28,8 +40,9 @@
         <CommandBar
             x:Name="FormattingCommandBar"
             Grid.Row="0"
-            Height="36"
-            MinHeight="36"
+            Height="34"
+            MinHeight="34"
+            HorizontalAlignment="Left"
             Padding="0"
             Background="Transparent"
             ClosedDisplayMode="Compact"
@@ -41,31 +54,31 @@
 
             <AppBarButton x:Name="BoldButton" Click="FormatButton_Click" Label="Bold" Tag="Bold">
                 <FontIcon
-                    Margin="0,-1,0,1"
                     FontFamily="Segoe UI Variable Text"
                     FontSize="16"
                     FontWeight="Bold"
-                    Glyph="B" />
+                    Glyph="B"
+                    Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
             <AppBarButton x:Name="ItalicButton" Click="FormatButton_Click" Label="Italic" Tag="Italic">
                 <FontIcon
-                    Margin="0,-1,0,1"
                     FontFamily="Segoe UI Variable Text"
                     FontSize="16"
                     FontStyle="Italic"
-                    Glyph="I" />
+                    Glyph="I"
+                    Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
             <AppBarButton x:Name="HeadingButton" Click="FormatButton_Click" Label="Heading" Tag="Heading">
-                <FontIcon Glyph="&#xE8D2;" />
+                <FontIcon Glyph="&#xE8D2;" Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
             <AppBarButton x:Name="ListButton" Click="FormatButton_Click" Label="List" Tag="List">
-                <FontIcon Glyph="&#xEA37;" />
+                <FontIcon Glyph="&#xEA37;" Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
             <AppBarButton x:Name="TaskButton" Click="FormatButton_Click" Label="Task" Tag="Task">
-                <FontIcon Glyph="&#xE73A;" />
+                <FontIcon Glyph="&#xE73A;" Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
             <AppBarButton x:Name="LinkButton" Click="FormatButton_Click" Label="Link" Tag="Link">
-                <FontIcon Glyph="&#xE71B;" />
+                <FontIcon Glyph="&#xE71B;" Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
 
             <CommandBar.SecondaryCommands>
@@ -73,7 +86,7 @@
                 <AppBarButton x:Name="QuoteButton" Click="FormatButton_Click" Icon="Comment" Label="Quote" Tag="Quote" />
                 <AppBarButton x:Name="CodeButton" Click="FormatButton_Click" Label="Code" Tag="Code">
                     <AppBarButton.Icon>
-                        <FontIcon Glyph="&#xE943;" />
+                        <FontIcon Glyph="&#xE943;" Style="{StaticResource MarkdownFormattingIconStyle}" />
                     </AppBarButton.Icon>
                 </AppBarButton>
                 <AppBarButton x:Name="TableButton" Click="FormatButton_Click" Icon="ViewAll" Label="Table" Tag="Table" />

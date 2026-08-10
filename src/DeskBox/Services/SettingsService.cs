@@ -269,6 +269,13 @@ public sealed class SettingsService
     public const string QuickCaptureDefaultViewRecords = "Records";
     public const string QuickCaptureDefaultViewPinned = "Pinned";
     public const string QuickCaptureDefaultViewRecent = "Recent";
+    public const string QuickCaptureFormatMarkdown = "Markdown";
+    public const string QuickCaptureFormatPlainText = "PlainText";
+    public const string QuickCaptureWideLayoutAuto = "Auto";
+    public const string QuickCaptureWideLayoutSinglePane = "SinglePane";
+    public const string QuickCaptureWideLayoutDualPane = "DualPane";
+    public const string QuickCaptureWideOpenReading = "Reading";
+    public const string QuickCaptureWideOpenEditing = "Editing";
     public const string WidgetTabStylePivot = "Pivot";
     public const string WidgetTabStyleButton = "Button";
 public const string WeatherTemperatureUnitCelsius = "Celsius";
@@ -419,6 +426,10 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.QuickCaptureShowCreatedTime = true;
         settings.QuickCaptureItemPreviewLineCount = DefaultQuickCaptureItemPreviewLineCount;
         settings.QuickCaptureEditorEnterBehavior = EditorEnterBehaviorCtrlEnterSaves;
+        settings.QuickCaptureDefaultFormat = QuickCaptureFormatMarkdown;
+        settings.QuickCaptureWideLayout = QuickCaptureWideLayoutAuto;
+        settings.QuickCaptureWideOpenMode = QuickCaptureWideOpenReading;
+        settings.QuickCaptureAllowRemoteImages = false;
         settings.AttachmentStorageMode = AttachmentStorageModeLink;
         settings.QuickCaptureDefaultView = QuickCaptureDefaultViewRecords;
         settings.QuickCaptureTabStyle = WidgetTabStyleButton;
@@ -2373,6 +2384,27 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
+        string normalizedFormat = NormalizeQuickCaptureFormat(settings.QuickCaptureDefaultFormat);
+        if (!string.Equals(settings.QuickCaptureDefaultFormat, normalizedFormat, StringComparison.Ordinal))
+        {
+            settings.QuickCaptureDefaultFormat = normalizedFormat;
+            changed = true;
+        }
+
+        string normalizedWideLayout = NormalizeQuickCaptureWideLayout(settings.QuickCaptureWideLayout);
+        if (!string.Equals(settings.QuickCaptureWideLayout, normalizedWideLayout, StringComparison.Ordinal))
+        {
+            settings.QuickCaptureWideLayout = normalizedWideLayout;
+            changed = true;
+        }
+
+        string normalizedWideOpenMode = NormalizeQuickCaptureWideOpenMode(settings.QuickCaptureWideOpenMode);
+        if (!string.Equals(settings.QuickCaptureWideOpenMode, normalizedWideOpenMode, StringComparison.Ordinal))
+        {
+            settings.QuickCaptureWideOpenMode = normalizedWideOpenMode;
+            changed = true;
+        }
+
         int normalizedLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
         if (settings.QuickCaptureRecentLimit != normalizedLimit)
         {
@@ -2581,6 +2613,28 @@ settings.FocusClickedWidgetOnRaise = false;
             ? WidgetTabStylePivot
             : WidgetTabStyleButton;
     }
+
+    public static string NormalizeQuickCaptureFormat(string? format) =>
+        string.Equals(format, QuickCaptureFormatPlainText, StringComparison.OrdinalIgnoreCase)
+            ? QuickCaptureFormatPlainText
+            : QuickCaptureFormatMarkdown;
+
+    public static string NormalizeQuickCaptureWideLayout(string? layout)
+    {
+        if (string.Equals(layout, QuickCaptureWideLayoutSinglePane, StringComparison.OrdinalIgnoreCase))
+        {
+            return QuickCaptureWideLayoutSinglePane;
+        }
+
+        return string.Equals(layout, QuickCaptureWideLayoutDualPane, StringComparison.OrdinalIgnoreCase)
+            ? QuickCaptureWideLayoutDualPane
+            : QuickCaptureWideLayoutAuto;
+    }
+
+    public static string NormalizeQuickCaptureWideOpenMode(string? mode) =>
+        string.Equals(mode, QuickCaptureWideOpenEditing, StringComparison.OrdinalIgnoreCase)
+            ? QuickCaptureWideOpenEditing
+            : QuickCaptureWideOpenReading;
 
     public static bool IsQuickCaptureTabVisible(AppSettings settings, string? view) => view switch
     {

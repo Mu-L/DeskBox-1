@@ -2,7 +2,7 @@ namespace DeskBox.Models;
 
 public sealed class QuickCaptureStoreData
 {
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
 
     public QuickCaptureViewMode CurrentView { get; set; } = QuickCaptureViewMode.Records;
 
