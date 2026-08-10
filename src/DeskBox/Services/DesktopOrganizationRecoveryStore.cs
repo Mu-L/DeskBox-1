@@ -16,9 +16,7 @@ public sealed class DesktopOrganizationRecoveryStore
     public DesktopOrganizationRecoveryStore(string? journalPath = null)
     {
         _journalPath = journalPath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DeskBox",
-            "data",
+            DeskBoxDataPathService.Current.DataDirectory,
             "desktop-organization-recovery.json");
     }
 

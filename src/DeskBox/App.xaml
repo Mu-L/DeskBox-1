@@ -372,6 +372,85 @@
                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 <Setter Property="TextWrapping" Value="NoWrap" />
             </Style>
+
+            <!--
+                Shared visual template for Toolkit GridSplitter. Toolkit 8.2
+                projects SizerBase as Control under Windows App SDK 2.2, so the
+                keyed base-Control template keeps the native resize behavior
+                while avoiding the incompatible implicit style.
+            -->
+            <Style x:Key="WidgetMasterDetailSplitterStyle" TargetType="Control">
+                <Setter Property="IsTabStop" Value="True" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="IsFocusEngagementEnabled" Value="True" />
+                <Setter Property="MinHeight" Value="8" />
+                <Setter Property="MinWidth" Value="8" />
+                <Setter Property="Padding" Value="4" />
+                <Setter Property="Foreground" Value="{ThemeResource ControlStrongFillColorDefaultBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="ManipulationMode" Value="TranslateX" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Control">
+                            <Grid
+                                x:Name="SplitterRoot"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <Grid.BackgroundTransition>
+                                    <BrushTransition Duration="0:0:0.083" />
+                                </Grid.BackgroundTransition>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="SplitterRoot.Background" Value="{ThemeResource ControlAltFillColorTertiaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="SplitterRoot.Background" Value="{ThemeResource ControlAltFillColorQuarternaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="SplitterThumb.Opacity" Value="0.45" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="OrientationStates">
+                                        <VisualState x:Name="Vertical" />
+                                        <VisualState x:Name="Horizontal">
+                                            <VisualState.Setters>
+                                                <Setter Target="SplitterThumb.Width" Value="24" />
+                                                <Setter Target="SplitterThumb.Height" Value="4" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="ThumbVisibilityStates">
+                                        <VisualState x:Name="Visible" />
+                                        <VisualState x:Name="Collapsed">
+                                            <VisualState.Setters>
+                                                <Setter Target="SplitterThumb.Visibility" Value="Collapsed" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Rectangle
+                                    x:Name="SplitterThumb"
+                                    Width="4"
+                                    Height="24"
+                                    Margin="{TemplateBinding Padding}"
+                                    Fill="{TemplateBinding Foreground}"
+                                    RadiusX="2"
+                                    RadiusY="2" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 

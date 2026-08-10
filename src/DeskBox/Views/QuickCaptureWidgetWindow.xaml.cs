@@ -53,8 +53,7 @@ public sealed partial class QuickCaptureWidgetWindow :
     private const int ItemsViewTransitionMs = 280;
     private const int ItemsViewTransitionOffsetPx = 6;
     private static readonly string QuickCaptureTextPreviewDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DeskBox",
+        DeskBoxDataPathService.Current.RootPath,
         "QuickCapture",
         "Preview");
 

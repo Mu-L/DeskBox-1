@@ -172,8 +172,14 @@ public partial class App : Application
             Environment.GetCommandLineArgs(),
             isStartupTaskActivation: IsStartupTaskActivation());
         string? nativeNotificationActivationArguments = TryGetCurrentNativeNotificationActivationArguments();
-        _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskBox_Activate_Event_7F3A9B2E");
-        _singleInstanceMutex = new Mutex(true, "DeskBox_SingleInstance_Mutex_7F3A9B2E", out bool createdNew);
+        _activationEvent = new EventWaitHandle(
+            false,
+            EventResetMode.AutoReset,
+            DeskBoxDataPathService.Current.ActivationEventName);
+        _singleInstanceMutex = new Mutex(
+            true,
+            DeskBoxDataPathService.Current.SingleInstanceMutexName,
+            out bool createdNew);
         if (!createdNew)
         {
             if (!string.IsNullOrWhiteSpace(nativeNotificationActivationArguments))

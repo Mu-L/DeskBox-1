@@ -18,9 +18,7 @@ public sealed class TodoWidgetStore
     public TodoWidgetStore(string widgetId)
         : this(
             Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DeskBox",
-                "data",
+                DeskBoxDataPathService.Current.DataDirectory,
                 "widgets"),
             widgetId)
     {

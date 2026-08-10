@@ -494,11 +494,7 @@ settings.FocusClickedWidgetOnRaise = false;
 
     public SettingsService()
     {
-        string dataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DeskBox",
-            "data");
-        _settingsPath = InitializeSettingsPath(dataDir);
+        _settingsPath = InitializeSettingsPath(DeskBoxDataPathService.Current.DataDirectory);
     }
 
     internal SettingsService(string dataDir)

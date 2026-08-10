@@ -19,9 +19,7 @@ public sealed class QuickCaptureStore
 
     public QuickCaptureStore()
         : this(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DeskBox",
-            "data",
+            DeskBoxDataPathService.Current.DataDirectory,
             "quick-capture"))
     {
     }

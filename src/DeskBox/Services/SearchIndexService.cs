@@ -83,8 +83,7 @@ public sealed class SearchIndexService : IDisposable
         : this(
             settingsService,
             Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DeskBox",
+                DeskBoxDataPathService.Current.RootPath,
                 "cache",
                 "search-index.json"))
     {

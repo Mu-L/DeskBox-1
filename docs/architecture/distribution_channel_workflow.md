@@ -66,6 +66,7 @@ dotnet build .\src\DeskBox\DeskBox.csproj `
 注意：
 
 - 日常 Debug 启动脚本会固定运行 `src\DeskBox\bin\x64\Debug\<TargetFramework>\DeskBox.exe`。
+- Debug 默认使用按 worktree 路径生成的独立 `%LOCALAPPDATA%\DeskBox-Dev\...` 数据目录；不同随记/待办工作树可以同时运行，不会读写正式版数据。需要显式复用正式数据时才使用 `-UseProductionData`，也可用 `-DataRoot` 指定调试数据目录。
 - 不要手动运行 `src\DeskBox\bin\x64\Debug\<TargetFramework>\win-x64\DeskBox.exe`，这个目录可能残留旧 RID 构建产物，容易出现“进程启动后立刻崩溃”或“跑的不是最新代码”。
 - 只有 Release 发布、Direct 安装器产物、Store/MSIX 打包检查需要显式使用 `RuntimeIdentifier`。
 
