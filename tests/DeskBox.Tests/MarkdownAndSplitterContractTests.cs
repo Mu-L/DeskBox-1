@@ -54,6 +54,34 @@ public sealed class MarkdownAndSplitterContractTests
     }
 
     [Fact]
+    public void SegmentedTabs_LeaveWidthCalculationToToolkitDuringResponsiveLayout()
+    {
+        string helper = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetSegmentedLayoutHelper.cs"));
+
+        Assert.Contains("EqualPanel", helper, StringComparison.Ordinal);
+        Assert.Contains("item.Width = double.NaN", helper, StringComparison.Ordinal);
+        Assert.Contains("item.MaxWidth = double.PositiveInfinity", helper, StringComparison.Ordinal);
+        Assert.DoesNotContain("item.Width = itemWidth", helper, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyEqualItemWidthsCore", helper, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TodoSegmentedTabs_WaitForASafeLayoutSlotBeforeBecomingVisible()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.xaml"));
+        string code = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.xaml.cs"));
+
+        Assert.Contains("x:Name=\"TodoFilterSegmented\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"Collapsed\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("QueueTodoSegmentedRestore", code, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueuePriority.Low", code, StringComparison.Ordinal);
+        Assert.Contains("ListHeaderArea.ActualWidth < 48", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Todo_UsesSharedResponsiveSplitterAndMarkdownDetailControls()
     {
         string xaml = File.ReadAllText(TestPaths.FromRepository(

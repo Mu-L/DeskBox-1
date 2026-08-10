@@ -138,7 +138,7 @@
                 MinHeight="{Binding SegmentHeight}"
                 FontSize="{Binding SegmentTextSize}"
                 HorizontalAlignment="Stretch"
-                Visibility="{Binding TabBarVisibility}"
+                Visibility="Collapsed"
                 Loaded="TodoFilterSegmented_Loaded"
                 SelectionChanged="TodoFilterSegmented_SelectionChanged"
                 SelectedIndex="0"

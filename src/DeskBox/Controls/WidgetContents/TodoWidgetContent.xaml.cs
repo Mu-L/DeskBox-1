@@ -50,6 +50,7 @@ public sealed partial class TodoWidgetContent : UserControl
     private bool _colorFilterHandledEventsRegistered;
     private bool _isResponsiveLayoutTransitionActive;
     private bool _segmentedLayoutRefreshPending;
+    private bool _todoSegmentedRestoreQueued;
     private DateTimeOffset _suppressColorFilterClickUntil;
     private Windows.Foundation.Point _colorFilterDragStartPoint;
     private Windows.Foundation.Point _selectionStartPoint;
@@ -157,6 +158,7 @@ public sealed partial class TodoWidgetContent : UserControl
         App.Current.ThemeService.AppearanceChanged += OnThemeAppearanceChanged;
         ApplySegmentedStyle();
         ApplyMasterDetailLayout(ActualWidth);
+        QueueTodoSegmentedRestore();
     }
 
     private void TodoWidgetContent_Unloaded(object sender, RoutedEventArgs e)
@@ -181,6 +183,7 @@ public sealed partial class TodoWidgetContent : UserControl
     private void TodoFilterSegmented_Loaded(object sender, RoutedEventArgs e)
     {
         ApplySegmentedStyle();
+        QueueTodoSegmentedRestore();
     }
 
     private void OnThemeAppearanceChanged()
@@ -205,6 +208,7 @@ public sealed partial class TodoWidgetContent : UserControl
         bool isCollapsing)
     {
         _isResponsiveLayoutTransitionActive = true;
+        SuspendTodoSegmented();
     }
 
     internal void CompleteResponsiveLayoutTransition(
@@ -231,6 +235,7 @@ public sealed partial class TodoWidgetContent : UserControl
         }
 
         ApplyMasterDetailLayout(ActualWidth);
+        QueueTodoSegmentedRestore();
     }
 
     private void ApplySegmentedLayout()
@@ -262,6 +267,51 @@ public sealed partial class TodoWidgetContent : UserControl
         ApplySegmentedLayout();
     }
 
+    // CommunityToolkit's Segmented uses EqualPanel internally. During the
+    // widget's first arrange pass (and while the host is resizing), WinUI can
+    // provide a transient zero-width rectangle. EqualPanel cannot arrange its
+    // spacing into that rectangle. Keep the control out of that unsafe pass
+    // and reveal it once the master pane has a real layout slot.
+    private void SuspendTodoSegmented()
+    {
+        if (TodoFilterSegmented is not null)
+        {
+            TodoFilterSegmented.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void QueueTodoSegmentedRestore()
+    {
+        if (TodoFilterSegmented is null ||
+            TodoFilterSegmented.Visibility == Visibility.Visible ||
+            _todoSegmentedRestoreQueued)
+        {
+            return;
+        }
+
+        _todoSegmentedRestoreQueued = true;
+        bool enqueued = DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                _todoSegmentedRestoreQueued = false;
+                if (ViewModel?.TabBarVisibility != Visibility.Visible ||
+                    ListHeaderArea.Visibility != Visibility.Visible ||
+                    ListHeaderArea.ActualWidth < 48)
+                {
+                    return;
+                }
+
+                TodoFilterSegmented.Visibility = Visibility.Visible;
+                ApplySegmentedStyle();
+            });
+
+        if (!enqueued)
+        {
+            _todoSegmentedRestoreQueued = false;
+        }
+    }
+
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(TodoWidgetViewModel.SelectedFilter))
@@ -275,6 +325,18 @@ public sealed partial class TodoWidgetContent : UserControl
         if (e.PropertyName == nameof(TodoWidgetViewModel.TabStyle))
         {
             ApplySegmentedStyle();
+        }
+
+        if (e.PropertyName == nameof(TodoWidgetViewModel.TabBarVisibility))
+        {
+            if (ViewModel?.TabBarVisibility == Visibility.Visible)
+            {
+                QueueTodoSegmentedRestore();
+            }
+            else
+            {
+                SuspendTodoSegmented();
+            }
         }
 
         if (e.PropertyName == nameof(TodoWidgetViewModel.VisibleTabCount))

@@ -17,8 +17,11 @@ public sealed partial class TodoWidgetContent
 
     internal bool IsDualPane => _isDualPane;
 
-    private void TodoWidgetContent_SizeChanged(object sender, SizeChangedEventArgs e) =>
+    private void TodoWidgetContent_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
         ApplyMasterDetailLayout(e.NewSize.Width);
+        QueueTodoSegmentedRestore();
+    }
 
     private void ApplyMasterDetailLayout(double totalWidth)
     {
@@ -119,6 +122,15 @@ public sealed partial class TodoWidgetContent
         MasterDetailSplitter.Visibility = _isDualPane
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        if (showList)
+        {
+            QueueTodoSegmentedRestore();
+        }
+        else
+        {
+            SuspendTodoSegmented();
+        }
     }
 
     private void EnsureWideDetailSelection() => _ = EnsureWideDetailSelectionAsync();
