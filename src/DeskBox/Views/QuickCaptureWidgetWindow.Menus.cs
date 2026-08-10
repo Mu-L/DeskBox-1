@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Numerics;
+using DeskBox.Contracts;
 using DeskBox.Controls;
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -67,6 +68,17 @@ public sealed partial class QuickCaptureWidgetWindow
     private MenuFlyout CreateMoreFlyout()
     {
         var flyout = new MenuFlyout();
+
+        // The standalone window and the unified content-widget host render the
+        // same QuickCaptureContent. Keep their high-value commands in the same
+        // shared provider as well, so neither host grows a second interaction
+        // model as the feature evolves.
+        ((IWidgetCommandMenuProvider)_sharedContent).AppendWidgetCommands(flyout);
+        if (flyout.Items.Count > 0)
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+        }
+
         var renameItem = new MenuFlyoutItem
         {
             Text = _localizationService.T("Common.Rename"),
@@ -81,31 +93,44 @@ public sealed partial class QuickCaptureWidgetWindow
                 DispatcherQueue.TryEnqueue(StartTitleRename);
             }
         };
-        flyout.Items.Add(renameItem);
+        var widgetOptions = new MenuFlyoutSubItem
+        {
+            Text = _localizationService.T("Widget.Tooltip.More"),
+            Icon = new FontIcon { Glyph = "\uE713" }
+        };
+        widgetOptions.Items.Add(renameItem);
 
-        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
+        widgetOptions.Items.Add(WidgetChromeMenuBuilder.Create(
             ViewModel.Config,
             _chromeDescriptor,
             _localizationService,
             App.Current.WidgetManager,
             SetChromeModeOverride));
-        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
+        widgetOptions.Items.Add(WidgetCollapseMenuBuilder.Create(
             ViewModel.Config,
             _localizationService,
             SetCollapseBehaviorOverride,
             ResetCompactWidthOverride));
-        flyout.Items.Add(WidgetLockMenuBuilder.Create(
+        widgetOptions.Items.Add(WidgetLockMenuBuilder.Create(
             _localizationService,
             ViewModel.Config.IsPositionLocked,
             ViewModel.Config.IsSizeLocked,
             SetPositionLocked,
             SetSizeLocked));
 
+        var groupItems = new MenuFlyout();
         WidgetGroupMenuBuilder.Append(
-            flyout,
+            groupItems,
             ViewModel.Config,
             App.Current.WidgetManager,
             _localizationService);
+        while (groupItems.Items.Count > 0)
+        {
+            MenuFlyoutItemBase item = groupItems.Items[0];
+            groupItems.Items.RemoveAt(0);
+            widgetOptions.Items.Add(item);
+        }
+        flyout.Items.Add(widgetOptions);
 
         flyout.Items.Add(WidgetSettingsMenuHelper.CreateMenuItem(
             WidgetKind.QuickCapture,

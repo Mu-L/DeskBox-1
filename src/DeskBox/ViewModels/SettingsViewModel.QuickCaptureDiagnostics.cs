@@ -116,6 +116,7 @@ public partial class SettingsViewModel
             "ignored:image-too-large" => "Settings.QuickCapture.ClipboardReason.ImageTooLarge",
             "ignored:text-too-large" => "Settings.QuickCapture.ClipboardReason.TextTooLarge",
             "ignored:duplicate-or-app-write" => "Settings.QuickCapture.ClipboardReason.Duplicate",
+            "ignored:excluded-app" => "Settings.QuickCapture.ClipboardReason.ExcludedApp",
             "failed:read-or-save" => "Settings.QuickCapture.ClipboardReason.Failed",
             _ when reason.StartsWith("captured:", StringComparison.Ordinal) => "Settings.QuickCapture.ClipboardReason.Captured",
             _ => "Settings.QuickCapture.ClipboardReason.Unknown"

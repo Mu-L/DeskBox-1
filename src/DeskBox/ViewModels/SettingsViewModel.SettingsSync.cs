@@ -260,6 +260,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
         OnPropertyChanged(nameof(QuickCaptureRecentLimitText));
         OnPropertyChanged(nameof(FeatureWidgetEntries));
+        NotifyTodo2SettingsChanged();
         NotifyCapsuleOverridePropertiesChanged();
         OnPropertyChanged(nameof(AvailableWidgetGroupNavigationStyleOptions));
         OnPropertyChanged(nameof(AvailableWidgetGroupTitleDisplayModeOptions));
@@ -418,6 +419,7 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedTodoDefaultFilterText));
         OnPropertyChanged(nameof(SelectedTodoTabStyleText));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
+        NotifyTodo2SettingsChanged();
         OnPropertyChanged(nameof(SelectedMusicDisplayModeText));
     }
 }

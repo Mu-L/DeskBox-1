@@ -883,6 +883,12 @@
                 </Grid>
 
             </Grid>
+
+            <!-- Shared responsive surface used by standalone and grouped widgets. -->
+            <Grid
+                x:Name="SharedContentHost"
+                Grid.RowSpan="4"
+                Canvas.ZIndex="50" />
                 </Grid>
             </controls:WidgetShell.ShellContent>
         </controls:WidgetShell>

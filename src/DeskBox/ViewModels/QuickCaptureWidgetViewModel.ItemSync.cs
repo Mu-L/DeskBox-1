@@ -11,15 +11,15 @@ namespace DeskBox.ViewModels;
 
 public sealed partial class QuickCaptureWidgetViewModel
 {
-    private Task RefreshFromDataAsync(QuickCaptureStoreData data)
+    private async Task RefreshFromDataAsync(QuickCaptureStoreData data)
     {
         if (_isDisposed)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var activeItems = data.Items
-            .Where(item => !item.IsDeleted)
+            .Where(item => !item.IsDeleted && item.ArchivedAt is null)
             .OrderBy(item => item.SortOrder)
             .ThenByDescending(item => item.UpdatedAt)
             .ToList();
@@ -51,13 +51,31 @@ public sealed partial class QuickCaptureWidgetViewModel
 
         if (HasSearchText)
         {
-            visibleItems = activeItems
-                .Concat(recentItems)
-                .Where(item => MatchesSearch(item, SearchText))
-                .OrderByDescending(item => item.UpdatedAt)
-                .ThenBy(item => item.IsRecent ? 1 : 0)
-                .ThenBy(item => item.SortOrder)
-                .ToList();
+            try
+            {
+                IReadOnlyList<QuickCaptureSearchHit> hits =
+                    await _quickCaptureService.SearchAsync(SearchText, 250);
+                if (_isDisposed)
+                {
+                    return;
+                }
+
+                visibleItems = hits
+                    .Select(hit => hit.Item)
+                    .Where(item => !item.IsDeleted)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[QuickCapture] FTS search fallback: {ex.Message}");
+                visibleItems = activeItems
+                    .Concat(recentItems)
+                    .Where(item => MatchesSearch(item, SearchText))
+                    .OrderByDescending(item => item.UpdatedAt)
+                    .ThenBy(item => item.IsRecent ? 1 : 0)
+                    .ThenBy(item => item.SortOrder)
+                    .ToList();
+            }
         }
 
         SyncVisibleItems(visibleItems, canShowPinnedSortControls);
@@ -76,7 +94,6 @@ public sealed partial class QuickCaptureWidgetViewModel
         OnPropertyChanged(nameof(RecentCaptureActionVisibility));
         ItemsViewTransitionToken++;
         SetViewSwitchLoading(false);
-        return Task.CompletedTask;
     }
 
     private void SyncVisibleItems(IReadOnlyList<QuickCaptureItem> visibleItems, bool canShowPinnedSortControls)

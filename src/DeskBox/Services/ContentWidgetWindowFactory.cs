@@ -12,7 +12,7 @@ public sealed class ContentWidgetWindowFactory
     private readonly WidgetContentFactory _contentFactory;
     private readonly SettingsService _settingsService;
     private readonly Func<WidgetConfig, IWidgetContent, SettingsService, WidgetContentDescriptor, ContentWidgetWindow> _windowFactory;
-    private readonly Func<WidgetConfig, TodoWidgetStore>? _todoStoreFactory;
+    private readonly Func<WidgetConfig, ITodoStore>? _todoStoreFactory;
     private readonly Func<WidgetConfig, IWidgetContent>? _quickCaptureContentFactory;
     private readonly Func<WidgetConfig, IWidgetContent>? _fileContentFactory;
 
@@ -20,7 +20,7 @@ public sealed class ContentWidgetWindowFactory
         WidgetContentFactory contentFactory,
         SettingsService settingsService,
         Func<WidgetConfig, IWidgetContent, SettingsService, WidgetContentDescriptor, ContentWidgetWindow>? windowFactory = null,
-        Func<WidgetConfig, TodoWidgetStore>? todoStoreFactory = null,
+        Func<WidgetConfig, ITodoStore>? todoStoreFactory = null,
         Func<WidgetConfig, IWidgetContent>? quickCaptureContentFactory = null,
         Func<WidgetConfig, IWidgetContent>? fileContentFactory = null)
     {

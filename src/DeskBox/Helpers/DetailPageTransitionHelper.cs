@@ -1,4 +1,5 @@
 using System.Numerics;
+using DeskBox.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
 
@@ -10,9 +11,16 @@ internal static class DetailPageTransitionHelper
     private const int ExitDurationMs = 150;
     private const float EnterOffsetY = 10f;
     private const float ExitOffsetY = 7f;
+    private const int FadeDurationMs = 120;
 
     public static void PlayEnter(UIElement element)
     {
+        if (!WindowsCompatibilityService.AreAnimationsEnabled)
+        {
+            Reset(element);
+            return;
+        }
+
         ElementCompositionPreview.SetIsTranslationEnabled(element, true);
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;
@@ -41,6 +49,12 @@ internal static class DetailPageTransitionHelper
 
     public static async Task PlayExitAsync(UIElement element)
     {
+        if (!WindowsCompatibilityService.AreAnimationsEnabled)
+        {
+            Reset(element);
+            return;
+        }
+
         ElementCompositionPreview.SetIsTranslationEnabled(element, true);
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;
@@ -66,6 +80,29 @@ internal static class DetailPageTransitionHelper
         visual.StartAnimation("Translation", translationAnimation);
 
         await Task.Delay(ExitDurationMs);
+    }
+
+    public static void PlayFadeIn(UIElement element)
+    {
+        if (!WindowsCompatibilityService.AreAnimationsEnabled)
+        {
+            Reset(element);
+            return;
+        }
+
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        var compositor = visual.Compositor;
+        visual.StopAnimation("Opacity");
+        var easing = compositor.CreateCubicBezierEasingFunction(
+            new Vector2(0.2f, 0.8f),
+            new Vector2(0.2f, 1f));
+        var opacityAnimation = compositor.CreateScalarKeyFrameAnimation();
+        opacityAnimation.Duration = TimeSpan.FromMilliseconds(FadeDurationMs);
+        opacityAnimation.InsertKeyFrame(0f, 0.45f);
+        opacityAnimation.InsertKeyFrame(1f, 1f, easing);
+        element.Opacity = 1;
+        visual.Opacity = 1f;
+        visual.StartAnimation("Opacity", opacityAnimation);
     }
 
     public static void Reset(UIElement element)

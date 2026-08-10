@@ -1,0 +1,844 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="DeskBox.Controls.WidgetContents.QuickCaptureContent"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DeskBox.Controls"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Style x:Key="QuickCaptureTouchButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="7,3" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style x:Key="QuickCaptureSectionButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="40" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="QuickCaptureCompactAppBarButtonStyle" TargetType="AppBarButton">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="AllowFocusOnInteraction" Value="False" />
+        </Style>
+        <Style
+            x:Key="QuickCaptureFormattingAppBarButtonStyle"
+            TargetType="AppBarButton"
+            BasedOn="{StaticResource QuickCaptureCompactAppBarButtonStyle}">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+        </Style>
+        <Style x:Key="QuickCaptureCompactAppBarToggleButtonStyle" TargetType="AppBarToggleButton">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="AllowFocusOnInteraction" Value="False" />
+        </Style>
+        <Style x:Key="QuickCaptureDetailActionButtonStyle" TargetType="Button" BasedOn="{StaticResource WidgetCompactIconButtonStyle}">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style x:Key="QuickCaptureMetaTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+        </Style>
+        <Style
+            x:Key="QuickCaptureCompactMenuPresenterStyle"
+            TargetType="MenuFlyoutPresenter"
+            BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
+            <Setter Property="Width" Value="136" />
+            <Setter Property="MinWidth" Value="136" />
+            <Setter Property="MaxWidth" Value="144" />
+            <Setter Property="Padding" Value="0,3" />
+            <Setter Property="FontFamily" Value="{StaticResource DeskBoxMenuFontFamily}" />
+        </Style>
+        <Style
+            x:Key="QuickCaptureCompactMenuItemStyle"
+            TargetType="MenuFlyoutItem"
+            BasedOn="{StaticResource DefaultMenuFlyoutItemStyle}">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="FontFamily" Value="{StaticResource DeskBoxMenuFontFamily}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style
+            x:Key="QuickCaptureCompactToggleMenuItemStyle"
+            TargetType="ToggleMenuFlyoutItem"
+            BasedOn="{StaticResource DefaultToggleMenuFlyoutItemStyle}">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="FontFamily" Value="{StaticResource DeskBoxMenuFontFamily}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style
+            x:Key="QuickCaptureCompactMenuSubItemStyle"
+            TargetType="MenuFlyoutSubItem"
+            BasedOn="{StaticResource DefaultMenuFlyoutSubItemStyle}">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="FontFamily" Value="{StaticResource DeskBoxMenuFontFamily}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style
+            x:Key="QuickCaptureFormattingMenuPresenterStyle"
+            TargetType="MenuFlyoutPresenter"
+            BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
+            <Setter Property="Width" Value="168" />
+            <Setter Property="MinWidth" Value="168" />
+            <Setter Property="MaxWidth" Value="176" />
+            <Setter Property="Padding" Value="0,3" />
+            <Setter Property="FontFamily" Value="{StaticResource DeskBoxMenuFontFamily}" />
+        </Style>
+
+        <!--
+            Toolkit 8.2's WinUI 3 package targets SizerBase from its implicit
+            style. Windows App SDK 2.2 can project that base type as Control at
+            runtime, so keep GridSplitter behavior while hosting the Toolkit's
+            documented 4x24 gripper template in a base-Control style.
+        -->
+        <Style x:Key="QuickCapturePaneSplitterStyle" TargetType="Control">
+            <Setter Property="IsTabStop" Value="True" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="IsFocusEngagementEnabled" Value="True" />
+            <Setter Property="MinHeight" Value="8" />
+            <Setter Property="MinWidth" Value="8" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="Foreground" Value="{ThemeResource ControlStrongFillColorDefaultBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ManipulationMode" Value="TranslateX" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Control">
+                        <Grid
+                            x:Name="SplitterRoot"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                            <Grid.BackgroundTransition>
+                                <BrushTransition Duration="0:0:0.083" />
+                            </Grid.BackgroundTransition>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="SplitterRoot.Background" Value="{ThemeResource ControlAltFillColorTertiaryBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="SplitterRoot.Background" Value="{ThemeResource ControlAltFillColorQuarternaryBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="SplitterThumb.Opacity" Value="0.45" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="OrientationStates">
+                                    <VisualState x:Name="Vertical" />
+                                    <VisualState x:Name="Horizontal">
+                                        <VisualState.Setters>
+                                            <Setter Target="SplitterThumb.Width" Value="24" />
+                                            <Setter Target="SplitterThumb.Height" Value="4" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="ThumbVisibilityStates">
+                                    <VisualState x:Name="Visible" />
+                                    <VisualState x:Name="Collapsed">
+                                        <VisualState.Setters>
+                                            <Setter Target="SplitterThumb.Visibility" Value="Collapsed" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Rectangle
+                                x:Name="SplitterThumb"
+                                Width="4"
+                                Height="24"
+                                Margin="{TemplateBinding Padding}"
+                                Fill="{TemplateBinding Foreground}"
+                                RadiusX="2"
+                                RadiusY="2" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid
+        x:Name="Root"
+        Padding="{Binding RootPadding}"
+        AllowDrop="True"
+        DragOver="Root_DragOver"
+        Drop="Root_Drop"
+        KeyDown="Root_KeyDown"
+        SizeChanged="Root_SizeChanged">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="ListColumn" Width="252" />
+            <ColumnDefinition x:Name="DividerColumn" Width="20" />
+            <ColumnDefinition x:Name="DetailColumn" Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Grid x:Name="ListPane" Grid.Column="0" RowSpacing="{Binding RootRowSpacing}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid x:Name="NavigationHost" Grid.Row="0" ColumnSpacing="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0">
+                    <toolkit:Segmented
+                        x:Name="QuickCaptureViewSegmented"
+                        HorizontalAlignment="Stretch"
+                        FontSize="{Binding SegmentTextSize}"
+                        Loaded="QuickCaptureViewSegmented_Loaded"
+                        MinHeight="{Binding SegmentHeight}"
+                        SelectedIndex="0"
+                        SelectionChanged="QuickCaptureViewSegmented_SelectionChanged"
+                        SizeChanged="QuickCaptureViewSegmented_SizeChanged"
+                        Visibility="{Binding TabBarVisibility}">
+                        <toolkit:SegmentedItem
+                            AllowDrop="True"
+                            DragOver="QuickCaptureTab_DragOver"
+                            Drop="QuickCaptureTab_Drop"
+                            Tag="Records"
+                            ToolTipService.ToolTip="{Binding RecordsTabText}"
+                            Visibility="{Binding RecordsTabVisibility}">
+                            <TextBlock MaxLines="1" Text="{Binding RecordsTabText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </toolkit:SegmentedItem>
+                        <toolkit:SegmentedItem
+                            AllowDrop="True"
+                            DragOver="QuickCaptureTab_DragOver"
+                            Drop="QuickCaptureTab_Drop"
+                            Tag="Pinned"
+                            ToolTipService.ToolTip="{Binding PinnedTabText}"
+                            Visibility="{Binding PinnedTabVisibility}">
+                            <TextBlock MaxLines="1" Text="{Binding PinnedTabText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </toolkit:SegmentedItem>
+                        <toolkit:SegmentedItem
+                            AllowDrop="True"
+                            DragOver="QuickCaptureTab_DragOver"
+                            Drop="QuickCaptureTab_Drop"
+                            Tag="Recent"
+                            ToolTipService.ToolTip="{Binding RecentTabText}"
+                            Visibility="{Binding RecentTabVisibility}">
+                            <TextBlock MaxLines="1" Text="{Binding RecentTabText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </toolkit:SegmentedItem>
+                    </toolkit:Segmented>
+                    <Button
+                        x:Name="CompactSectionButton"
+                        HorizontalAlignment="Stretch"
+                        Click="CompactSectionButton_Click"
+                        Content="随记"
+                        FontSize="{Binding SegmentTextSize}"
+                        MinHeight="{Binding SegmentHeight}"
+                        Padding="{Binding SegmentPadding}"
+                        Style="{StaticResource QuickCaptureSectionButtonStyle}"
+                        Visibility="Collapsed">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Click="CompactSectionMenu_Click" Tag="Records" Text="随记" />
+                                <MenuFlyoutItem Click="CompactSectionMenu_Click" Tag="Pinned" Text="置顶" />
+                                <MenuFlyoutItem Click="CompactSectionMenu_Click" Tag="Recent" Text="剪贴板" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                    <TextBox
+                        x:Name="SearchTextBox"
+                        AutomationProperties.Name="搜索随记"
+                        FontSize="{Binding TextSize}"
+                        Height="{Binding InputHeight}"
+                        KeyDown="SearchTextBox_KeyDown"
+                        Padding="{Binding InputPadding}"
+                        PlaceholderText="搜索"
+                        Style="{StaticResource WidgetSearchTextBoxStyle}"
+                        Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Visibility="{Binding SearchBoxVisibility}" />
+                </Grid>
+                <Button
+                    x:Name="SearchButton"
+                    Grid.Column="1"
+                    AutomationProperties.Name="搜索"
+                    Click="SearchButton_Click"
+                    Height="{Binding InputButtonSize}"
+                    MinHeight="{Binding InputButtonSize}"
+                    MinWidth="{Binding InputButtonSize}"
+                    Style="{StaticResource WidgetCompactIconButtonStyle}"
+                    ToolTipService.ToolTip="搜索"
+                    Visibility="{Binding SearchButtonVisibility}"
+                    Width="{Binding InputButtonSize}">
+                    <FontIcon FontSize="{Binding InputActionIconSize}" Glyph="&#xE721;" />
+                </Button>
+                <Button
+                    x:Name="CloseSearchButton"
+                    Grid.Column="1"
+                    AutomationProperties.Name="关闭搜索"
+                    Click="CloseSearchButton_Click"
+                    Height="{Binding InputButtonSize}"
+                    MinHeight="{Binding InputButtonSize}"
+                    MinWidth="{Binding InputButtonSize}"
+                    Style="{StaticResource WidgetCompactIconButtonStyle}"
+                    Visibility="{Binding SearchBoxVisibility}"
+                    Width="{Binding InputButtonSize}">
+                    <FontIcon FontSize="{Binding InputActionIconSize}" Glyph="&#xE711;" />
+                </Button>
+            </Grid>
+
+            <Grid x:Name="ListHost" Grid.Row="1">
+                <ListView
+                    x:Name="ItemsList"
+                    AllowDrop="True"
+                    Background="Transparent"
+                    CanDragItems="True"
+                    CanReorderItems="True"
+                    DragItemsCompleted="ItemsList_DragItemsCompleted"
+                    DragItemsStarting="ItemsList_DragItemsStarting"
+                    IsItemClickEnabled="True"
+                    ItemClick="ItemsList_ItemClick"
+                    ItemsSource="{Binding Items}"
+                    KeyDown="ItemsList_KeyDown"
+                    PointerCaptureLost="ItemsList_PointerCaptureLost"
+                    PointerMoved="ItemsList_PointerMoved"
+                    PointerPressed="ItemsList_PointerPressed"
+                    PointerReleased="ItemsList_PointerReleased"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.HorizontalScrollMode="Disabled"
+                    SelectionChanged="ItemsList_SelectionChanged"
+                    SelectionMode="Extended"
+                    Visibility="{Binding ListVisibility}">
+                    <ListView.Resources>
+                        <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="Transparent" />
+                    </ListView.Resources>
+                    <ListView.Header>
+                        <Button
+                            x:Name="AddNoteCardButton"
+                            AutomationProperties.Name="新建随记"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            Click="NewNoteButton_Click"
+                            CornerRadius="5"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            Margin="{Binding AddCardMargin}"
+                            MinHeight="{Binding AddCardMinHeight}"
+                            Padding="{Binding AddCardPadding}"
+                            Visibility="{Binding InputAreaVisibility}">
+                            <Grid ColumnSpacing="7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon FontSize="{Binding PrimaryIconSize}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE710;" />
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{Binding TextSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding AddNoteText}" />
+                            </Grid>
+                        </Button>
+                    </ListView.Header>
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="MinHeight" Value="0" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0" />
+                            <Setter Property="UseSystemFocusVisuals" Value="True" />
+                            <Setter Property="Transitions">
+                                <Setter.Value>
+                                    <TransitionCollection>
+                                        <AddDeleteThemeTransition />
+                                        <ReorderThemeTransition />
+                                    </TransitionCollection>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid
+                                x:Name="QuickCaptureItemRoot"
+                                AllowDrop="True"
+                                Background="Transparent"
+                                ColumnSpacing="8"
+                                DoubleTapped="QuickCaptureItem_DoubleTapped"
+                                DragLeave="QuickCaptureItem_DragLeave"
+                                DragOver="QuickCaptureItem_DragOver"
+                                Drop="QuickCaptureItem_Drop"
+                                DataContextChanged="QuickCaptureItem_DataContextChanged"
+                                Loaded="QuickCaptureItem_Loaded"
+                                Margin="{Binding DataContext.ItemMargin, ElementName=ItemsList}"
+                                MinHeight="{Binding ListItemMinHeight}"
+                                Padding="{Binding DataContext.ItemPadding, ElementName=ItemsList}"
+                                PointerEntered="QuickCaptureItem_PointerEntered"
+                                PointerExited="QuickCaptureItem_PointerExited"
+                                PointerPressed="QuickCaptureItem_PointerPressed"
+                                PointerReleased="QuickCaptureItem_PointerReleased"
+                                RightTapped="QuickCaptureItem_RightTapped">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border
+                                    x:Name="ItemMaterialBackground"
+                                    Grid.ColumnSpan="2"
+                                    Margin="{Binding DataContext.ItemChromeMargin, ElementName=ItemsList}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="6"
+                                    IsHitTestVisible="False" />
+                                <Border
+                                    x:Name="ItemSelectionBackground"
+                                    Grid.ColumnSpan="2"
+                                    Margin="{Binding DataContext.ItemChromeMargin, ElementName=ItemsList}"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource AccentFillColorSecondaryBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="5"
+                                    Opacity="0.72"
+                                    Visibility="{Binding SelectionAccentVisibility}" />
+                                <Border
+                                    x:Name="ItemHoverBackground"
+                                    Grid.ColumnSpan="2"
+                                    Margin="{Binding DataContext.ItemChromeMargin, ElementName=ItemsList}"
+                                    Background="{ThemeResource SubtleFillColorTertiaryBrush}"
+                                    CornerRadius="5"
+                                    Opacity="0" />
+                                <StackPanel Grid.Column="0" Spacing="3">
+                                    <TextBlock
+                                        FontSize="{Binding TextSize}"
+                                        LineHeight="{Binding ItemTextLineHeight}"
+                                        MaxLines="{Binding DataContext.ItemPreviewLineCount, ElementName=ItemsList}"
+                                        Text="{Binding DisplayText}"
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock
+                                            FontSize="{Binding SecondaryTextSize}"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Text="{Binding ListTimeText}"
+                                            Visibility="{Binding ListTimeVisibility}" />
+                                        <TextBlock
+                                            FontSize="{Binding SecondaryTextSize}"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Text="{Binding AttachmentSummaryText}"
+                                            Visibility="{Binding AttachmentSummaryVisibility}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <Grid Grid.Column="1" MinWidth="26">
+                                    <FontIcon
+                                        HorizontalAlignment="Center"
+                                        FontSize="{Binding ActionIconSize}"
+                                        Glyph="&#xE840;"
+                                        Visibility="{Binding PinnedVisibility}" />
+                                    <Border x:Name="ItemActionHost" Opacity="0" IsHitTestVisible="False">
+                                        <Button
+                                            AutomationProperties.Name="更多操作"
+                                            Click="ItemMoreButton_Click"
+                                            Height="26"
+                                            MinHeight="26"
+                                            MinWidth="26"
+                                            Padding="0"
+                                            Style="{StaticResource WidgetCompactIconButtonStyle}"
+                                            Tag="{Binding}"
+                                            Width="26">
+                                            <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE712;" />
+                                        </Button>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <StackPanel
+                    x:Name="ListEmptyState"
+                    Margin="18"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="8"
+                    Visibility="{Binding EmptyStateVisibility}">
+                    <FontIcon FontSize="{Binding EmptyIconSize}" Glyph="&#xE70F;" />
+                    <TextBlock
+                        FontSize="{Binding TextSize}"
+                        FontWeight="SemiBold"
+                        HorizontalAlignment="Center"
+                        Text="{Binding EmptyStateTitle}" />
+                    <TextBlock
+                        FontSize="{Binding SecondaryTextSize}"
+                        MaxWidth="260"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{Binding EmptyStateText}"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
+                <Border
+                    x:Name="BulkCommandBar"
+                    Margin="3,0,3,4"
+                    Padding="6,3"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="7"
+                    Visibility="Collapsed">
+                    <Grid ColumnSpacing="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="BulkSelectionCountText" VerticalAlignment="Center" FontSize="{Binding SecondaryTextSize}" Text="已选择 0 项" />
+                        <Button Grid.Column="1" Click="BulkPinButton_Click" Style="{StaticResource QuickCaptureDetailActionButtonStyle}" ToolTipService.ToolTip="置顶"><FontIcon Glyph="&#xE718;" /></Button>
+                        <Button Grid.Column="2" Click="BulkArchiveButton_Click" Style="{StaticResource QuickCaptureDetailActionButtonStyle}" ToolTipService.ToolTip="归档"><FontIcon Glyph="&#xE7B8;" /></Button>
+                        <Button Grid.Column="3" Click="BulkExportButton_Click" Style="{StaticResource QuickCaptureDetailActionButtonStyle}" ToolTipService.ToolTip="导出"><FontIcon Glyph="&#xE74E;" /></Button>
+                        <Button Grid.Column="4" Click="BulkDeleteButton_Click" Style="{StaticResource QuickCaptureDetailActionButtonStyle}" ToolTipService.ToolTip="删除"><FontIcon Glyph="&#xE74D;" /></Button>
+                        <Button Grid.Column="5" Click="ExitBulkSelectionButton_Click" Style="{StaticResource QuickCaptureDetailActionButtonStyle}" ToolTipService.ToolTip="完成"><FontIcon Glyph="&#xE711;" /></Button>
+                    </Grid>
+                </Border>
+
+                <Canvas x:Name="SelectionOverlay" IsHitTestVisible="False">
+                    <Border
+                        x:Name="SelectionRectangle"
+                        Background="{ThemeResource AccentFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Visibility="Collapsed" />
+                </Canvas>
+            </Grid>
+        </Grid>
+
+        <toolkit:GridSplitter
+            x:Name="PaneSplitter"
+            Grid.Column="1"
+            HorizontalAlignment="Stretch"
+            AutomationProperties.Name="调整列表和详情宽度"
+            Canvas.ZIndex="2"
+            DoubleTapped="PaneSplitter_DoubleTapped"
+            DragIncrement="1"
+            IsThumbVisible="True"
+            KeyboardIncrement="8"
+            KeyUp="PaneSplitter_KeyUp"
+            ManipulationCompleted="PaneSplitter_ManipulationCompleted"
+            ResizeBehavior="PreviousAndNext"
+            ResizeDirection="Columns"
+            Style="{StaticResource QuickCapturePaneSplitterStyle}"
+            ToolTipService.ToolTip="拖动调整宽度；双击复位" />
+
+        <Border
+            x:Name="DetailPane"
+            Grid.Column="2"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="Transparent"
+            BorderThickness="0"
+            CornerRadius="8">
+            <Grid Padding="8" RowSpacing="5">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="DetailAppearanceTint"
+                    Grid.RowSpan="2"
+                    Margin="-8"
+                    CornerRadius="8"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed" />
+                <Border
+                    x:Name="DetailPaperInset"
+                    Grid.RowSpan="2"
+                    Margin="-8"
+                    BorderBrush="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="8"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed" />
+                <CommandBar
+                    x:Name="DetailCommandBar"
+                    Background="Transparent"
+                    DefaultLabelPosition="Collapsed"
+                    Height="36"
+                    MinHeight="34"
+                    IsDynamicOverflowEnabled="True">
+                    <CommandBar.Resources>
+                        <Style TargetType="AppBarButton" BasedOn="{StaticResource QuickCaptureCompactAppBarButtonStyle}" />
+                        <Style TargetType="AppBarToggleButton" BasedOn="{StaticResource QuickCaptureCompactAppBarToggleButtonStyle}" />
+                    </CommandBar.Resources>
+                    <AppBarButton
+                        x:Name="BackButton"
+                        Click="BackButton_Click"
+                        Icon="Back"
+                        Label="返回" />
+                    <AppBarButton
+                        x:Name="EditButton"
+                        Click="EditButton_Click"
+                        Icon="Edit"
+                        Label="编辑" />
+                    <AppBarButton
+                        x:Name="DoneEditingButton"
+                        Click="DoneEditingButton_Click"
+                        Icon="Accept"
+                        Label="完成"
+                        Visibility="Collapsed" />
+                    <AppBarToggleButton
+                        x:Name="EditorPreviewModeButton"
+                        Click="EditorPreviewModeButton_Click"
+                        Icon="View"
+                        Label="预览"
+                        Visibility="Collapsed" />
+                    <AppBarButton
+                        x:Name="PinButton"
+                        Click="PinButton_Click"
+                        Label="置顶">
+                        <AppBarButton.Icon><FontIcon Glyph="&#xE718;" /></AppBarButton.Icon>
+                    </AppBarButton>
+                    <CommandBar.SecondaryCommands>
+                        <AppBarButton x:Name="CopyButton" Click="CopyButton_Click" Icon="Copy" Label="复制" />
+                        <AppBarButton x:Name="CopyMarkdownButton" Click="CopyMarkdownButton_Click" Icon="Copy" Label="复制 Markdown" />
+                        <AppBarButton x:Name="ExportNoteButton" Click="ExportNoteButton_Click" Icon="Save" Label="导出 .md" />
+                        <AppBarButton x:Name="EditTagsButton" Click="EditTagsButton_Click" Label="标签"><AppBarButton.Icon><FontIcon Glyph="&#xE8EC;" /></AppBarButton.Icon></AppBarButton>
+                        <AppBarButton x:Name="AppearanceButton" Label="外观">
+                            <FontIcon Glyph="&#xE790;" />
+                            <AppBarButton.Flyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Click="AppearanceMenuItem_Click" Tag="Default" Text="默认" />
+                                    <MenuFlyoutItem Click="AppearanceMenuItem_Click" Tag="Paper" Text="纸张" />
+                                    <MenuFlyoutItem Click="AppearanceMenuItem_Click" Tag="StickyYellow" Text="便签黄" />
+                                    <MenuFlyoutItem Click="AppearanceMenuItem_Click" Tag="Rose" Text="玫瑰" />
+                                    <MenuFlyoutItem Click="AppearanceMenuItem_Click" Tag="Mint" Text="薄荷" />
+                                    <MenuFlyoutItem Click="AppearanceMenuItem_Click" Tag="MistBlue" Text="雾蓝" />
+                                </MenuFlyout>
+                            </AppBarButton.Flyout>
+                        </AppBarButton>
+                        <AppBarButton x:Name="HistoryButton" Click="HistoryButton_Click" Label="版本历史"><AppBarButton.Icon><FontIcon Glyph="&#xE81C;" /></AppBarButton.Icon></AppBarButton>
+                        <AppBarButton x:Name="ArchiveButton" Click="ArchiveButton_Click" Label="归档"><AppBarButton.Icon><FontIcon Glyph="&#xE7B8;" /></AppBarButton.Icon></AppBarButton>
+                        <AppBarButton x:Name="DeleteNoteButton" Click="DeleteButton_Click" Icon="Delete" Label="移到回收站" />
+                        <AppBarButton x:Name="ViewButton" Label="视图">
+                            <AppBarButton.Icon><FontIcon Glyph="&#xE890;" /></AppBarButton.Icon>
+                            <AppBarButton.Flyout>
+                                <MenuFlyout>
+                                    <ToggleMenuFlyoutItem x:Name="AutoLayoutMenuItem" Click="LayoutMenuItem_Click" IsChecked="True" Tag="Auto" Text="自动布局" />
+                                    <ToggleMenuFlyoutItem x:Name="SingleLayoutMenuItem" Click="LayoutMenuItem_Click" Tag="Single" Text="单栏" />
+                                    <ToggleMenuFlyoutItem x:Name="DualLayoutMenuItem" Click="LayoutMenuItem_Click" Tag="Dual" Text="双栏" />
+                                    <MenuFlyoutSeparator />
+                                    <ToggleMenuFlyoutItem x:Name="SplitPreviewMenuItem" Click="SplitPreviewMenuItem_Click" Text="编辑器与预览并排" />
+                                    <ToggleMenuFlyoutItem x:Name="FocusModeMenuItem" Click="FocusModeMenuItem_Click" Text="专注模式" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem Click="OpenSettingsButton_Click" Text="打开随记设置" />
+                                </MenuFlyout>
+                            </AppBarButton.Flyout>
+                        </AppBarButton>
+                    </CommandBar.SecondaryCommands>
+                </CommandBar>
+
+                <Grid Grid.Row="1">
+                    <StackPanel
+                        x:Name="NoSelectionPanel"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        MaxWidth="260"
+                        Spacing="6">
+                        <FontIcon
+                            FontSize="22"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE70F;" />
+                        <TextBlock
+                            FontSize="{Binding SecondaryTextSize}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            HorizontalAlignment="Center"
+                            Text="选择左侧随记开始阅读"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Grid x:Name="ReadingSurface" Visibility="Collapsed">
+                        <ScrollViewer x:Name="ReadingScrollViewer">
+                            <StackPanel MaxWidth="920" Padding="0,4,4,20" Spacing="12">
+                                <TextBlock
+                                    x:Name="ReadingTitle"
+                                    FontSize="{Binding TitleTextSize}"
+                                    FontWeight="SemiBold"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="ReadingUpdatedAt"
+                                    FontSize="{Binding SecondaryTextSize}"
+                                    Style="{StaticResource QuickCaptureMetaTextStyle}" />
+                                <controls:QuickCaptureMarkdownView
+                                    x:Name="ReadingMarkdownView"
+                                    FontSize="{Binding TextSize}"
+                                    TaskToggleRequested="MarkdownView_TaskToggleRequested" />
+                                <ItemsControl x:Name="ReadingAttachmentsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button
+                                                Click="AttachmentButton_Click"
+                                                HorizontalAlignment="Left"
+                                                Style="{StaticResource QuickCaptureTouchButtonStyle}"
+                                                Tag="{Binding}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <FontIcon Glyph="&#xE723;" />
+                                                    <TextBlock FontSize="{Binding DataContext.TextSize, ElementName=Root}" Text="{Binding DisplayName}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <ItemsControl x:Name="ReadingTagsList">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsWrapGrid Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border
+                                                Margin="0,0,6,6"
+                                                Padding="8,3"
+                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                CornerRadius="10">
+                                                <TextBlock FontSize="{Binding DataContext.SecondaryTextSize, ElementName=Root}" Text="{Binding}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <Grid x:Name="EditorSurface" RowSpacing="6" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <TextBox
+                                x:Name="EditorTitleTextBox"
+                                AutomationProperties.Name="随记标题"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                FontSize="{Binding TitleTextSize}"
+                                FontWeight="SemiBold"
+                                GotFocus="EditorField_GotFocus"
+                                LostFocus="EditorField_LostFocus"
+                                Padding="10,6"
+                                PlaceholderText="标题"
+                                TextChanged="EditorTextBox_TextChanged" />
+                        </Grid>
+                        <Border
+                            x:Name="FormattingToolbarHost"
+                            Grid.Row="1"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            CornerRadius="0"
+                            Padding="0">
+                            <CommandBar
+                                x:Name="FormattingCommandBar"
+                                Background="Transparent"
+                                DefaultLabelPosition="Collapsed"
+                                Height="36"
+                                HorizontalAlignment="Left"
+                                MinHeight="34"
+                                IsDynamicOverflowEnabled="False"
+                                Padding="0"
+                                PointerPressed="FormattingCommandBar_PointerPressed">
+                                <CommandBar.Resources>
+                                    <Style TargetType="AppBarButton" BasedOn="{StaticResource QuickCaptureFormattingAppBarButtonStyle}" />
+                                </CommandBar.Resources>
+                                <AppBarButton Click="FormatButton_Click" Label="粗体" Tag="Bold"><FontIcon FontFamily="Segoe UI Variable Text" FontSize="17" FontWeight="Bold" Glyph="B" Margin="0,-2,0,2" /></AppBarButton>
+                                <AppBarButton x:Name="FormattingItalicButton" Click="FormatButton_Click" Label="斜体" Tag="Italic"><FontIcon FontFamily="Segoe UI Variable Text" FontSize="17" FontStyle="Italic" Glyph="I" Margin="0,-2,0,2" /></AppBarButton>
+                                <AppBarButton x:Name="FormattingHeadingButton" Click="FormatButton_Click" Label="标题" Tag="Heading"><FontIcon Glyph="&#xE8D2;" /></AppBarButton>
+                                <AppBarButton Click="FormatButton_Click" Label="列表" Tag="List"><FontIcon Glyph="&#xEA37;" /></AppBarButton>
+                                <AppBarButton Click="FormatButton_Click" Label="任务" Tag="Task"><FontIcon Glyph="&#xE73A;" /></AppBarButton>
+                                <AppBarButton x:Name="FormattingLinkButton" Click="FormatButton_Click" Label="链接" Tag="Link"><FontIcon Glyph="&#xE71B;" /></AppBarButton>
+                                <AppBarButton x:Name="FormattingMoreButton" Click="FormattingMoreButton_Click" Label="更多格式">
+                                    <AppBarButton.Icon><FontIcon Glyph="&#xE712;" /></AppBarButton.Icon>
+                                </AppBarButton>
+                            </CommandBar>
+                        </Border>
+                        <Grid Grid.Row="2" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="SourceColumn" Width="*" />
+                                <ColumnDefinition x:Name="PreviewColumn" Width="0" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="EditorBodyTextBox"
+                                AcceptsReturn="True"
+                                AutomationProperties.Name="Markdown 源码编辑器"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                FontSize="{Binding TextSize}"
+                                FontFamily="Cascadia Mono, Microsoft YaHei UI"
+                                GotFocus="EditorField_GotFocus"
+                                IsSpellCheckEnabled="True"
+                                KeyDown="EditorBodyTextBox_KeyDown"
+                                LostFocus="EditorBodyTextBox_LostFocus"
+                                Padding="10,8"
+                                PlaceholderText="使用 Markdown 记录…"
+                                SelectionChanged="EditorBodyTextBox_SelectionChanged"
+                                TextChanged="EditorTextBox_TextChanged"
+                                TextWrapping="Wrap" />
+                            <Border
+                                x:Name="EditorPreviewPane"
+                                Grid.Column="1"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="0"
+                                CornerRadius="6"
+                                Padding="10,8"
+                                Visibility="Collapsed">
+                                <ScrollViewer>
+                                    <controls:QuickCaptureMarkdownView
+                                        x:Name="EditorMarkdownPreview"
+                                        FontSize="{Binding TextSize}"
+                                        TaskToggleRequested="MarkdownView_TaskToggleRequested" />
+                                </ScrollViewer>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

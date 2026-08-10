@@ -59,6 +59,7 @@ public sealed partial class TodoWidgetContent : UserControl
     private List<TodoItemViewModel> _selectionSnapshot = [];
     private HashSet<TodoItemViewModel> _selectionPreviewItems = [];
     private List<TodoSelectionHitTestItem> _selectionHitTestItems = [];
+    private TodoWorkspaceSurface? _workspaceSurface;
 
     private TextBox TodoEditTextBox => TodoInlineEditor.EditorTextBox;
 
@@ -92,6 +93,12 @@ public sealed partial class TodoWidgetContent : UserControl
 
     public void RevealReminderItem(string? itemId, bool preferTodayFilter)
     {
+        if (_workspaceSurface is not null)
+        {
+            _workspaceSurface.RevealTask(itemId, preferTodayFilter);
+            return;
+        }
+
         if (ViewModel is null)
         {
             return;
@@ -123,6 +130,7 @@ public sealed partial class TodoWidgetContent : UserControl
             if (value is not null)
             {
                 value.PropertyChanged += ViewModel_PropertyChanged;
+                TryEnableWorkspaceSurface(value);
             }
 
             RefreshFilterButtons();
@@ -191,6 +199,11 @@ public sealed partial class TodoWidgetContent : UserControl
         double targetContentHeight,
         bool isCollapsing)
     {
+        if (_workspaceSurface is not null)
+        {
+            _workspaceSurface.BeginResponsiveLayoutTransition(targetContentWidth, targetContentHeight);
+            return;
+        }
         _isResponsiveLayoutTransitionActive = true;
     }
 
@@ -198,11 +211,21 @@ public sealed partial class TodoWidgetContent : UserControl
         double finalContentWidth,
         double finalContentHeight)
     {
+        if (_workspaceSurface is not null)
+        {
+            _workspaceSurface.CompleteResponsiveLayoutTransition(finalContentWidth, finalContentHeight);
+            return;
+        }
         FinishResponsiveLayoutTransition();
     }
 
     internal void CancelResponsiveLayoutTransition()
     {
+        if (_workspaceSurface is not null)
+        {
+            _workspaceSurface.CancelResponsiveLayoutTransition();
+            return;
+        }
         FinishResponsiveLayoutTransition();
     }
 
@@ -327,6 +350,12 @@ public sealed partial class TodoWidgetContent : UserControl
 
     public void OpenAddEditor()
     {
+        if (_workspaceSurface is not null)
+        {
+            _workspaceSurface.FocusQuickAdd();
+            return;
+        }
+
         if (ViewModel is null)
         {
             return;
@@ -342,6 +371,38 @@ public sealed partial class TodoWidgetContent : UserControl
             DetailTitleTextBox.Focus(FocusState.Programmatic);
             DetailTitleTextBox.SelectAll();
         });
+    }
+
+    private void TryEnableWorkspaceSurface(TodoWidgetViewModel viewModel)
+    {
+        if (viewModel.WorkspaceService is null || _workspaceSurface is not null)
+        {
+            return;
+        }
+
+        foreach (UIElement child in RootGrid.Children.ToArray())
+        {
+            child.Visibility = Visibility.Collapsed;
+        }
+
+        RootGrid.Padding = new Thickness(0);
+        RootGrid.RowSpacing = 0;
+        if (!Resources.TryGetValue("TodoWorkspaceTaskCardTemplate", out object? templateValue) ||
+            templateValue is not DataTemplate taskTemplate)
+        {
+            throw new InvalidOperationException("The compiled Todo workspace task template is unavailable.");
+        }
+
+        _workspaceSurface = new TodoWorkspaceSurface(viewModel, taskTemplate);
+        Grid.SetRowSpan(_workspaceSurface, 3);
+        Canvas.SetZIndex(_workspaceSurface, 20);
+        RootGrid.Children.Add(_workspaceSurface);
+    }
+
+    internal void DisposeWorkspaceSurface()
+    {
+        _workspaceSurface?.Dispose();
+        _workspaceSurface = null;
     }
 
     private void AddCard_Click(object sender, RoutedEventArgs e)

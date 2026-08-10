@@ -394,7 +394,9 @@ public partial class SettingsViewModel
 
         _settingsService.Settings.QuickCaptureRecentLimit = normalizedValue;
         _settingsService.SaveDebounced();
-        _ = App.Current.QuickCaptureService.TrimRecentItemsAsync(normalizedValue);
+        _ = App.Current.QuickCaptureService.TrimRecentItemsAsync(
+            normalizedValue,
+            _settingsService.Settings.QuickCaptureClipboardRetentionDays);
         OnPropertyChanged(nameof(QuickCaptureRecentLimitText));
         OnPropertyChanged(nameof(QuickCaptureRecentLimitInput));
     }

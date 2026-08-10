@@ -1414,6 +1414,153 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             Description="{Binding QuickCaptureStatusText}"
                             HorizontalContentAlignment="Right"
                             svc:Localized.HeaderKey="Settings.QuickCapture.EnableTitle">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8A5;" /></toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.General.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.General.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.DefaultFormat.Description" svc:Localized.HeaderKey="Settings.QuickCapture.DefaultFormat.Title">
+                            <ComboBox MinWidth="180" ItemsSource="{Binding AvailableQuickCaptureFormatOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureDefaultFormat, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.OpenMode.Description" svc:Localized.HeaderKey="Settings.QuickCapture.OpenMode.Title">
+                            <ComboBox MinWidth="180" ItemsSource="{Binding AvailableQuickCaptureOpenModeOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureExistingNoteOpenMode, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.Layout.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.Layout.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.QuickCapture.Layout.Title">
+                            <ComboBox MinWidth="180" ItemsSource="{Binding AvailableQuickCaptureLayoutOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureDefaultLayout, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.QuickCapture.Density.Title">
+                            <ComboBox MinWidth="180" ItemsSource="{Binding AvailableQuickCaptureDensityOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureListDensity, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.ContentEditor.PreviewLines.Description"
+                            svc:Localized.HeaderKey="Settings.ContentEditor.PreviewLines.Title">
+                            <ComboBox
+                                MinWidth="180"
+                                ItemsSource="{Binding AvailableItemPreviewLineCountOptions}"
+                                controls:SettingsComboBox.Value="{Binding QuickCaptureItemPreviewLineCount, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.QuickCapture.Time.Title">
+                            <ComboBox MinWidth="180" ItemsSource="{Binding AvailableQuickCaptureTimeDisplayOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureTimeDisplay, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.WideEditor.Description" svc:Localized.HeaderKey="Settings.QuickCapture.WideEditor.Title">
+                            <ComboBox MinWidth="180" ItemsSource="{Binding AvailableQuickCaptureWideEditorOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureWideEditorView, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.Tabs.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.Tabs.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Tabs.ShowBar">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureShowTabBar, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            IsEnabled="{Binding QuickCaptureShowTabBar}"
+                            svc:Localized.DescriptionKey="Settings.QuickCapture.DefaultView.Description"
+                            svc:Localized.HeaderKey="Settings.QuickCapture.DefaultView.Title">
+                            <ComboBox
+                                MinWidth="180"
+                                ItemsSource="{Binding AvailableQuickCaptureDefaultViewOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedQuickCaptureDefaultView, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureShowTabBar}" svc:Localized.HeaderKey="Settings.QuickCapture.TabStyle.Title">
+                            <ComboBox
+                                MinWidth="180"
+                                ItemsSource="{Binding AvailableQuickCaptureTabStyleOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedQuickCaptureTabStyle, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureShowTabBar}" svc:Localized.HeaderKey="Settings.QuickCapture.Tabs.Records">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureShowRecordsTab, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureShowTabBar}" svc:Localized.HeaderKey="Settings.QuickCapture.Tabs.Pinned">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureShowPinnedTab, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureShowTabBar}" svc:Localized.HeaderKey="Settings.QuickCapture.Tabs.Recent">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureShowRecentTab, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.Markdown.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.Markdown.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.RemoteImages.Description" svc:Localized.HeaderKey="Settings.QuickCapture.RemoteImages.Title">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureAllowRemoteImages, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.AttachmentStorageMode.Description" svc:Localized.HeaderKey="Settings.AttachmentStorageMode.Title">
+                            <ComboBox MinWidth="180" ItemsSource="{Binding AvailableAttachmentStorageModeOptions}" controls:SettingsComboBox.Value="{Binding SelectedAttachmentStorageMode, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.Privacy.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.Privacy.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard ContentAlignment="Vertical" HorizontalContentAlignment="Stretch" Description="{Binding QuickCaptureClipboardDiagnosticsText}" svc:Localized.HeaderKey="Settings.QuickCapture.ClipboardTitle">
+                            <ToggleSwitch x:Name="QuickCaptureClipboardToggleV2" MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureClipboardEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureClipboardEnabled}" svc:Localized.HeaderKey="Settings.QuickCapture.ImageClipboardTitle">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureImageClipboardEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Description="{Binding QuickCaptureRecentLimitText}" HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureClipboardEnabled}" svc:Localized.HeaderKey="Settings.QuickCapture.HistoryLimit.Title">
+                            <NumberBox Style="{StaticResource CompactNumberBoxStyle}" Minimum="10" Maximum="100" Value="{Binding QuickCaptureRecentLimit, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureClipboardEnabled}" svc:Localized.HeaderKey="Settings.QuickCapture.ClipboardRetention.Title">
+                            <NumberBox Style="{StaticResource CompactNumberBoxStyle}" Minimum="1" Maximum="3650" Value="{Binding QuickCaptureClipboardRetentionDays, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard ContentAlignment="Vertical" HorizontalContentAlignment="Stretch" IsEnabled="{Binding QuickCaptureClipboardEnabled}" svc:Localized.DescriptionKey="Settings.QuickCapture.ExcludedApps.Description" svc:Localized.HeaderKey="Settings.QuickCapture.ExcludedApps.Title">
+                            <TextBox AcceptsReturn="True" MinHeight="72" PlaceholderText="password-manager.exe" Text="{Binding QuickCaptureClipboardExcludedAppsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" TextWrapping="Wrap" />
+                        </toolkit:SettingsCard>
+
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.Recovery.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.QuickCapture.Group.Recovery.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.QuickCapture.Trash.Title">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureTrashEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureTrashEnabled}" svc:Localized.HeaderKey="Settings.QuickCapture.TrashRetention.Title">
+                            <NumberBox Style="{StaticResource CompactNumberBoxStyle}" Minimum="1" Maximum="3650" Value="{Binding QuickCaptureTrashRetentionDays, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.QuickCapture.Revisions.Title">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding QuickCaptureRevisionHistoryEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding QuickCaptureRevisionHistoryEnabled}" svc:Localized.HeaderKey="Settings.QuickCapture.RevisionRetention.Title">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <NumberBox Header="天" Style="{StaticResource CompactNumberBoxStyle}" Minimum="1" Maximum="3650" Value="{Binding QuickCaptureRevisionRetentionDays, Mode=TwoWay}" />
+                                <NumberBox Header="每条上限" Style="{StaticResource CompactNumberBoxStyle}" Minimum="1" Maximum="500" Value="{Binding QuickCaptureRevisionLimitPerNote, Mode=TwoWay}" />
+                            </StackPanel>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.ImportExport.Description" svc:Localized.HeaderKey="Settings.QuickCapture.ImportExport.Title">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Click="ImportQuickCaptureMarkdownButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.Key="Common.Import" />
+                                <Button Click="ExportQuickCaptureMarkdownButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.Key="Common.Export" />
+                            </StackPanel>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Description="{Binding QuickCaptureImageCacheText}" HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.QuickCapture.ImageCacheTitle">
+                            <Button Click="CleanupQuickCaptureImageCacheButton_Click" IsEnabled="{Binding CanClearQuickCaptureImageCache}" Style="{StaticResource ActionButtonStyle}" svc:Localized.Key="Common.Cleanup" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.ClearRecentDescription" svc:Localized.HeaderKey="Settings.QuickCapture.ClearRecentTitle">
+                            <Button Click="ClearQuickCaptureRecentButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.Key="Common.Delete" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.ClearDescription" svc:Localized.HeaderKey="Settings.QuickCapture.ClearTitle">
+                            <Button Click="ClearQuickCaptureDataButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.Key="Common.Delete" />
+                        </toolkit:SettingsCard>
+                    </StackPanel>
+
+                    <!-- Compatibility bindings retained for one migration cycle; no longer user-facing. -->
+                    <StackPanel Margin="0,8,0,0" Spacing="4" Visibility="Collapsed">
+                        <toolkit:SettingsCard
+                            Description="{Binding QuickCaptureStatusText}"
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.HeaderKey="Settings.QuickCapture.EnableTitle">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE8A5;" />
                             </toolkit:SettingsCard.HeaderIcon>
@@ -1611,149 +1758,128 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                     Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
                         <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
-                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo.Tabs.Title" />
-                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo.Tabs.Description" />
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo2.QuickRecord.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo2.QuickRecord.Description" />
                         </StackPanel>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Tabs.ShowBar">
-                                    <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowTabBar, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.DefaultFilter.Title">
-                                    <ComboBox
-                                        MinWidth="150"
-                                        ItemsSource="{Binding AvailableTodoDefaultFilterOptions}"
-                                        controls:SettingsComboBox.Value="{Binding SelectedTodoDefaultFilter, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.TabStyle.Title">
-                                    <ComboBox
-                                        MinWidth="150"
-                                        ItemsSource="{Binding AvailableTodoTabStyleOptions}"
-                                        controls:SettingsComboBox.Value="{Binding SelectedTodoTabStyle, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.All"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowAllTab, Mode=TwoWay}" /></toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.Active"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowActiveTab, Mode=TwoWay}" /></toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.Today"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowTodayTab, Mode=TwoWay}" /></toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.ThisWeek"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowThisWeekTab, Mode=TwoWay}" /></toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.ThisMonth"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowThisMonthTab, Mode=TwoWay}" /></toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.Important"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowImportantTab, Mode=TwoWay}" /></toolkit:SettingsCard>
-                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo.Tabs.Completed"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoShowCompletedTab, Mode=TwoWay}" /></toolkit:SettingsCard>
-
-
-                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
-                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.ContentEditor.Group.Title" />
-                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.ContentEditor.Group.Description" />
-                        </StackPanel>
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.ContentEditor.PreviewLines.Description"
-                                    svc:Localized.HeaderKey="Settings.ContentEditor.PreviewLines.Title">
-                                    <ComboBox
-                                        MinWidth="260"
-                                        ItemsSource="{Binding AvailableItemPreviewLineCountOptions}"
-                                        controls:SettingsComboBox.Value="{Binding TodoItemPreviewLineCount, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.ContentEditor.EnterBehavior.Description"
-                                    svc:Localized.HeaderKey="Settings.ContentEditor.EnterBehavior.Title">
-                                    <ComboBox
-                                        MinWidth="260"
-                                        ItemsSource="{Binding AvailableEditorEnterBehaviorOptions}"
-                                        controls:SettingsComboBox.Value="{Binding TodoEditorEnterBehavior, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Todo2.DefaultView.Description"
+                            svc:Localized.HeaderKey="Settings.Todo2.DefaultView.Title">
+                            <ComboBox
+                                MinWidth="190"
+                                ItemsSource="{Binding AvailableTodo2SmartViewOptions}"
+                                controls:SettingsComboBox.Value="{Binding Todo2DefaultSmartView, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.Todo.NewTaskPosition.Description"
                             svc:Localized.HeaderKey="Settings.Todo.NewTaskPosition.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE8CB;" />
-                            </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
-                                MinWidth="150"
+                                MinWidth="190"
                                 ItemsSource="{Binding AvailableTodoNewTaskPositionOptions}"
-                                controls:SettingsComboBox.Value="{Binding SelectedTodoNewTaskPosition, Mode=TwoWay}" />
+                                controls:SettingsComboBox.Value="{Binding Todo2NewTaskPosition, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
-
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.Todo.ReminderEnabled.Description"
-                            svc:Localized.HeaderKey="Settings.Todo.ReminderEnabled.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE916;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch
-                                OnContent=""
-                                OffContent=""
-                                MinWidth="0"
-                                IsOn="{Binding TodoReminderEnabled, Mode=TwoWay}" />
+                            svc:Localized.DescriptionKey="Settings.Todo2.Hotkey.Description"
+                            svc:Localized.HeaderKey="Settings.Todo2.Hotkey.Title">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2HotkeyEnabled, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.Todo.ReminderOffset.Description"
-                            svc:Localized.HeaderKey="Settings.Todo.ReminderOffset.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE823;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox
-                                MinWidth="150"
-                                IsEnabled="{Binding TodoReminderEnabled}"
-                                ItemsSource="{Binding AvailableTodoReminderOffsetOptions}"
-                                controls:SettingsComboBox.Value="{Binding SelectedTodoReminderOffsetMinutes, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.Todo.ShowCompleted.Description"
-                            svc:Localized.HeaderKey="Settings.Todo.ShowCompleted.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE73E;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch
-                                OnContent=""
-                                OffContent=""
-                                MinWidth="0"
-                                IsOn="{Binding TodoShowCompletedTasks, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
+                        <toolkit:SettingsExpander
+                            HorizontalContentAlignment="Stretch"
+                            svc:Localized.DescriptionKey="Settings.Todo2.QuickRecordAdvanced.Description"
+                            svc:Localized.HeaderKey="Settings.Todo2.QuickRecordAdvanced.Title">
+                            <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE8D2;" /></toolkit:SettingsExpander.HeaderIcon>
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.Todo2.NaturalLanguage.Description" svc:Localized.HeaderKey="Settings.Todo2.NaturalLanguage.Title">
+                                    <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2NaturalLanguageParsing, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.Todo2.ContinuousEntry.Description" svc:Localized.HeaderKey="Settings.Todo2.ContinuousEntry.Title">
+                                    <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2ContinuousEntry, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding Todo2HotkeyEnabled}" svc:Localized.HeaderKey="Settings.Todo2.HotkeyGesture.Title">
+                                    <ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2HotkeyOptions}" controls:SettingsComboBox.Value="{Binding Todo2HotkeyGesture, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
 
                         <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
-                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo.Group.FooterActions.Title" />
-                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo.Group.FooterActions.Description" />
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo2.Calendar.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo2.Calendar.Description" />
                         </StackPanel>
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Todo.ShowFooterStats.Description"
-                                    svc:Localized.HeaderKey="Settings.Todo.ShowFooterStats.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding TodoShowFooterStats, Mode=TwoWay}" />
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.DefaultDisplayMode.Title">
+                            <ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2DisplayModeOptions}" controls:SettingsComboBox.Value="{Binding Todo2DefaultDisplayMode, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.WeekStart.Title">
+                            <ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2WeekStartOptions}" controls:SettingsComboBox.Value="{Binding Todo2WeekStart, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsExpander HorizontalContentAlignment="Stretch" svc:Localized.DescriptionKey="Settings.Todo2.CalendarAdvanced.Description" svc:Localized.HeaderKey="Settings.Todo2.CalendarAdvanced.Title">
+                            <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE787;" /></toolkit:SettingsExpander.HeaderIcon>
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.CalendarSlot.Title"><ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2SlotOptions}" controls:SettingsComboBox.Value="{Binding Todo2CalendarSlotMinutes, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.DefaultDuration.Title"><ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2DurationOptions}" controls:SettingsComboBox.Value="{Binding Todo2DefaultDurationMinutes, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.WorkdayStart.Title"><NumberBox Style="{StaticResource CompactNumberBoxStyle}" Minimum="0" Maximum="22" Value="{Binding Todo2WorkdayStartHour, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.WorkdayEnd.Title"><NumberBox Style="{StaticResource CompactNumberBoxStyle}" Minimum="1" Maximum="24" Value="{Binding Todo2WorkdayEndHour, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.ShowWeekNumbers.Title"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2ShowWeekNumbers, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.UnscheduledPool.Title"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2ShowUnscheduledPool, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard Description="{Binding Todo2CalendarSourcesSummary}" HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.CalendarSources.Title">
+                                    <Button Click="ManageTodoCalendarSourcesButton_Click" Style="{StaticResource ActionButtonStyle}"><TextBlock svc:Localized.Key="Common.Manage" /></Button>
                                 </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
 
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Todo.ShowClearCompleted.Description"
-                                    svc:Localized.HeaderKey="Settings.Todo.ShowClearCompleted.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding TodoShowClearCompletedButton, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo2.Reminders.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo2.Reminders.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.ReminderEnabled.Title"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2ReminderEnabled, Mode=TwoWay}" /></toolkit:SettingsCard>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" IsEnabled="{Binding Todo2ReminderEnabled}" svc:Localized.HeaderKey="Settings.Todo2.ReminderOffset.Title">
+                            <ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2ReminderOffsetOptions}" controls:SettingsComboBox.Value="{Binding Todo2DefaultReminderOffsetMinutes, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsExpander HorizontalContentAlignment="Stretch" svc:Localized.HeaderKey="Settings.Todo2.ReminderAdvanced.Title">
+                            <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE916;" /></toolkit:SettingsExpander.HeaderIcon>
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.AddDefaultReminder.Title"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2AddDefaultReminder, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.Snooze.Title"><ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2SnoozeOptions}" controls:SettingsComboBox.Value="{Binding Todo2DefaultSnoozeMinutes, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.RecurrenceMode.Title"><ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2RecurrenceModeOptions}" controls:SettingsComboBox.Value="{Binding Todo2DefaultRecurrenceMode, Mode=TwoWay}" /></toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
 
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Todo.ConfirmBeforeDelete.Description"
-                                    svc:Localized.HeaderKey="Settings.Todo.ConfirmBeforeDelete.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding TodoConfirmBeforeDelete, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo2.Notes.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo2.Notes.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.AttachmentMode.Title"><ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2AttachmentModeOptions}" controls:SettingsComboBox.Value="{Binding Todo2AttachmentStorageMode, Mode=TwoWay}" /></toolkit:SettingsCard>
+                        <toolkit:SettingsExpander HorizontalContentAlignment="Stretch" svc:Localized.DescriptionKey="Settings.Todo2.MarkdownSecurity.Description" svc:Localized.HeaderKey="Settings.Todo2.MarkdownSecurity.Title">
+                            <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsExpander.HeaderIcon>
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.Todo2.RemoteImages.Description" svc:Localized.HeaderKey="Settings.Todo2.RemoteImages.Title"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2AllowRemoteImages, Mode=TwoWay}" /></toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
 
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo2.Completion.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo2.Completion.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.CompletedVisibility.Title"><ComboBox MinWidth="190" ItemsSource="{Binding AvailableTodo2CompletedVisibilityOptions}" controls:SettingsComboBox.Value="{Binding Todo2CompletedVisibility, Mode=TwoWay}" /></toolkit:SettingsCard>
+                        <toolkit:SettingsExpander HorizontalContentAlignment="Stretch" svc:Localized.HeaderKey="Settings.Todo2.DataAdvanced.Title">
+                            <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE8B7;" /></toolkit:SettingsExpander.HeaderIcon>
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.TrashRetention.Title"><NumberBox Style="{StaticResource CompactNumberBoxStyle}" Minimum="1" Maximum="3650" Value="{Binding Todo2TrashRetentionDays, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.AutoPurge.Title"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2AutoPurgeTrash, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.ConfirmPermanentDelete.Title"><ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding Todo2ConfirmPermanentDelete, Mode=TwoWay}" /></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.Backup.Title"><Button Click="BackupTodoDataButton_Click" Style="{StaticResource ActionButtonStyle}"><TextBlock svc:Localized.Key="Settings.Todo2.Backup.Action" /></Button></toolkit:SettingsCard>
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Settings.Todo2.Clear.Title"><Button Click="ClearTodoDataButton_Click" Style="{StaticResource ActionButtonStyle}"><TextBlock svc:Localized.Key="Common.Delete" /></Button></toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
+
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo2.Organization.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo2.Organization.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.Todo2.Organization.Manage.Description" svc:Localized.HeaderKey="Settings.Todo2.Organization.Manage.Title">
+                            <Button Click="OpenTodoWorkspaceButton_Click" Style="{StaticResource ActionButtonStyle}"><TextBlock svc:Localized.Key="Settings.Todo2.Organization.Open" /></Button>
+                        </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
 

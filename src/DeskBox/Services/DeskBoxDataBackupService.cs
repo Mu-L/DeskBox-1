@@ -3,12 +3,13 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeskBox.Models;
+using Microsoft.Data.Sqlite;
 
 namespace DeskBox.Services;
 
 public sealed class DeskBoxDataBackupService
 {
-    private const int BackupSchemaVersion = 2;
+    private const int BackupSchemaVersion = 3;
     private const int MinimumSupportedBackupSchemaVersion = 1;
     private const int MaxAutomaticSnapshotCount = 7;
     private const int MaxPreRestoreBackupCount = 5;
@@ -186,7 +187,7 @@ public sealed class DeskBoxDataBackupService
                 stagedDataDirectory,
                 archiveInfo.Manifest.SourceDataPath,
                 cancellationToken);
-            ValidateRestoreData(stagedDataDirectory);
+            await ValidateRestoreDataAsync(stagedDataDirectory, cancellationToken);
 
             var marker = new PendingRestoreMarker(
                 stagingRoot,
@@ -252,7 +253,7 @@ public sealed class DeskBoxDataBackupService
             }
 
             string stagedDataDirectory = Path.Combine(stagingRoot, "data");
-            ValidateRestoreData(stagedDataDirectory);
+            await ValidateRestoreDataAsync(stagedDataDirectory, cancellationToken);
 
             if (HasBackupSourceData())
             {
@@ -455,11 +456,15 @@ public sealed class DeskBoxDataBackupService
             ValidateIntegrityManifest(manifest.Files, extractedFiles);
         }
 
-        ValidateRestoreData(Path.Combine(stagingRoot, "data"));
+        await ValidateRestoreDataAsync(
+            Path.Combine(stagingRoot, "data"),
+            cancellationToken);
         return new RestoreArchiveInfo(manifest, fileCount, totalUncompressedBytes);
     }
 
-    private static void ValidateRestoreData(string dataDirectory)
+    private static async Task ValidateRestoreDataAsync(
+        string dataDirectory,
+        CancellationToken cancellationToken)
     {
         if (!Directory.Exists(dataDirectory) ||
             !Directory.EnumerateFiles(dataDirectory, "*", SearchOption.AllDirectories).Any())
@@ -476,6 +481,24 @@ public sealed class DeskBoxDataBackupService
         ValidateJsonFileIfPresent<AppSettings>(settingsPath);
         ValidateJsonFileIfPresent<QuickCaptureStoreData>(
             Path.Combine(dataDirectory, "quick-capture", "quick-capture.json"));
+        string quickCaptureDatabase = Path.Combine(
+            dataDirectory,
+            "quick-capture",
+            "quick-capture.db");
+        if (File.Exists(quickCaptureDatabase) &&
+            !await SqliteQuickCaptureRepository.ValidateDatabaseAsync(
+                quickCaptureDatabase,
+                cancellationToken))
+        {
+            throw new InvalidDataException("The Quick Capture database is invalid.");
+        }
+
+        string todoDatabase = Path.Combine(dataDirectory, "todo", "todo.db");
+        if (File.Exists(todoDatabase) &&
+            !await SqliteTodoWorkspaceRepository.ValidateDatabaseAsync(todoDatabase, cancellationToken))
+        {
+            throw new InvalidDataException("The Todo database is invalid.");
+        }
 
         string widgetsDirectory = Path.Combine(dataDirectory, "widgets");
         if (Directory.Exists(widgetsDirectory))
@@ -545,6 +568,29 @@ public sealed class DeskBoxDataBackupService
                     App.Log($"[DataBackup] Skipped invalid Quick Capture backup store: {ex.Message}");
                 }
             }
+        }
+
+        string quickCaptureDatabasePath = Path.Combine(
+            stagedDataDirectory,
+            "quick-capture",
+            "quick-capture.db");
+        if (File.Exists(quickCaptureDatabasePath))
+        {
+            await RebaseQuickCaptureDatabaseAsync(
+                quickCaptureDatabasePath,
+                stagedDataDirectory,
+                sourceDataPath,
+                cancellationToken);
+        }
+
+        string todoDatabasePath = Path.Combine(stagedDataDirectory, "todo", "todo.db");
+        if (File.Exists(todoDatabasePath))
+        {
+            await RebaseTodoDatabaseAsync(
+                todoDatabasePath,
+                stagedDataDirectory,
+                sourceDataPath,
+                cancellationToken);
         }
 
         string widgetsDirectory = Path.Combine(stagedDataDirectory, "widgets");
@@ -634,6 +680,63 @@ public sealed class DeskBoxDataBackupService
             cancellationToken);
     }
 
+    private async Task RebaseQuickCaptureDatabaseAsync(
+        string databasePath,
+        string stagedDataDirectory,
+        string? sourceDataPath,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadWrite
+        }.ToString());
+        await connection.OpenAsync(cancellationToken);
+        using SqliteTransaction transaction = connection.BeginTransaction();
+        var pathChanges = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        await using (SqliteCommand query = connection.CreateCommand())
+        {
+            query.Transaction = transaction;
+            query.CommandText = "SELECT file_path FROM attachments WHERE storage_mode = $managed;";
+            query.Parameters.AddWithValue("$managed", TodoAttachment.ManagedStorageMode);
+            await using SqliteDataReader reader = await query.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                string oldPath = reader.GetString(0);
+                string? rebased = TryRebaseManagedPath(
+                    oldPath,
+                    sourceDataPath,
+                    stagedDataDirectory,
+                    "quick-capture");
+                if (!string.IsNullOrWhiteSpace(rebased) &&
+                    !string.Equals(oldPath, rebased, StringComparison.OrdinalIgnoreCase))
+                {
+                    pathChanges[oldPath] = rebased;
+                }
+            }
+        }
+
+        foreach ((string oldPath, string newPath) in pathChanges)
+        {
+            await using SqliteCommand updateAttachments = connection.CreateCommand();
+            updateAttachments.Transaction = transaction;
+            updateAttachments.CommandText = "UPDATE attachments SET file_path = $new WHERE file_path = $old;";
+            updateAttachments.Parameters.AddWithValue("$new", newPath);
+            updateAttachments.Parameters.AddWithValue("$old", oldPath);
+            await updateAttachments.ExecuteNonQueryAsync(cancellationToken);
+
+            await using SqliteCommand updateNotes = connection.CreateCommand();
+            updateNotes.Transaction = transaction;
+            updateNotes.CommandText = "UPDATE notes SET image_path = $new WHERE image_path = $old;";
+            updateNotes.Parameters.AddWithValue("$new", newPath);
+            updateNotes.Parameters.AddWithValue("$old", oldPath);
+            await updateNotes.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        transaction.Commit();
+    }
+
     private async Task RebaseTodoFileAsync(
         string path,
         string stagedDataDirectory,
@@ -664,6 +767,54 @@ public sealed class DeskBoxDataBackupService
             path,
             JsonSerializer.Serialize(data, s_dataJsonOptions),
             cancellationToken);
+    }
+
+    private async Task RebaseTodoDatabaseAsync(
+        string databasePath,
+        string stagedDataDirectory,
+        string? sourceDataPath,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadWrite,
+            Pooling = false
+        }.ToString());
+        await connection.OpenAsync(cancellationToken);
+        using SqliteTransaction transaction = connection.BeginTransaction();
+        var changes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        await using (SqliteCommand query = connection.CreateCommand())
+        {
+            query.Transaction = transaction;
+            query.CommandText = "SELECT file_path FROM todo_attachments WHERE storage_mode = $managed;";
+            query.Parameters.AddWithValue("$managed", TodoAttachment.ManagedStorageMode);
+            await using SqliteDataReader reader = await query.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                string oldPath = reader.GetString(0);
+                string? rebased = TryRebaseManagedPath(
+                    oldPath,
+                    sourceDataPath,
+                    stagedDataDirectory,
+                    "todo");
+                if (!string.IsNullOrWhiteSpace(rebased) &&
+                    !string.Equals(oldPath, rebased, StringComparison.OrdinalIgnoreCase))
+                {
+                    changes[oldPath] = rebased;
+                }
+            }
+        }
+        foreach ((string oldPath, string newPath) in changes)
+        {
+            await using SqliteCommand update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = "UPDATE todo_attachments SET file_path = $new WHERE file_path = $old;";
+            update.Parameters.AddWithValue("$new", newPath);
+            update.Parameters.AddWithValue("$old", oldPath);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+        transaction.Commit();
     }
 
     private string? TryRebaseManagedPath(
@@ -817,7 +968,7 @@ public sealed class DeskBoxDataBackupService
         try
         {
             await CreateDataSnapshotAsync(snapshotDataDirectory, cancellationToken);
-            ValidateRestoreData(snapshotDataDirectory);
+            await ValidateRestoreDataAsync(snapshotDataDirectory, cancellationToken);
             await CreateArchiveFromSnapshotAsync(
                 archivePath,
                 backupKind,
@@ -1021,6 +1172,34 @@ public sealed class DeskBoxDataBackupService
                 relativePath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
             await CopyStableSnapshotFileAsync(sourcePath, destinationPath, cancellationToken);
+        }
+
+        string quickCaptureDatabase = Path.Combine(
+            DataDirectory,
+            "quick-capture",
+            "quick-capture.db");
+        if (File.Exists(quickCaptureDatabase))
+        {
+            var repository = new SqliteQuickCaptureRepository(
+                new QuickCaptureStore(Path.Combine(DataDirectory, "quick-capture")));
+            await repository.LoadAsync(cancellationToken);
+            await repository.CreateBackupAsync(
+                Path.Combine(
+                    snapshotDataDirectory,
+                    "quick-capture",
+                    "quick-capture.db"),
+                cancellationToken);
+        }
+
+
+        string todoDatabase = Path.Combine(DataDirectory, "todo", "todo.db");
+        if (File.Exists(todoDatabase))
+        {
+            using var repository = new SqliteTodoWorkspaceRepository(Path.Combine(DataDirectory, "todo"));
+            await repository.InitializeAsync(cancellationToken);
+            await repository.CreateBackupAsync(
+                Path.Combine(snapshotDataDirectory, "todo", "todo.db"),
+                cancellationToken);
         }
     }
 
@@ -1265,6 +1444,20 @@ public sealed class DeskBoxDataBackupService
     private static bool ShouldIncludeInBackup(string relativePath)
     {
         if (relativePath.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (relativePath.Equals("quick-capture/quick-capture.db", StringComparison.OrdinalIgnoreCase) ||
+            relativePath.Equals("quick-capture/quick-capture.db-wal", StringComparison.OrdinalIgnoreCase) ||
+            relativePath.Equals("quick-capture/quick-capture.db-shm", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (relativePath.Equals("todo/todo.db", StringComparison.OrdinalIgnoreCase) ||
+            relativePath.Equals("todo/todo.db-wal", StringComparison.OrdinalIgnoreCase) ||
+            relativePath.Equals("todo/todo.db-shm", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }

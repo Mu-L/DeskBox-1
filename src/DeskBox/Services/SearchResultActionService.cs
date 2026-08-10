@@ -10,10 +10,17 @@ namespace DeskBox.Services;
 public sealed class SearchResultActionService
 {
     private readonly SettingsService _settingsService;
+    private readonly QuickCaptureService _quickCaptureService;
+    private readonly TodoWorkspaceService _todoWorkspaceService;
 
-    public SearchResultActionService(SettingsService settingsService)
+    public SearchResultActionService(
+        SettingsService settingsService,
+        TodoWorkspaceService todoWorkspaceService,
+        QuickCaptureService? quickCaptureService = null)
     {
         _settingsService = settingsService;
+        _todoWorkspaceService = todoWorkspaceService;
+        _quickCaptureService = quickCaptureService ?? new QuickCaptureService();
     }
 
     /// <summary>
@@ -38,29 +45,8 @@ public sealed class SearchResultActionService
                 return false;
             }
 
-            var store = new TodoWidgetStore(todoWidget.Id);
-            var data = await store.LoadAsync();
-
             string fileName = Path.GetFileName(path);
-            var item = new TodoItem
-            {
-                Text = fileName,
-                Notes = path,
-                SortOrder = data.Items.Count,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
-            };
-            item.Attachments.Add(new TodoAttachment
-            {
-                FilePath = path,
-                DisplayName = fileName,
-                Type = "file",
-                StorageMode = TodoAttachment.LinkedStorageMode,
-                AddedAt = DateTimeOffset.UtcNow
-            });
-
-            data.Items.Add(item);
-            await store.SaveAsync(data);
+            await _todoWorkspaceService.CreateTaskFromLinkedFileAsync(path);
 
             App.Log($"[SearchAction] Attached '{fileName}' to todo widget '{todoWidget.Id}'.");
             return true;
@@ -84,31 +70,21 @@ public sealed class SearchResultActionService
 
         try
         {
-            var store = new QuickCaptureStore();
-            var data = await store.LoadAsync();
-
             string fileName = Path.GetFileName(path);
-            var item = new QuickCaptureItem
+            QuickCaptureItem? item = await _quickCaptureService.AddItemWithAttachmentsAsync(
+                [path],
+                copyToManagedStorage: false);
+            if (item is null)
             {
-                Type = QuickCaptureItemType.Text,
-                Title = fileName,
-                Body = path,
-                SourceKind = QuickCaptureSourceKind.DragDrop,
-                SortOrder = data.Items.Count,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
-            };
-            item.Attachments.Add(new TodoAttachment
-            {
-                FilePath = path,
-                DisplayName = fileName,
-                Type = "file",
-                StorageMode = TodoAttachment.LinkedStorageMode,
-                AddedAt = DateTimeOffset.UtcNow
-            });
+                return false;
+            }
 
-            data.Items.Insert(0, item);
-            await store.SaveAsync(data);
+            await _quickCaptureService.UpdateItemDetailsAsync(
+                item.Id,
+                fileName,
+                path,
+                QuickCaptureAppearancePreset.Default,
+                QuickCaptureContentFormat.Markdown);
 
             App.Log($"[SearchAction] Saved '{fileName}' to quick capture.");
             return true;

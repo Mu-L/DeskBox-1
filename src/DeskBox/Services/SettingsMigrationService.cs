@@ -20,7 +20,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 6;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -31,6 +31,8 @@ public sealed class SettingsMigrationPipeline
         _migrations.Add(new Migration_1_To_2());
         _migrations.Add(new Migration_2_To_3());
         _migrations.Add(new Migration_3_To_4());
+        _migrations.Add(new Migration_4_To_5());
+        _migrations.Add(new Migration_5_To_6());
     }
 
     /// <summary>
@@ -183,5 +185,73 @@ internal sealed class Migration_3_To_4 : ISettingsMigration
     public void Migrate(AppSettings settings)
     {
         settings.HasResolvedInitialFileWidgetSetup = true;
+    }
+}
+
+/// <summary>
+/// Replaces presentation-implementation switches with user-facing Quick
+/// Capture preferences while preserving the visible behavior of existing
+/// profiles.
+/// </summary>
+internal sealed class Migration_4_To_5 : ISettingsMigration
+{
+    public int FromVersion => 4;
+
+    public void Migrate(AppSettings settings)
+    {
+        settings.QuickCaptureDefaultFormat = "Markdown";
+        settings.QuickCaptureExistingNoteOpenMode = "Read";
+        settings.QuickCaptureDefaultLayout = "Auto";
+        settings.QuickCaptureWideEditorView = "Source";
+        settings.QuickCaptureListDensity = settings.QuickCaptureItemPreviewLineCount <= 2
+            ? "Compact"
+            : settings.QuickCaptureItemPreviewLineCount >= 4
+                ? "Comfortable"
+                : "Standard";
+        settings.QuickCaptureTimeDisplay = settings.QuickCaptureShowCreatedTime
+            ? "Created"
+            : "Updated";
+        settings.QuickCaptureTrashEnabled = true;
+        settings.QuickCaptureTrashRetentionDays = 30;
+        settings.QuickCaptureRevisionHistoryEnabled = true;
+        settings.QuickCaptureRevisionRetentionDays = 30;
+        settings.QuickCaptureRevisionLimitPerNote = 50;
+        settings.QuickCaptureClipboardRetentionDays = 30;
+        settings.QuickCaptureClipboardExcludedApps ??= [];
+    }
+}
+
+/// <summary>
+/// Moves the legacy flat Todo presentation switches into stable, nested
+/// product settings. Flat values are deliberately retained as read-only
+/// migration input for two releases.
+/// </summary>
+internal sealed class Migration_5_To_6 : ISettingsMigration
+{
+    public int FromVersion => 5;
+
+    public void Migrate(AppSettings settings)
+    {
+        settings.Todo ??= new TodoSettings();
+        if (settings.Todo.SchemaVersion >= TodoSettings.CurrentSchemaVersion)
+        {
+            return;
+        }
+
+        settings.Todo.QuickRecord.NewTaskPosition = settings.TodoNewTaskPosition;
+        settings.Todo.QuickRecord.DefaultSmartView = settings.TodoDefaultFilter switch
+        {
+            SettingsService.TodoDefaultFilterToday => TodoSmartView.Today,
+            SettingsService.TodoDefaultFilterImportant => TodoSmartView.Important,
+            SettingsService.TodoDefaultFilterCompleted => TodoSmartView.Completed,
+            _ => TodoSmartView.Today
+        };
+        settings.Todo.RemindersAndRecurrence.Enabled = settings.TodoReminderEnabled;
+        settings.Todo.RemindersAndRecurrence.DefaultOffsetMinutes = settings.TodoDefaultReminderOffsetMinutes;
+        settings.Todo.NotesAndAttachments.AttachmentStorageMode = settings.AttachmentStorageMode;
+        settings.Todo.CompletionAndData.CompletedVisibility = settings.TodoShowCompletedTasks
+            ? TodoCompletedVisibility.Inline
+            : TodoCompletedVisibility.Collapsed;
+        settings.Todo.SchemaVersion = TodoSettings.CurrentSchemaVersion;
     }
 }

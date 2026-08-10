@@ -266,6 +266,21 @@ public sealed class SettingsService
     public const string QuickCaptureDefaultViewRecords = "Records";
     public const string QuickCaptureDefaultViewPinned = "Pinned";
     public const string QuickCaptureDefaultViewRecent = "Recent";
+    public const string QuickCaptureFormatPlainText = "PlainText";
+    public const string QuickCaptureFormatMarkdown = "Markdown";
+    public const string QuickCaptureOpenModeRead = "Read";
+    public const string QuickCaptureOpenModeEdit = "Edit";
+    public const string QuickCaptureLayoutAuto = "Auto";
+    public const string QuickCaptureLayoutSingle = "Single";
+    public const string QuickCaptureLayoutDual = "Dual";
+    public const string QuickCaptureWideEditorSource = "Source";
+    public const string QuickCaptureWideEditorSplit = "Split";
+    public const string QuickCaptureListDensityCompact = "Compact";
+    public const string QuickCaptureListDensityStandard = "Standard";
+    public const string QuickCaptureListDensityComfortable = "Comfortable";
+    public const string QuickCaptureTimeDisplayUpdated = "Updated";
+    public const string QuickCaptureTimeDisplayCreated = "Created";
+    public const string QuickCaptureTimeDisplayHidden = "Hidden";
     public const string WidgetTabStylePivot = "Pivot";
     public const string WidgetTabStyleButton = "Button";
 public const string WeatherTemperatureUnitCelsius = "Celsius";
@@ -423,7 +438,22 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.QuickCaptureShowRecordsTab = true;
         settings.QuickCaptureShowPinnedTab = true;
         settings.QuickCaptureShowRecentTab = true;
+        settings.QuickCaptureDefaultFormat = QuickCaptureFormatMarkdown;
+        settings.QuickCaptureExistingNoteOpenMode = QuickCaptureOpenModeRead;
+        settings.QuickCaptureDefaultLayout = QuickCaptureLayoutAuto;
+        settings.QuickCaptureWideEditorView = QuickCaptureWideEditorSource;
+        settings.QuickCaptureListDensity = QuickCaptureListDensityStandard;
+        settings.QuickCaptureTimeDisplay = QuickCaptureTimeDisplayUpdated;
+        settings.QuickCaptureAllowRemoteImages = false;
+        settings.QuickCaptureTrashEnabled = true;
+        settings.QuickCaptureTrashRetentionDays = 30;
+        settings.QuickCaptureRevisionHistoryEnabled = true;
+        settings.QuickCaptureRevisionRetentionDays = 30;
+        settings.QuickCaptureRevisionLimitPerNote = 50;
+        settings.QuickCaptureClipboardRetentionDays = 30;
+        settings.QuickCaptureClipboardExcludedApps = [];
         settings.TodoShowCompletedTasks = false;
+        settings.Todo = TodoSettings.CreateNewUserDefaults();
         settings.TodoItemPreviewLineCount = DefaultTodoItemPreviewLineCount;
         settings.TodoEditorEnterBehavior = EditorEnterBehaviorCtrlEnterSaves;
         settings.TodoShowFooterStats = false;
@@ -2352,6 +2382,93 @@ settings.FocusClickedWidgetOnRaise = false;
     {
         bool changed = false;
 
+        changed |= NormalizeChoice(
+            settings.QuickCaptureDefaultFormat,
+            normalized => settings.QuickCaptureDefaultFormat = normalized,
+            QuickCaptureFormatMarkdown,
+            QuickCaptureFormatPlainText,
+            QuickCaptureFormatMarkdown);
+        changed |= NormalizeChoice(
+            settings.QuickCaptureExistingNoteOpenMode,
+            normalized => settings.QuickCaptureExistingNoteOpenMode = normalized,
+            QuickCaptureOpenModeRead,
+            QuickCaptureOpenModeRead,
+            QuickCaptureOpenModeEdit);
+        changed |= NormalizeChoice(
+            settings.QuickCaptureDefaultLayout,
+            normalized => settings.QuickCaptureDefaultLayout = normalized,
+            QuickCaptureLayoutAuto,
+            QuickCaptureLayoutAuto,
+            QuickCaptureLayoutSingle,
+            QuickCaptureLayoutDual);
+        changed |= NormalizeChoice(
+            settings.QuickCaptureWideEditorView,
+            normalized => settings.QuickCaptureWideEditorView = normalized,
+            QuickCaptureWideEditorSource,
+            QuickCaptureWideEditorSource,
+            QuickCaptureWideEditorSplit);
+        changed |= NormalizeChoice(
+            settings.QuickCaptureListDensity,
+            normalized => settings.QuickCaptureListDensity = normalized,
+            QuickCaptureListDensityStandard,
+            QuickCaptureListDensityCompact,
+            QuickCaptureListDensityStandard,
+            QuickCaptureListDensityComfortable);
+        changed |= NormalizeChoice(
+            settings.QuickCaptureTimeDisplay,
+            normalized => settings.QuickCaptureTimeDisplay = normalized,
+            QuickCaptureTimeDisplayUpdated,
+            QuickCaptureTimeDisplayUpdated,
+            QuickCaptureTimeDisplayCreated,
+            QuickCaptureTimeDisplayHidden);
+
+        int trashDays = Math.Clamp(settings.QuickCaptureTrashRetentionDays, 1, 3650);
+        int revisionDays = Math.Clamp(settings.QuickCaptureRevisionRetentionDays, 1, 3650);
+        int revisionLimit = Math.Clamp(settings.QuickCaptureRevisionLimitPerNote, 1, 500);
+        int clipboardDays = Math.Clamp(settings.QuickCaptureClipboardRetentionDays, 1, 3650);
+        if (trashDays != settings.QuickCaptureTrashRetentionDays)
+        {
+            settings.QuickCaptureTrashRetentionDays = trashDays;
+            changed = true;
+        }
+        if (revisionDays != settings.QuickCaptureRevisionRetentionDays)
+        {
+            settings.QuickCaptureRevisionRetentionDays = revisionDays;
+            changed = true;
+        }
+        if (revisionLimit != settings.QuickCaptureRevisionLimitPerNote)
+        {
+            settings.QuickCaptureRevisionLimitPerNote = revisionLimit;
+            changed = true;
+        }
+        if (clipboardDays != settings.QuickCaptureClipboardRetentionDays)
+        {
+            settings.QuickCaptureClipboardRetentionDays = clipboardDays;
+            changed = true;
+        }
+
+        List<string> excludedApps = (settings.QuickCaptureClipboardExcludedApps ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (!(settings.QuickCaptureClipboardExcludedApps ?? []).SequenceEqual(
+                excludedApps,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            settings.QuickCaptureClipboardExcludedApps = excludedApps;
+            changed = true;
+        }
+
+        // Compatibility mirrors for the legacy window during rolling upgrade.
+        bool showCreated = settings.QuickCaptureTimeDisplay == QuickCaptureTimeDisplayCreated;
+        if (settings.QuickCaptureShowCreatedTime != showCreated)
+        {
+            settings.QuickCaptureShowCreatedTime = showCreated;
+            changed = true;
+        }
+
         int normalizedPreviewLineCount = NormalizeItemPreviewLineCount(
             settings.QuickCaptureItemPreviewLineCount);
         if (settings.QuickCaptureItemPreviewLineCount != normalizedPreviewLineCount)
@@ -2440,9 +2557,86 @@ settings.FocusClickedWidgetOnRaise = false;
         return changed;
     }
 
+    private static bool NormalizeChoice(
+        string value,
+        Action<string> apply,
+        string fallback,
+        params string[] allowed)
+    {
+        string normalized = allowed.FirstOrDefault(candidate =>
+            string.Equals(candidate, value, StringComparison.OrdinalIgnoreCase)) ?? fallback;
+        if (string.Equals(value, normalized, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        apply(normalized);
+        return true;
+    }
+
     internal static bool NormalizeTodoSettings(AppSettings settings)
     {
         bool changed = false;
+
+        settings.Todo ??= new TodoSettings();
+        settings.Todo.QuickRecord ??= new TodoQuickRecordSettings();
+        settings.Todo.Calendar ??= new TodoCalendarSettings();
+        settings.Todo.RemindersAndRecurrence ??= new TodoReminderAndRecurrenceSettings();
+        settings.Todo.NotesAndAttachments ??= new TodoNotesAndAttachmentsSettings();
+        settings.Todo.CompletionAndData ??= new TodoCompletionAndDataSettings();
+        settings.Todo.Organization ??= new TodoOrganizationSettings();
+        settings.Todo.Calendar.Sources ??= [];
+        settings.Todo.Organization.SmartViewOrder ??= [];
+        settings.Todo.Organization.HiddenSmartViews ??= [];
+        if (settings.Todo.QuickRecord.DefaultSmartView == TodoSmartView.All)
+        {
+            settings.Todo.QuickRecord.DefaultSmartView = TodoSmartView.Today;
+            changed = true;
+        }
+
+        GlobalHotkeyGesture todoHotkey = GlobalHotkeyService.NormalizeGesture(
+            settings.Todo.QuickRecord.TodoHotkeyModifiers,
+            settings.Todo.QuickRecord.TodoHotkeyKey);
+        if (!GlobalHotkeyService.IsValidGesture(todoHotkey))
+        {
+            settings.Todo.QuickRecord.TodoHotkeyModifiers =
+                (int)(HotkeyModifierKeys.Control | HotkeyModifierKeys.Shift);
+            settings.Todo.QuickRecord.TodoHotkeyKey = 0x54;
+            changed = true;
+        }
+
+        int originalSlot = settings.Todo.Calendar.CalendarSlotMinutes;
+        settings.Todo.Calendar.CalendarSlotMinutes = originalSlot <= 20 ? 15 : 30;
+        changed |= originalSlot != settings.Todo.Calendar.CalendarSlotMinutes;
+        int originalDuration = settings.Todo.Calendar.DefaultDurationMinutes;
+        settings.Todo.Calendar.DefaultDurationMinutes = Math.Clamp(originalDuration, 15, 1440);
+        changed |= originalDuration != settings.Todo.Calendar.DefaultDurationMinutes;
+        int originalStart = settings.Todo.Calendar.WorkdayStartHour;
+        int originalEnd = settings.Todo.Calendar.WorkdayEndHour;
+        settings.Todo.Calendar.WorkdayStartHour = Math.Clamp(originalStart, 0, 22);
+        settings.Todo.Calendar.WorkdayEndHour = Math.Clamp(originalEnd, settings.Todo.Calendar.WorkdayStartHour + 1, 24);
+        changed |= originalStart != settings.Todo.Calendar.WorkdayStartHour ||
+                   originalEnd != settings.Todo.Calendar.WorkdayEndHour;
+        if (settings.Todo.Calendar.WeekStart is not ("System" or "Sunday" or "Monday" or "Saturday"))
+        {
+            settings.Todo.Calendar.WeekStart = "System";
+            changed = true;
+        }
+
+        int originalOffset = settings.Todo.RemindersAndRecurrence.DefaultOffsetMinutes;
+        settings.Todo.RemindersAndRecurrence.DefaultOffsetMinutes = NormalizeTodoReminderOffsetMinutes(originalOffset);
+        changed |= originalOffset != settings.Todo.RemindersAndRecurrence.DefaultOffsetMinutes;
+        int originalSnooze = settings.Todo.RemindersAndRecurrence.DefaultSnoozeMinutes;
+        settings.Todo.RemindersAndRecurrence.DefaultSnoozeMinutes = Math.Clamp(originalSnooze, 1, 1440);
+        changed |= originalSnooze != settings.Todo.RemindersAndRecurrence.DefaultSnoozeMinutes;
+
+        int originalRetention = settings.Todo.CompletionAndData.TrashRetentionDays;
+        settings.Todo.CompletionAndData.TrashRetentionDays = Math.Clamp(originalRetention, 1, 3650);
+        changed |= originalRetention != settings.Todo.CompletionAndData.TrashRetentionDays;
+        settings.Todo.NotesAndAttachments.MaximumNoteCharacters = TodoWorkspaceDefaults.MaxNotesCharacters;
+        settings.Todo.NotesAndAttachments.AttachmentStorageMode = NormalizeAttachmentStorageMode(
+            settings.Todo.NotesAndAttachments.AttachmentStorageMode);
+        settings.Todo.SchemaVersion = TodoSettings.CurrentSchemaVersion;
 
         int normalizedPreviewLineCount = NormalizeItemPreviewLineCount(
             settings.TodoItemPreviewLineCount);

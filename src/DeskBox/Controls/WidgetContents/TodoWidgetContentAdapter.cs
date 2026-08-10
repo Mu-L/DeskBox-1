@@ -22,17 +22,12 @@ public sealed class TodoWidgetContentAdapter :
     private readonly Func<TodoWidgetViewModel, FrameworkElement> _viewFactory;
     private FrameworkElement? _view;
 
-    public TodoWidgetContentAdapter(WidgetConfig config, LocalizationService localizationService)
-        : this(config, new TodoWidgetStore(config.Id), localizationService)
-    {
-    }
-
-    public TodoWidgetContentAdapter(WidgetConfig config, TodoWidgetStore store, LocalizationService localizationService)
+    public TodoWidgetContentAdapter(WidgetConfig config, ITodoStore store, LocalizationService localizationService)
         : this(config, new TodoWidgetViewModel(store, localizationService, config))
     {
     }
 
-    public TodoWidgetContentAdapter(WidgetConfig config, TodoWidgetStore store, LocalizationService localizationService, SettingsService settingsService)
+    public TodoWidgetContentAdapter(WidgetConfig config, ITodoStore store, LocalizationService localizationService, SettingsService settingsService)
         : this(config, new TodoWidgetViewModel(store, localizationService, config, settingsService))
     {
     }
@@ -197,6 +192,7 @@ public sealed class TodoWidgetContentAdapter :
         if (_view is TodoWidgetContent todoContent)
         {
             todoContent.FeedbackRequested -= TodoContent_FeedbackRequested;
+            todoContent.DisposeWorkspaceSurface();
         }
 
         if (ViewModel is IDisposable disposable)

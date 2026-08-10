@@ -47,7 +47,7 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
         ZipArchiveEntry manifestEntry = Assert.IsType<ZipArchiveEntry>(archive.GetEntry("manifest.json"));
         using Stream manifestStream = manifestEntry.Open();
         using JsonDocument manifest = await JsonDocument.ParseAsync(manifestStream);
-        Assert.Equal(2, manifest.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(3, manifest.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("manual", manifest.RootElement.GetProperty("kind").GetString());
         JsonElement[] files = manifest.RootElement.GetProperty("files").EnumerateArray().ToArray();
         Assert.Equal(2, files.Length);
@@ -290,7 +290,7 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
         DeskBoxRestoreApplyResult result = await targetService.ApplyPendingRestoreAsync();
 
         Assert.True(preparation.FileCount >= 3);
-        Assert.Equal(2, preparation.BackupSchemaVersion);
+        Assert.Equal(3, preparation.BackupSchemaVersion);
         Assert.True(preparation.HasIntegrityManifest);
         Assert.True(result.HadPendingRestore);
         Assert.True(result.Succeeded, result.ErrorMessage);
@@ -331,6 +331,41 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
             targetService.PreRestoreBackupDirectory,
             "DeskBox-PreRestore-*.zip"));
         Assert.False(Directory.Exists(targetService.BackupSnapshotStagingDirectory));
+    }
+
+    [Fact]
+    public async Task SchemaThreeBackup_UsesOnlineTodoSnapshotAndRebasesManagedTodoAttachments()
+    {
+        string sourceRoot = Directory.CreateDirectory(Path.Combine(_tempRoot, "todo-source")).FullName;
+        string sourceData = Directory.CreateDirectory(Path.Combine(sourceRoot, "data")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(sourceData, "settings.json"), "{}");
+        string externalFile = Path.Combine(sourceRoot, "brief.txt");
+        await File.WriteAllTextAsync(externalFile, "release brief");
+        using (var repository = new SqliteTodoWorkspaceRepository(Path.Combine(sourceData, "todo")))
+        using (var workspace = new TodoWorkspaceService(repository, migrator: null))
+        {
+            await repository.UpsertTaskAsync(new TodoTask { Id = "todo", Title = "Ship" });
+            await workspace.AddAttachmentAsync("todo", externalFile, copyToWorkspace: true);
+        }
+
+        string backupPath = await new DeskBoxDataBackupService(sourceRoot).ExportBackupAsync(_exportRoot);
+        string targetData = Directory.CreateDirectory(Path.Combine(_appDataRoot, "data")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(targetData, "settings.json"), "{}");
+        var targetService = new DeskBoxDataBackupService(_appDataRoot);
+
+        DeskBoxRestorePreparation preparation = await targetService.PrepareRestoreAsync(backupPath);
+        DeskBoxRestoreApplyResult result = await targetService.ApplyPendingRestoreAsync();
+
+        Assert.Equal(3, preparation.BackupSchemaVersion);
+        Assert.True(result.Succeeded, result.ErrorMessage);
+        string targetTodoRoot = Path.Combine(targetData, "todo");
+        using var restoredRepository = new SqliteTodoWorkspaceRepository(targetTodoRoot);
+        TodoTask restored = Assert.Single((await restoredRepository.LoadSnapshotAsync()).Tasks);
+        TodoAttachment attachment = Assert.Single(restored.Attachments);
+        Assert.True(attachment.IsManagedCopy);
+        Assert.StartsWith(targetTodoRoot, attachment.FilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(attachment.FilePath));
+        Assert.True(await SqliteTodoWorkspaceRepository.ValidateDatabaseAsync(restoredRepository.DatabasePath));
     }
 
     [Fact]

@@ -215,6 +215,17 @@ public sealed partial class ContentWidgetWindow
     private MenuFlyout CreateMoreFlyout()
     {
         var flyout = new MenuFlyout();
+        bool useCompactWidgetOptions = false;
+
+        if (_contentHost.CurrentContent is IWidgetCommandMenuProvider commandMenuProvider)
+        {
+            useCompactWidgetOptions = true;
+            commandMenuProvider.AppendWidgetCommands(flyout);
+            if (flyout.Items.Count > 0)
+            {
+                flyout.Items.Add(new MenuFlyoutSeparator());
+            }
+        }
 
         var rename = new MenuFlyoutItem
         {
@@ -235,31 +246,62 @@ public sealed partial class ContentWidgetWindow
                 DispatcherQueue.TryEnqueue(ShowCloseWidgetFlyout);
             }
         };
-        flyout.Items.Add(rename);
+        MenuFlyoutSubItem? compactWidgetOptions = useCompactWidgetOptions
+            ? new MenuFlyoutSubItem
+            {
+                Text = App.Current.LocalizationService.T("Widget.Tooltip.More"),
+                Icon = new FontIcon { Glyph = "\uE713" }
+            }
+            : null;
+        AddWidgetOption(rename);
 
-        flyout.Items.Add(WidgetChromeMenuBuilder.Create(
+        AddWidgetOption(WidgetChromeMenuBuilder.Create(
             _config,
             _descriptor,
             App.Current.LocalizationService,
             App.Current.WidgetManager,
             SetChromeModeOverride));
-        flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
+        AddWidgetOption(WidgetCollapseMenuBuilder.Create(
             _config,
             App.Current.LocalizationService,
             SetCollapseBehaviorOverride,
             ResetCompactWidthOverride));
-        flyout.Items.Add(WidgetLockMenuBuilder.Create(
+        AddWidgetOption(WidgetLockMenuBuilder.Create(
             App.Current.LocalizationService,
             _config.IsPositionLocked,
             _config.IsSizeLocked,
             SetPositionLocked,
             SetSizeLocked));
 
+        var groupItems = new MenuFlyout();
         WidgetGroupMenuBuilder.Append(
-            flyout,
+            groupItems,
             _config,
             App.Current.WidgetManager,
             App.Current.LocalizationService);
+        while (groupItems.Items.Count > 0)
+        {
+            MenuFlyoutItemBase item = groupItems.Items[0];
+            groupItems.Items.RemoveAt(0);
+            AddWidgetOption(item);
+        }
+
+        if (compactWidgetOptions is not null)
+        {
+            flyout.Items.Add(compactWidgetOptions);
+        }
+
+        void AddWidgetOption(MenuFlyoutItemBase item)
+        {
+            if (compactWidgetOptions is not null)
+            {
+                compactWidgetOptions.Items.Add(item);
+            }
+            else
+            {
+                flyout.Items.Add(item);
+            }
+        }
 
         flyout.Items.Add(WidgetSettingsMenuHelper.CreateMenuItem(
             _config.WidgetKind,

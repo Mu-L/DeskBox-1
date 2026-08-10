@@ -15,6 +15,9 @@ public sealed class SearchEngineService : IDisposable
     private readonly SearchIndexService _indexService;
     private readonly WindowsIndexSearchService _windowsIndexService;
     private readonly UsnJournalIndexService? _usnIndexService;
+    private readonly QuickCaptureService _quickCaptureService;
+    private readonly TodoWorkspaceService? _todoWorkspaceService;
+    private readonly QuickCaptureMarkdownService _quickCaptureMarkdownService = new();
     private bool _isDisposed;
 
     public SearchEngineService(
@@ -22,13 +25,17 @@ public sealed class SearchEngineService : IDisposable
         LocalizationService localizationService,
         SearchIndexService indexService,
         WindowsIndexSearchService windowsIndexService,
-        UsnJournalIndexService? usnIndexService = null)
+        UsnJournalIndexService? usnIndexService = null,
+        QuickCaptureService? quickCaptureService = null,
+        TodoWorkspaceService? todoWorkspaceService = null)
     {
         _settingsService = settingsService;
         _localizationService = localizationService;
         _indexService = indexService;
         _windowsIndexService = windowsIndexService;
         _usnIndexService = usnIndexService;
+        _quickCaptureService = quickCaptureService ?? new QuickCaptureService();
+        _todoWorkspaceService = todoWorkspaceService;
         _indexService.IndexUpdated += OnIndexUpdated;
         _indexService.ProgressChanged += OnIndexProgressChanged;
         if (_usnIndexService is not null)
@@ -544,60 +551,65 @@ public sealed class SearchEngineService : IDisposable
         var results = new List<SearchResultItem>();
         var settings = _settingsService.Settings;
 
-        var todoWidgets = settings.Widgets
-            .Where(w => w.WidgetKind == WidgetKind.Todo && !w.IsDisabled)
-            .ToList();
-
-        foreach (var widget in todoWidgets)
+        if (_todoWorkspaceService is not null)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-
             try
             {
-                var store = new TodoWidgetStore(widget.Id);
-                var data = await store.LoadAsync();
+                TodoWorkspaceSnapshot snapshot = await _todoWorkspaceService.LoadSnapshotAsync(
+                    includeDeleted: false,
+                    cancellationToken);
+                string? targetWidgetId = settings.Widgets.FirstOrDefault(widget =>
+                    widget.WidgetKind == WidgetKind.Todo && !widget.IsDisabled)?.Id;
+                var listNames = snapshot.Lists.ToDictionary(
+                    list => list.Id,
+                    list => list.Name,
+                    StringComparer.Ordinal);
 
-                foreach (var item in data.Items)
+                foreach (TodoTask item in snapshot.Tasks)
                 {
-                    if (results.Count >= maxResults)
-                    {
-                        break;
-                    }
-
+                    cancellationToken.ThrowIfCancellationRequested();
                     bool matches = item.Text.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                                   (item.Notes?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
-
+                                   (item.Notes?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                   item.Steps.Any(step => step.Text.Contains(query, StringComparison.OrdinalIgnoreCase));
                     if (!matches)
                     {
                         continue;
                     }
 
                     double score = ComputeTextRelevance(item.Text, query);
+                    string subtitle = item.DeadlineAt is { } deadline
+                        ? $"{_localizationService.T("Search.Todo.Due")}: {deadline:yyyy-MM-dd}"
+                        : listNames.GetValueOrDefault(item.ListId, _localizationService.T("Todo.Title"));
                     results.Add(new SearchResultItem
                     {
                         Kind = SearchResultKind.Todo,
                         Title = item.Text,
-                        Subtitle = item.DueDate.HasValue
-                            ? $"{_localizationService.T("Search.Todo.Due")}: {item.DueDate.Value:yyyy-MM-dd}"
-                            : widget.Name,
-                        TodoWidgetId = widget.Id,
+                        Subtitle = subtitle,
+                        TodoWidgetId = targetWidgetId,
                         TodoItemId = item.Id,
-                        TodoIsCompleted = item.IsCompleted,
+                        TodoIsCompleted = item.Status == TodoTaskStatus.Completed,
                         Glyph = "\uE9D5",
-                        RelevanceScore = score + (item.IsCompleted ? -20 : 10)
+                        ModifiedAt = item.UpdatedAt,
+                        RelevanceScore = score + (item.Status == TodoTaskStatus.Completed ? -20 : 10)
                     });
                 }
             }
-            catch
+            catch (OperationCanceledException)
             {
-                // Skip widgets that fail to load
+                throw;
             }
+            catch (Exception ex)
+            {
+                App.Log($"[Search] Shared Todo workspace search failed: {ex.Message}");
+            }
+
+            return results.OrderByDescending(result => result.RelevanceScore).Take(maxResults).ToList();
         }
 
-        return results.OrderByDescending(r => r.RelevanceScore).Take(maxResults).ToList();
+        // Production construction always supplies the shared workspace. Keeping a
+        // service-null instance useful for file-only unit tests must not resurrect
+        // per-widget JSON reads.
+        return [];
     }
 
     private async Task<IReadOnlyList<SearchResultItem>> SearchQuickCaptureAsync(
@@ -607,44 +619,37 @@ public sealed class SearchEngineService : IDisposable
 
         try
         {
-            var store = new QuickCaptureStore();
-            var data = await store.LoadAsync();
+            IReadOnlyList<QuickCaptureSearchHit> hits =
+                await _quickCaptureService.SearchAsync(query, maxResults, cancellationToken);
 
-            foreach (var item in data.Items)
+            foreach (QuickCaptureSearchHit hit in hits)
             {
                 if (results.Count >= maxResults)
                 {
                     break;
                 }
 
-                if (item.IsDeleted)
-                {
-                    continue;
-                }
-
-                bool matches = item.Body.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                               (item.Title?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                               (item.Url?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
-
-                if (!matches)
-                {
-                    continue;
-                }
-
+                QuickCaptureItem item = hit.Item;
                 string displayTitle = !string.IsNullOrWhiteSpace(item.Title)
                     ? item.Title
-                    : TruncateText(item.Body, 60);
+                    : _quickCaptureMarkdownService.CreateDerivedTitle(
+                        item.Title,
+                        item.Body,
+                        item.ContentFormat);
 
                 double score = ComputeTextRelevance(displayTitle, query);
                 results.Add(new SearchResultItem
                 {
                     Kind = SearchResultKind.QuickCapture,
                     Title = displayTitle,
-                    Subtitle = item.Type.ToString(),
+                    Subtitle = _quickCaptureMarkdownService.CreateExcerpt(
+                        item.Body,
+                        item.ContentFormat,
+                        120),
                     QuickCaptureItemId = item.Id,
                     Glyph = "\uE70F",
                     ModifiedAt = item.UpdatedAt,
-                    RelevanceScore = score + (item.IsPinned ? 5 : 0)
+                    RelevanceScore = score + (item.IsPinned ? 5 : 0) - hit.Rank
                 });
             }
         }
@@ -693,46 +698,34 @@ public sealed class SearchEngineService : IDisposable
         var recommendations = new List<SearchRecommendationItem>();
         var settings = _settingsService.Settings;
 
-        var todoWidgets = settings.Widgets
-            .Where(w => w.WidgetKind == WidgetKind.Todo && !w.IsDisabled)
-            .ToList();
-
-        foreach (var widget in todoWidgets)
+        if (_todoWorkspaceService is not null)
         {
-            if (cancellationToken.IsCancellationRequested || recommendations.Count >= 3)
+            TodoWorkspaceSnapshot snapshot = await _todoWorkspaceService.LoadSnapshotAsync(
+                includeDeleted: false,
+                cancellationToken);
+            string? targetWidgetId = settings.Widgets.FirstOrDefault(widget =>
+                widget.WidgetKind == WidgetKind.Todo && !widget.IsDisabled)?.Id;
+            DateTimeOffset now = DateTimeOffset.Now;
+            foreach (TodoTask item in snapshot.Tasks
+                         .Where(item => item.Status == TodoTaskStatus.Open &&
+                                        item.DeadlineAt is { } deadline &&
+                                        deadline >= now &&
+                                        deadline <= now.AddDays(7))
+                         .OrderBy(item => item.DeadlineAt)
+                         .Take(3))
             {
-                break;
-            }
-
-            try
-            {
-                var store = new TodoWidgetStore(widget.Id);
-                var data = await store.LoadAsync();
-
-                var upcoming = data.Items
-                    .Where(i => !i.IsCompleted && i.DueDate.HasValue &&
-                                i.DueDate.Value >= DateTimeOffset.Now &&
-                                i.DueDate.Value <= DateTimeOffset.Now.AddDays(7))
-                    .OrderBy(i => i.DueDate)
-                    .Take(3 - recommendations.Count);
-
-                foreach (var item in upcoming)
+                recommendations.Add(new SearchRecommendationItem
                 {
-                    recommendations.Add(new SearchRecommendationItem
-                    {
-                        Kind = SearchResultKind.Todo,
-                        Title = item.Text,
-                        Subtitle = $"{_localizationService.T("Search.Todo.Due")}: {item.DueDate!.Value:MM-dd}",
-                        Glyph = "\uE9D5",
-                        TodoWidgetId = widget.Id,
-                        TodoItemId = item.Id
-                    });
-                }
+                    Kind = SearchResultKind.Todo,
+                    Title = item.Text,
+                    Subtitle = $"{_localizationService.T("Search.Todo.Due")}: {item.DeadlineAt!.Value:MM-dd}",
+                    Glyph = "\uE9D5",
+                    TodoWidgetId = targetWidgetId,
+                    TodoItemId = item.Id
+                });
             }
-            catch
-            {
-                // Skip
-            }
+
+            return recommendations;
         }
 
         return recommendations;

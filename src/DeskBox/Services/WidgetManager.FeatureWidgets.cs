@@ -94,14 +94,16 @@ public sealed partial class WidgetManager
         return window;
     }
 
-    public async Task<ContentWidgetWindow> CreateTodoWidgetAsync(string? name = null, bool focusNewInput = false)
+    public async Task<ContentWidgetWindow> CreateTodoWidgetAsync(
+        string? name = null,
+        bool focusNewInput = false,
+        bool reuseExisting = false)
     {
         SetFeatureWidgetEnabledState(WidgetKind.Todo, true);
 
-        // Single-instance: show existing Todo if one exists
         var existingConfig = _settingsService.Settings.Widgets
             .FirstOrDefault(w => w.WidgetKind == WidgetKind.Todo && !IsDeleted(w.Id));
-        if (existingConfig is not null)
+        if (reuseExisting && existingConfig is not null)
         {
             await ShowWidgetAsync(existingConfig.Id, reveal: true, autoRestoreOnReveal: false);
             if (_contentWidgets.TryGetValue(existingConfig.Id, out var existing))
@@ -161,7 +163,7 @@ public sealed partial class WidgetManager
             }
         }
 
-        window ??= await CreateTodoWidgetAsync();
+        window ??= await CreateTodoWidgetAsync(reuseExisting: true);
         if (window.CurrentContent?.View is TodoWidgetContent todoContent)
         {
             todoContent.RevealReminderItem(itemId, preferTodayFilter);
@@ -662,9 +664,13 @@ public sealed partial class WidgetManager
             }
             else if (kind == WidgetKind.Todo)
             {
-                foreach (var todoConfig in configs)
+                if (_todoWorkspaceService is not null)
                 {
-                    await new TodoWidgetStore(todoConfig.Id).ClearAsync();
+                    await _todoWorkspaceService.ClearAsync();
+                }
+                else
+                {
+                    App.Log("[WidgetManager] Todo reset skipped because the shared workspace service is unavailable.");
                 }
             }
 
@@ -783,7 +789,7 @@ public sealed partial class WidgetManager
             SetFeatureWidgetEnabledState(WidgetKind.Todo, true);
             if (reveal)
             {
-                await CreateTodoWidgetAsync();
+                await CreateTodoWidgetAsync(reuseExisting: true);
             }
             else
             {
@@ -1046,7 +1052,7 @@ public sealed partial class WidgetManager
                 return window;
             }
 
-            await viewModel.InitializeAsync().WaitAsync(cancellationToken);
+            await window.InitializeContentAsync().WaitAsync(cancellationToken);
             if (!keepPreparedForAnimation)
             {
                 window.CompleteTrayShowWithoutAnimation();
@@ -1082,7 +1088,7 @@ public sealed partial class WidgetManager
             await Task.Yield();
             try
             {
-                await viewModel.InitializeAsync();
+                await window.InitializeContentAsync();
             }
             catch (Exception ex)
             {

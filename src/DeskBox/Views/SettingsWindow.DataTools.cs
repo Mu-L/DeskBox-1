@@ -13,8 +13,12 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Shapes;
 using System.Runtime.InteropServices;
+using System.Text;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.System;
 using WinRT.Interop;
+using IOPath = System.IO.Path;
 
 namespace DeskBox.Views;
 
@@ -30,9 +34,346 @@ public sealed partial class SettingsWindow
         NavigateToSettingsSection("TodoSettings");
     }
 
+    private async void OpenTodoWorkspaceButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (App.Current?.WidgetManager is { } widgetManager)
+        {
+            await widgetManager.CreateTodoWidgetAsync(reuseExisting: true);
+        }
+    }
+
+    private async void ManageTodoCalendarSourcesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        TodoCalendarSettings calendar = App.Current.SettingsService.Settings.Todo.Calendar;
+        var sourcePanel = new StackPanel { Spacing = 6 };
+        var addButton = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Content = _localizationService.T("Settings.Todo2.CalendarSources.Add")
+        };
+        sourcePanel.Children.Add(addButton);
+        var listPanel = new StackPanel { Spacing = 4 };
+        sourcePanel.Children.Add(listPanel);
+
+        void RefreshSources()
+        {
+            listPanel.Children.Clear();
+            foreach (TodoCalendarSourceSettings source in calendar.Sources.ToArray())
+            {
+                var row = new Grid { ColumnSpacing = 8 };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var enabled = new CheckBox { IsChecked = source.IsEnabled, VerticalAlignment = VerticalAlignment.Center };
+                enabled.Checked += async (_, _) =>
+                {
+                    source.IsEnabled = true;
+                    await App.Current.SettingsService.SaveAsync();
+                    ViewModel.NotifyTodo2SettingsChanged();
+                };
+                enabled.Unchecked += async (_, _) =>
+                {
+                    source.IsEnabled = false;
+                    await App.Current.SettingsService.SaveAsync();
+                    ViewModel.NotifyTodo2SettingsChanged();
+                };
+                row.Children.Add(enabled);
+                var labels = new StackPanel { Spacing = 1 };
+                labels.Children.Add(new TextBlock { Text = source.Name, TextTrimming = TextTrimming.CharacterEllipsis });
+                labels.Children.Add(new TextBlock
+                {
+                    Text = source.SourcePath,
+                    FontSize = 11,
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+                Grid.SetColumn(labels, 1);
+                row.Children.Add(labels);
+                var remove = new Button { Content = new SymbolIcon(Symbol.Delete), MinWidth = 32, Padding = new Thickness(5) };
+                remove.Click += async (_, _) =>
+                {
+                    calendar.Sources.Remove(source);
+                    await App.Current.SettingsService.SaveAsync();
+                    ViewModel.NotifyTodo2SettingsChanged();
+                    RefreshSources();
+                };
+                Grid.SetColumn(remove, 2);
+                row.Children.Add(remove);
+                listPanel.Children.Add(row);
+            }
+
+            if (calendar.Sources.Count == 0)
+            {
+                listPanel.Children.Add(new TextBlock
+                {
+                    Text = _localizationService.T("Settings.Todo2.CalendarSources.None"),
+                    Margin = new Thickness(2, 8, 2, 2),
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                });
+            }
+        }
+
+        addButton.Click += async (_, _) =>
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+            picker.FileTypeFilter.Add(".ics");
+            InitializeWithWindow.Initialize(picker, _hWnd);
+            IReadOnlyList<StorageFile> files = await picker.PickMultipleFilesAsync();
+            foreach (StorageFile file in files)
+            {
+                if (calendar.Sources.Any(source => string.Equals(source.SourcePath, file.Path, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                calendar.Sources.Add(new TodoCalendarSourceSettings
+                {
+                    Name = IOPath.GetFileNameWithoutExtension(file.Name),
+                    SourcePath = file.Path,
+                    IsEnabled = true
+                });
+            }
+            await App.Current.SettingsService.SaveAsync();
+            ViewModel.NotifyTodo2SettingsChanged();
+            RefreshSources();
+        };
+        RefreshSources();
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = _localizationService.T("Settings.Todo2.CalendarSources.Title"),
+            CloseButtonText = _localizationService.T("Common.Close"),
+            DefaultButton = ContentDialogButton.Close,
+            Content = new ScrollViewer
+            {
+                MaxHeight = 420,
+                MinWidth = 420,
+                Content = sourcePanel
+            }
+        };
+        await dialog.ShowAsync();
+    }
+
+    private async void BackupTodoDataButton_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+        picker.FileTypeFilter.Add("*");
+        InitializeWithWindow.Initialize(picker, _hWnd);
+        StorageFolder? parent = await picker.PickSingleFolderAsync();
+        if (parent is null)
+        {
+            return;
+        }
+
+        StorageFolder backupFolder = await parent.CreateFolderAsync(
+            $"DeskBox Todo {DateTime.Now:yyyyMMdd-HHmmss}",
+            CreationCollisionOption.GenerateUniqueName);
+        await App.Current.TodoWorkspaceService.CreateBackupAsync(IOPath.Combine(backupFolder.Path, "todo.db"));
+        string sourceAttachments = App.Current.TodoWorkspaceService.AttachmentDirectory;
+        string destinationAttachments = IOPath.Combine(backupFolder.Path, "attachments");
+        if (Directory.Exists(sourceAttachments))
+        {
+            CopyDirectory(sourceAttachments, destinationAttachments);
+        }
+        await ShowInfoDialogAsync(
+            _localizationService.T("Settings.Todo2.Backup.Title"),
+            _localizationService.Format("Settings.Todo2.Backup.Completed", backupFolder.Path));
+    }
+
+    private async void ClearTodoDataButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        TodoWorkspaceSnapshot snapshot = await App.Current.TodoWorkspaceService.LoadSnapshotAsync(includeDeleted: true);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = _localizationService.T("Settings.Todo2.Clear.Title"),
+            PrimaryButtonText = _localizationService.T("Settings.Todo2.Clear.Action"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+            Content = new TextBlock
+            {
+                Text = _localizationService.Format("Settings.Todo2.Clear.Description", snapshot.Tasks.Count),
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            await App.Current.TodoWorkspaceService.ClearAsync();
+        }
+    }
+
+    private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
+    {
+        Directory.CreateDirectory(destinationDirectory);
+        foreach (string file in Directory.EnumerateFiles(sourceDirectory))
+        {
+            File.Copy(file, IOPath.Combine(destinationDirectory, IOPath.GetFileName(file)), overwrite: false);
+        }
+        foreach (string child in Directory.EnumerateDirectories(sourceDirectory))
+        {
+            CopyDirectory(child, IOPath.Combine(destinationDirectory, IOPath.GetFileName(child)));
+        }
+    }
+
     private void OpenAppearanceDetailButton_Click(object sender, RoutedEventArgs e)
     {
         NavigateToSettingsSection("AppearanceDetail");
+    }
+
+    private async void ImportQuickCaptureMarkdownButton_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+        };
+        picker.FileTypeFilter.Add(".md");
+        picker.FileTypeFilter.Add(".markdown");
+        InitializeWithWindow.Initialize(picker, _hWnd);
+        IReadOnlyList<StorageFile> files = await picker.PickMultipleFilesAsync();
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        int imported = 0;
+        var failures = new List<string>();
+        foreach (StorageFile file in files)
+        {
+            try
+            {
+                if (await App.Current.QuickCaptureService.ImportMarkdownFileAsync(file.Path) is not null)
+                {
+                    imported++;
+                }
+                else
+                {
+                    failures.Add(file.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"{file.Name}: {ex.Message}");
+            }
+        }
+
+        string message = failures.Count == 0
+            ? $"已导入 {imported} 条随记。"
+            : $"已导入 {imported} 条，{failures.Count} 条失败。\n{string.Join(Environment.NewLine, failures.Take(5))}";
+        await ShowInfoDialogAsync("导入 Markdown", message);
+    }
+
+    private async void ExportQuickCaptureMarkdownButton_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new FolderPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+        };
+        picker.FileTypeFilter.Add("*");
+        InitializeWithWindow.Initialize(picker, _hWnd);
+        StorageFolder? parent = await picker.PickSingleFolderAsync();
+        if (parent is null)
+        {
+            return;
+        }
+
+        QuickCaptureStoreData data = await App.Current.QuickCaptureService.GetDataAsync();
+        QuickCaptureItem[] items = data.Items
+            .Where(item => !item.IsDeleted)
+            .OrderBy(item => item.SortOrder)
+            .ToArray();
+        StorageFolder exportFolder = await parent.CreateFolderAsync(
+            $"DeskBox 随记 {DateTime.Now:yyyyMMdd-HHmmss}",
+            CreationCollisionOption.GenerateUniqueName);
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var markdown = new QuickCaptureMarkdownService();
+        foreach (QuickCaptureItem item in items)
+        {
+            string baseName = CreateQuickCaptureExportFileName(
+                markdown.CreateDerivedTitle(item.Title, item.Body, item.ContentFormat),
+                "随记");
+            string fileName = GetUniqueQuickCaptureExportName(baseName, ".md", usedNames);
+            await ExportQuickCaptureItemAsync(item, IOPath.Combine(exportFolder.Path, fileName));
+        }
+
+        await ShowInfoDialogAsync("导出 Markdown", $"已导出 {items.Length} 条随记。\n{exportFolder.Path}");
+    }
+
+    private static async Task ExportQuickCaptureItemAsync(
+        QuickCaptureItem item,
+        string destinationPath)
+    {
+        string body = item.Body;
+        string destinationDirectory = IOPath.GetDirectoryName(destinationPath)!;
+        string baseName = IOPath.GetFileNameWithoutExtension(destinationPath);
+        string attachmentFolderName = baseName + "_files";
+        string attachmentFolder = IOPath.Combine(destinationDirectory, attachmentFolderName);
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (TodoAttachment attachment in item.Attachments)
+        {
+            if (string.IsNullOrWhiteSpace(attachment.FilePath) || !File.Exists(attachment.FilePath))
+            {
+                continue;
+            }
+
+            Directory.CreateDirectory(attachmentFolder);
+            string original = string.IsNullOrWhiteSpace(attachment.DisplayName)
+                ? IOPath.GetFileName(attachment.FilePath)
+                : attachment.DisplayName;
+            string fileName = GetUniqueQuickCaptureExportName(
+                CreateQuickCaptureExportFileName(IOPath.GetFileNameWithoutExtension(original), "附件"),
+                IOPath.GetExtension(original),
+                usedNames);
+            File.Copy(attachment.FilePath, IOPath.Combine(attachmentFolder, fileName), overwrite: false);
+            body = body.Replace(
+                $"deskbox-attachment://{attachment.Id}",
+                Uri.EscapeDataString(attachmentFolderName) + "/" + Uri.EscapeDataString(fileName),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        var output = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(item.Title))
+        {
+            output.Append("# ").AppendLine(item.Title.Trim()).AppendLine();
+        }
+        output.Append(body);
+        await File.WriteAllTextAsync(destinationPath, output.ToString(), new UTF8Encoding(false));
+    }
+
+    private static string CreateQuickCaptureExportFileName(string? value, string fallback)
+    {
+        string name = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        foreach (char invalid in IOPath.GetInvalidFileNameChars())
+        {
+            name = name.Replace(invalid, '_');
+        }
+        name = name.Trim().TrimEnd('.');
+        if (name.Length == 0) return fallback;
+        return name.Length > 80 ? name[..80].TrimEnd() : name;
+    }
+
+    private static string GetUniqueQuickCaptureExportName(
+        string baseName,
+        string extension,
+        ISet<string> usedNames)
+    {
+        string candidate = baseName + extension;
+        int suffix = 2;
+        while (!usedNames.Add(candidate))
+        {
+            candidate = $"{baseName} ({suffix++}){extension}";
+        }
+        return candidate;
     }
 
     private async void ClearQuickCaptureDataButton_Click(object sender, RoutedEventArgs e)

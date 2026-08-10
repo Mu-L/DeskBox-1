@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using DeskBox.Helpers;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
@@ -184,6 +186,12 @@ public sealed class QuickCaptureClipboardService : IDisposable
                     return;
                 }
 
+                if (IsForegroundApplicationExcluded())
+                {
+                    SetReason("ignored:excluded-app");
+                    continue;
+                }
+
                 QuickCaptureClipboardContent? content = await _clipboardReader.ReadContentAsync();
                 if (content is null || (!content.HasImage && string.IsNullOrWhiteSpace(content.Text)))
                 {
@@ -232,6 +240,9 @@ public sealed class QuickCaptureClipboardService : IDisposable
                 }
                 else
                 {
+                    await _quickCaptureService.TrimRecentItemsAsync(
+                        maxItems,
+                        _settingsService.Settings.QuickCaptureClipboardRetentionDays);
                     _lastCapturedAt = DateTimeOffset.Now;
                     SetReason($"captured:{item.Type}");
                 }
@@ -254,6 +265,37 @@ public sealed class QuickCaptureClipboardService : IDisposable
         _lastReasonAt = DateTimeOffset.Now;
         LogState(reason);
         DiagnosticsChanged?.Invoke();
+    }
+
+    private bool IsForegroundApplicationExcluded()
+    {
+        IReadOnlyList<string> excluded =
+            _settingsService.Settings.QuickCaptureClipboardExcludedApps ?? [];
+        if (excluded.Count == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            IntPtr window = Win32Helper.GetForegroundWindow();
+            Win32Helper.GetWindowThreadProcessId(window, out uint processId);
+            if (processId == 0)
+            {
+                return false;
+            }
+
+            using Process process = Process.GetProcessById((int)processId);
+            string processName = Path.GetFileNameWithoutExtension(process.ProcessName);
+            return excluded.Any(value => string.Equals(
+                Path.GetFileNameWithoutExtension(value.Trim()),
+                processName,
+                StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
     }
 
 }

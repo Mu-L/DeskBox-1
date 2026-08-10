@@ -166,6 +166,7 @@ public partial class App
             var trayHwnd = WindowNative.GetWindowHandle(_trayWindow);
             Log($"[Init] Attaching GlobalHotkeyService to tray hwnd=0x{trayHwnd.ToInt64():X}");
             GlobalHotkeyService?.Attach(trayHwnd);
+            TodoHotkeyService?.Attach(trayHwnd);
             Log("[Init] GlobalHotkeyService attached");
         }
         catch (Exception ex)

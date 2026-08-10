@@ -12,11 +12,15 @@ namespace DeskBox.Services;
 public sealed class WidgetContentFactory
 {
     private readonly LocalizationService _localizationService;
+    private readonly TodoWorkspaceService? _todoWorkspaceService;
     private readonly IReadOnlyDictionary<WidgetKind, IWidgetContentProvider> _contentProviders;
 
-    public WidgetContentFactory(LocalizationService localizationService)
+    public WidgetContentFactory(
+        LocalizationService localizationService,
+        TodoWorkspaceService? todoWorkspaceService = null)
     {
         _localizationService = localizationService;
+        _todoWorkspaceService = todoWorkspaceService;
         _contentProviders = CreateContentProviders();
     }
 
@@ -134,17 +138,19 @@ public sealed class WidgetContentFactory
         return new PlaceholderWidgetContent(config, descriptor);
     }
 
-    public IWidgetContent CreateTodoContent(WidgetConfig config, TodoWidgetStore? store = null, SettingsService? settingsService = null)
+    public IWidgetContent CreateTodoContent(WidgetConfig config, ITodoStore? store = null, SettingsService? settingsService = null)
     {
         if (config.WidgetKind != WidgetKind.Todo)
         {
             throw new ArgumentException("Todo content requires a Todo widget config.", nameof(config));
         }
 
-        return CreateDetachedContent(
-            config,
-            _ => store ?? new TodoWidgetStore(config.Id),
-            settingsService);
+        ITodoStore resolvedStore = store ??
+            (_todoWorkspaceService is not null
+                ? new TodoWorkspaceStoreAdapter(_todoWorkspaceService)
+                : throw new InvalidOperationException(
+                    "Todo content requires the shared workspace service or an explicit test store."));
+        return CreateDetachedContent(config, _ => resolvedStore, settingsService);
     }
 
     /// <summary>
@@ -154,7 +160,7 @@ public sealed class WidgetContentFactory
     /// </summary>
     internal IWidgetContent CreateDetachedContent(
         WidgetConfig config,
-        Func<WidgetConfig, TodoWidgetStore>? todoStoreFactory = null,
+        Func<WidgetConfig, ITodoStore>? todoStoreFactory = null,
         SettingsService? settingsService = null)
     {
         if (!_contentProviders.TryGetValue(config.WidgetKind, out var provider) ||
@@ -167,6 +173,7 @@ public sealed class WidgetContentFactory
         var context = new WidgetContentProviderContext(
             _localizationService,
             settingsService,
+            _todoWorkspaceService,
             todoStoreFactory,
             GetDescriptor);
         return provider.CreateDetachedContent(config, context);

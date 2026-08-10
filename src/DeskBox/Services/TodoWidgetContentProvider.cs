@@ -17,7 +17,11 @@ internal sealed class TodoWidgetContentProvider : IWidgetContentProvider
             throw new ArgumentException("Todo content requires a Todo widget config.", nameof(config));
         }
 
-        var store = (context.TodoStoreFactory ?? (widget => new TodoWidgetStore(widget.Id)))(config);
+        ITodoStore store = context.TodoStoreFactory?.Invoke(config) ??
+            (context.TodoWorkspaceService is not null
+                ? new TodoWorkspaceStoreAdapter(context.TodoWorkspaceService)
+                : throw new InvalidOperationException(
+                    "Todo content requires the shared workspace service or an explicit test store."));
         return context.SettingsService is null
             ? new TodoWidgetContentAdapter(config, store, context.LocalizationService)
             : new TodoWidgetContentAdapter(config, store, context.LocalizationService, context.SettingsService);

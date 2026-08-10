@@ -102,6 +102,7 @@ public partial class App : Application
     private UsnJournalIndexService? _usnIndexService;
     private FileMetaService? _fileMetaService;
     private SearchHotkeyService? _searchHotkeyService;
+    private TodoHotkeyService? _todoHotkeyService;
     private SearchPopupWindow? _searchPopupWindow;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _searchPopupIdleTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _searchIndexIdleUnloadTimer;
@@ -137,11 +138,13 @@ public partial class App : Application
     public OrganizerService OrganizerService { get; private set; } = null!;
     public IAppUpdateService AppUpdateService { get; private set; } = null!;
     public QuickCaptureService QuickCaptureService { get; private set; } = null!;
+    public TodoWorkspaceService TodoWorkspaceService { get; private set; } = null!;
     public QuickCaptureClipboardService? QuickCaptureClipboardService { get; private set; }
     public LocalizationService LocalizationService { get; private set; } = null!;
     public ThemeService ThemeService { get; private set; } = null!;
     public GlobalHotkeyService? GlobalHotkeyService { get; private set; }
     public SearchHotkeyService? SearchHotkeyService => _searchHotkeyService;
+    public TodoHotkeyService? TodoHotkeyService => _todoHotkeyService;
     public SearchEngineService? SearchEngineService => _searchEngineService;
     public SearchIndexService? SearchIndexService => _searchIndexService;
     public AppDiagnosticsService? DiagnosticsService => _diagnosticsService;
@@ -225,6 +228,7 @@ public partial class App : Application
         OrganizerService = Services.GetRequiredService<OrganizerService>();
         AppUpdateService = Services.GetRequiredService<IAppUpdateService>();
         QuickCaptureService = Services.GetRequiredService<QuickCaptureService>();
+        TodoWorkspaceService = Services.GetRequiredService<TodoWorkspaceService>();
         ResizeGuideOverlay = Services.GetRequiredService<ResizeGuideOverlayService>();
 
         StartupService.Configure(StartupServiceFactory.Create(DistributionService));
@@ -928,8 +932,35 @@ public partial class App : Application
                     Log($"[Init] GlobalHotkeyService late-attach failed: {ex}");
                 }
             }
-            WidgetManager = new WidgetManager(SettingsService, FileService, OrganizerService, themeService, quickCaptureService, localizationService);
+            await TodoWorkspaceService.InitializeAsync();
+            WidgetManager = new WidgetManager(
+                SettingsService,
+                FileService,
+                OrganizerService,
+                themeService,
+                quickCaptureService,
+                localizationService,
+                TodoWorkspaceService);
             WidgetManager.TrayLayerStateChanged += UpdateTrayLayerStateText;
+            _todoHotkeyService = new TodoHotkeyService(
+                SettingsService,
+                async () =>
+                {
+                    if (WidgetManager is not null)
+                    {
+                        await WidgetManager.CreateTodoWidgetAsync(
+                            focusNewInput: true,
+                            reuseExisting: true);
+                    }
+                });
+            if (_trayWindow is not null)
+            {
+                IntPtr trayHwnd = WindowNative.GetWindowHandle(_trayWindow);
+                if (trayHwnd != IntPtr.Zero)
+                {
+                    _todoHotkeyService.Attach(trayHwnd);
+                }
+            }
 
             // Phase 3: Restore widgets
             int recoveredDesktopItems = await new DesktopOrganizationTransaction(
@@ -1146,7 +1177,8 @@ public partial class App : Application
             SettingsService,
             LocalizationService,
             UiDispatcherQueue,
-            ShowTodoReminderNotification);
+            ShowTodoReminderNotification,
+            TodoWorkspaceService);
         _todoReminderService.Start();
     }
 
@@ -1186,17 +1218,24 @@ public partial class App : Application
         {
             notificationArguments.TryGetValue("widgetId", out string? widgetId);
             notificationArguments.TryGetValue("itemId", out string? itemId);
+            notificationArguments.TryGetValue("reminderRuleId", out string? reminderRuleId);
+            notificationArguments.TryGetValue("occurrenceKey", out string? occurrenceKey);
             if (notificationArguments.TryGetValue("action", out string? action))
             {
                 if (string.Equals(action, TodoReminderActionComplete, StringComparison.OrdinalIgnoreCase))
                 {
-                    _ = CompleteTodoReminderFromNotificationAsync(widgetId, itemId);
+                    _ = CompleteTodoReminderFromNotificationAsync(widgetId, itemId, occurrenceKey);
                     return;
                 }
 
                 if (string.Equals(action, TodoReminderActionSnooze10, StringComparison.OrdinalIgnoreCase))
                 {
-                    _ = SnoozeTodoReminderFromNotificationAsync(widgetId, itemId, TimeSpan.FromMinutes(10));
+                    _ = SnoozeTodoReminderFromNotificationAsync(
+                        widgetId,
+                        itemId,
+                        TimeSpan.FromMinutes(10),
+                        reminderRuleId,
+                        occurrenceKey);
                     return;
                 }
 
@@ -1205,7 +1244,12 @@ public partial class App : Application
                     string snoozeSelection = userInput.TryGetValue(TodoReminderSnoozeInputId, out string? selected)
                         ? selected
                         : TodoReminderSnooze10Minutes;
-                    _ = SnoozeTodoReminderFromNotificationAsync(widgetId, itemId, snoozeSelection);
+                    _ = SnoozeTodoReminderFromNotificationAsync(
+                        widgetId,
+                        itemId,
+                        snoozeSelection,
+                        reminderRuleId,
+                        occurrenceKey);
                     return;
                 }
             }
@@ -1297,13 +1341,16 @@ public partial class App : Application
         }
     }
 
-    private async Task CompleteTodoReminderFromNotificationAsync(string? widgetId, string? itemId)
+    private async Task CompleteTodoReminderFromNotificationAsync(
+        string? widgetId,
+        string? itemId,
+        string? occurrenceKey)
     {
         try
         {
             if (_todoReminderService is not null)
             {
-                bool completed = await _todoReminderService.CompleteAsync(widgetId, itemId);
+                bool completed = await _todoReminderService.CompleteAsync(widgetId, itemId, occurrenceKey);
                 if (completed)
                 {
                     await RefreshLoadedTodoWidgetAfterNotificationActionAsync(widgetId);
@@ -1337,7 +1384,9 @@ public partial class App : Application
     private async Task SnoozeTodoReminderFromNotificationAsync(
         string? widgetId,
         string? itemId,
-        string snoozeSelection)
+        string snoozeSelection,
+        string? reminderRuleId = null,
+        string? occurrenceKey = null)
     {
         try
         {
@@ -1349,7 +1398,12 @@ public partial class App : Application
             DateTimeOffset? snoozedUntil = GetSnoozedUntilFromNotificationSelection(snoozeSelection);
             if (snoozedUntil is { } until)
             {
-                bool snoozed = await _todoReminderService.SnoozeUntilAsync(widgetId, itemId, until);
+                bool snoozed = await _todoReminderService.SnoozeUntilAsync(
+                    widgetId,
+                    itemId,
+                    until,
+                    reminderRuleId,
+                    occurrenceKey);
                 if (snoozed)
                 {
                     await RefreshLoadedTodoWidgetAfterNotificationActionAsync(widgetId);
@@ -1366,13 +1420,20 @@ public partial class App : Application
     private async Task SnoozeTodoReminderFromNotificationAsync(
         string? widgetId,
         string? itemId,
-        TimeSpan snoozeFor)
+        TimeSpan snoozeFor,
+        string? reminderRuleId = null,
+        string? occurrenceKey = null)
     {
         try
         {
             if (_todoReminderService is not null)
             {
-                bool snoozed = await _todoReminderService.SnoozeAsync(widgetId, itemId, snoozeFor);
+                bool snoozed = await _todoReminderService.SnoozeAsync(
+                    widgetId,
+                    itemId,
+                    snoozeFor,
+                    reminderRuleId,
+                    occurrenceKey);
                 if (snoozed)
                 {
                     await RefreshLoadedTodoWidgetAfterNotificationActionAsync(widgetId);
@@ -1494,6 +1555,8 @@ public partial class App : Application
             ["source"] = TodoReminderSourceValue,
             ["widgetId"] = notification.WidgetId ?? string.Empty,
             ["itemId"] = notification.ItemId ?? string.Empty,
+            ["reminderRuleId"] = notification.ReminderRuleId ?? string.Empty,
+            ["occurrenceKey"] = notification.OccurrenceKey ?? string.Empty,
             ["view"] = notification.HasTodayDueItem ? "today" : "all"
         };
         List<NativeAppNotificationAction>? actions = null;
@@ -1522,7 +1585,9 @@ public partial class App : Application
                         ["source"] = TodoReminderSourceValue,
                         ["action"] = TodoReminderActionComplete,
                         ["widgetId"] = notification.WidgetId ?? string.Empty,
-                        ["itemId"] = notification.ItemId ?? string.Empty
+                        ["itemId"] = notification.ItemId ?? string.Empty,
+                        ["reminderRuleId"] = notification.ReminderRuleId ?? string.Empty,
+                        ["occurrenceKey"] = notification.OccurrenceKey ?? string.Empty
                     }),
                 new(
                     LocalizationService.T("Todo.Menu.Snooze"),
@@ -1531,7 +1596,9 @@ public partial class App : Application
                         ["source"] = TodoReminderSourceValue,
                         ["action"] = TodoReminderActionSnooze,
                         ["widgetId"] = notification.WidgetId ?? string.Empty,
-                        ["itemId"] = notification.ItemId ?? string.Empty
+                        ["itemId"] = notification.ItemId ?? string.Empty,
+                        ["reminderRuleId"] = notification.ReminderRuleId ?? string.Empty,
+                        ["occurrenceKey"] = notification.OccurrenceKey ?? string.Empty
                     },
                     TodoReminderSnoozeInputId)
             ];
@@ -2754,6 +2821,8 @@ public partial class App : Application
         // keep the gesture key in a "pressed" state, leaving keys like 'D'
         // appearing stuck even after the app exits.
         DisposeSearchServices();
+        _todoHotkeyService?.Dispose();
+        _todoHotkeyService = null;
         GlobalHotkeyService?.Dispose();
         GlobalHotkeyService = null;
 
@@ -2805,10 +2874,20 @@ public partial class App : Application
             _searchIndexService = new SearchIndexService(SettingsService);
             var windowsIndexService = new WindowsIndexSearchService(SettingsService);
             _usnIndexService = new UsnJournalIndexService();
-            _searchEngineService = new SearchEngineService(SettingsService, LocalizationService, _searchIndexService, windowsIndexService, _usnIndexService);
+            _searchEngineService = new SearchEngineService(
+                SettingsService,
+                LocalizationService,
+                _searchIndexService,
+                windowsIndexService,
+                _usnIndexService,
+                QuickCaptureService,
+                TodoWorkspaceService);
             _searchEngineService.IndexUpdated += OnSearchIndexUpdated;
             _searchHistoryService = new SearchHistoryService();
-            _searchActionService = new SearchResultActionService(SettingsService);
+            _searchActionService = new SearchResultActionService(
+                SettingsService,
+                TodoWorkspaceService,
+                QuickCaptureService);
 
             // Start background indexing if enabled
             if (SettingsService.Settings.SearchCustomIndexerEnabled)
@@ -3375,7 +3454,7 @@ public partial class App : Application
             case "new-todo":
                 if (WidgetManager is not null)
                 {
-                    await WidgetManager.CreateTodoWidgetAsync(focusNewInput: true);
+                    await WidgetManager.CreateTodoWidgetAsync(focusNewInput: true, reuseExisting: true);
                 }
                 break;
 
@@ -3401,7 +3480,7 @@ public partial class App : Application
             case "open-todo":
                 if (WidgetManager is not null)
                 {
-                    await WidgetManager.CreateTodoWidgetAsync();
+                    await WidgetManager.CreateTodoWidgetAsync(reuseExisting: true);
                 }
                 break;
 

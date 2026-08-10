@@ -7,15 +7,19 @@ namespace DeskBox.ViewModels;
 
 public sealed partial class QuickCaptureItemViewModel : ObservableObject
 {
+    private static readonly QuickCaptureMarkdownService s_markdownService = new();
     private readonly LocalizationService _localizationService;
     private QuickCaptureItem _model;
     private bool _showPinnedSortControls;
     private bool _canMovePinnedUp;
     private bool _canMovePinnedDown;
     private bool _isCopySelected;
+    private bool _isListSelected;
     private double _textSize;
     private double _iconSize;
     private string _searchText;
+    private string _listDensity = SettingsService.QuickCaptureListDensityStandard;
+    private string _listTimeDisplay = SettingsService.QuickCaptureTimeDisplayUpdated;
 
     public QuickCaptureItemViewModel(
         QuickCaptureItem model,
@@ -42,9 +46,15 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public string Body => _model.Body;
 
-    public string CopyText => string.IsNullOrWhiteSpace(Body)
+    public QuickCaptureContentFormat ContentFormat => _model.ContentFormat;
+
+    public string PlainText => s_markdownService.ToPlainText(Body, ContentFormat);
+
+    public string CopyText => string.IsNullOrWhiteSpace(PlainText)
         ? Title ?? string.Empty
-        : Body;
+        : PlainText;
+
+    public string MarkdownText => Body;
 
     public string? Title => _model.Title;
 
@@ -94,6 +104,8 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
             : null;
 
     public bool IsPinned => _model.IsPinned;
+
+    public Visibility PinnedVisibility => IsPinned ? Visibility.Visible : Visibility.Collapsed;
 
     public bool IsRecent => _model.IsRecent;
 
@@ -152,9 +164,44 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public Visibility CopySelectionVisibility => IsCopySelected ? Visibility.Visible : Visibility.Collapsed;
 
+    public bool IsListSelected
+    {
+        get => _isListSelected;
+        set
+        {
+            if (SetProperty(ref _isListSelected, value))
+            {
+                OnPropertyChanged(nameof(SelectionAccentVisibility));
+            }
+        }
+    }
+
+    public Visibility SelectionAccentVisibility => IsListSelected
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
     public string UpdatedAtText => FormatUpdatedAt(_model.UpdatedAt);
 
     public string CreatedAtText => FormatUpdatedAt(_model.CreatedAt);
+
+    public string ListTimeText => _listTimeDisplay switch
+    {
+        SettingsService.QuickCaptureTimeDisplayCreated => CreatedAtText,
+        SettingsService.QuickCaptureTimeDisplayHidden => string.Empty,
+        _ => UpdatedAtText
+    };
+
+    public Visibility ListTimeVisibility =>
+        _listTimeDisplay == SettingsService.QuickCaptureTimeDisplayHidden
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+    public double ListItemMinHeight => _listDensity switch
+    {
+        SettingsService.QuickCaptureListDensityCompact => 48,
+        SettingsService.QuickCaptureListDensityComfortable => 70,
+        _ => 58
+    };
 
     public double TextSize => _textSize;
 
@@ -170,6 +217,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
     {
         Id = _model.Id,
         Type = _model.Type,
+        ContentFormat = _model.ContentFormat,
         Body = _model.Body,
         Title = _model.Title,
         Url = _model.Url,
@@ -179,6 +227,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         IsPinned = _model.IsPinned,
         IsRecent = _model.IsRecent,
         IsDeleted = _model.IsDeleted,
+        DeletedAt = _model.DeletedAt,
         AppearancePreset = _model.AppearancePreset,
         SourceKind = _model.SourceKind,
         Tags = _model.Tags is null ? [] : [.. _model.Tags],
@@ -186,7 +235,8 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         SortOrder = _model.SortOrder,
         PinnedSortOrder = _model.PinnedSortOrder,
         CreatedAt = _model.CreatedAt,
-        UpdatedAt = _model.UpdatedAt
+        UpdatedAt = _model.UpdatedAt,
+        Revision = _model.Revision
     };
 
     public void Update(QuickCaptureItem model)
@@ -206,10 +256,13 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
             OnPropertyChanged(nameof(AttachmentSummaryText));
         }
 
-        if (old.Body != model.Body || old.Type != model.Type)
+        if (old.Body != model.Body || old.Type != model.Type || old.ContentFormat != model.ContentFormat)
         {
             OnPropertyChanged(nameof(Body));
+            OnPropertyChanged(nameof(ContentFormat));
+            OnPropertyChanged(nameof(PlainText));
             OnPropertyChanged(nameof(CopyText));
+            OnPropertyChanged(nameof(MarkdownText));
             OnPropertyChanged(nameof(DisplayText));
             OnPropertyChanged(nameof(HighlightStartIndex));
             OnPropertyChanged(nameof(HighlightLength));
@@ -232,6 +285,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         if (old.IsPinned != model.IsPinned)
         {
             OnPropertyChanged(nameof(IsPinned));
+            OnPropertyChanged(nameof(PinnedVisibility));
             OnPropertyChanged(nameof(PinGlyph));
             OnPropertyChanged(nameof(PinTooltip));
         }
@@ -277,11 +331,38 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         if (old.UpdatedAt != model.UpdatedAt)
         {
             OnPropertyChanged(nameof(UpdatedAtText));
+            OnPropertyChanged(nameof(ListTimeText));
         }
 
         if (old.CreatedAt != model.CreatedAt)
         {
             OnPropertyChanged(nameof(CreatedAtText));
+            OnPropertyChanged(nameof(ListTimeText));
+        }
+    }
+
+    public void UpdateListPresentation(string? density, string? timeDisplay)
+    {
+        string normalizedDensity = density is
+            SettingsService.QuickCaptureListDensityCompact or
+            SettingsService.QuickCaptureListDensityComfortable
+                ? density
+                : SettingsService.QuickCaptureListDensityStandard;
+        string normalizedTime = timeDisplay is
+            SettingsService.QuickCaptureTimeDisplayCreated or
+            SettingsService.QuickCaptureTimeDisplayHidden
+                ? timeDisplay
+                : SettingsService.QuickCaptureTimeDisplayUpdated;
+        if (!string.Equals(_listDensity, normalizedDensity, StringComparison.Ordinal))
+        {
+            _listDensity = normalizedDensity;
+            OnPropertyChanged(nameof(ListItemMinHeight));
+        }
+        if (!string.Equals(_listTimeDisplay, normalizedTime, StringComparison.Ordinal))
+        {
+            _listTimeDisplay = normalizedTime;
+            OnPropertyChanged(nameof(ListTimeText));
+            OnPropertyChanged(nameof(ListTimeVisibility));
         }
     }
 

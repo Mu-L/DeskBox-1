@@ -6,7 +6,7 @@ namespace DeskBox.Services;
 
 public sealed class QuickCaptureStore
 {
-    private const int CurrentVersion = 3;
+    private const int CurrentVersion = 4;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -101,7 +101,9 @@ public sealed class QuickCaptureStore
                 item.Id = Guid.NewGuid().ToString("N");
             }
 
-            item.Body = item.Body?.Trim() ?? string.Empty;
+            item.Body = item.ContentFormat == QuickCaptureContentFormat.Markdown
+                ? item.Body ?? string.Empty
+                : item.Body?.Trim() ?? string.Empty;
             item.Title = string.IsNullOrWhiteSpace(item.Title) ? null : item.Title.Trim();
             item.Url = string.IsNullOrWhiteSpace(item.Url) ? null : item.Url.Trim();
             item.ImagePath = string.IsNullOrWhiteSpace(item.ImagePath) ? null : item.ImagePath.Trim();

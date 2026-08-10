@@ -4,7 +4,7 @@ using DeskBox.Models;
 
 namespace DeskBox.Services;
 
-public sealed class TodoWidgetStore
+public sealed class TodoWidgetStore : ITodoStore
 {
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -41,7 +41,7 @@ public sealed class TodoWidgetStore
 
     internal string StorePath => _storePath;
 
-    internal string AttachmentDirectory => Path.Combine(Path.GetDirectoryName(_storePath)!, "attachments");
+    public string AttachmentDirectory => Path.Combine(Path.GetDirectoryName(_storePath)!, "attachments");
 
     public async Task<TodoWidgetData> LoadAsync()
     {

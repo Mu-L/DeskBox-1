@@ -84,14 +84,19 @@ public sealed partial class QuickCaptureWidgetViewModel
     public async Task<QuickCaptureItem?> AddDetailedItemAsync(
         string? title,
         string body,
-        QuickCaptureAppearancePreset appearancePreset)
+        QuickCaptureAppearancePreset appearancePreset,
+        QuickCaptureContentFormat contentFormat = QuickCaptureContentFormat.Markdown)
     {
         if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body))
         {
             return null;
         }
 
-        QuickCaptureItem item = await _quickCaptureService.AddDetailedItemAsync(title, body, appearancePreset);
+        QuickCaptureItem item = await _quickCaptureService.AddDetailedItemAsync(
+            title,
+            body,
+            appearancePreset,
+            contentFormat);
         if (SelectedView != QuickCaptureViewMode.Records)
         {
             SelectedView = QuickCaptureViewMode.Records;
@@ -334,10 +339,89 @@ public sealed partial class QuickCaptureWidgetViewModel
         QuickCaptureItemViewModel item,
         string? title,
         string body,
-        QuickCaptureAppearancePreset appearancePreset)
+        QuickCaptureAppearancePreset appearancePreset,
+        QuickCaptureContentFormat? contentFormat = null)
     {
-        return _quickCaptureService.UpdateItemDetailsAsync(item.Id, title, body, appearancePreset);
+        return _quickCaptureService.UpdateItemDetailsAsync(
+            item.Id,
+            title,
+            body,
+            appearancePreset,
+            contentFormat);
     }
+
+    public Task SaveDraftAsync(
+        string noteId,
+        string? title,
+        string body,
+        QuickCaptureContentFormat contentFormat,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.SaveDraftAsync(noteId, title, body, contentFormat, cancellationToken);
+
+    public Task<QuickCaptureDraft?> GetDraftAsync(
+        string noteId,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.GetDraftAsync(noteId, cancellationToken);
+
+    public Task DiscardDraftAsync(
+        string noteId,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.DiscardDraftAsync(noteId, cancellationToken);
+
+    public Task<long?> CreateRevisionAsync(
+        string noteId,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.CreateRevisionAsync(noteId, cancellationToken);
+
+    public Task<IReadOnlyList<QuickCaptureRevision>> GetRevisionsAsync(
+        string noteId,
+        int limit = 50,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.GetRevisionsAsync(noteId, limit, cancellationToken);
+
+    public Task<bool> RestoreRevisionAsync(
+        string noteId,
+        long revisionId,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.RestoreRevisionAsync(noteId, revisionId, cancellationToken);
+
+    public Task<int> SetArchivedAsync(
+        IEnumerable<string> itemIds,
+        bool archived,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.SetArchivedAsync(itemIds, archived, cancellationToken);
+
+    public Task<bool> SetTagsAsync(
+        string itemId,
+        IEnumerable<string> tags,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.SetTagsAsync(itemId, tags, cancellationToken);
+
+    public Task<IReadOnlyList<QuickCaptureItem>> GetTrashAsync(
+        int limit = 200,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.GetTrashAsync(limit, cancellationToken);
+
+    public Task<bool> RestoreTrashItemAsync(
+        string itemId,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.RestoreTrashItemAsync(itemId, cancellationToken);
+
+    public Task<bool> DeletePermanentlyAsync(
+        string itemId,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.DeletePermanentlyAsync(itemId, cancellationToken);
+
+    public Task PurgeExpiredTrashAsync(
+        int retentionDays,
+        CancellationToken cancellationToken = default) =>
+        _quickCaptureService.PurgeExpiredTrashAsync(retentionDays, cancellationToken);
+
+    public void ConfigureRevisionRetention(int retentionDays, int maxRevisions) =>
+        _quickCaptureService.ConfigureRevisionRetention(retentionDays, maxRevisions);
+
+    public Task<QuickCaptureStoreData> GetDataAsync() =>
+        _quickCaptureService.GetDataAsync();
 
     public Task<bool> SetPinnedAsync(string itemId, bool isPinned)
     {

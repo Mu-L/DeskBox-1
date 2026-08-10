@@ -16,7 +16,7 @@ public sealed class QuickCaptureServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task AddItemAsync_TrimsTextAndPersistsNewestFirst()
+    public async Task AddItemAsync_PreservesMarkdownSourceAndPersistsNewestFirst()
     {
         var service = CreateService();
 
@@ -37,7 +37,7 @@ public sealed class QuickCaptureServiceTests : IDisposable
             item =>
             {
                 Assert.Equal(first.Id, item.Id);
-                Assert.Equal("first note", item.Body);
+                Assert.Equal(" first note ", item.Body);
                 Assert.Equal(1, item.SortOrder);
             });
     }
@@ -87,7 +87,7 @@ public sealed class QuickCaptureServiceTests : IDisposable
         Assert.Equal("Decide the launch date", saved.Body);
         Assert.Equal(QuickCaptureAppearancePreset.StickyYellow, saved.AppearancePreset);
         Assert.Equal(QuickCaptureSourceKind.Manual, saved.SourceKind);
-        Assert.Equal(3, data.Version);
+        Assert.Equal(4, data.Version);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public sealed class QuickCaptureServiceTests : IDisposable
         QuickCaptureStoreData data = await store.LoadAsync();
         QuickCaptureItem recent = Assert.Single(data.RecentItems);
 
-        Assert.Equal(3, data.Version);
+        Assert.Equal(4, data.Version);
         Assert.Equal(QuickCaptureAppearancePreset.Default, recent.AppearancePreset);
         Assert.Equal(QuickCaptureSourceKind.Clipboard, recent.SourceKind);
         Assert.True(recent.IsRecent);
@@ -829,7 +829,7 @@ public sealed class QuickCaptureServiceTests : IDisposable
         QuickCaptureItem item = Assert.Single(data.Items);
         TodoAttachment attachment = Assert.Single(item.Attachments);
 
-        Assert.Equal(3, data.Version);
+        Assert.Equal(4, data.Version);
         Assert.Equal(imagePath, attachment.FilePath);
         Assert.Equal(TodoAttachment.ManagedStorageMode, attachment.StorageMode);
         Assert.Equal("image", attachment.Type);

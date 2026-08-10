@@ -147,6 +147,7 @@ public sealed partial class QuickCaptureWidgetWindow
 
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
+            _sharedContent.OnDeactivated();
             if (Visible && !_isAtDesktopLayer &&
                 App.Current.WidgetManager is not { WidgetsRaisedFromTray: true } &&
                 (DateTime.UtcNow - _lastElevateForInteractionUtc).TotalMilliseconds > 300)
@@ -157,6 +158,8 @@ public sealed partial class QuickCaptureWidgetWindow
 
             return;
         }
+
+        _sharedContent.OnActivated();
 
         if (args.WindowActivationState != WindowActivationState.PointerActivated ||
             !Visible ||

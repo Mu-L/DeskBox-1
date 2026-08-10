@@ -16,15 +16,15 @@ public sealed partial class WidgetManager
     private ContentWidgetWindowFactory CreateSurfaceContentWindowFactory()
     {
         return new ContentWidgetWindowFactory(
-            new WidgetContentFactory(_localizationService),
+            new WidgetContentFactory(_localizationService, _todoWorkspaceService),
             _settingsService,
-            quickCaptureContentFactory: CreateQuickCaptureSurfaceContent,
+            quickCaptureContentFactory: CreateQuickCaptureContent,
             fileContentFactory: CreateFileSurfaceContent);
     }
 
-    private IWidgetContent CreateQuickCaptureSurfaceContent(WidgetConfig config)
+    private IWidgetContent CreateQuickCaptureContent(WidgetConfig config)
     {
-        return new QuickCaptureSurfaceContent(
+        return new QuickCaptureContent(
             config,
             _quickCaptureService,
             _settingsService,

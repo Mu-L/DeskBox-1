@@ -464,6 +464,9 @@ public sealed class SettingsServiceTests : IDisposable
         await service.LoadAsync();
 
         Assert.Equal(
+            SettingsService.QuickCaptureListDensityComfortable,
+            service.Settings.QuickCaptureListDensity);
+        Assert.Equal(
             SettingsService.MaxItemPreviewLineCount,
             service.Settings.QuickCaptureItemPreviewLineCount);
         Assert.Equal(
@@ -762,6 +765,29 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(
             SettingsService.WidgetAnimationSlideDirectionRight,
             service.Settings.WidgetAnimationSlideDirection);
+    }
+
+    [Fact]
+    public async Task LoadAsync_KeepsQuickCaptureDensityAndPreviewLinesIndependent()
+    {
+        var settings = new AppSettings
+        {
+            SchemaVersion = SettingsMigrationPipeline.CurrentSchemaVersion,
+            QuickCaptureListDensity = SettingsService.QuickCaptureListDensityCompact,
+            QuickCaptureItemPreviewLineCount = 7
+        };
+
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(
+            SettingsService.QuickCaptureListDensityCompact,
+            service.Settings.QuickCaptureListDensity);
+        Assert.Equal(7, service.Settings.QuickCaptureItemPreviewLineCount);
     }
 
     [Fact]
@@ -1197,6 +1223,13 @@ public sealed class SettingsServiceTests : IDisposable
         if (type == typeof(DateTimeOffset?))
         {
             return new DateTimeOffset(2030, 1, 2, 3, 4, 5, TimeSpan.Zero);
+        }
+
+        if (type == typeof(TodoSettings))
+        {
+            TodoSettings changed = TodoSettings.CreateNewUserDefaults();
+            changed.QuickRecord.ContinuousEntry = !changed.QuickRecord.ContinuousEntry;
+            return changed;
         }
 
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))

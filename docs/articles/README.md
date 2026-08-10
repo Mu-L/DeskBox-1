@@ -17,7 +17,8 @@ updated: "2026-08-03"
 
 ## 先读哪一篇？
 
-- 想知道 DeskBox 到底解决什么问题：阅读[DeskBox 是什么：把 Windows 桌面变成工作入口](00-overview.md)。
+- 想知道 DeskBox 到底解决什么问题：阅读[DeskBox 是什么？一款用桌面格子整理 Windows 文件的开源工具](00-overview.md)。
+- 想阅读适合公众号发布的完整功能介绍，可以查看[Windows 桌面总会重新变乱，DeskBox 用格子把它理顺](deskbox-wechat-feature-guide.md)。
 - 想先把桌面文件整理好：阅读[文件格子与桌面收纳](01-file-widgets.md)和[桌面一键整理与自动整理](02-desktop-organization.md)。
 - 想把聊天、浏览器和临时信息接到桌面上：阅读[全局唤醒与跨应用拖放](05-global-wake-and-drag-drop.md)和[随记格子](04-quick-capture.md)。
 - 想做一个轻量工作台：阅读[待办格子](03-todo-widget.md)、[桌面搜索](06-desktop-search.md)和[进阶工作流](14-workflows.md)。
@@ -28,7 +29,7 @@ updated: "2026-08-03"
 
 | 你遇到的问题 | DeskBox 对应能力 |
 | --- | --- |
-| 桌面文件越堆越乱 | 文件格子、映射文件夹、桌面整理、自动整理 |
+| 桌面文件越堆越乱 | 文件格子、文件夹映射、桌面整理、自动整理 |
 | 文件在资源管理器、微信和浏览器之间来回找 | 全局唤醒、原生拖放、剪贴板、随记 |
 | 临时任务容易忘记 | 待办、日期、提醒、重复任务 |
 | 找文件要翻很多目录 | 桌面搜索、索引、QuickLook |
@@ -61,5 +62,6 @@ updated: "2026-08-03"
 - [安装与首次配置](../user-guide/01-getting-started.md)
 - [常见问题与故障排查](../user-guide/10-troubleshooting.md)
 - [进阶工作流：从桌面收件箱到项目驾驶舱](14-workflows.md)
+- [从 DeskBox 1.3.5 到 1.3.8，我把时间花在了稳定性和细节上](16-deskbox-1.3.8-stability-update.md)
 
 > [图片占位：展示完整 DeskBox 桌面：文件格子、待办、随记、天气和音乐以不同尺寸分布在桌面上]

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using DeskBox.Controls;
+using DeskBox.Controls.WidgetContents;
 using DeskBox.Contracts;
 using DeskBox.Helpers;
 using DeskBox.Models;
@@ -35,6 +36,8 @@ public sealed partial class QuickCaptureWidgetWindow :
     IDesktopWidgetWindow,
     IWidgetTransientStateContent
 {
+    private readonly QuickCaptureContent _sharedContent;
+
     private sealed record QuickCaptureSelectionHitTestItem(
         QuickCaptureItemViewModel Item,
         Windows.Foundation.Rect Bounds);
@@ -285,7 +288,19 @@ public sealed partial class QuickCaptureWidgetWindow :
         _chromeDescriptor = new WidgetContentFactory(_localizationService).GetDescriptor(WidgetKind.QuickCapture);
         _chromeModeResolver = new WidgetChromeModeResolver(settingsService);
         InitializeComponent();
-        
+
+        _sharedContent = new QuickCaptureContent(
+            ViewModel,
+            SettingsService,
+            _localizationService,
+            ownsViewModel: false);
+        _sharedContent.FeedbackRequested += SharedContent_FeedbackRequested;
+        SharedContentHost.Children.Add(_sharedContent);
+        ListPage.IsHitTestVisible = false;
+        DetailPage.IsHitTestVisible = false;
+        ListPage.Visibility = Visibility.Collapsed;
+        DetailPage.Visibility = Visibility.Collapsed;
+
         // ✅ Set localized title
         this.Title = _localizationService.T("Window.QuickCapture.Title");
         
@@ -317,6 +332,15 @@ public sealed partial class QuickCaptureWidgetWindow :
         ApplyTitleBarLayout();
     }
 
+    private void SharedContent_FeedbackRequested(
+        object? sender,
+        WidgetFeedbackRequestedEventArgs e)
+    {
+        QuickCaptureShell.ShowFeedback(e.Request);
+    }
+
+    internal Task InitializeContentAsync() => _sharedContent.InitializeAsync();
+
     public new void Activate()
     {
         base.Activate();
@@ -325,6 +349,7 @@ public sealed partial class QuickCaptureWidgetWindow :
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
         NotifyCompactHostVisibilityChanged(true);
+        _sharedContent.OnWindowVisibilityChanged(true);
         QueueVisibleContentResume();
     }
 
@@ -338,6 +363,7 @@ public sealed partial class QuickCaptureWidgetWindow :
                 return;
             }
 
+            _sharedContent.OnWindowVisibilityChanged(true);
             ViewModel.RefreshAfterViewReady();
             QueueBackdropRefresh();
         });
@@ -517,6 +543,7 @@ else
 }
 _isHideAnimationRunning = true;
         Visible = false;
+        _sharedContent.OnWindowVisibilityChanged(false);
         ViewModel.Config.IsVisible = false;
         if (persistVisibility)
         {
@@ -624,6 +651,7 @@ _isHideAnimationRunning = true;
 
         _isClosing = true;
         Visible = false;
+        _sharedContent.OnWindowVisibilityChanged(false);
 
         // Unsubscribe from external events BEFORE Close() so that
         // SettingsChanged / LanguageChanged / ThemeChanged callbacks
@@ -634,6 +662,7 @@ _isHideAnimationRunning = true;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         Activated -= QuickCaptureWidgetWindow_Activated;
         _appWindow.Changed -= OnAppWindowChanged;
+        _sharedContent.FeedbackRequested -= SharedContent_FeedbackRequested;
 
         ReleaseAutoRestoreTimer();
         ReleaseTopMostSafetyTimer();
@@ -711,6 +740,7 @@ _isHideAnimationRunning = true;
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
             Activated -= QuickCaptureWidgetWindow_Activated;
             _appWindow.Changed -= OnAppWindowChanged;
+            _sharedContent.FeedbackRequested -= SharedContent_FeedbackRequested;
             ReleaseAutoRestoreTimer();
 
             // TrayAnimation.Stop() was already called in CloseWindow().
@@ -719,6 +749,7 @@ _isHideAnimationRunning = true;
             try { _trayAnimation.RevealWindowForTrayShow(); } catch { }
 
             try { CleanupBase(); } catch (Exception ex) { App.Log($"[QuickCapture] CleanupBase failed during close: {ex.Message}"); }
+            try { _sharedContent.Dispose(); } catch (Exception ex) { App.Log($"[QuickCapture] Shared content cleanup failed during close: {ex.Message}"); }
 
             foreach (var child in ResizeGrid.Children.OfType<FrameworkElement>())
             {

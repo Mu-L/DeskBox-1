@@ -28,6 +28,15 @@ public static class ServiceRegistry
                 sp.GetRequiredService<SettingsService>(),
                 sp.GetRequiredService<FileService>()));
         services.AddSingleton<QuickCaptureService>(_ => new QuickCaptureService());
+        services.AddSingleton<ITodoWorkspaceRepository, SqliteTodoWorkspaceRepository>();
+        services.AddSingleton<TodoQueryService>();
+        services.AddSingleton<TodoRecurrenceExpansionService>();
+        services.AddSingleton<TodoQuickAddParser>();
+        services.AddSingleton<TodoMarkdownService>();
+        services.AddSingleton<TodoPresentationSettingsStore>();
+        services.AddSingleton<ITodoCalendarSource, IcsTodoCalendarSource>();
+        services.AddSingleton<TodoCalendarSourceService>();
+        services.AddSingleton<TodoWorkspaceService>();
         services.AddSingleton<LocalizationService>();
         services.AddSingleton<ThemeService>();
 

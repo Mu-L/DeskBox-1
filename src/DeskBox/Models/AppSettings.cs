@@ -51,6 +51,12 @@ public class AppSettings
     public bool TodoEnabled { get; set; }
 
     /// <summary>
+    /// Todo 2.0 settings. Legacy Todo* properties below remain serialized only
+    /// as migration inputs for the compatibility window.
+    /// </summary>
+    public TodoSettings Todo { get; set; } = new();
+
+    /// <summary>
     /// Enabled state for singleton feature widgets, keyed by <see cref="WidgetKind"/> name.
     /// Legacy boolean properties are still kept as compatibility mirrors.
     /// </summary>
@@ -63,7 +69,7 @@ public class AppSettings
     public bool QuickCaptureImageClipboardEnabled { get; set; }
 
     /// <summary>Maximum number of recent clipboard text/link entries kept by Quick Capture.</summary>
-    public int QuickCaptureRecentLimit { get; set; } = 30;
+    public int QuickCaptureRecentLimit { get; set; } = 100;
 
     /// <summary>Whether Quick Capture cards show their creation time.</summary>
     public bool QuickCaptureShowCreatedTime { get; set; } = true;
@@ -87,6 +93,33 @@ public class AppSettings
     public bool QuickCaptureShowRecordsTab { get; set; } = true;
     public bool QuickCaptureShowPinnedTab { get; set; } = true;
     public bool QuickCaptureShowRecentTab { get; set; } = true;
+
+    /// <summary>Default source format for newly created notes.</summary>
+    public string QuickCaptureDefaultFormat { get; set; } = "Markdown";
+
+    /// <summary>How an existing note opens. Valid values: Read, Edit.</summary>
+    public string QuickCaptureExistingNoteOpenMode { get; set; } = "Read";
+
+    /// <summary>Default responsive layout. Valid values: Auto, Single, Dual.</summary>
+    public string QuickCaptureDefaultLayout { get; set; } = "Auto";
+
+    /// <summary>Wide-screen editor presentation. Valid values: Source, Split.</summary>
+    public string QuickCaptureWideEditorView { get; set; } = "Source";
+
+    /// <summary>Density of note rows. Valid values: Compact, Standard, Comfortable.</summary>
+    public string QuickCaptureListDensity { get; set; } = "Standard";
+
+    /// <summary>Timestamp shown in note rows. Valid values: Updated, Created, Hidden.</summary>
+    public string QuickCaptureTimeDisplay { get; set; } = "Updated";
+
+    public bool QuickCaptureAllowRemoteImages { get; set; }
+    public bool QuickCaptureTrashEnabled { get; set; } = true;
+    public int QuickCaptureTrashRetentionDays { get; set; } = 30;
+    public bool QuickCaptureRevisionHistoryEnabled { get; set; } = true;
+    public int QuickCaptureRevisionRetentionDays { get; set; } = 30;
+    public int QuickCaptureRevisionLimitPerNote { get; set; } = 50;
+    public int QuickCaptureClipboardRetentionDays { get; set; } = 30;
+    public List<string> QuickCaptureClipboardExcludedApps { get; set; } = [];
 
     /// <summary>Where newly added Todo tasks are inserted. Valid values: <c>"Top"</c>, <c>"Bottom"</c>.</summary>
     public string TodoNewTaskPosition { get; set; } = "Top";

@@ -37,10 +37,7 @@ public sealed partial class QuickCaptureWidgetWindow
     /// </summary>
     internal void FocusInputForNewNote()
     {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            InputTextBox.Focus(FocusState.Programmatic);
-        });
+        DispatcherQueue.TryEnqueue(_sharedContent.FocusInputForNewNote);
     }
 
     /// <summary>Opens the exact saved item requested by global search.</summary>
@@ -51,32 +48,12 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
-        ViewModel.CollapseSearch();
-        ViewModel.SelectedView = QuickCaptureViewMode.Records;
-        await ViewModel.RefreshItemsAsync();
-
-        var item = ViewModel.Items.FirstOrDefault(candidate =>
-            string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
-        if (item is null)
-        {
-            return;
-        }
-
-        ItemsListView.SelectedItem = item;
-        ItemsListView.ScrollIntoView(item);
-        OpenDetail(item);
+        await _sharedContent.RevealItemAsync(itemId);
     }
 
     private async void AddButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.CanAddInput)
-        {
-            await ViewModel.AddInputAsync();
-            InputTextBox.Focus(FocusState.Programmatic);
-            return;
-        }
-
-        OpenNewDetail();
+        await _sharedContent.AddFromTitleButtonAsync();
     }
 
     private void PositionLockButton_Click(object sender, RoutedEventArgs e)

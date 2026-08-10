@@ -525,7 +525,13 @@ public abstract partial class WidgetWindowBase
 
     protected WidgetTrayAnimationProfile GetTrayAnimationProfile()
     {
-        return TrayAnimation.CreateProfile(WidgetAnimationSettings.From(SettingsService.Settings));
+        WidgetAnimationOptions options = WidgetAnimationSettings.From(SettingsService.Settings);
+        if (!WindowsCompatibilityService.AreAnimationsEnabled)
+        {
+            options = options with { Effect = SettingsService.WidgetAnimationEffectNone };
+        }
+
+        return TrayAnimation.CreateProfile(options);
     }
 
     protected void LogTrayWindow(string message)

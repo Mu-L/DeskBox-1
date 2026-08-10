@@ -6,6 +6,8 @@ public sealed class QuickCaptureItem
 
     public QuickCaptureItemType Type { get; set; } = QuickCaptureItemType.Text;
 
+    public QuickCaptureContentFormat ContentFormat { get; set; } = QuickCaptureContentFormat.PlainText;
+
     public string Body { get; set; } = string.Empty;
 
     public string? Title { get; set; }
@@ -24,6 +26,8 @@ public sealed class QuickCaptureItem
 
     public bool IsDeleted { get; set; }
 
+    public DateTimeOffset? DeletedAt { get; set; }
+
     public QuickCaptureAppearancePreset AppearancePreset { get; set; } = QuickCaptureAppearancePreset.Default;
 
     public QuickCaptureSourceKind SourceKind { get; set; } = QuickCaptureSourceKind.Manual;
@@ -39,6 +43,14 @@ public sealed class QuickCaptureItem
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    public long Revision { get; set; }
+}
+
+public enum QuickCaptureContentFormat
+{
+    PlainText,
+    Markdown
 }
 
 public enum QuickCaptureItemType

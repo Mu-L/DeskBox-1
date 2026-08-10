@@ -1,6 +1,6 @@
 namespace DeskBox.Models;
 
-public sealed class TodoItem
+public class TodoItem
 {
     public const string RedColorMarker = "red";
     public const string OrangeColorMarker = "orange";
@@ -34,6 +34,36 @@ public sealed class TodoItem
     public string? ColorMarker { get; set; }
 
     public DateTimeOffset? DueDate { get; set; }
+
+    /// <summary>
+    /// User-selected time to work on this task. Unlike <see cref="DueDate"/>,
+    /// changing this value never changes whether the task is overdue.
+    /// </summary>
+    public TodoSchedule? Schedule { get; set; }
+
+    /// <summary>
+    /// Rich-model deadline. During the compatibility period this mirrors
+    /// <see cref="DueDate"/> so the existing Todo surface can continue to work.
+    /// </summary>
+    public DateTimeOffset? DeadlineAt { get; set; }
+
+    public TodoTaskStatus Status { get; set; } = TodoTaskStatus.Open;
+
+    public TodoPriority Priority { get; set; } = TodoPriority.None;
+
+    public string ListId { get; set; } = TodoWorkspaceDefaults.DefaultListId;
+
+    public string? SectionId { get; set; }
+
+    public List<string> TagIds { get; set; } = [];
+
+    public List<TodoReminderRule> Reminders { get; set; } = [];
+
+    public TodoRecurrenceRule? RecurrenceRule { get; set; }
+
+    public double? TodaySortRank { get; set; }
+
+    public DateTimeOffset? DeletedAt { get; set; }
 
     public TodoRecurrence? Recurrence { get; set; }
 

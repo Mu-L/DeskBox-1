@@ -13,7 +13,8 @@ public sealed record WidgetFeedbackRequest(
     WidgetFeedbackSeverity Severity = WidgetFeedbackSeverity.Info,
     string? DeduplicationKey = null,
     string? ActionText = null,
-    Func<Task>? Action = null)
+    Func<Task>? Action = null,
+    TimeSpan? RequestedDuration = null)
 {
     public TimeSpan DisplayDuration => WidgetFeedbackPolicy.GetDisplayDuration(this);
 }
@@ -23,6 +24,11 @@ public static class WidgetFeedbackPolicy
     public static TimeSpan GetDisplayDuration(WidgetFeedbackRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.RequestedDuration is { } requestedDuration)
+        {
+            return requestedDuration;
+        }
+
         if (!string.IsNullOrWhiteSpace(request.ActionText) && request.Action is not null)
         {
             return TimeSpan.FromMilliseconds(5000);

@@ -9,7 +9,9 @@ public sealed record TodoReminderNotification(
     int Count,
     string? WidgetId = null,
     string? ItemId = null,
-    bool HasTodayDueItem = false);
+    bool HasTodayDueItem = false,
+    string? ReminderRuleId = null,
+    string? OccurrenceKey = null);
 
 public sealed class TodoReminderService : IDisposable
 {
@@ -21,8 +23,10 @@ public sealed class TodoReminderService : IDisposable
     private readonly LocalizationService _localizationService;
     private readonly DispatcherQueue? _dispatcherQueue;
     private readonly Action<TodoReminderNotification> _notify;
-    private readonly Func<string, TodoWidgetStore> _storeFactory;
+    private readonly Func<string, ITodoStore> _storeFactory;
     private readonly Func<DateTimeOffset> _clock;
+    private readonly bool _usesSharedWorkspace;
+    private readonly TodoWorkspaceService? _workspaceService;
     private readonly HashSet<string> _sessionNotifiedKeys = new(StringComparer.Ordinal);
 
     private DispatcherQueueTimer? _timer;
@@ -39,14 +43,17 @@ public sealed class TodoReminderService : IDisposable
         SettingsService settingsService,
         LocalizationService localizationService,
         DispatcherQueue dispatcherQueue,
-        Action<TodoReminderNotification> notify)
+        Action<TodoReminderNotification> notify,
+        TodoWorkspaceService workspaceService)
         : this(
             settingsService,
             localizationService,
             dispatcherQueue,
             notify,
-            widgetId => new TodoWidgetStore(widgetId),
-            () => DateTimeOffset.Now)
+            _ => new TodoWorkspaceStoreAdapter(workspaceService),
+            () => DateTimeOffset.Now,
+            usesSharedWorkspace: true,
+            workspaceService)
     {
     }
 
@@ -57,6 +64,27 @@ public sealed class TodoReminderService : IDisposable
         Action<TodoReminderNotification> notify,
         Func<string, TodoWidgetStore> storeFactory,
         Func<DateTimeOffset> clock)
+        : this(
+            settingsService,
+            localizationService,
+            dispatcherQueue,
+            notify,
+            widgetId => storeFactory(widgetId),
+            clock,
+            usesSharedWorkspace: false,
+            workspaceService: null)
+    {
+    }
+
+    private TodoReminderService(
+        SettingsService settingsService,
+        LocalizationService localizationService,
+        DispatcherQueue? dispatcherQueue,
+        Action<TodoReminderNotification> notify,
+        Func<string, ITodoStore> storeFactory,
+        Func<DateTimeOffset> clock,
+        bool usesSharedWorkspace,
+        TodoWorkspaceService? workspaceService)
     {
         _settingsService = settingsService;
         _localizationService = localizationService;
@@ -64,6 +92,8 @@ public sealed class TodoReminderService : IDisposable
         _notify = notify;
         _storeFactory = storeFactory;
         _clock = clock;
+        _usesSharedWorkspace = usesSharedWorkspace;
+        _workspaceService = workspaceService;
     }
 
     public void Start()
@@ -130,6 +160,7 @@ public sealed class TodoReminderService : IDisposable
     {
         var settings = _settingsService.Settings;
         return settings.TodoReminderEnabled &&
+               settings.Todo.RemindersAndRecurrence.Enabled &&
                FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo);
     }
 
@@ -145,13 +176,16 @@ public sealed class TodoReminderService : IDisposable
         {
             var settings = _settingsService.Settings;
             if (!settings.TodoReminderEnabled ||
+                !settings.Todo.RemindersAndRecurrence.Enabled ||
                 !FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo))
             {
                 return 0;
             }
 
             int defaultOffsetMinutes = SettingsService.NormalizeTodoReminderOffsetMinutes(
-                settings.TodoDefaultReminderOffsetMinutes);
+                settings.Todo.SchemaVersion >= TodoSettings.CurrentSchemaVersion
+                    ? settings.Todo.RemindersAndRecurrence.DefaultOffsetMinutes
+                    : settings.TodoDefaultReminderOffsetMinutes);
             var widgets = settings.Widgets
                 .Where(widget =>
                     widget.WidgetKind == WidgetKind.Todo &&
@@ -159,12 +193,23 @@ public sealed class TodoReminderService : IDisposable
                     !settings.DeletedWidgetIds.Contains(widget.Id))
                 .ToList();
 
-            if (widgets.Count == 0)
+            if (widgets.Count == 0 && !_usesSharedWorkspace)
             {
                 return 0;
             }
 
             List<TodoReminderCandidate> candidates = [];
+            if (_usesSharedWorkspace)
+            {
+                WidgetConfig target = widgets.FirstOrDefault() ?? new WidgetConfig
+                {
+                    Id = string.Empty,
+                    Name = _localizationService.T("Todo.Title"),
+                    WidgetKind = WidgetKind.Todo
+                };
+                await CollectWidgetCandidatesAsync(target, now, defaultOffsetMinutes, candidates);
+            }
+            else
             foreach (var widget in widgets)
             {
                 await CollectWidgetCandidatesAsync(widget, now, defaultOffsetMinutes, candidates);
@@ -210,7 +255,12 @@ public sealed class TodoReminderService : IDisposable
         return TryGetReminderTrigger(item, now, defaultOffsetMinutes, out _, out _);
     }
 
-    public async Task<bool> SnoozeAsync(string? widgetId, string? itemId, TimeSpan snoozeFor)
+    public async Task<bool> SnoozeAsync(
+        string? widgetId,
+        string? itemId,
+        TimeSpan snoozeFor,
+        string? reminderRuleId = null,
+        string? occurrenceKey = null)
     {
         if (_disposed ||
             string.IsNullOrWhiteSpace(widgetId) ||
@@ -220,10 +270,20 @@ public sealed class TodoReminderService : IDisposable
             return false;
         }
 
-        return await SnoozeUntilAsync(widgetId, itemId, _clock().Add(snoozeFor));
+        return await SnoozeUntilAsync(
+            widgetId,
+            itemId,
+            _clock().Add(snoozeFor),
+            reminderRuleId,
+            occurrenceKey);
     }
 
-    public async Task<bool> SnoozeUntilAsync(string? widgetId, string? itemId, DateTimeOffset snoozedUntil)
+    public async Task<bool> SnoozeUntilAsync(
+        string? widgetId,
+        string? itemId,
+        DateTimeOffset snoozedUntil,
+        string? reminderRuleId = null,
+        string? occurrenceKey = null)
     {
         if (_disposed ||
             string.IsNullOrWhiteSpace(widgetId) ||
@@ -238,6 +298,35 @@ public sealed class TodoReminderService : IDisposable
             if (!TryGetTodoReminderWidget(widgetId, requireReminderEnabled: true, out WidgetConfig? widget))
             {
                 return false;
+            }
+
+            if (_usesSharedWorkspace && _workspaceService is not null)
+            {
+                TodoTask? task = await _workspaceService.GetTaskAsync(itemId);
+                if (task is null || task.Status == TodoTaskStatus.Completed)
+                {
+                    return false;
+                }
+                TodoReminderRule? rule = !string.IsNullOrWhiteSpace(reminderRuleId)
+                    ? task.Reminders.FirstOrDefault(candidate =>
+                        candidate.IsEnabled &&
+                        string.Equals(candidate.Id, reminderRuleId, StringComparison.Ordinal))
+                    : task.Reminders
+                        .Where(candidate => candidate.IsEnabled)
+                        .OrderBy(candidate => ResolveReminderTarget(task, candidate) ?? DateTimeOffset.MaxValue)
+                        .FirstOrDefault();
+                if (rule is null)
+                {
+                    return false;
+                }
+                rule.SnoozedUntil = snoozedUntil;
+                rule.SnoozeLastNotifiedAt = null;
+                if (!string.IsNullOrWhiteSpace(occurrenceKey))
+                {
+                    rule.OccurrenceKey = occurrenceKey;
+                }
+                await _workspaceService.SaveTaskAsync(task);
+                return true;
             }
 
             var store = _storeFactory(widget.Id);
@@ -267,7 +356,10 @@ public sealed class TodoReminderService : IDisposable
         }
     }
 
-    public async Task<bool> CompleteAsync(string? widgetId, string? itemId)
+    public async Task<bool> CompleteAsync(
+        string? widgetId,
+        string? itemId,
+        string? occurrenceKey = null)
     {
         if (_disposed ||
             string.IsNullOrWhiteSpace(widgetId) ||
@@ -281,6 +373,32 @@ public sealed class TodoReminderService : IDisposable
             if (!TryGetTodoReminderWidget(widgetId, requireReminderEnabled: false, out WidgetConfig? widget))
             {
                 return false;
+            }
+
+            if (_usesSharedWorkspace && _workspaceService is not null)
+            {
+                TodoTask? task = await _workspaceService.GetTaskAsync(itemId);
+                if (task is null)
+                {
+                    return false;
+                }
+                if (task.RecurrenceRule is { GenerationMode: TodoRecurrenceGenerationMode.FixedSchedule } &&
+                    TryParseOccurrenceDate(task.Id, occurrenceKey, out DateOnly occurrenceDate))
+                {
+                    await _workspaceService.ApplyRecurrenceEditAsync(
+                        task.Id,
+                        occurrenceDate,
+                        TodoRecurrenceEditScope.Occurrence,
+                        editable =>
+                        {
+                            editable.Status = TodoTaskStatus.Completed;
+                            editable.IsCompleted = true;
+                            editable.CompletedAt = _clock().ToUniversalTime();
+                        });
+                    return true;
+                }
+                await _workspaceService.CompleteTaskAsync(task);
+                return true;
             }
 
             var store = _storeFactory(widget.Id);
@@ -349,7 +467,8 @@ public sealed class TodoReminderService : IDisposable
     {
         widget = null!;
         var settings = _settingsService.Settings;
-        if ((requireReminderEnabled && !settings.TodoReminderEnabled) ||
+        if ((requireReminderEnabled &&
+             (!settings.TodoReminderEnabled || !settings.Todo.RemindersAndRecurrence.Enabled)) ||
             !FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo))
         {
             return false;
@@ -380,6 +499,12 @@ public sealed class TodoReminderService : IDisposable
         int defaultOffsetMinutes,
         List<TodoReminderCandidate> candidates)
     {
+        if (_usesSharedWorkspace && _workspaceService is not null)
+        {
+            await CollectWorkspaceCandidatesAsync(widget, now, defaultOffsetMinutes, candidates);
+            return;
+        }
+
         var store = _storeFactory(widget.Id);
         var data = await store.LoadAsync();
         bool changed = false;
@@ -409,7 +534,13 @@ public sealed class TodoReminderService : IDisposable
             }
 
             changed = true;
-            candidates.Add(new TodoReminderCandidate(widget.Id, widget.Name, item));
+            candidates.Add(new TodoReminderCandidate(
+                widget.Id,
+                widget.Name,
+                item,
+                item.DueDate ?? now,
+                null,
+                null));
         }
 
         if (changed)
@@ -418,21 +549,144 @@ public sealed class TodoReminderService : IDisposable
         }
     }
 
+    private async Task CollectWorkspaceCandidatesAsync(
+        WidgetConfig widget,
+        DateTimeOffset now,
+        int defaultOffsetMinutes,
+        List<TodoReminderCandidate> candidates)
+    {
+        TodoWorkspaceSnapshot snapshot = await _workspaceService!.LoadSnapshotAsync();
+        var recurrence = new TodoRecurrenceExpansionService();
+        DateOnly localDate = DateOnly.FromDateTime(now.LocalDateTime);
+        foreach (TodoTask seriesTask in snapshot.Tasks.Where(task =>
+                     task.DeletedAt is null && task.Status == TodoTaskStatus.Open))
+        {
+            IReadOnlyList<TodoOccurrence> occurrences = seriesTask.RecurrenceRule is null
+                ? [new TodoOccurrence(
+                    TodoRecurrenceExpansionService.BuildOccurrenceKey(seriesTask.Id, localDate),
+                    seriesTask.Id,
+                    seriesTask,
+                    seriesTask.Schedule?.Date ??
+                    (seriesTask.DeadlineAt is { } deadline
+                        ? DateOnly.FromDateTime(deadline.LocalDateTime)
+                        : localDate),
+                    false)]
+                : recurrence.Expand(
+                    snapshot.Tasks,
+                    localDate.AddDays(-2),
+                    localDate.AddDays(2),
+                    snapshot.RecurrenceExceptions)
+                    .Where(occurrence => string.Equals(occurrence.SeriesTaskId, seriesTask.Id, StringComparison.Ordinal))
+                    .ToList();
+            bool changed = false;
+            foreach (TodoOccurrence occurrence in occurrences)
+            {
+                foreach (TodoReminderRule rule in seriesTask.Reminders.Where(rule => rule.IsEnabled))
+                {
+                    DateTimeOffset? targetAt = ResolveReminderTarget(occurrence.Task, rule);
+                    if (targetAt is null)
+                    {
+                        continue;
+                    }
+
+                    bool snoozed = rule.SnoozedUntil is { } snoozedUntil && now >= snoozedUntil;
+                    int offsetMinutes = rule.OffsetMinutes ?? defaultOffsetMinutes;
+                    DateTimeOffset reminderAt = targetAt.Value.AddMinutes(-Math.Max(0, offsetMinutes));
+                    bool isDue = now >= reminderAt && now <= targetAt.Value.AddDays(1);
+                    if (!snoozed && !isDue)
+                    {
+                        continue;
+                    }
+
+                    string key = $"workspace:{seriesTask.Id}:{rule.Id}:{occurrence.OccurrenceKey}:{(snoozed ? "snooze" : targetAt.Value.UtcTicks)}";
+                    if (!_sessionNotifiedKeys.Add(key))
+                    {
+                        continue;
+                    }
+                    if (!snoozed &&
+                        string.Equals(rule.OccurrenceKey, occurrence.OccurrenceKey, StringComparison.Ordinal) &&
+                        rule.LastNotifiedAt is not null)
+                    {
+                        continue;
+                    }
+
+                    if (snoozed)
+                    {
+                        rule.SnoozeLastNotifiedAt = now;
+                        rule.SnoozedUntil = null;
+                    }
+                    else
+                    {
+                        rule.OccurrenceKey = occurrence.OccurrenceKey;
+                        rule.LastNotifiedAt = now;
+                    }
+                    changed = true;
+                    TodoTask display = occurrence.Task.CloneTask();
+                    display.DueDate = targetAt;
+                    candidates.Add(new TodoReminderCandidate(
+                        widget.Id,
+                        widget.Name,
+                        display,
+                        targetAt.Value,
+                        rule.Id,
+                        occurrence.OccurrenceKey));
+                }
+            }
+            if (changed)
+            {
+                await _workspaceService.SaveTaskAsync(seriesTask);
+            }
+        }
+    }
+
+    private static DateTimeOffset? ResolveReminderTarget(TodoTask task, TodoReminderRule rule)
+    {
+        if (rule.Target == TodoReminderTarget.Absolute)
+        {
+            return rule.AbsoluteAt;
+        }
+        if (rule.Target == TodoReminderTarget.Deadline)
+        {
+            return task.DeadlineAt ?? task.DueDate;
+        }
+        if (task.Schedule is not { } schedule)
+        {
+            return null;
+        }
+
+        TimeOnly time = schedule.Time ?? new TimeOnly(9, 0);
+        DateTime local = schedule.Date.ToDateTime(time, DateTimeKind.Unspecified);
+        try
+        {
+            TimeZoneInfo zone = string.IsNullOrWhiteSpace(schedule.TimeZoneId)
+                ? TimeZoneInfo.Local
+                : TimeZoneInfo.FindSystemTimeZoneById(schedule.TimeZoneId);
+            return new DateTimeOffset(local, zone.GetUtcOffset(local));
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
+        }
+    }
+
     private TodoReminderNotification BuildNotification(IReadOnlyList<TodoReminderCandidate> candidates)
     {
         var first = candidates
-            .OrderBy(candidate => candidate.Item.DueDate)
+            .OrderBy(candidate => candidate.TriggerAt)
             .First();
         string title = _localizationService.T("Todo.Reminder.NotificationTitle");
-        string dueText = FormatDueDate(first.Item.DueDate!.Value);
+        string dueText = FormatDueDate(first.TriggerAt);
         string itemText = NormalizeNotificationText(first.Item.Text);
         string message = candidates.Count == 1
             ? _localizationService.Format("Todo.Reminder.NotificationSingle", itemText, dueText)
             : _localizationService.Format("Todo.Reminder.NotificationMultiple", candidates.Count, itemText, dueText);
 
         bool hasTodayDueItem = candidates.Any(candidate =>
-            candidate.Item.DueDate is { } dueDate &&
-            dueDate.ToLocalTime().Date == _clock().Date);
+            candidate.TriggerAt.ToLocalTime().Date == _clock().Date);
 
         return new TodoReminderNotification(
             title,
@@ -440,7 +694,9 @@ public sealed class TodoReminderService : IDisposable
             candidates.Count,
             first.WidgetId,
             first.Item.Id,
-            hasTodayDueItem);
+            hasTodayDueItem,
+            first.ReminderRuleId,
+            first.OccurrenceKey);
     }
 
     private string FormatDueDate(DateTimeOffset dueDate)
@@ -564,5 +820,25 @@ public sealed class TodoReminderService : IDisposable
     private sealed record TodoReminderCandidate(
         string WidgetId,
         string WidgetName,
-        TodoItem Item);
+        TodoItem Item,
+        DateTimeOffset TriggerAt,
+        string? ReminderRuleId,
+        string? OccurrenceKey);
+
+    private static bool TryParseOccurrenceDate(
+        string seriesTaskId,
+        string? occurrenceKey,
+        out DateOnly occurrenceDate)
+    {
+        occurrenceDate = default;
+        string prefix = $"{seriesTaskId}:";
+        return !string.IsNullOrWhiteSpace(occurrenceKey) &&
+               occurrenceKey.StartsWith(prefix, StringComparison.Ordinal) &&
+               DateOnly.TryParseExact(
+                   occurrenceKey[prefix.Length..],
+                   "yyyy-MM-dd",
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   System.Globalization.DateTimeStyles.None,
+                   out occurrenceDate);
+    }
 }

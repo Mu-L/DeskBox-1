@@ -103,6 +103,7 @@ public sealed partial class WidgetManager
     private readonly ThemeService _themeService;
     private readonly QuickCaptureService _quickCaptureService;
     private readonly LocalizationService _localizationService;
+    private readonly TodoWorkspaceService? _todoWorkspaceService;
     private readonly Func<string> _desktopPathProvider;
     private readonly bool _recycleManagedFolderDeletes;
     private readonly WidgetRegistry _widgetRegistry;
@@ -306,7 +307,8 @@ public sealed partial class WidgetManager
         OrganizerService organizerService,
         ThemeService themeService,
         QuickCaptureService quickCaptureService,
-        LocalizationService? localizationService = null)
+        LocalizationService? localizationService = null,
+        TodoWorkspaceService? todoWorkspaceService = null)
         : this(
             settingsService,
             fileService,
@@ -315,7 +317,8 @@ public sealed partial class WidgetManager
             quickCaptureService,
             localizationService ?? new LocalizationService(settingsService),
             () => Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-            recycleManagedFolderDeletes: true)
+            recycleManagedFolderDeletes: true,
+            todoWorkspaceService)
     {
     }
 
@@ -347,7 +350,8 @@ public sealed partial class WidgetManager
         QuickCaptureService quickCaptureService,
         LocalizationService? localizationService,
         Func<string> desktopPathProvider,
-        bool recycleManagedFolderDeletes)
+        bool recycleManagedFolderDeletes,
+        TodoWorkspaceService? todoWorkspaceService = null)
     {
         _settingsService = settingsService;
         _fileService = fileService;
@@ -355,6 +359,7 @@ public sealed partial class WidgetManager
         _themeService = themeService;
         _quickCaptureService = quickCaptureService;
         _localizationService = localizationService ?? new LocalizationService(settingsService);
+        _todoWorkspaceService = todoWorkspaceService;
         _desktopPathProvider = desktopPathProvider;
         _recycleManagedFolderDeletes = recycleManagedFolderDeletes;
         _widgetRegistry = WidgetRegistry.Default;
@@ -390,7 +395,7 @@ public sealed partial class WidgetManager
                 CloseLoadedQuickCaptureWidgets),
             new(
                 WidgetKind.Todo,
-                async _ => await CreateTodoWidgetAsync(),
+                async _ => await CreateTodoWidgetAsync(reuseExisting: true),
                 SetTodoEnabledAsync,
                 () => HideAndCloseFeatureWidgetAsync(WidgetKind.Todo)),
             new(

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using DeskBox.Models;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -22,23 +23,43 @@ public sealed record QuickCaptureDeletedItemSnapshot(
 
 public sealed class QuickCaptureService
 {
-    public const int DefaultRecentLimit = 30;
+    public const int DefaultRecentLimit = 100;
     public const int MinRecentLimit = 10;
     public const int MaxRecentLimit = 100;
     private const uint ThumbnailMaxPixelSize = 180;
     private static readonly TimeSpan ExportCleanupAge = TimeSpan.FromDays(1);
 
     private readonly QuickCaptureStore _store;
+    private readonly IQuickCaptureRepository _repository;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _thumbnailTaskLock = new();
     private readonly Dictionary<string, Task<string?>> _thumbnailTasks = new(StringComparer.OrdinalIgnoreCase);
     private QuickCaptureStoreData? _data;
+    private int _revisionRetentionDays = 30;
+    private int _revisionLimitPerNote = 50;
 
     public event Action? Changed;
 
     public QuickCaptureService(QuickCaptureStore? store = null)
     {
         _store = store ?? new QuickCaptureStore();
+        _repository = new SqliteQuickCaptureRepository(_store);
+    }
+
+    internal QuickCaptureService(
+        QuickCaptureStore store,
+        IQuickCaptureRepository repository)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    }
+
+    internal IQuickCaptureRepository Repository => _repository;
+
+    public void ConfigureRevisionRetention(int retentionDays, int maxRevisions)
+    {
+        _revisionRetentionDays = Math.Clamp(retentionDays, 1, 3650);
+        _revisionLimitPerNote = Math.Clamp(maxRevisions, 1, 500);
     }
 
     public async Task<QuickCaptureStoreData> GetDataAsync()
@@ -55,9 +76,10 @@ public sealed class QuickCaptureService
     public async Task<QuickCaptureItem> AddDetailedItemAsync(
         string? title,
         string body,
-        QuickCaptureAppearancePreset appearancePreset)
+        QuickCaptureAppearancePreset appearancePreset,
+        QuickCaptureContentFormat contentFormat = QuickCaptureContentFormat.Markdown)
     {
-        string normalizedBody = NormalizeBody(body);
+        string normalizedBody = NormalizeBodyForFormat(body, contentFormat);
         string? normalizedTitle = NormalizeOptionalText(title);
         if (string.IsNullOrWhiteSpace(normalizedTitle) && string.IsNullOrWhiteSpace(normalizedBody))
         {
@@ -73,6 +95,7 @@ public sealed class QuickCaptureService
             {
                 Body = normalizedBody,
                 Title = normalizedTitle,
+                ContentFormat = contentFormat,
                 Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text,
                 Url = url,
                 AppearancePreset = NormalizeAppearancePreset(appearancePreset),
@@ -100,8 +123,7 @@ public sealed class QuickCaptureService
 
     public async Task<bool> UpdateItemAsync(string itemId, string body)
     {
-        string normalizedBody = NormalizeBody(body);
-        if (string.IsNullOrWhiteSpace(itemId) || string.IsNullOrWhiteSpace(normalizedBody))
+        if (string.IsNullOrWhiteSpace(itemId) || string.IsNullOrWhiteSpace(body))
         {
             return false;
         }
@@ -116,11 +138,13 @@ public sealed class QuickCaptureService
                 return false;
             }
 
+            string normalizedBody = NormalizeBodyForFormat(body, item.ContentFormat);
             item.Body = normalizedBody;
             item.Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text;
             item.Url = url;
             item.UpdatedAt = DateTimeOffset.UtcNow;
-            await SaveCoreAsync();
+            item.Revision++;
+            await SaveItemCoreAsync(item, isRecent: false);
             return true;
         }
         finally
@@ -152,6 +176,7 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = normalizedBody,
+                ContentFormat = QuickCaptureContentFormat.PlainText,
                 Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text,
                 Url = url,
                 SourceKind = QuickCaptureSourceKind.Clipboard,
@@ -203,6 +228,7 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = "Image",
+                ContentFormat = QuickCaptureContentFormat.PlainText,
                 Type = QuickCaptureItemType.Image,
                 ImagePath = imagePath,
                 ContentHash = contentHash,
@@ -249,6 +275,7 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = "Image",
+                ContentFormat = QuickCaptureContentFormat.PlainText,
                 Type = QuickCaptureItemType.Image,
                 ImagePath = cachedImagePath,
                 ContentHash = contentHash,
@@ -323,11 +350,14 @@ public sealed class QuickCaptureService
             {
                 Body = recentItem.Body,
                 Title = recentItem.Title,
+                ContentFormat = recentItem.ContentFormat,
                 Type = recentItem.Type,
                 Url = recentItem.Url,
                 ImagePath = recentItem.ImagePath,
                 ContentHash = recentItem.ContentHash,
-                Attachments = recentItem.Attachments.Select(attachment => attachment.Clone()).ToList(),
+                Attachments = recentItem.Attachments
+                    .Select(CloneAttachmentForNewNote)
+                    .ToList(),
                 SourceKind = QuickCaptureSourceKind.Clipboard,
                 IsPinned = pin,
                 IsRecent = false,
@@ -499,7 +529,10 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Id = itemId,
-                Body = string.Join(", ", attachments.Select(attachment => attachment.DisplayName)),
+                Body = string.Join(
+                    Environment.NewLine,
+                    attachments.Select(new QuickCaptureMarkdownService().CreateAttachmentMarkdown)),
+                ContentFormat = QuickCaptureContentFormat.Markdown,
                 Type = primaryImagePath is null ? QuickCaptureItemType.Text : QuickCaptureItemType.Image,
                 ImagePath = primaryImagePath,
                 Attachments = attachments,
@@ -527,7 +560,8 @@ public sealed class QuickCaptureService
     public async Task<QuickCaptureItem?> AddAttachmentsAsync(
         string itemId,
         IEnumerable<string> filePaths,
-        bool copyToManagedStorage)
+        bool copyToManagedStorage,
+        bool appendMarkdownReferences = true)
     {
         string[] paths = filePaths
             .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
@@ -569,6 +603,15 @@ public sealed class QuickCaptureService
                         string.Equals(existing.FilePath, attachment.FilePath, StringComparison.OrdinalIgnoreCase)))
                 {
                     item.Attachments.Add(attachment);
+                    if (appendMarkdownReferences &&
+                        item.ContentFormat == QuickCaptureContentFormat.Markdown)
+                    {
+                        string reference = new QuickCaptureMarkdownService()
+                            .CreateAttachmentMarkdown(attachment);
+                        item.Body = string.IsNullOrWhiteSpace(item.Body)
+                            ? reference
+                            : item.Body.TrimEnd() + Environment.NewLine + Environment.NewLine + reference;
+                    }
                 }
             }
 
@@ -722,6 +765,8 @@ public sealed class QuickCaptureService
             }
 
             var deletedItem = Clone(item);
+            deletedItem.IsDeleted = true;
+            deletedItem.DeletedAt = DateTimeOffset.UtcNow;
             _data.Items.Remove(item);
             NormalizeSortOrders(_data.Items);
             NormalizePinnedSortOrders(_data.Items);
@@ -760,7 +805,13 @@ public sealed class QuickCaptureService
             }
 
             var snapshots = itemsToDelete
-                .Select(item => new QuickCaptureDeletedItemSnapshot(Clone(item), isRecent))
+                .Select(item =>
+                {
+                    QuickCaptureItem deleted = Clone(item);
+                    deleted.IsDeleted = true;
+                    deleted.DeletedAt = DateTimeOffset.UtcNow;
+                    return new QuickCaptureDeletedItemSnapshot(deleted, isRecent);
+                })
                 .ToList();
             foreach (var item in itemsToDelete)
             {
@@ -800,6 +851,8 @@ public sealed class QuickCaptureService
             }
 
             var deletedItem = Clone(item);
+            deletedItem.IsDeleted = true;
+            deletedItem.DeletedAt = DateTimeOffset.UtcNow;
             _data.RecentItems.Remove(item);
             NormalizeSortOrders(_data.RecentItems);
             await SaveCoreAsync();
@@ -829,6 +882,8 @@ public sealed class QuickCaptureService
             }
 
             var item = Clone(snapshot.Item);
+            item.IsDeleted = false;
+            item.DeletedAt = null;
             int insertIndex = Math.Clamp(item.SortOrder, 0, targetItems.Count);
             targetItems.Insert(insertIndex, item);
 
@@ -881,13 +936,15 @@ public sealed class QuickCaptureService
         }
     }
 
-    public async Task TrimRecentItemsAsync(int maxRecentItems)
+    public async Task TrimRecentItemsAsync(int maxRecentItems, int retentionDays = 30)
     {
         await _gate.WaitAsync();
         try
         {
             await EnsureLoadedCoreAsync();
             int before = _data!.RecentItems.Count;
+            DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(retentionDays, 1, 3650));
+            _data.RecentItems.RemoveAll(item => item.UpdatedAt < cutoff);
             TrimRecentItemsCore(NormalizeRecentLimit(maxRecentItems));
             if (_data.RecentItems.Count != before)
             {
@@ -1119,9 +1176,9 @@ public sealed class QuickCaptureService
         string itemId,
         string? title,
         string body,
-        QuickCaptureAppearancePreset appearancePreset)
+        QuickCaptureAppearancePreset appearancePreset,
+        QuickCaptureContentFormat? contentFormat = null)
     {
-        string normalizedBody = NormalizeBody(body);
         string? normalizedTitle = NormalizeOptionalText(title);
         if (string.IsNullOrWhiteSpace(itemId))
         {
@@ -1139,6 +1196,9 @@ public sealed class QuickCaptureService
                 return false;
             }
 
+            QuickCaptureContentFormat effectiveFormat = contentFormat ?? item.ContentFormat;
+            string normalizedBody = NormalizeBodyForFormat(body, effectiveFormat);
+
             if (item.Type != QuickCaptureItemType.Image &&
                 string.IsNullOrWhiteSpace(normalizedTitle) &&
                 string.IsNullOrWhiteSpace(normalizedBody))
@@ -1148,6 +1208,7 @@ public sealed class QuickCaptureService
 
             item.Title = normalizedTitle;
             item.Body = normalizedBody;
+            item.ContentFormat = effectiveFormat;
             if (item.Type != QuickCaptureItemType.Image)
             {
                 item.Type = TryDetectUrl(normalizedBody, out string? url)
@@ -1158,7 +1219,8 @@ public sealed class QuickCaptureService
 
             item.AppearancePreset = NormalizeAppearancePreset(appearancePreset);
             item.UpdatedAt = DateTimeOffset.UtcNow;
-            await SaveCoreAsync();
+            item.Revision++;
+            await SaveItemCoreAsync(item, isRecent: false);
             return true;
         }
         finally
@@ -1210,6 +1272,375 @@ public sealed class QuickCaptureService
         }
     }
 
+    public async Task<QuickCaptureItem?> ImportMarkdownFileAsync(
+        string markdownPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(markdownPath) || !File.Exists(markdownPath))
+        {
+            return null;
+        }
+
+        string fullMarkdownPath = Path.GetFullPath(markdownPath);
+        string source = await File.ReadAllTextAsync(fullMarkdownPath, cancellationToken);
+        string sourceDirectory = Path.GetDirectoryName(fullMarkdownPath)!;
+        var localReferences = new List<(string Destination, string FullPath)>();
+        foreach (Match match in Regex.Matches(
+            source,
+            "(?<image>!)?\\[[^\\]]*\\]\\(\\s*(?<destination><[^>]+>|[^\\s\\)]+)(?:\\s+(?:\"[^\"]*\"|'[^']*'))?\\s*\\)",
+            RegexOptions.CultureInvariant))
+        {
+            string destination = match.Groups["destination"].Value.Trim('<', '>');
+            string decoded = Uri.UnescapeDataString(destination);
+            string? referencedPath = null;
+            if (Uri.TryCreate(decoded, UriKind.Absolute, out Uri? absoluteUri))
+            {
+                if (absoluteUri.IsFile)
+                {
+                    referencedPath = absoluteUri.LocalPath;
+                }
+            }
+            else if (!decoded.StartsWith('#'))
+            {
+                referencedPath = Path.GetFullPath(Path.Combine(
+                    sourceDirectory,
+                    decoded.Replace('/', Path.DirectorySeparatorChar)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(referencedPath) && File.Exists(referencedPath))
+            {
+                localReferences.Add((destination, referencedPath));
+            }
+        }
+
+        string title = Path.GetFileNameWithoutExtension(fullMarkdownPath);
+        QuickCaptureItem created = await AddDetailedItemAsync(
+            title,
+            source,
+            QuickCaptureAppearancePreset.Default,
+            QuickCaptureContentFormat.Markdown);
+        if (localReferences.Count == 0)
+        {
+            return created;
+        }
+
+        string[] distinctPaths = localReferences
+            .Select(reference => reference.FullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        QuickCaptureItem? withAttachments = await AddAttachmentsAsync(
+            created.Id,
+            distinctPaths,
+            copyToManagedStorage: true,
+            appendMarkdownReferences: false);
+        if (withAttachments is null)
+        {
+            return created;
+        }
+
+        var importedBySource = distinctPaths
+            .Select((path, index) => new
+            {
+                Path = path,
+                Attachment = index < withAttachments.Attachments.Count
+                    ? withAttachments.Attachments[index]
+                    : null
+            })
+            .Where(entry => entry.Attachment is not null)
+            .ToDictionary(entry => entry.Path, entry => entry.Attachment!, StringComparer.OrdinalIgnoreCase);
+        string rewritten = source;
+        foreach ((string destination, string referencedPath) in localReferences)
+        {
+            if (importedBySource.TryGetValue(referencedPath, out TodoAttachment? attachment))
+            {
+                rewritten = rewritten.Replace(
+                    destination,
+                    $"deskbox-attachment://{attachment.Id}",
+                    StringComparison.Ordinal);
+            }
+        }
+
+        await UpdateItemDetailsAsync(
+            created.Id,
+            created.Title,
+            rewritten,
+            created.AppearancePreset,
+            QuickCaptureContentFormat.Markdown);
+        return (await GetDataAsync()).Items.FirstOrDefault(item =>
+            string.Equals(item.Id, created.Id, StringComparison.Ordinal));
+    }
+
+    public Task<IReadOnlyList<QuickCaptureSearchHit>> SearchAsync(
+        string query,
+        int limit = 100,
+        CancellationToken cancellationToken = default) =>
+        _repository.SearchAsync(query, limit, cancellationToken);
+
+    public Task SaveDraftAsync(
+        string noteId,
+        string? title,
+        string body,
+        QuickCaptureContentFormat contentFormat,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(noteId))
+        {
+            throw new ArgumentException("A note id is required.", nameof(noteId));
+        }
+
+        return _repository.SaveDraftAsync(
+            new QuickCaptureDraft(
+                noteId,
+                NormalizeOptionalText(title),
+                body ?? string.Empty,
+                contentFormat,
+                DateTimeOffset.UtcNow),
+            cancellationToken);
+    }
+
+    public Task<QuickCaptureDraft?> GetDraftAsync(
+        string noteId,
+        CancellationToken cancellationToken = default) =>
+        _repository.GetDraftAsync(noteId, cancellationToken);
+
+    public Task DiscardDraftAsync(
+        string noteId,
+        CancellationToken cancellationToken = default) =>
+        _repository.DeleteDraftAsync(noteId, cancellationToken);
+
+    public async Task<long?> CreateRevisionAsync(
+        string noteId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(noteId))
+        {
+            return null;
+        }
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            QuickCaptureItem? item = _data!.Items.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, noteId, StringComparison.Ordinal) &&
+                !candidate.IsDeleted);
+            return item is null
+                ? null
+                : await _repository.SaveRevisionAsync(
+                    item,
+                    _revisionRetentionDays,
+                    _revisionLimitPerNote,
+                    cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public Task<IReadOnlyList<QuickCaptureRevision>> GetRevisionsAsync(
+        string noteId,
+        int limit = 50,
+        CancellationToken cancellationToken = default) =>
+        _repository.GetRevisionsAsync(noteId, limit, cancellationToken);
+
+    public async Task<bool> RestoreRevisionAsync(
+        string noteId,
+        long revisionId,
+        CancellationToken cancellationToken = default)
+    {
+        QuickCaptureRevision? revision = (await _repository.GetRevisionsAsync(
+                noteId,
+                limit: 200,
+                cancellationToken: cancellationToken))
+            .FirstOrDefault(candidate => candidate.Id == revisionId);
+        if (revision is null)
+        {
+            return false;
+        }
+
+        await CreateRevisionAsync(noteId, cancellationToken);
+        QuickCaptureItem? current = (await GetDataAsync()).Items.FirstOrDefault(item =>
+            string.Equals(item.Id, noteId, StringComparison.Ordinal));
+        return current is not null && await UpdateItemDetailsAsync(
+            noteId,
+            revision.Title,
+            revision.Body,
+            current.AppearancePreset,
+            revision.ContentFormat);
+    }
+
+    public Task<IReadOnlyList<QuickCaptureItem>> GetTrashAsync(
+        int limit = 200,
+        CancellationToken cancellationToken = default) =>
+        _repository.GetTrashAsync(limit, cancellationToken);
+
+    public async Task<bool> RestoreTrashItemAsync(
+        string itemId,
+        CancellationToken cancellationToken = default)
+    {
+        QuickCaptureItem? item = (await _repository.GetTrashAsync(1000, cancellationToken))
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+        if (item is null)
+        {
+            return false;
+        }
+
+        return await RestoreDeletedItemAsync(new QuickCaptureDeletedItemSnapshot(item, item.IsRecent));
+    }
+
+    public async Task PurgeExpiredTrashAsync(
+        int retentionDays = 30,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync();
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddDays(
+            -Math.Clamp(retentionDays, 1, 3650));
+        IReadOnlyList<QuickCaptureItem> trash = await _repository.GetTrashAsync(
+            10_000,
+            cancellationToken);
+        var remainingTrash = trash.ToList();
+        foreach (QuickCaptureItem item in trash.Where(item => item.DeletedAt < cutoff).ToList())
+        {
+            remainingTrash.RemoveAll(candidate =>
+                string.Equals(candidate.Id, item.Id, StringComparison.Ordinal));
+            await _repository.DeletePermanentlyAsync(item.Id, cancellationToken);
+            DeleteManagedAttachmentFiles(item, remainingTrash);
+        }
+
+        // Covers unusually large trash collections without loading every note
+        // into memory. Managed files for the normal retained range were already
+        // removed above.
+        await _repository.PurgeDeletedBeforeAsync(cutoff, cancellationToken);
+    }
+
+    public async Task<bool> DeletePermanentlyAsync(
+        string itemId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return false;
+        }
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            IReadOnlyList<QuickCaptureItem> trash = await _repository.GetTrashAsync(
+                10_000,
+                cancellationToken);
+            QuickCaptureItem? item = _data!.Items
+                .Concat(_data.RecentItems)
+                .FirstOrDefault(candidate =>
+                    string.Equals(candidate.Id, itemId, StringComparison.Ordinal) &&
+                    candidate.IsDeleted);
+            if (item is null)
+            {
+                item = trash
+                    .FirstOrDefault(candidate =>
+                        string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+            }
+
+            if (item is null)
+            {
+                return false;
+            }
+
+            await _repository.DeletePermanentlyAsync(itemId, cancellationToken);
+            _data.Items.RemoveAll(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+            _data.RecentItems.RemoveAll(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+            DeleteManagedAttachmentFiles(
+                item,
+                trash.Where(candidate =>
+                    !string.Equals(candidate.Id, itemId, StringComparison.Ordinal)));
+
+            Changed?.Invoke();
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<int> SetArchivedAsync(
+        IEnumerable<string> itemIds,
+        bool archived,
+        CancellationToken cancellationToken = default)
+    {
+        HashSet<string> ids = itemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            List<QuickCaptureItem> targets = _data!.Items
+                .Where(item => ids.Contains(item.Id) &&
+                    (archived ? item.ArchivedAt is null : item.ArchivedAt is not null))
+                .ToList();
+            foreach (QuickCaptureItem item in targets)
+            {
+                item.ArchivedAt = archived ? now : null;
+                item.UpdatedAt = now;
+                item.Revision++;
+            }
+
+            if (targets.Count > 0)
+            {
+                await SaveCoreAsync();
+            }
+
+            return targets.Count;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<bool> SetTagsAsync(
+        string itemId,
+        IEnumerable<string> tags,
+        CancellationToken cancellationToken = default)
+    {
+        List<string> normalized = tags
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim())
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Take(20)
+            .ToList();
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureLoadedCoreAsync();
+            QuickCaptureItem? item = _data!.Items.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+            if (item is null)
+            {
+                return false;
+            }
+
+            item.Tags = normalized;
+            item.UpdatedAt = DateTimeOffset.UtcNow;
+            item.Revision++;
+            await SaveItemCoreAsync(item, isRecent: false);
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<string?> CreateImageThumbnailAndRemoveTaskAsync(string imagePath)
     {
         try
@@ -1240,12 +1671,24 @@ public sealed class QuickCaptureService
 
     private async Task EnsureLoadedCoreAsync()
     {
-        _data ??= await _store.LoadAsync();
+        _data ??= await _repository.LoadAsync();
     }
 
     private async Task SaveCoreAsync(bool notify = true)
     {
-        await _store.SaveAsync(_data!);
+        await _repository.SaveAsync(_data!);
+        if (notify)
+        {
+            Changed?.Invoke();
+        }
+    }
+
+    private async Task SaveItemCoreAsync(
+        QuickCaptureItem item,
+        bool isRecent,
+        bool notify = true)
+    {
+        await _repository.SaveItemAsync(item, isRecent);
         if (notify)
         {
             Changed?.Invoke();
@@ -1267,6 +1710,60 @@ public sealed class QuickCaptureService
         return string.IsNullOrWhiteSpace(body)
             ? string.Empty
             : body.Trim();
+    }
+
+    private static string NormalizeBodyForFormat(
+        string? body,
+        QuickCaptureContentFormat contentFormat)
+    {
+        return contentFormat == QuickCaptureContentFormat.Markdown
+            ? body ?? string.Empty
+            : NormalizeBody(body);
+    }
+
+    private void DeleteManagedAttachmentFiles(
+        QuickCaptureItem item,
+        IEnumerable<QuickCaptureItem>? additionalReferences = null)
+    {
+        var referencedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        IEnumerable<QuickCaptureItem> referencedItems = (_data?.Items ?? [])
+            .Concat(_data?.RecentItems ?? [])
+            .Concat(additionalReferences ?? []);
+        foreach (QuickCaptureItem referencedItem in referencedItems)
+        {
+            if (!string.IsNullOrWhiteSpace(referencedItem.ImagePath))
+            {
+                referencedPaths.Add(NormalizePath(referencedItem.ImagePath));
+            }
+
+            foreach (TodoAttachment referencedAttachment in referencedItem.Attachments)
+            {
+                referencedPaths.Add(NormalizePath(referencedAttachment.FilePath));
+            }
+        }
+
+        foreach (TodoAttachment attachment in item.Attachments.Where(attachment => attachment.IsManagedCopy))
+        {
+            try
+            {
+                string normalizedPath = NormalizePath(attachment.FilePath);
+                if (!referencedPaths.Contains(normalizedPath) && File.Exists(normalizedPath))
+                {
+                    File.Delete(normalizedPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[QuickCapture] Failed to remove permanent attachment: {ex.Message}");
+            }
+        }
+    }
+
+    private static TodoAttachment CloneAttachmentForNewNote(TodoAttachment attachment)
+    {
+        TodoAttachment clone = attachment.Clone();
+        clone.Id = Guid.NewGuid().ToString("N");
+        return clone;
     }
 
     private static string? NormalizeOptionalText(string? value)
@@ -1441,6 +1938,7 @@ public sealed class QuickCaptureService
         {
             Id = item.Id,
             Type = item.Type,
+            ContentFormat = item.ContentFormat,
             Body = item.Body,
             Title = item.Title,
             Url = item.Url,
@@ -1449,6 +1947,7 @@ public sealed class QuickCaptureService
             IsPinned = item.IsPinned,
             IsRecent = item.IsRecent,
             IsDeleted = item.IsDeleted,
+            DeletedAt = item.DeletedAt,
             AppearancePreset = item.AppearancePreset,
             SourceKind = item.SourceKind,
             Tags = item.Tags is null ? [] : [.. item.Tags],
@@ -1457,7 +1956,8 @@ public sealed class QuickCaptureService
             SortOrder = item.SortOrder,
             PinnedSortOrder = item.PinnedSortOrder,
             CreatedAt = item.CreatedAt,
-            UpdatedAt = item.UpdatedAt
+            UpdatedAt = item.UpdatedAt,
+            Revision = item.Revision
         };
     }
 
