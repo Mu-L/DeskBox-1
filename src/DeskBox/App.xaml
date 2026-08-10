@@ -385,7 +385,7 @@
                 <Setter Property="IsFocusEngagementEnabled" Value="True" />
                 <Setter Property="MinHeight" Value="8" />
                 <Setter Property="MinWidth" Value="8" />
-                <Setter Property="Padding" Value="4" />
+                <Setter Property="Padding" Value="0" />
                 <Setter Property="Foreground" Value="{ThemeResource ControlStrongFillColorDefaultBrush}" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -406,12 +406,12 @@
                                         <VisualState x:Name="Normal" />
                                         <VisualState x:Name="PointerOver">
                                             <VisualState.Setters>
-                                                <Setter Target="SplitterRoot.Background" Value="{ThemeResource ControlAltFillColorTertiaryBrush}" />
+                                                <Setter Target="SplitterHoverTrack.Background" Value="{ThemeResource ControlAltFillColorTertiaryBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                         <VisualState x:Name="Pressed">
                                             <VisualState.Setters>
-                                                <Setter Target="SplitterRoot.Background" Value="{ThemeResource ControlAltFillColorQuarternaryBrush}" />
+                                                <Setter Target="SplitterHoverTrack.Background" Value="{ThemeResource ControlAltFillColorQuarternaryBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                         <VisualState x:Name="Disabled">
@@ -438,14 +438,21 @@
                                         </VisualState>
                                     </VisualStateGroup>
                                 </VisualStateManager.VisualStateGroups>
-                                <Rectangle
-                                    x:Name="SplitterThumb"
+                                <Border
+                                    x:Name="SplitterHoverTrack"
                                     Width="4"
-                                    Height="24"
-                                    Margin="{TemplateBinding Padding}"
-                                    Fill="{TemplateBinding Foreground}"
-                                    RadiusX="2"
-                                    RadiusY="2" />
+                                    HorizontalAlignment="Center"
+                                    Background="Transparent"
+                                    CornerRadius="2">
+                                    <Rectangle
+                                        x:Name="SplitterThumb"
+                                        Width="2"
+                                        Height="24"
+                                        HorizontalAlignment="Center"
+                                        Fill="{TemplateBinding Foreground}"
+                                        RadiusX="1"
+                                        RadiusY="1" />
+                                </Border>
                             </Grid>
                         </ControlTemplate>
                     </Setter.Value>

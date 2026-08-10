@@ -40,7 +40,7 @@ public sealed class MarkdownDocumentView : UserControl
         _scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         _scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         _scrollViewer.Content = _documentPanel;
-        Content = _scrollViewer;
+        ApplyContentHost();
         RegisterPropertyChangedCallback(FontSizeProperty, (_, _) => Render());
         Loaded += (_, _) => Render();
     }
@@ -69,6 +69,12 @@ public sealed class MarkdownDocumentView : UserControl
         typeof(MarkdownDocumentView),
         new PropertyMetadata(false, OnDocumentPropertyChanged));
 
+    public static readonly DependencyProperty UseInternalScrollViewerProperty = DependencyProperty.Register(
+        nameof(UseInternalScrollViewer),
+        typeof(bool),
+        typeof(MarkdownDocumentView),
+        new PropertyMetadata(true, OnContentHostPropertyChanged));
+
     public string Markdown
     {
         get => (string)GetValue(MarkdownProperty);
@@ -93,6 +99,16 @@ public sealed class MarkdownDocumentView : UserControl
         set => SetValue(AreTaskListsInteractiveProperty, value);
     }
 
+    /// <summary>
+    /// Controls whether the reader owns its vertical scrolling. Turn this off
+    /// when the reader is hosted inside a page-level ScrollViewer.
+    /// </summary>
+    public bool UseInternalScrollViewer
+    {
+        get => (bool)GetValue(UseInternalScrollViewerProperty);
+        set => SetValue(UseInternalScrollViewerProperty, value);
+    }
+
     public Func<string, string?>? AttachmentResolver
     {
         get => _attachmentResolver;
@@ -115,6 +131,32 @@ public sealed class MarkdownDocumentView : UserControl
         DependencyObject sender,
         DependencyPropertyChangedEventArgs args) =>
         ((MarkdownDocumentView)sender).Render();
+
+    private static void OnContentHostPropertyChanged(
+        DependencyObject sender,
+        DependencyPropertyChangedEventArgs args) =>
+        ((MarkdownDocumentView)sender).ApplyContentHost();
+
+    private void ApplyContentHost()
+    {
+        if (UseInternalScrollViewer)
+        {
+            if (!ReferenceEquals(_scrollViewer.Content, _documentPanel))
+            {
+                _scrollViewer.Content = _documentPanel;
+            }
+
+            Content = _scrollViewer;
+            return;
+        }
+
+        if (ReferenceEquals(_scrollViewer.Content, _documentPanel))
+        {
+            _scrollViewer.Content = null;
+        }
+
+        Content = _documentPanel;
+    }
 
     private void Render()
     {

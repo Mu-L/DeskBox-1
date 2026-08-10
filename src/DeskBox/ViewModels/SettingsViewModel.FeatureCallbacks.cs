@@ -123,6 +123,28 @@ public partial class SettingsViewModel
     partial void OnTodoShowImportantTabChanged(bool value) => PersistTodoTabSettings();
     partial void OnTodoShowCompletedTabChanged(bool value) => PersistTodoTabSettings();
 
+    partial void OnTodoUseWideDetailPaneChanged(bool value)
+    {
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.TodoUseWideDetailPane = value;
+        _settingsService.SaveDebounced();
+    }
+
+    partial void OnTodoAutoSelectFirstInWideLayoutChanged(bool value)
+    {
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        _settingsService.Settings.TodoAutoSelectFirstInWideLayout = value;
+        _settingsService.SaveDebounced();
+    }
+
     private void PersistTodoTabSettings()
     {
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)

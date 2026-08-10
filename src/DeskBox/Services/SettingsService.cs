@@ -260,6 +260,9 @@ public sealed class SettingsService
     public const string TodoDefaultFilterThisMonth = "ThisMonth";
     public const string TodoDefaultFilterImportant = "Important";
     public const string TodoDefaultFilterCompleted = "Completed";
+    public const string TodoLayoutModeAuto = "Auto";
+    public const string TodoLayoutModeSinglePane = "SinglePane";
+    public const string TodoLayoutModeDualPane = "DualPane";
     public const int DefaultTodoReminderOffsetMinutes = 5;
     public const int MinTodoReminderOffsetMinutes = 0;
     public const int MaxTodoReminderOffsetMinutes = 1440;
@@ -431,6 +434,9 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.TodoConfirmBeforeDelete = false;
         settings.TodoReminderEnabled = true;
         settings.TodoDefaultReminderOffsetMinutes = DefaultTodoReminderOffsetMinutes;
+        settings.TodoUseWideDetailPane = true;
+        settings.TodoLayoutMode = TodoLayoutModeAuto;
+        settings.TodoAutoSelectFirstInWideLayout = true;
         settings.MusicUseArtworkBackdrop = true;
         settings.MusicEnableCoverHoverMotion = true;
         settings.MusicDisplayMode = MusicDisplayModeAuto;
@@ -2440,6 +2446,22 @@ settings.FocusClickedWidgetOnRaise = false;
     {
         bool changed = false;
 
+        string normalizedLayoutMode = NormalizeTodoLayoutMode(
+            settings.TodoLayoutMode,
+            settings.TodoUseWideDetailPane);
+        if (!string.Equals(settings.TodoLayoutMode, normalizedLayoutMode, StringComparison.Ordinal))
+        {
+            settings.TodoLayoutMode = normalizedLayoutMode;
+            changed = true;
+        }
+
+        bool legacyWideDetailValue = normalizedLayoutMode != TodoLayoutModeSinglePane;
+        if (settings.TodoUseWideDetailPane != legacyWideDetailValue)
+        {
+            settings.TodoUseWideDetailPane = legacyWideDetailValue;
+            changed = true;
+        }
+
         int normalizedPreviewLineCount = NormalizeItemPreviewLineCount(
             settings.TodoItemPreviewLineCount);
         if (settings.TodoItemPreviewLineCount != normalizedPreviewLineCount)
@@ -2511,6 +2533,30 @@ settings.FocusClickedWidgetOnRaise = false;
         }
 
         return changed;
+    }
+
+    public static string NormalizeTodoLayoutMode(
+        string? mode,
+        bool legacyUseWideDetailPane = true)
+    {
+        if (string.IsNullOrWhiteSpace(mode))
+        {
+            return legacyUseWideDetailPane
+                ? TodoLayoutModeAuto
+                : TodoLayoutModeSinglePane;
+        }
+
+        if (string.Equals(mode, TodoLayoutModeSinglePane, StringComparison.OrdinalIgnoreCase))
+        {
+            return TodoLayoutModeSinglePane;
+        }
+
+        if (string.Equals(mode, TodoLayoutModeDualPane, StringComparison.OrdinalIgnoreCase))
+        {
+            return TodoLayoutModeDualPane;
+        }
+
+        return TodoLayoutModeAuto;
     }
 
     public static int NormalizeItemPreviewLineCount(int lineCount) =>

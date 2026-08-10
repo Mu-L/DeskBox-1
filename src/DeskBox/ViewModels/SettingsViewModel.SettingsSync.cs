@@ -157,6 +157,11 @@ public partial class SettingsViewModel
             TodoShowCompletedTasks = settings.TodoShowCompletedTasks;
             TodoShowFooterStats = settings.TodoShowFooterStats;
             TodoShowClearCompletedButton = settings.TodoShowClearCompletedButton;
+            SelectedTodoLayoutMode = SettingsService.NormalizeTodoLayoutMode(
+                settings.TodoLayoutMode,
+                settings.TodoUseWideDetailPane);
+            TodoUseWideDetailPane = SelectedTodoLayoutMode != SettingsService.TodoLayoutModeSinglePane;
+            TodoAutoSelectFirstInWideLayout = settings.TodoAutoSelectFirstInWideLayout;
             TodoConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
             TodoReminderEnabled = settings.TodoReminderEnabled;
             SelectedTodoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
@@ -308,6 +313,7 @@ RefreshWeatherCityPopularCities();
             _cachedTodoNewTaskPositionDisplayNames = null;
             _cachedAttachmentStorageModeDisplayNames = null;
             _cachedTodoDefaultFilterDisplayNames = null;
+            _cachedTodoLayoutModeDisplayNames = null;
             _cachedTodoTabStyleDisplayNames = null;
             _cachedTodoReminderOffsetDisplayNames = null;
             _cachedMusicDisplayModeDisplayNames = null;

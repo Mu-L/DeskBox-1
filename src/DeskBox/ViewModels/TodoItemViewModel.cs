@@ -28,6 +28,7 @@ public sealed partial class TodoItemViewModel : ObservableObject
     private bool _isRecurringHistoryLead;
     private bool _isRecurringHistoryExpanded;
     private int _recurringHistoryItemCount;
+    private bool _isDetailSelected;
 
     public TodoItemViewModel(TodoItem item, LocalizationService? localizationService = null)
     {
@@ -317,6 +318,22 @@ public sealed partial class TodoItemViewModel : ObservableObject
             }
         }
     }
+
+    public bool IsDetailSelected
+    {
+        get => _isDetailSelected;
+        internal set
+        {
+            if (SetProperty(ref _isDetailSelected, value))
+            {
+                OnPropertyChanged(nameof(DetailSelectionVisibility));
+            }
+        }
+    }
+
+    public Visibility DetailSelectionVisibility => IsDetailSelected
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public string ImportantGlyph => IsImportant ? "\uE735" : "\uE734";
 

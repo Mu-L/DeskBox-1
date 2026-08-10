@@ -71,7 +71,11 @@
             <CommandBar.SecondaryCommands>
                 <AppBarButton x:Name="StrikeButton" Click="FormatButton_Click" Icon="Clear" Label="Strikethrough" Tag="Strike" />
                 <AppBarButton x:Name="QuoteButton" Click="FormatButton_Click" Icon="Comment" Label="Quote" Tag="Quote" />
-                <AppBarButton x:Name="CodeButton" Click="FormatButton_Click" Icon="Code" Label="Code" Tag="Code" />
+                <AppBarButton x:Name="CodeButton" Click="FormatButton_Click" Label="Code" Tag="Code">
+                    <AppBarButton.Icon>
+                        <FontIcon Glyph="&#xE943;" />
+                    </AppBarButton.Icon>
+                </AppBarButton>
                 <AppBarButton x:Name="TableButton" Click="FormatButton_Click" Icon="ViewAll" Label="Table" Tag="Table" />
             </CommandBar.SecondaryCommands>
         </CommandBar>

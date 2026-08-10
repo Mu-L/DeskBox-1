@@ -30,20 +30,58 @@ public sealed class MasterDetailLayoutPolicyTests
 
         Assert.Equal(240, narrowMaster.MasterWidth);
         Assert.Equal(420, wideMaster.MasterWidth);
-        Assert.Equal(20, wideMaster.SplitterWidth);
-        Assert.Equal(360, wideMaster.DetailWidth);
+        Assert.Equal(8, wideMaster.SplitterWidth);
+        Assert.Equal(372, wideMaster.DetailWidth);
     }
 
     [Fact]
     public void Resolve_UsesDefaultWidthAndSupportsForcedSinglePane()
     {
         MasterDetailLayoutSnapshot automatic = _policy.Resolve(900, false, double.NaN);
-        MasterDetailLayoutSnapshot forced = _policy.Resolve(900, true, 300, forceSinglePane: true);
+        MasterDetailLayoutSnapshot forced = _policy.Resolve(
+            900,
+            true,
+            300,
+            MasterDetailLayoutPreference.SinglePane);
 
         Assert.Equal(300, automatic.MasterWidth);
-        Assert.Equal(580, automatic.DetailWidth);
+        Assert.Equal(592, automatic.DetailWidth);
         Assert.False(forced.IsDualPane);
         Assert.Equal(0, forced.SplitterWidth);
+    }
+
+    [Theory]
+    [InlineData(0, MasterDetailLayoutMode.DualPane)]
+    [InlineData(150, MasterDetailLayoutMode.DualPane)]
+    [InlineData(587, MasterDetailLayoutMode.DualPane)]
+    [InlineData(588, MasterDetailLayoutMode.DualPane)]
+    [InlineData(700, MasterDetailLayoutMode.DualPane)]
+    public void Resolve_ForcedDualPaneUsesPhysicalSafetyLimit(
+        double width,
+        MasterDetailLayoutMode expected)
+    {
+        MasterDetailLayoutSnapshot result = _policy.Resolve(
+            width,
+            false,
+            300,
+            MasterDetailLayoutPreference.DualPane);
+
+        Assert.Equal(expected, result.Mode);
+    }
+
+    [Fact]
+    public void Resolve_ForcedDualPaneCompressesBothPanesBelowMinimumWidth()
+    {
+        MasterDetailLayoutSnapshot result = _policy.Resolve(
+            320,
+            false,
+            300,
+            MasterDetailLayoutPreference.DualPane);
+
+        Assert.True(result.IsDualPane);
+        Assert.Equal(320, result.MasterWidth + result.SplitterWidth + result.DetailWidth, 6);
+        Assert.True(result.MasterWidth > 0);
+        Assert.True(result.DetailWidth > 0);
     }
 
     [Theory]

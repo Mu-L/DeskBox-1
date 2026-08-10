@@ -130,6 +130,17 @@ public class AppSettings
     /// <summary>Default reminder lead time in minutes before a Todo due date.</summary>
     public int TodoDefaultReminderOffsetMinutes { get; set; } = 5;
 
+    public bool TodoUseWideDetailPane { get; set; } = true;
+
+    /// <summary>
+    /// Todo master-detail layout preference. Valid values: <c>Auto</c>,
+    /// <c>SinglePane</c>, and <c>DualPane</c>. An empty value is treated as a
+    /// legacy setting and migrated from <see cref="TodoUseWideDetailPane"/>.
+    /// </summary>
+    public string TodoLayoutMode { get; set; } = string.Empty;
+
+    public bool TodoAutoSelectFirstInWideLayout { get; set; } = true;
+
     /// <summary>Whether the Music widget uses album artwork color as a soft backdrop.</summary>
     public bool MusicUseArtworkBackdrop { get; set; } = true;
 

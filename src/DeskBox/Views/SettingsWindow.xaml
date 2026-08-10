@@ -1611,6 +1611,27 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                     Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
                         <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
+                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo.Layout.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo.Layout.Description" />
+                        </StackPanel>
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Todo.LayoutMode.Description"
+                            svc:Localized.HeaderKey="Settings.Todo.LayoutMode.Title">
+                            <ComboBox
+                                MinWidth="150"
+                                ItemsSource="{Binding AvailableTodoLayoutModeOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedTodoLayoutMode, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            IsEnabled="{Binding TodoUseWideDetailPane}"
+                            svc:Localized.DescriptionKey="Settings.Todo.AutoSelectFirst.Description"
+                            svc:Localized.HeaderKey="Settings.Todo.AutoSelectFirst.Title">
+                            <ToggleSwitch MinWidth="0" OffContent="" OnContent="" IsOn="{Binding TodoAutoSelectFirstInWideLayout, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
                             <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Todo.Tabs.Title" />
                             <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Todo.Tabs.Description" />
                         </StackPanel>

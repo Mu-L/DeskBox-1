@@ -508,6 +508,25 @@ public sealed class SettingsServiceTests : IDisposable
             SettingsService.EditorEnterBehaviorCtrlEnterSaves,
             service.Settings.TodoEditorEnterBehavior);
         Assert.Equal(SettingsService.ManagedDropActionCopy, service.Settings.ManagedDropAction);
+        Assert.Equal(SettingsService.TodoLayoutModeAuto, service.Settings.TodoLayoutMode);
+    }
+
+    [Fact]
+    public async Task LoadAsync_MigratesLegacyDisabledWideDetailToSinglePane()
+    {
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            """
+            {
+              "todoUseWideDetailPane": false
+            }
+            """);
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(SettingsService.TodoLayoutModeSinglePane, service.Settings.TodoLayoutMode);
+        Assert.False(service.Settings.TodoUseWideDetailPane);
     }
 
     [Theory]

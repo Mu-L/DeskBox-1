@@ -278,6 +278,18 @@ public sealed partial class TodoWidgetViewModel
         OnPropertyChanged(nameof(DetailAddFileText));
         OnPropertyChanged(nameof(DetailRemoveAttachmentText));
         OnPropertyChanged(nameof(DetailFileMissingText));
+        OnPropertyChanged(nameof(DetailStepsText));
+        OnPropertyChanged(nameof(DetailAddStepText));
+        OnPropertyChanged(nameof(DetailNotesText));
+        OnPropertyChanged(nameof(DetailNotesPlaceholderText));
+        OnPropertyChanged(nameof(DetailNotesEditText));
+        OnPropertyChanged(nameof(DetailNotesDoneText));
+        OnPropertyChanged(nameof(DetailNotesRetryText));
+        OnPropertyChanged(nameof(DetailNotesSaveFailedText));
+        OnPropertyChanged(nameof(DetailMoreActionsText));
+        OnPropertyChanged(nameof(DetailResizePanesText));
+        OnPropertyChanged(nameof(WideDetailEmptyTitle));
+        OnPropertyChanged(nameof(WideDetailEmptyText));
         OnPropertyChanged(nameof(DeleteText));
         OnPropertyChanged(nameof(ColorMarkerText));
         OnPropertyChanged(nameof(RedColorText));
@@ -309,6 +321,9 @@ public sealed partial class TodoWidgetViewModel
         ShowFooterStats = settings.TodoShowFooterStats;
         ShowClearCompletedButton = settings.TodoShowClearCompletedButton;
         ConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
+        OnPropertyChanged(nameof(LayoutPreference));
+        OnPropertyChanged(nameof(UseWideDetailPane));
+        OnPropertyChanged(nameof(AutoSelectFirstInWideLayout));
         OnPropertyChanged(nameof(ItemPreviewLineCount));
 
         bool filterChanged = false;
