@@ -68,7 +68,7 @@ public sealed partial class QuickCaptureWidgetWindow
         if (e.Key == Windows.System.VirtualKey.Enter)
         {
             e.Handled = true;
-            if (ShouldSubmitQuickCaptureEditor(e))
+            if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
             {
                 await SaveInlineEditAsync();
             }

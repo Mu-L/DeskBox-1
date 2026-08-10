@@ -1,7 +1,9 @@
 using System.Text.RegularExpressions;
+using DeskBox.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -21,6 +23,8 @@ public sealed partial class MarkdownSourceEditor : UserControl
     private EditorViewportSnapshot? _lastEditorViewport;
     private EditorViewportSnapshot? _pendingCommandViewport;
     private Func<string, string>? _textResolver;
+    private int _textRevision;
+    private bool _isTextCompositionActive;
 
     public MarkdownSourceEditor()
     {
@@ -34,6 +38,8 @@ public sealed partial class MarkdownSourceEditor : UserControl
             new KeyEventHandler(EditorTextBox_PreviewKeyDown),
             handledEventsToo: true);
         EditorTextBox.LostFocus += EditorTextBox_LostFocus;
+        EditorTextBox.TextCompositionStarted += (_, _) => _isTextCompositionActive = true;
+        EditorTextBox.TextCompositionEnded += (_, _) => _isTextCompositionActive = false;
         ApplyToolbarVisibility();
         ApplyLocalizedText();
     }
@@ -162,51 +168,44 @@ public sealed partial class MarkdownSourceEditor : UserControl
             return;
         }
 
-        EditorViewportSnapshot viewport = PrepareEditorCommandViewport();
-        switch (action)
+        if (!TryResolveCommand(action, out MarkdownEditCommand command))
         {
-            case "Bold":
-                ToggleWrappedSelection("**", "**", "bold text");
-                break;
-            case "Italic":
-                ToggleWrappedSelection("*", "*", "italic text");
-                break;
-            case "Strike":
-                ToggleWrappedSelection("~~", "~~", "strikethrough text");
-                break;
-            case "Code":
-                if (EditorTextBox.SelectedText.Contains('\n'))
-                {
-                    WrapSelection("```\n", "\n```", "code");
-                }
-                else
-                {
-                    ToggleWrappedSelection("`", "`", "code");
-                }
-                break;
-            case "Link":
-                WrapSelection("[", "](https://)", "link text");
-                break;
-            case "Heading":
-                PrefixSelectedLines("## ");
-                break;
-            case "List":
-                PrefixSelectedLines("- ");
-                break;
-            case "Task":
-                PrefixSelectedLines("- [ ] ");
-                break;
-            case "Quote":
-                PrefixSelectedLines("> ");
-                break;
-            case "Table":
-                ReplaceSelection("| Column 1 | Column 2 |\n| --- | --- |\n| Content | Content |");
-                break;
-            default:
-                return;
+            return;
         }
 
+        EditorViewportSnapshot viewport = PrepareEditorCommandViewport();
+        if (!MarkdownEditCommandEngine.TryCreateEdit(
+                EditorTextBox.Text,
+                EditorTextBox.SelectionStart,
+                EditorTextBox.SelectionLength,
+                command,
+                out MarkdownTextEdit edit))
+        {
+            return;
+        }
+
+        ApplyTextEdit(edit);
         RestoreEditorViewport(viewport);
+    }
+
+    private static bool TryResolveCommand(string action, out MarkdownEditCommand command)
+    {
+        command = action switch
+        {
+            "Bold" => MarkdownEditCommand.Bold,
+            "Italic" => MarkdownEditCommand.Italic,
+            "Strike" => MarkdownEditCommand.Strikethrough,
+            "Code" => MarkdownEditCommand.Code,
+            "Link" => MarkdownEditCommand.Link,
+            "Heading" => MarkdownEditCommand.Heading,
+            "List" => MarkdownEditCommand.List,
+            "Task" => MarkdownEditCommand.Task,
+            "Quote" => MarkdownEditCommand.Quote,
+            "Table" => MarkdownEditCommand.Table,
+            _ => default
+        };
+        return action is "Bold" or "Italic" or "Strike" or "Code" or "Link" or
+            "Heading" or "List" or "Task" or "Quote" or "Table";
     }
 
     private static void OnTextPropertyChanged(
@@ -223,6 +222,9 @@ public sealed partial class MarkdownSourceEditor : UserControl
         editor._isSynchronizingText = true;
         try
         {
+            editor._textRevision++;
+            editor._lastEditorViewport = null;
+            editor._pendingCommandViewport = null;
             editor.EditorTextBox.Text = value;
         }
         finally
@@ -256,6 +258,7 @@ public sealed partial class MarkdownSourceEditor : UserControl
             return;
         }
 
+        _textRevision++;
         SetValue(TextProperty, EditorTextBox.Text);
         EditorTextChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -283,6 +286,23 @@ public sealed partial class MarkdownSourceEditor : UserControl
     {
         bool control = IsKeyDown(VirtualKey.Control);
         bool shift = IsKeyDown(VirtualKey.Shift);
+        if (_isTextCompositionActive)
+        {
+            return;
+        }
+
+        if (control && e.Key is VirtualKey.B or VirtualKey.I or VirtualKey.K)
+        {
+            e.Handled = true;
+            ApplyFormat(e.Key switch
+            {
+                VirtualKey.B => "Bold",
+                VirtualKey.I => "Italic",
+                _ => "Link"
+            });
+            return;
+        }
+
         if (control && e.Key == VirtualKey.Enter)
         {
             e.Handled = true;
@@ -292,6 +312,7 @@ public sealed partial class MarkdownSourceEditor : UserControl
 
         if (e.Key == VirtualKey.Escape)
         {
+            e.Handled = true;
             CancelRequested?.Invoke(this, EventArgs.Empty);
             return;
         }
@@ -301,14 +322,15 @@ public sealed partial class MarkdownSourceEditor : UserControl
             return;
         }
 
-        if (e.Key == VirtualKey.Tab)
+        if (ShowFormattingToolbar && e.Key == VirtualKey.Tab)
         {
             e.Handled = true;
             IndentSelection(outdent: shift);
             return;
         }
 
-        if (!control && !shift && e.Key == VirtualKey.Enter && TryContinueMarkdownList())
+        if (ShowFormattingToolbar && !control && !shift &&
+            e.Key == VirtualKey.Enter && TryContinueMarkdownList())
         {
             e.Handled = true;
         }
@@ -321,9 +343,11 @@ public sealed partial class MarkdownSourceEditor : UserControl
     private EditorViewportSnapshot PrepareEditorCommandViewport()
     {
         EditorViewportSnapshot snapshot =
-            _pendingCommandViewport ??
-            _lastEditorViewport ??
-            CaptureEditorViewport();
+            _pendingCommandViewport is { } pending && pending.TextRevision == _textRevision
+                ? pending
+                : _lastEditorViewport is { } previous && previous.TextRevision == _textRevision
+                    ? previous
+                    : CaptureEditorViewport();
         _pendingCommandViewport = null;
 
         int start = Math.Clamp(snapshot.SelectionStart, 0, EditorTextBox.Text.Length);
@@ -342,7 +366,8 @@ public sealed partial class MarkdownSourceEditor : UserControl
             EditorTextBox.SelectionStart,
             EditorTextBox.SelectionLength,
             scrollViewer?.HorizontalOffset ?? 0,
-            scrollViewer?.VerticalOffset ?? 0);
+            scrollViewer?.VerticalOffset ?? 0,
+            _textRevision);
     }
 
     private void RestoreEditorViewport(EditorViewportSnapshot viewport)
@@ -359,7 +384,8 @@ public sealed partial class MarkdownSourceEditor : UserControl
         _lastEditorViewport = viewport with
         {
             SelectionStart = start,
-            SelectionLength = length
+            SelectionLength = length,
+            TextRevision = _textRevision
         };
 
         DispatcherQueue.TryEnqueue(
@@ -376,83 +402,10 @@ public sealed partial class MarkdownSourceEditor : UserControl
         }
     }
 
-    private void WrapSelection(string prefix, string suffix, string placeholder)
+    private void ApplyTextEdit(MarkdownTextEdit edit)
     {
-        int start = EditorTextBox.SelectionStart;
-        int length = EditorTextBox.SelectionLength;
-        string selected = length > 0
-            ? EditorTextBox.Text.Substring(start, length)
-            : placeholder;
-        ReplaceTextRange(start, length, prefix + selected + suffix);
-        EditorTextBox.Select(start + prefix.Length, selected.Length);
-    }
-
-    private void ToggleWrappedSelection(string prefix, string suffix, string placeholder)
-    {
-        int start = EditorTextBox.SelectionStart;
-        int length = EditorTextBox.SelectionLength;
-        string text = EditorTextBox.Text;
-        string selected = length > 0 ? text.Substring(start, length) : string.Empty;
-
-        if (length > 0 &&
-            selected.Length >= prefix.Length + suffix.Length &&
-            selected.StartsWith(prefix, StringComparison.Ordinal) &&
-            selected.EndsWith(suffix, StringComparison.Ordinal))
-        {
-            string unwrapped = selected[prefix.Length..^suffix.Length];
-            ReplaceTextRange(start, length, unwrapped);
-            EditorTextBox.Select(start, unwrapped.Length);
-            return;
-        }
-
-        if (length > 0 &&
-            start >= prefix.Length &&
-            start + length + suffix.Length <= text.Length &&
-            text.AsSpan(start - prefix.Length, prefix.Length).SequenceEqual(prefix) &&
-            text.AsSpan(start + length, suffix.Length).SequenceEqual(suffix))
-        {
-            ReplaceTextRange(
-                start - prefix.Length,
-                prefix.Length + length + suffix.Length,
-                selected);
-            EditorTextBox.Select(start - prefix.Length, selected.Length);
-            return;
-        }
-
-        WrapSelection(prefix, suffix, placeholder);
-    }
-
-    private void PrefixSelectedLines(string prefix)
-    {
-        int start = EditorTextBox.SelectionStart;
-        int end = start + EditorTextBox.SelectionLength;
-        string text = EditorTextBox.Text;
-        int lineStart = text.LastIndexOf('\n', Math.Max(0, start - 1));
-        lineStart = lineStart < 0 ? 0 : lineStart + 1;
-        int lookupEnd = end > start && end <= text.Length && text[end - 1] == '\n'
-            ? end - 1
-            : end;
-        int lineEnd = text.IndexOf('\n', lookupEnd);
-        lineEnd = lineEnd < 0 ? text.Length : lineEnd;
-        string block = text[lineStart..lineEnd];
-        string[] lines = block.Split('\n');
-        bool removePrefix = lines.Any(line => line.TrimEnd('\r').Length > 0) &&
-            lines.Where(line => line.TrimEnd('\r').Length > 0)
-                .All(line => line.TrimStart('\r').StartsWith(prefix, StringComparison.Ordinal));
-        string replacement = string.Join(
-            "\n",
-            lines.Select(line => removePrefix && line.StartsWith(prefix, StringComparison.Ordinal)
-                ? line[prefix.Length..]
-                : prefix + line));
-        ReplaceTextRange(lineStart, lineEnd - lineStart, replacement);
-        EditorTextBox.Select(lineStart, replacement.Length);
-    }
-
-    private void ReplaceSelection(string replacement)
-    {
-        int start = EditorTextBox.SelectionStart;
-        ReplaceTextRange(start, EditorTextBox.SelectionLength, replacement);
-        EditorTextBox.Select(start + replacement.Length, 0);
+        ReplaceTextRange(edit.Start, edit.Length, edit.Replacement);
+        EditorTextBox.Select(edit.SelectionStart, edit.SelectionLength);
     }
 
     private void ReplaceTextRange(int start, int length, string replacement)
@@ -465,38 +418,18 @@ public sealed partial class MarkdownSourceEditor : UserControl
 
     private void IndentSelection(bool outdent)
     {
-        int start = EditorTextBox.SelectionStart;
-        int length = EditorTextBox.SelectionLength;
-        if (length == 0)
+        MarkdownEditCommand command = outdent
+            ? MarkdownEditCommand.Outdent
+            : MarkdownEditCommand.Indent;
+        if (MarkdownEditCommandEngine.TryCreateEdit(
+                EditorTextBox.Text,
+                EditorTextBox.SelectionStart,
+                EditorTextBox.SelectionLength,
+                command,
+                out MarkdownTextEdit edit))
         {
-            if (outdent)
-            {
-                int lineStart = EditorTextBox.Text.LastIndexOf('\n', Math.Max(0, start - 1));
-                lineStart = lineStart < 0 ? 0 : lineStart + 1;
-                int remove = EditorTextBox.Text.AsSpan(lineStart).StartsWith("    ") ? 4 :
-                    EditorTextBox.Text.AsSpan(lineStart).StartsWith("\t") ? 1 : 0;
-                if (remove > 0)
-                {
-                    ReplaceTextRange(lineStart, remove, string.Empty);
-                    EditorTextBox.Select(Math.Max(lineStart, start - remove), 0);
-                }
-            }
-            else
-            {
-                ReplaceTextRange(start, 0, "    ");
-                EditorTextBox.Select(start + 4, 0);
-            }
-            return;
+            ApplyTextEdit(edit);
         }
-
-        string selected = EditorTextBox.Text.Substring(start, length);
-        string replacement = string.Join("\n", selected.Split('\n').Select(line =>
-            outdent
-                ? line.StartsWith("    ", StringComparison.Ordinal) ? line[4..]
-                    : line.StartsWith('\t') ? line[1..] : line
-                : "    " + line));
-        ReplaceTextRange(start, length, replacement);
-        EditorTextBox.Select(start, replacement.Length);
     }
 
     private bool TryContinueMarkdownList()
@@ -537,16 +470,31 @@ public sealed partial class MarkdownSourceEditor : UserControl
 
     private void ApplyLocalizedText()
     {
-        BoldButton.Label = T("Markdown.Editor.Bold", "Bold");
-        ItalicButton.Label = T("Markdown.Editor.Italic", "Italic");
-        HeadingButton.Label = T("Markdown.Editor.Heading", "Heading");
-        ListButton.Label = T("Markdown.Editor.List", "List");
-        TaskButton.Label = T("Markdown.Editor.Task", "Task list");
-        LinkButton.Label = T("Markdown.Editor.Link", "Link");
-        StrikeButton.Label = T("Markdown.Editor.Strikethrough", "Strikethrough");
-        QuoteButton.Label = T("Markdown.Editor.Quote", "Quote");
-        CodeButton.Label = T("Markdown.Editor.Code", "Code");
-        TableButton.Label = T("Markdown.Editor.Table", "Table");
+        SetButtonText(BoldButton, "Markdown.Editor.Bold", "Bold");
+        SetButtonText(ItalicButton, "Markdown.Editor.Italic", "Italic");
+        SetButtonText(HeadingButton, "Markdown.Editor.Heading", "Heading");
+        SetButtonText(ListButton, "Markdown.Editor.List", "List");
+        SetButtonText(TaskButton, "Markdown.Editor.Task", "Task list");
+        SetButtonText(LinkButton, "Markdown.Editor.Link", "Link");
+        SetButtonText(StrikeButton, "Markdown.Editor.Strikethrough", "Strikethrough");
+        SetButtonText(QuoteButton, "Markdown.Editor.Quote", "Quote");
+        SetButtonText(CodeButton, "Markdown.Editor.Code", "Code");
+        SetButtonText(TableButton, "Markdown.Editor.Table", "Table");
+
+        AutomationProperties.SetName(
+            FormattingCommandBar,
+            T("Markdown.Editor.Toolbar", "Formatting"));
+        AutomationProperties.SetName(
+            EditorTextBox,
+            T("Markdown.Editor.Source", "Markdown source editor"));
+    }
+
+    private void SetButtonText(AppBarButton button, string key, string fallback)
+    {
+        string text = T(key, fallback);
+        button.Label = text;
+        ToolTipService.SetToolTip(button, text);
+        AutomationProperties.SetName(button, text);
     }
 
     private string T(string key, string fallback)
@@ -589,5 +537,6 @@ public sealed partial class MarkdownSourceEditor : UserControl
         int SelectionStart,
         int SelectionLength,
         double HorizontalOffset,
-        double VerticalOffset);
+        double VerticalOffset,
+        int TextRevision);
 }

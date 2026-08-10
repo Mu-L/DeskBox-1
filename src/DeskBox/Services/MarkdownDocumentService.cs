@@ -57,6 +57,17 @@ public sealed partial class MarkdownDocumentService
         return decoded.Trim();
     }
 
+    public string ToSafeHtml(string? markdown)
+    {
+        string source = NormalizeSource(markdown);
+        if (source.Length > MaxCharacters)
+        {
+            source = source[..MaxCharacters];
+        }
+
+        return Markdown.ToHtml(source, s_pipeline);
+    }
+
     public bool TryToggleTask(string? markdown, int taskIndex, out string updatedSource)
     {
         string source = NormalizeSource(markdown);

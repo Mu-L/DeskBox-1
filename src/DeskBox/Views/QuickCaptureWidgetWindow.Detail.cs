@@ -64,7 +64,7 @@ public sealed partial class QuickCaptureWidgetWindow
 
         ItemsListView.SelectedItem = item;
         ItemsListView.ScrollIntoView(item);
-        OpenDetail(item);
+        await OpenDetailAfterSavingAsync(item);
     }
 
     private async void AddButton_Click(object sender, RoutedEventArgs e)
@@ -76,7 +76,7 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
-        OpenNewDetail();
+        await OpenNewDetailAsync();
     }
 
     private void PositionLockButton_Click(object sender, RoutedEventArgs e)
@@ -89,15 +89,15 @@ public sealed partial class QuickCaptureWidgetWindow
         SetSizeLocked(!ViewModel.Config.IsSizeLocked);
     }
 
-    private void ExpandInputButton_Click(object sender, RoutedEventArgs e)
+    private async void ExpandInputButton_Click(object sender, RoutedEventArgs e)
     {
-        OpenNewDetail(InputTextBox.Text);
+        await OpenNewDetailAsync(InputTextBox.Text);
         InputTextBox.Text = string.Empty;
     }
 
-    private void AddNoteCardButton_Click(object sender, RoutedEventArgs e)
+    private async void AddNoteCardButton_Click(object sender, RoutedEventArgs e)
     {
-        OpenNewDetail();
+        await OpenNewDetailAsync();
     }
 
     private async void InputTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -113,85 +113,100 @@ public sealed partial class QuickCaptureWidgetWindow
         await ViewModel.AddInputAsync();
     }
 
-    private async void DetailBodyTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    private async Task OpenNewDetailAsync(string? initialBody = null)
     {
-        if (e.Key != VirtualKey.Enter)
-        {
-            return;
-        }
-
-        e.Handled = true;
-        if (ShouldSubmitQuickCaptureEditor(e))
-        {
-            await SaveAndCloseDetailAsync();
-        }
-        else
-        {
-            TextBoxEditorShortcutHelper.InsertLineBreak(DetailBodyTextBox);
-        }
-    }
-
-    private bool ShouldSubmitQuickCaptureEditor(KeyRoutedEventArgs e)
-    {
-        if (e.Key != VirtualKey.Enter)
-        {
-            return false;
-        }
-
-        bool controlPressed = Win32Helper.IsKeyPressed(VirtualKey.Control);
-        return SettingsService.ShouldSubmitEditorOnEnter(
-            _settingsService.Settings.QuickCaptureEditorEnterBehavior,
-            controlPressed);
-    }
-
-    private void OpenNewDetail(string? initialBody = null)
-    {
+        await FlushPendingDetailSaveAsync();
+        _detailAutoSaveTimer?.Stop();
         _detailItem = null;
         _isCreatingDetail = true;
+        _isDetailEditing = true;
+        _detailEditRevision = string.IsNullOrEmpty(initialBody) ? 0 : 1;
+        _detailSavedRevision = 0;
+        _detailHasUnsavedChanges = _detailEditRevision != _detailSavedRevision;
+        _detailContentFormat = SettingsService.NormalizeQuickCaptureFormat(
+            _settingsService.Settings.QuickCaptureDefaultFormat) ==
+            SettingsService.QuickCaptureFormatPlainText
+                ? TextContentFormat.PlainText
+                : TextContentFormat.Markdown;
         _detailIsPinned = false;
         _detailAppearance = QuickCaptureAppearancePreset.Default;
         _pendingDetailAttachments = [];
         DetailTitleTextBox.Text = string.Empty;
-        DetailBodyTextBox.Text = initialBody ?? string.Empty;
+        _detailOriginalBody = initialBody ?? string.Empty;
+        SetDetailEditorText(_detailOriginalBody);
         RefreshDetailAttachmentList();
         DetailTimestampText.Text = _localizationService.Format(
             "QuickCapture.Detail.Created",
             DateTimeOffset.Now.ToString("yyyy/M/d HH:mm"));
         ShowDetailPage();
+        if (_detailHasUnsavedChanges)
+        {
+            _detailAutoSaveTimer?.Start();
+        }
     }
 
     private void OpenDetail(QuickCaptureItemViewModel item)
     {
-        if (item.IsRecent)
-        {
-            return;
-        }
-
+        _detailAutoSaveTimer?.Stop();
         _detailItem = item;
         _isCreatingDetail = false;
+        _detailContentFormat = item.ContentFormat;
+        _isDetailEditing = !item.IsRecent &&
+            (!_isDualPane || SettingsService.NormalizeQuickCaptureWideOpenMode(
+                _settingsService.Settings.QuickCaptureWideOpenMode) ==
+                SettingsService.QuickCaptureWideOpenEditing);
+        _detailHasUnsavedChanges = false;
+        _detailEditRevision = 0;
+        _detailSavedRevision = 0;
         _detailIsPinned = item.IsPinned;
         _detailAppearance = item.AppearancePreset;
         _pendingDetailAttachments = [];
         DetailTitleTextBox.Text = string.Empty;
-        DetailBodyTextBox.Text = item.Type == QuickCaptureItemType.Image &&
-                                 string.Equals(item.Body, "Image", StringComparison.Ordinal)
+        _detailOriginalBody = item.Type == QuickCaptureItemType.Image &&
+                              string.Equals(item.Body, "Image", StringComparison.Ordinal)
             ? string.Empty
             : BuildBodyText(item);
+        SetDetailEditorText(_detailOriginalBody);
         DetailTimestampText.Text = BuildDetailTimestampText(item);
         RefreshDetailAttachmentList();
         ShowDetailPage();
+        if (_detailHasUnsavedChanges)
+        {
+            _detailAutoSaveTimer?.Start();
+        }
+    }
+
+    private async Task OpenDetailAfterSavingAsync(QuickCaptureItemViewModel item)
+    {
+        if (_detailItem is not null &&
+            string.Equals(_detailItem.Id, item.Id, StringComparison.Ordinal))
+        {
+            if (!_isDualPane && !_showDetailInSinglePane)
+            {
+                ShowDetailPage();
+            }
+            return;
+        }
+
+        await FlushPendingDetailSaveAsync();
+        if (_detailHasUnsavedChanges)
+        {
+            return;
+        }
+
+        OpenDetail(item);
     }
 
     private void ShowDetailPage()
     {
         ClearQuickCaptureCopySelection();
-        ClearQuickCaptureListContainerSelection();
         CloseInlineEdit(restoreInputFocus: false);
-        ListPage.Visibility = Visibility.Collapsed;
-        DetailPage.Visibility = Visibility.Visible;
-        DetailPage.IsHitTestVisible = true;
+        _showDetailInSinglePane = true;
+        ApplyResponsiveDetailLayout();
+        UpdateDetailSelectionVisuals();
         UpdateDetailPinVisual();
         ApplyDetailMaterialSurface();
+        RefreshDetailPresentation();
         long generation = ++_detailTransitionGeneration;
         DispatcherQueue.TryEnqueue(() =>
         {
@@ -201,9 +216,15 @@ public sealed partial class QuickCaptureWidgetWindow
                 return;
             }
 
-            DetailPageTransitionHelper.PlayEnter(DetailPage);
-            DetailBodyTextBox.Focus(FocusState.Programmatic);
-            DetailBodyTextBox.Select(DetailBodyTextBox.Text.Length, 0);
+            if (!_isDualPane)
+            {
+                DetailPageTransitionHelper.PlayEnter(DetailPage);
+            }
+
+            if (_isDetailEditing)
+            {
+                DetailMarkdownEditor.FocusEditor(moveCaretToEnd: _isCreatingDetail);
+            }
         });
     }
 
@@ -226,27 +247,61 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private async Task<bool> SaveAndCloseDetailAsync()
     {
-        if (_isSavingDetail || _isClosingDetail)
+        await FlushPendingDetailSaveAsync();
+        return await SaveDetailAsync(closeAfterSave: true);
+    }
+
+    private async Task<bool> SaveDetailAsync(bool closeAfterSave)
+    {
+        if (_isClosingDetail)
         {
             return false;
         }
 
-        _isSavingDetail = true;
+        await _detailSaveGate.WaitAsync();
         try
         {
-            return await SaveAndCloseDetailCoreAsync();
+            _isSavingDetail = true;
+            if (_detailItem?.IsRecent == true)
+            {
+                if (closeAfterSave)
+                {
+                    await CloseDetailPageAsync(saveBeforeClose: false);
+                }
+                return true;
+            }
+
+            bool saved;
+            do
+            {
+                saved = await SaveDetailCoreAsync(closeAfterSave: false);
+                if (!saved)
+                {
+                    return false;
+                }
+            }
+            while (_detailHasUnsavedChanges);
+
+            if (closeAfterSave)
+            {
+                await CloseDetailPageAsync(saveBeforeClose: false);
+            }
+            return true;
         }
         finally
         {
             _isSavingDetail = false;
+            _detailSaveGate.Release();
         }
     }
 
-    private async Task<bool> SaveAndCloseDetailCoreAsync()
+    private async Task<bool> SaveDetailCoreAsync(bool closeAfterSave)
     {
-        string body = DetailBodyTextBox.Text;
+        long revisionAtStart = _detailEditRevision;
+        string body = DetailMarkdownEditor.Text;
         if (_isCreatingDetail)
         {
+            QuickCaptureItem? createdModel = null;
             if (_pendingDetailAttachments.Count > 0)
             {
                 QuickCaptureItemViewModel? created = await ViewModel.AddItemWithAttachmentsAsync(
@@ -257,7 +312,13 @@ public sealed partial class QuickCaptureWidgetWindow
                     return false;
                 }
 
-                await ViewModel.EditItemDetailsAsync(created, null, body, _detailAppearance);
+                await ViewModel.EditItemDetailsAsync(
+                    created,
+                    null,
+                    body,
+                    _detailAppearance,
+                    _detailContentFormat);
+                createdModel = created.ToModel();
                 if (_detailIsPinned)
                 {
                     await ViewModel.SetPinnedAsync(created.Id, true);
@@ -267,20 +328,57 @@ public sealed partial class QuickCaptureWidgetWindow
             }
             else if (!string.IsNullOrWhiteSpace(body))
             {
-                QuickCaptureItem? created = await ViewModel.AddDetailedItemAsync(null, body, _detailAppearance);
-                if (created is not null && _detailIsPinned)
+                createdModel = await ViewModel.AddDetailedItemAsync(
+                    null,
+                    body,
+                    _detailAppearance,
+                    _detailContentFormat);
+                if (createdModel is not null && _detailIsPinned)
                 {
-                    await ViewModel.SetPinnedAsync(created.Id, true);
+                    await ViewModel.SetPinnedAsync(createdModel.Id, true);
                 }
             }
 
-            await CloseDetailPageAsync();
+            if (createdModel is not null)
+            {
+                await ViewModel.RefreshItemsAsync();
+                _detailItem = ViewModel.Items.FirstOrDefault(item =>
+                    string.Equals(item.Id, createdModel.Id, StringComparison.Ordinal));
+                _isCreatingDetail = false;
+            }
+
+            _detailSavedRevision = Math.Max(_detailSavedRevision, revisionAtStart);
+            _detailHasUnsavedChanges = _detailEditRevision > revisionAtStart;
+            _detailOriginalBody = body;
+            if (closeAfterSave)
+            {
+                await CloseDetailPageAsync(saveBeforeClose: false);
+            }
+            else
+            {
+                UpdateDetailSelectionVisuals();
+                RefreshDetailPresentation();
+            }
+
             return true;
         }
 
         if (_detailItem is not { } item)
         {
-            await CloseDetailPageAsync();
+            if (closeAfterSave)
+            {
+                await CloseDetailPageAsync(saveBeforeClose: false);
+            }
+            return !_detailHasUnsavedChanges;
+        }
+
+        if (!_detailHasUnsavedChanges && _detailAppearance == item.AppearancePreset &&
+            _detailIsPinned == item.IsPinned && _detailContentFormat == item.ContentFormat)
+        {
+            if (closeAfterSave)
+            {
+                await CloseDetailPageAsync(saveBeforeClose: false);
+            }
             return true;
         }
 
@@ -291,7 +389,12 @@ public sealed partial class QuickCaptureWidgetWindow
             return false;
         }
 
-        bool saved = await ViewModel.EditItemDetailsAsync(item, null, body, _detailAppearance);
+        bool saved = await ViewModel.EditItemDetailsAsync(
+            item,
+            null,
+            body,
+            _detailAppearance,
+            _detailContentFormat);
         if (!saved)
         {
             return false;
@@ -303,24 +406,47 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         await ViewModel.RefreshItemsAsync();
+        _detailItem = ViewModel.Items.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, item.Id, StringComparison.Ordinal));
+        _detailSavedRevision = Math.Max(_detailSavedRevision, revisionAtStart);
+        _detailHasUnsavedChanges = _detailEditRevision > revisionAtStart;
+        _detailOriginalBody = body;
+        if (closeAfterSave)
+        {
+            await CloseDetailPageAsync(saveBeforeClose: false);
+        }
+        else
+        {
+            UpdateDetailSelectionVisuals();
+            RefreshDetailPresentation();
+        }
 
-        await CloseDetailPageAsync();
         return true;
     }
 
-    private async Task CloseDetailPageAsync()
+    private async Task CloseDetailPageAsync(bool saveBeforeClose = true)
     {
         if (_isClosingDetail || DetailPage.Visibility != Visibility.Visible)
         {
             return;
         }
 
+        if (saveBeforeClose && _detailHasUnsavedChanges &&
+            !await SaveDetailAsync(closeAfterSave: false))
+        {
+            return;
+        }
+
         _isClosingDetail = true;
+        _detailAutoSaveTimer?.Stop();
         long generation = ++_detailTransitionGeneration;
         DetailPage.IsHitTestVisible = false;
         try
         {
-            await DetailPageTransitionHelper.PlayExitAsync(DetailPage);
+            if (!_isDualPane)
+            {
+                await DetailPageTransitionHelper.PlayExitAsync(DetailPage);
+            }
             if (generation != _detailTransitionGeneration)
             {
                 return;
@@ -328,15 +454,23 @@ public sealed partial class QuickCaptureWidgetWindow
 
             _detailItem = null;
             _isCreatingDetail = false;
+            _isDetailEditing = false;
+            _detailHasUnsavedChanges = false;
+            _detailEditRevision = 0;
+            _detailSavedRevision = 0;
+            _showDetailInSinglePane = false;
             _detailIsPinned = false;
             _detailAppearance = QuickCaptureAppearancePreset.Default;
             _pendingDetailAttachments = [];
             DetailAttachmentsList.ItemsSource = null;
             DetailAttachmentScroller.Visibility = Visibility.Collapsed;
-            DetailPage.Visibility = Visibility.Collapsed;
-            ListPage.Visibility = Visibility.Visible;
-            ClearQuickCaptureListContainerSelection();
+            ApplyResponsiveDetailLayout();
+            UpdateDetailSelectionVisuals();
             RefreshItemMaterialSurfaces();
+            if (_isDualPane)
+            {
+                ReconcileDetailSelection(autoSelectFirst: true);
+            }
             RootGrid.Focus(FocusState.Programmatic);
         }
         finally
@@ -365,6 +499,11 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private async void DetailPinButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_detailItem?.IsRecent == true)
+        {
+            return;
+        }
+
         bool wasPinned = _detailIsPinned;
         bool isPinned = !wasPinned;
         _detailIsPinned = isPinned;
@@ -401,10 +540,18 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void MaterialButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!_isDetailEditing || _detailItem?.IsRecent == true)
+        {
+            return;
+        }
+
         if (sender is FrameworkElement { Tag: string tag } &&
             Enum.TryParse(tag, ignoreCase: false, out QuickCaptureAppearancePreset preset))
         {
             _detailAppearance = preset;
+            MarkDetailDirty();
+            _detailAutoSaveTimer?.Stop();
+            _detailAutoSaveTimer?.Start();
             ApplyDetailMaterialSurface();
         }
     }
@@ -536,9 +683,54 @@ public sealed partial class QuickCaptureWidgetWindow
         ApplySegmentedLayout();
     }
 
-    private void QuickCaptureViewSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void QuickCaptureViewSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        SelectView(GetSelectedSegmentView());
+        if (_isSynchronizingQuickCaptureViewSelection)
+        {
+            return;
+        }
+
+        QuickCaptureViewMode requestedView = GetSelectedSegmentView();
+        if (ViewModel.SelectedView == requestedView)
+        {
+            return;
+        }
+
+        _isSynchronizingQuickCaptureViewSelection = true;
+        RefreshSelectedViewSegment();
+        _isSynchronizingQuickCaptureViewSelection = false;
+        if (!await CommitDetailBeforeViewChangeAsync())
+        {
+            return;
+        }
+
+        SelectView(requestedView);
+    }
+
+    private async Task<bool> CommitDetailBeforeViewChangeAsync()
+    {
+        if (!_isDetailEditing && !_detailHasUnsavedChanges)
+        {
+            return true;
+        }
+
+        await FlushPendingDetailSaveAsync();
+        if (_detailHasUnsavedChanges)
+        {
+            return false;
+        }
+
+        if (_isCreatingDetail && _detailItem is null)
+        {
+            await CloseDetailPageAsync(saveBeforeClose: false);
+        }
+        else
+        {
+            _isDetailEditing = false;
+            _detailOriginalBody = DetailMarkdownEditor.Text;
+            RefreshDetailPresentation();
+        }
+        return true;
     }
 
     private void SelectView(QuickCaptureViewMode view)

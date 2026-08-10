@@ -13,9 +13,11 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
     private bool _canMovePinnedUp;
     private bool _canMovePinnedDown;
     private bool _isCopySelected;
+    private bool _isDetailSelected;
     private double _textSize;
     private double _iconSize;
     private string _searchText;
+    private static readonly MarkdownDocumentService s_markdownService = new();
 
     public QuickCaptureItemViewModel(
         QuickCaptureItem model,
@@ -42,6 +44,8 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public string Body => _model.Body;
 
+    public TextContentFormat ContentFormat => _model.ContentFormat;
+
     public string CopyText => string.IsNullOrWhiteSpace(Body)
         ? Title ?? string.Empty
         : Body;
@@ -60,7 +64,9 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public string DisplayText => Type == QuickCaptureItemType.Image && !HasDisplayBody
         ? _localizationService.T("QuickCapture.ImageItem")
-        : CopyText;
+        : ContentFormat == TextContentFormat.Markdown
+            ? s_markdownService.ToPlainText(CopyText)
+            : CopyText;
 
     public int HighlightStartIndex => GetHighlightStartIndex();
 
@@ -152,6 +158,22 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public Visibility CopySelectionVisibility => IsCopySelected ? Visibility.Visible : Visibility.Collapsed;
 
+    public bool IsDetailSelected
+    {
+        get => _isDetailSelected;
+        set
+        {
+            if (SetProperty(ref _isDetailSelected, value))
+            {
+                OnPropertyChanged(nameof(DetailSelectionVisibility));
+            }
+        }
+    }
+
+    public Visibility DetailSelectionVisibility => IsDetailSelected
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
     public string UpdatedAtText => FormatUpdatedAt(_model.UpdatedAt);
 
     public string CreatedAtText => FormatUpdatedAt(_model.CreatedAt);
@@ -171,6 +193,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         Id = _model.Id,
         Type = _model.Type,
         Body = _model.Body,
+        ContentFormat = _model.ContentFormat,
         Title = _model.Title,
         Url = _model.Url,
         ImagePath = _model.ImagePath,
@@ -206,7 +229,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
             OnPropertyChanged(nameof(AttachmentSummaryText));
         }
 
-        if (old.Body != model.Body || old.Type != model.Type)
+        if (old.Body != model.Body || old.Type != model.Type || old.ContentFormat != model.ContentFormat)
         {
             OnPropertyChanged(nameof(Body));
             OnPropertyChanged(nameof(CopyText));
@@ -214,6 +237,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
             OnPropertyChanged(nameof(HighlightStartIndex));
             OnPropertyChanged(nameof(HighlightLength));
             OnPropertyChanged(nameof(HighlightVisibility));
+            OnPropertyChanged(nameof(ContentFormat));
         }
 
         if (old.Url != model.Url)

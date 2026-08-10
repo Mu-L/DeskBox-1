@@ -7,10 +7,17 @@ public partial class SettingsViewModel
 {
     private int _quickCaptureItemPreviewLineCount = SettingsService.DefaultQuickCaptureItemPreviewLineCount;
     private string _quickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
+    private string _quickCaptureDefaultFormat = SettingsService.QuickCaptureFormatMarkdown;
+    private string _quickCaptureWideLayout = SettingsService.QuickCaptureWideLayoutAuto;
+    private string _quickCaptureWideOpenMode = SettingsService.QuickCaptureWideOpenReading;
+    private bool _quickCaptureAllowRemoteImages;
     private int _todoItemPreviewLineCount = SettingsService.DefaultTodoItemPreviewLineCount;
     private string _todoEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
     private string[]? _cachedItemPreviewLineCountDisplayNames;
     private string[]? _cachedEditorEnterBehaviorDisplayNames;
+    private string[]? _cachedQuickCaptureFormatDisplayNames;
+    private string[]? _cachedQuickCaptureWideLayoutDisplayNames;
+    private string[]? _cachedQuickCaptureWideOpenModeDisplayNames;
 
     public int[] AvailableItemPreviewLineCounts { get; } =
         Enumerable.Range(
@@ -37,6 +44,37 @@ public partial class SettingsViewModel
     public string[] AvailableEditorEnterBehaviorDisplayNames =>
         _cachedEditorEnterBehaviorDisplayNames ??=
             AvailableEditorEnterBehaviors.Select(GetEditorEnterBehaviorDisplayName).ToArray();
+
+    public string[] AvailableQuickCaptureFormats { get; } =
+    [
+        SettingsService.QuickCaptureFormatMarkdown,
+        SettingsService.QuickCaptureFormatPlainText
+    ];
+
+    public string[] AvailableQuickCaptureFormatDisplayNames =>
+        _cachedQuickCaptureFormatDisplayNames ??=
+            AvailableQuickCaptureFormats.Select(GetQuickCaptureFormatDisplayName).ToArray();
+
+    public string[] AvailableQuickCaptureWideLayouts { get; } =
+    [
+        SettingsService.QuickCaptureWideLayoutAuto,
+        SettingsService.QuickCaptureWideLayoutSinglePane,
+        SettingsService.QuickCaptureWideLayoutDualPane
+    ];
+
+    public string[] AvailableQuickCaptureWideLayoutDisplayNames =>
+        _cachedQuickCaptureWideLayoutDisplayNames ??=
+            AvailableQuickCaptureWideLayouts.Select(GetQuickCaptureWideLayoutDisplayName).ToArray();
+
+    public string[] AvailableQuickCaptureWideOpenModes { get; } =
+    [
+        SettingsService.QuickCaptureWideOpenReading,
+        SettingsService.QuickCaptureWideOpenEditing
+    ];
+
+    public string[] AvailableQuickCaptureWideOpenModeDisplayNames =>
+        _cachedQuickCaptureWideOpenModeDisplayNames ??=
+            AvailableQuickCaptureWideOpenModes.Select(GetQuickCaptureWideOpenModeDisplayName).ToArray();
 
     public int QuickCaptureItemPreviewLineCount
     {
@@ -77,6 +115,52 @@ public partial class SettingsViewModel
             }
 
             _settingsService.Settings.QuickCaptureEditorEnterBehavior = normalized;
+            _settingsService.SaveDebounced();
+        }
+    }
+
+    public string QuickCaptureDefaultFormat
+    {
+        get => _quickCaptureDefaultFormat;
+        set => SetQuickCaptureSetting(
+            ref _quickCaptureDefaultFormat,
+            SettingsService.NormalizeQuickCaptureFormat(value),
+            normalized => _settingsService.Settings.QuickCaptureDefaultFormat = normalized,
+            nameof(QuickCaptureDefaultFormat));
+    }
+
+    public string QuickCaptureWideLayout
+    {
+        get => _quickCaptureWideLayout;
+        set => SetQuickCaptureSetting(
+            ref _quickCaptureWideLayout,
+            SettingsService.NormalizeQuickCaptureWideLayout(value),
+            normalized => _settingsService.Settings.QuickCaptureWideLayout = normalized,
+            nameof(QuickCaptureWideLayout));
+    }
+
+    public string QuickCaptureWideOpenMode
+    {
+        get => _quickCaptureWideOpenMode;
+        set => SetQuickCaptureSetting(
+            ref _quickCaptureWideOpenMode,
+            SettingsService.NormalizeQuickCaptureWideOpenMode(value),
+            normalized => _settingsService.Settings.QuickCaptureWideOpenMode = normalized,
+            nameof(QuickCaptureWideOpenMode));
+    }
+
+    public bool QuickCaptureAllowRemoteImages
+    {
+        get => _quickCaptureAllowRemoteImages;
+        set
+        {
+            if (!SetProperty(ref _quickCaptureAllowRemoteImages, value) ||
+                _isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.QuickCaptureAllowRemoteImages = value;
             _settingsService.SaveDebounced();
         }
     }
@@ -132,6 +216,13 @@ public partial class SettingsViewModel
             settings.QuickCaptureItemPreviewLineCount);
         _quickCaptureEditorEnterBehavior = SettingsService.NormalizeEditorEnterBehavior(
             settings.QuickCaptureEditorEnterBehavior);
+        _quickCaptureDefaultFormat = SettingsService.NormalizeQuickCaptureFormat(
+            settings.QuickCaptureDefaultFormat);
+        _quickCaptureWideLayout = SettingsService.NormalizeQuickCaptureWideLayout(
+            settings.QuickCaptureWideLayout);
+        _quickCaptureWideOpenMode = SettingsService.NormalizeQuickCaptureWideOpenMode(
+            settings.QuickCaptureWideOpenMode);
+        _quickCaptureAllowRemoteImages = settings.QuickCaptureAllowRemoteImages;
         _todoItemPreviewLineCount = SettingsService.NormalizeItemPreviewLineCount(
             settings.TodoItemPreviewLineCount);
         _todoEditorEnterBehavior = SettingsService.NormalizeEditorEnterBehavior(
@@ -142,6 +233,10 @@ public partial class SettingsViewModel
     {
         QuickCaptureItemPreviewLineCount = settings.QuickCaptureItemPreviewLineCount;
         QuickCaptureEditorEnterBehavior = settings.QuickCaptureEditorEnterBehavior;
+        QuickCaptureDefaultFormat = settings.QuickCaptureDefaultFormat;
+        QuickCaptureWideLayout = settings.QuickCaptureWideLayout;
+        QuickCaptureWideOpenMode = settings.QuickCaptureWideOpenMode;
+        QuickCaptureAllowRemoteImages = settings.QuickCaptureAllowRemoteImages;
         TodoItemPreviewLineCount = settings.TodoItemPreviewLineCount;
         TodoEditorEnterBehavior = settings.TodoEditorEnterBehavior;
     }
@@ -150,8 +245,14 @@ public partial class SettingsViewModel
     {
         _cachedItemPreviewLineCountDisplayNames = null;
         _cachedEditorEnterBehaviorDisplayNames = null;
+        _cachedQuickCaptureFormatDisplayNames = null;
+        _cachedQuickCaptureWideLayoutDisplayNames = null;
+        _cachedQuickCaptureWideOpenModeDisplayNames = null;
         OnPropertyChanged(nameof(AvailableItemPreviewLineCountDisplayNames));
         OnPropertyChanged(nameof(AvailableEditorEnterBehaviorDisplayNames));
+        OnPropertyChanged(nameof(AvailableQuickCaptureFormatDisplayNames));
+        OnPropertyChanged(nameof(AvailableQuickCaptureWideLayoutDisplayNames));
+        OnPropertyChanged(nameof(AvailableQuickCaptureWideOpenModeDisplayNames));
     }
 
     private string GetEditorEnterBehaviorDisplayName(string behavior) =>
@@ -159,4 +260,39 @@ public partial class SettingsViewModel
         SettingsService.EditorEnterBehaviorEnterSaves
             ? _localizationService.T("Settings.ContentEditor.EnterBehavior.EnterSaves")
             : _localizationService.T("Settings.ContentEditor.EnterBehavior.CtrlEnterSaves");
+
+    private string GetQuickCaptureFormatDisplayName(string format) =>
+        SettingsService.NormalizeQuickCaptureFormat(format) == SettingsService.QuickCaptureFormatPlainText
+            ? _localizationService.T("Settings.QuickCapture.Format.PlainText")
+            : _localizationService.T("Settings.QuickCapture.Format.Markdown");
+
+    private string GetQuickCaptureWideLayoutDisplayName(string layout) =>
+        SettingsService.NormalizeQuickCaptureWideLayout(layout) switch
+        {
+            SettingsService.QuickCaptureWideLayoutSinglePane =>
+                _localizationService.T("Settings.QuickCapture.WideLayout.SinglePane"),
+            SettingsService.QuickCaptureWideLayoutDualPane =>
+                _localizationService.T("Settings.QuickCapture.WideLayout.DualPane"),
+            _ => _localizationService.T("Settings.QuickCapture.WideLayout.Auto")
+        };
+
+    private string GetQuickCaptureWideOpenModeDisplayName(string mode) =>
+        SettingsService.NormalizeQuickCaptureWideOpenMode(mode) == SettingsService.QuickCaptureWideOpenEditing
+            ? _localizationService.T("Settings.QuickCapture.WideOpen.Editing")
+            : _localizationService.T("Settings.QuickCapture.WideOpen.Reading");
+
+    private void SetQuickCaptureSetting(
+        ref string field,
+        string value,
+        Action<string> apply,
+        string propertyName)
+    {
+        if (!SetProperty(ref field, value, propertyName) || _isRestoringDefaults || _isApplyingSettingsSnapshot)
+        {
+            return;
+        }
+
+        apply(value);
+        _settingsService.SaveDebounced();
+    }
 }

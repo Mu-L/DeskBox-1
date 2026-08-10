@@ -126,7 +126,16 @@
             TitleRightTapped="TitleBarGrid_RightTapped"
             RightTapped="QuickCaptureShell_RightTapped">
             <controls:WidgetShell.ShellContent>
-                <Grid Padding="{Binding RootPadding}" RowSpacing="{Binding RootRowSpacing}">
+                <Grid
+                    x:Name="ResponsiveContentGrid"
+                    Padding="{Binding RootPadding}"
+                    RowSpacing="{Binding RootRowSpacing}"
+                    SizeChanged="ResponsiveContentGrid_SizeChanged">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="MasterColumn" Width="*" />
+                <ColumnDefinition x:Name="SplitterColumn" Width="0" />
+                <ColumnDefinition x:Name="DetailColumn" Width="0" />
+            </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -134,7 +143,7 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid x:Name="ListPage" Grid.RowSpan="4" RowSpacing="4">
+            <Grid x:Name="ListPage" Grid.Column="0" Grid.RowSpan="4" RowSpacing="4">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -436,6 +445,7 @@
                                 Padding="{Binding ElementName=ItemsListView, Path=DataContext.ItemPadding}"
                                 Background="Transparent"
                                 DataContextChanged="QuickCaptureItem_DataContextChanged"
+                                DoubleTapped="QuickCaptureItem_DoubleTapped"
                                 DragLeave="QuickCaptureItem_DragLeave"
                                 DragOver="QuickCaptureItem_DragOver"
                                 Drop="QuickCaptureItem_Drop"
@@ -466,6 +476,20 @@
                                     Margin="{Binding ElementName=ItemsListView, Path=DataContext.ItemChromeMargin}"
                                     Opacity="0.18"
                                     Visibility="{Binding CopySelectionVisibility}" />
+                                <Border
+                                    Grid.ColumnSpan="2"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    CornerRadius="4"
+                                    Margin="{Binding ElementName=ItemsListView, Path=DataContext.ItemChromeMargin}"
+                                    Opacity="0.10"
+                                    Visibility="{Binding DetailSelectionVisibility}" />
+                                <Border
+                                    Width="2"
+                                    Margin="{Binding ElementName=ItemsListView, Path=DataContext.ItemChromeMargin}"
+                                    HorizontalAlignment="Left"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    CornerRadius="1"
+                                    Visibility="{Binding DetailSelectionVisibility}" />
                                     <StackPanel
                                         x:Name="ItemContentHost"
                                         Grid.Column="0"
@@ -654,8 +678,31 @@
             </Grid>
             </Grid>
 
+            <toolkit:GridSplitter
+                x:Name="PaneSplitter"
+                Grid.Column="1"
+                Grid.RowSpan="4"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="-3,0"
+                AutomationProperties.Name="{Binding DetailSplitterText}"
+                Canvas.ZIndex="9"
+                DoubleTapped="PaneSplitter_DoubleTapped"
+                DragIncrement="1"
+                IsTabStop="True"
+                IsThumbVisible="True"
+                KeyboardIncrement="8"
+                KeyUp="PaneSplitter_KeyUp"
+                ManipulationCompleted="PaneSplitter_ManipulationCompleted"
+                ResizeBehavior="PreviousAndNext"
+                ResizeDirection="Columns"
+                Style="{StaticResource WidgetMasterDetailSplitterStyle}"
+                ToolTipService.ToolTip="{Binding DetailSplitterText}"
+                Visibility="Collapsed" />
+
             <Grid
                 x:Name="DetailPage"
+                Grid.Column="2"
                 Grid.RowSpan="4"
                 Canvas.ZIndex="8"
                 Background="Transparent"
@@ -667,21 +714,25 @@
                 </Grid.RowDefinitions>
 
                 <Border
+                    x:Name="DetailHeader"
                     Grid.Row="0"
-                    MinHeight="40"
-                    Padding="8,4"
+                    MinHeight="36"
+                    Padding="4,2"
                     Background="Transparent"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="0,0,0,1">
+                    BorderBrush="Transparent"
+                    BorderThickness="0">
                     <Grid MinHeight="32" ColumnSpacing="3">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="30" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="30" />
                             <ColumnDefinition Width="30" />
                             <ColumnDefinition Width="30" />
                             <ColumnDefinition Width="30" />
                         </Grid.ColumnDefinitions>
                         <Button
+                            x:Name="DetailBackButton"
                             Click="DetailBackButton_Click"
                             Style="{StaticResource QuickCaptureDetailConfirmButtonStyle}"
                             ToolTipService.ToolTip="{Binding DetailBackText}"
@@ -702,16 +753,44 @@
                         <TextBlock
                             x:Name="DetailTimestampText"
                             Grid.Column="1"
-                            Margin="4,0"
+                            Margin="6,0,4,0"
                             VerticalAlignment="Center"
                             FontSize="{Binding DetailHeaderTextSize}"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             MaxLines="1"
                             TextTrimming="CharacterEllipsis"
                             Visibility="{Binding CreatedTimeVisibility}" />
+                        <TextBlock
+                            x:Name="DetailReadOnlyText"
+                            Grid.Column="2"
+                            Margin="4,0"
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            MaxLines="1"
+                            Text="{Binding DetailReadOnlyText}"
+                            TextTrimming="CharacterEllipsis"
+                            Visibility="Collapsed" />
+                        <Grid Grid.Column="3">
+                            <Button
+                                x:Name="DetailEditButton"
+                                Click="DetailEditButton_Click"
+                                Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
+                                ToolTipService.ToolTip="{Binding DetailEditText}">
+                                <FontIcon FontSize="12" Glyph="&#xE70F;" />
+                            </Button>
+                            <Button
+                                x:Name="DetailDoneButton"
+                                Click="DetailDoneButton_Click"
+                                Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
+                                ToolTipService.ToolTip="{Binding DetailDoneText}"
+                                Visibility="Collapsed">
+                                <FontIcon FontSize="12" Glyph="&#xE73E;" />
+                            </Button>
+                        </Grid>
                         <Button
                             x:Name="DetailPinButton"
-                            Grid.Column="2"
+                            Grid.Column="4"
                             Click="DetailPinButton_Click"
                             Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                             VerticalAlignment="Center">
@@ -734,7 +813,7 @@
                             </Grid>
                         </Button>
                         <Button
-                            Grid.Column="3"
+                            Grid.Column="5"
                             Click="DetailCopyButton_Click"
                             Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                             ToolTipService.ToolTip="{Binding DetailCopyText}"
@@ -742,7 +821,7 @@
                             <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE8C8;" />
                         </Button>
                         <Button
-                            Grid.Column="4"
+                            Grid.Column="6"
                             Click="DetailDeleteButton_Click"
                             Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                             ToolTipService.ToolTip="{Binding DetailDeleteText}"
@@ -752,7 +831,7 @@
                     </Grid>
                 </Border>
 
-                <Grid Grid.Row="1" Margin="0,0,0,7" RowSpacing="7">
+                <Grid x:Name="DetailContent" Grid.Row="1" Margin="4,0,4,6" RowSpacing="6">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
@@ -761,11 +840,11 @@
                         x:Name="DetailMaterialSurface"
                         Grid.Row="0"
                         MinHeight="132"
-                        Padding="10,2,10,8"
+                        Padding="8,2,8,8"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="4">
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        CornerRadius="8">
                         <Grid RowSpacing="3">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -825,12 +904,13 @@
                                                         Visibility="{Binding ImageCopyVisibility}">
                                                         <FontIcon FontSize="10" Glyph="&#xE8C8;" />
                                                     </Button>
-                                                    <Button
-                                                        AutomationProperties.Name="{Binding ElementName=ItemsListView, Path=DataContext.DetailRemoveAttachmentText}"
-                                                        Click="DetailRemoveAttachmentButton_Click"
-                                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                                        Style="{StaticResource QuickCaptureAttachmentActionButtonStyle}"
-                                                        ToolTipService.ToolTip="{Binding ElementName=ItemsListView, Path=DataContext.DetailRemoveAttachmentText}">
+                                                     <Button
+                                                         AutomationProperties.Name="{Binding ElementName=ItemsListView, Path=DataContext.DetailRemoveAttachmentText}"
+                                                         Click="DetailRemoveAttachmentButton_Click"
+                                                         Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                         Style="{StaticResource QuickCaptureAttachmentActionButtonStyle}"
+                                                         ToolTipService.ToolTip="{Binding ElementName=ItemsListView, Path=DataContext.DetailRemoveAttachmentText}"
+                                                         Visibility="{Binding ElementName=DetailMarkdownEditor, Path=Visibility}">
                                                         <FontIcon FontSize="10" Glyph="&#xE74D;" />
                                                     </Button>
                                                 </StackPanel>
@@ -839,22 +919,23 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
-                            <TextBox
-                                x:Name="DetailBodyTextBox"
+                            <controls:MarkdownDocumentView
+                                x:Name="DetailMarkdownView"
                                 Grid.Row="2"
                                 MinHeight="80"
-                                AcceptsReturn="True"
-                                Background="Transparent"
-                                BorderBrush="Transparent"
-                                BorderThickness="0"
                                 FontSize="{Binding TextSize}"
-                                FontWeight="Normal"
-                                Padding="8,6"
+                                Margin="8,6"
+                                TaskToggleRequested="DetailMarkdownView_TaskToggleRequested"
+                                Visibility="Collapsed" />
+                            <controls:MarkdownSourceEditor
+                                x:Name="DetailMarkdownEditor"
+                                Grid.Row="2"
+                                MinHeight="80"
+                                CommitRequested="DetailMarkdownEditor_CommitRequested"
+                                CancelRequested="DetailMarkdownEditor_CancelRequested"
+                                EditorFontSize="{Binding TextSize}"
                                 PlaceholderText="{Binding DetailBodyPlaceholderText}"
-                                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                Style="{StaticResource WidgetBorderlessInputTextBoxStyle}"
-                                TextWrapping="Wrap"
-                                VerticalContentAlignment="Top" />
+                                Visibility="Collapsed" />
                             <Button
                                 x:Name="DetailAddFileButton"
                                 Grid.Row="1"
@@ -872,13 +953,39 @@
                         </Grid>
                     </Border>
 
-                    <StackPanel Grid.Row="1" Margin="2,0,0,0" Orientation="Horizontal" Spacing="5">
+                    <StackPanel x:Name="DetailMaterialPalette" Grid.Row="1" Margin="2,0,0,0" Orientation="Horizontal" Spacing="5" Visibility="Collapsed">
                             <Button x:Name="DefaultMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="Default" ToolTipService.ToolTip="{Binding MaterialDefaultText}"><Border Width="18" Height="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="3" /></Button>
                             <Button x:Name="PaperMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="Paper" ToolTipService.ToolTip="{Binding MaterialPaperText}"><Border Width="18" Height="12" Background="#FFF4EEE2" CornerRadius="3" /></Button>
                             <Button x:Name="YellowMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="StickyYellow" ToolTipService.ToolTip="{Binding MaterialYellowText}"><Border Width="18" Height="12" Background="#FFFFD96A" CornerRadius="3" /></Button>
                             <Button x:Name="RoseMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="Rose" ToolTipService.ToolTip="{Binding MaterialRoseText}"><Border Width="18" Height="12" Background="#FFF2A7B8" CornerRadius="3" /></Button>
                             <Button x:Name="MintMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="Mint" ToolTipService.ToolTip="{Binding MaterialMintText}"><Border Width="18" Height="12" Background="#FFA8D8B5" CornerRadius="3" /></Button>
                             <Button x:Name="BlueMaterialButton" Click="MaterialButton_Click" Style="{StaticResource QuickCaptureMaterialButtonStyle}" Tag="MistBlue" ToolTipService.ToolTip="{Binding MaterialBlueText}"><Border Width="18" Height="12" Background="#FFA9C7E8" CornerRadius="3" /></Button>
+                    </StackPanel>
+                </Grid>
+
+                <Grid
+                    x:Name="DetailEmptyState"
+                    Grid.RowSpan="3"
+                    Canvas.ZIndex="10"
+                    Background="Transparent"
+                    Visibility="Collapsed">
+                    <StackPanel
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        MaxWidth="240"
+                        Spacing="8">
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            FontSize="26"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE70F;" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            FontSize="{Binding TextSize}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding DetailNoSelectionText}"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
                     </StackPanel>
                 </Grid>
 

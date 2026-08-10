@@ -13,7 +13,7 @@ public sealed record MasterDetailLayoutOptions(
     double MinimumMasterWidth = 240,
     double MaximumMasterWidth = 420,
     double MinimumDetailWidth = 340,
-    double SplitterWidth = 20)
+    double SplitterWidth = 8)
 {
     public void Validate()
     {
@@ -59,7 +59,8 @@ public sealed class MasterDetailLayoutPolicy
         double availableWidth,
         bool wasDualPane,
         double? requestedMasterWidth = null,
-        bool forceSinglePane = false)
+        bool forceSinglePane = false,
+        bool forceDualPane = false)
     {
         double width = double.IsFinite(availableWidth)
             ? Math.Max(0, availableWidth)
@@ -70,7 +71,7 @@ public sealed class MasterDetailLayoutPolicy
         double threshold = wasDualPane
             ? Math.Max(Options.DualPaneExitWidth, minimumDualWidth)
             : Math.Max(Options.DualPaneEnterWidth, minimumDualWidth);
-        bool dualPane = !forceSinglePane && width >= threshold;
+        bool dualPane = !forceSinglePane && (forceDualPane || width >= threshold);
         if (!dualPane)
         {
             return new MasterDetailLayoutSnapshot(
@@ -78,6 +79,24 @@ public sealed class MasterDetailLayoutPolicy
                 width,
                 0,
                 0);
+        }
+
+        if (forceDualPane && width < minimumDualWidth)
+        {
+            double splitterWidth = Math.Min(width, Options.SplitterWidth);
+            double usableWidth = Math.Max(0, width - splitterWidth);
+            double compressedDesiredMasterWidth = requestedMasterWidth is { } compressedRequested &&
+                                                  double.IsFinite(compressedRequested)
+                ? Math.Clamp(compressedRequested, Options.MinimumMasterWidth, Options.MaximumMasterWidth)
+                : Options.DefaultMasterWidth;
+            double masterRatio = compressedDesiredMasterWidth /
+                                 (compressedDesiredMasterWidth + Options.MinimumDetailWidth);
+            double compressedMasterWidth = usableWidth * masterRatio;
+            return new MasterDetailLayoutSnapshot(
+                MasterDetailLayoutMode.DualPane,
+                compressedMasterWidth,
+                splitterWidth,
+                Math.Max(0, usableWidth - compressedMasterWidth));
         }
 
         double maximumMasterWidth = Math.Clamp(

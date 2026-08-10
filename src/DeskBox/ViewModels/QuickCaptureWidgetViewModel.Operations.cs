@@ -68,7 +68,11 @@ public sealed partial class QuickCaptureWidgetViewModel
             return;
         }
 
-        await _quickCaptureService.AddItemAsync(body);
+        await _quickCaptureService.AddDetailedItemAsync(
+            null,
+            body,
+            QuickCaptureAppearancePreset.Default,
+            ResolveDefaultContentFormat());
         if (SelectedView is QuickCaptureViewMode.Pinned or QuickCaptureViewMode.Recent)
         {
             SelectedView = QuickCaptureViewMode.Records;
@@ -84,14 +88,19 @@ public sealed partial class QuickCaptureWidgetViewModel
     public async Task<QuickCaptureItem?> AddDetailedItemAsync(
         string? title,
         string body,
-        QuickCaptureAppearancePreset appearancePreset)
+        QuickCaptureAppearancePreset appearancePreset,
+        TextContentFormat? contentFormat = null)
     {
         if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body))
         {
             return null;
         }
 
-        QuickCaptureItem item = await _quickCaptureService.AddDetailedItemAsync(title, body, appearancePreset);
+        QuickCaptureItem item = await _quickCaptureService.AddDetailedItemAsync(
+            title,
+            body,
+            appearancePreset,
+            contentFormat ?? ResolveDefaultContentFormat());
         if (SelectedView != QuickCaptureViewMode.Records)
         {
             SelectedView = QuickCaptureViewMode.Records;
@@ -334,10 +343,22 @@ public sealed partial class QuickCaptureWidgetViewModel
         QuickCaptureItemViewModel item,
         string? title,
         string body,
-        QuickCaptureAppearancePreset appearancePreset)
+        QuickCaptureAppearancePreset appearancePreset,
+        TextContentFormat? contentFormat = null)
     {
-        return _quickCaptureService.UpdateItemDetailsAsync(item.Id, title, body, appearancePreset);
+        return _quickCaptureService.UpdateItemDetailsAsync(
+            item.Id,
+            title,
+            body,
+            appearancePreset,
+            contentFormat);
     }
+
+    private TextContentFormat ResolveDefaultContentFormat() =>
+        SettingsService.NormalizeQuickCaptureFormat(_settingsService.Settings.QuickCaptureDefaultFormat) ==
+        SettingsService.QuickCaptureFormatPlainText
+            ? TextContentFormat.PlainText
+            : TextContentFormat.Markdown;
 
     public Task<bool> SetPinnedAsync(string itemId, bool isPinned)
     {
