@@ -394,7 +394,7 @@ public sealed class TodoWidgetStoreTests : IDisposable
         TodoItem item = Assert.Single(data.Items);
 
         Assert.Equal(3, data.Version);
-        Assert.Equal("useful note", item.Notes);
+        Assert.Equal("  useful note  ", item.Notes);
         TodoStep step = Assert.Single(item.Steps);
         Assert.False(string.IsNullOrWhiteSpace(step.Id));
         Assert.Equal("second", step.Text);

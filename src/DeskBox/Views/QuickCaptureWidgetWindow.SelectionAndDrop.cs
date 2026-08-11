@@ -420,7 +420,7 @@ public sealed partial class QuickCaptureWidgetWindow
 
         if (e.Key == Windows.System.VirtualKey.Escape)
         {
-            if (DetailPage.Visibility == Visibility.Visible)
+            if (_showDetailInSinglePane || _isDetailEditing)
             {
                 await SaveAndCloseDetailAsync();
                 e.Handled = true;
@@ -531,8 +531,29 @@ public sealed partial class QuickCaptureWidgetWindow
                     return;
                 }
 
+                bool droppedOnDetail = e.OriginalSource is DependencyObject dropSource &&
+                    IsWithinElement(dropSource, DetailPage);
+                if (droppedOnDetail && _isCreatingDetail && _isDetailEditing)
+                {
+                    foreach (DroppedFilePath file in batch.Files)
+                    {
+                        if (!_pendingDetailAttachments.Any(existing =>
+                                string.Equals(existing.Path, file.Path, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            _pendingDetailAttachments.Add(file);
+                        }
+                    }
+
+                    RefreshDetailAttachmentList();
+                    e.AcceptedOperation = DeskBoxDragData.GetFileAssociationOperation(e.DataView);
+                    ShowStatusToast(batch.SkippedCount > 0
+                        ? _localizationService.T("QuickCapture.DroppedWithSkipped")
+                        : _localizationService.T("QuickCapture.Dropped"));
+                    return;
+                }
+
                 QuickCaptureItemViewModel? imported;
-                if (DetailPage.Visibility == Visibility.Visible && _detailItem is not null)
+                if (droppedOnDetail && _detailItem is { IsRecent: false })
                 {
                     imported = await ViewModel.AddAttachmentsAsync(_detailItem, batch.Files);
                     if (imported is not null)
@@ -544,15 +565,6 @@ public sealed partial class QuickCaptureWidgetWindow
                 else
                 {
                     imported = await ViewModel.AddItemWithAttachmentsAsync(batch.Files);
-                    if (imported is not null &&
-                        DetailPage.Visibility == Visibility.Visible &&
-                        _isCreatingDetail)
-                    {
-                        _detailItem = imported;
-                        _isCreatingDetail = false;
-                        _pendingDetailAttachments = [];
-                        RefreshDetailAttachmentList();
-                    }
                 }
 
                 e.AcceptedOperation = imported is null
@@ -587,6 +599,22 @@ public sealed partial class QuickCaptureWidgetWindow
         {
             deferral.Complete();
         }
+    }
+
+    private static bool IsWithinElement(DependencyObject source, DependencyObject ancestor)
+    {
+        DependencyObject? current = source;
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private void ShowCopyToast()

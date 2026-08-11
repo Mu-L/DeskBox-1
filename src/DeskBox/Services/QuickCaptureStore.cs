@@ -6,7 +6,7 @@ namespace DeskBox.Services;
 
 public sealed class QuickCaptureStore
 {
-    private const int CurrentVersion = 3;
+    private const int CurrentVersion = 4;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -19,9 +19,7 @@ public sealed class QuickCaptureStore
 
     public QuickCaptureStore()
         : this(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DeskBox",
-            "data",
+            DeskBoxDataPathService.Current.DataDirectory,
             "quick-capture"))
     {
     }
@@ -101,7 +99,12 @@ public sealed class QuickCaptureStore
                 item.Id = Guid.NewGuid().ToString("N");
             }
 
-            item.Body = item.Body?.Trim() ?? string.Empty;
+            item.ContentFormat = Enum.IsDefined(item.ContentFormat)
+                ? item.ContentFormat
+                : TextContentFormat.PlainText;
+            item.Body = item.ContentFormat == TextContentFormat.Markdown
+                ? (item.Body ?? string.Empty).Replace("\0", string.Empty, StringComparison.Ordinal)
+                : item.Body?.Trim() ?? string.Empty;
             item.Title = string.IsNullOrWhiteSpace(item.Title) ? null : item.Title.Trim();
             item.Url = string.IsNullOrWhiteSpace(item.Url) ? null : item.Url.Trim();
             item.ImagePath = string.IsNullOrWhiteSpace(item.ImagePath) ? null : item.ImagePath.Trim();
@@ -136,6 +139,7 @@ public sealed class QuickCaptureStore
                 .ToList();
             if (isRecent)
             {
+                item.ContentFormat = TextContentFormat.PlainText;
                 item.AppearancePreset = QuickCaptureAppearancePreset.Default;
                 item.SourceKind = QuickCaptureSourceKind.Clipboard;
             }

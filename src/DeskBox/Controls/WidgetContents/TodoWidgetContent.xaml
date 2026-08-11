@@ -9,6 +9,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     KeyDown="TodoWidgetContent_KeyDown"
     IsTabStop="True"
+    SizeChanged="TodoWidgetContent_SizeChanged"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -65,12 +66,11 @@
         </Style>
 
         <Style x:Key="TodoDetailToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-            <Setter Property="Height" Value="36" />
             <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="36" />
-            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="8,0" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="4" />
         </Style>
@@ -122,17 +122,24 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="MasterColumn" Width="*" />
+            <ColumnDefinition x:Name="SplitterColumn" Width="0" />
+            <ColumnDefinition x:Name="DetailColumn" Width="0" />
+        </Grid.ColumnDefinitions>
 
         <StackPanel
+            x:Name="ListHeaderArea"
             Grid.Row="0"
-            Spacing="6"
-            Visibility="{Binding ListPageVisibility}">
+            Grid.Column="0"
+            Spacing="6">
             <toolkit:Segmented
                 x:Name="TodoFilterSegmented"
                 MinHeight="{Binding SegmentHeight}"
+                MinWidth="96"
                 FontSize="{Binding SegmentTextSize}"
                 HorizontalAlignment="Stretch"
-                Visibility="{Binding TabBarVisibility}"
+                Visibility="Collapsed"
                 Loaded="TodoFilterSegmented_Loaded"
                 SelectionChanged="TodoFilterSegmented_SelectionChanged"
                 SelectedIndex="0"
@@ -172,7 +179,7 @@
             </StackPanel>
         </StackPanel>
 
-        <Grid Grid.Row="1" Visibility="{Binding ListPageVisibility}">
+        <Grid x:Name="ListArea" Grid.Row="1" Grid.Column="0">
             <ListView
                 x:Name="TodoListView"
                 AllowDrop="True"
@@ -287,6 +294,15 @@
                                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                     IsHitTestVisible="False"
                                     Opacity="0" />
+
+                                <Border
+                                    Grid.ColumnSpan="4"
+                                    Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
+                                    IsHitTestVisible="False"
+                                    Opacity="0.10"
+                                    Visibility="{Binding DetailSelectionVisibility}" />
 
                                 <Border
                                     Grid.ColumnSpan="4"
@@ -411,7 +427,7 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="2" ColumnSpacing="8" Visibility="{Binding ListPageVisibility}">
+        <Grid x:Name="ListFooterArea" Grid.Row="2" Grid.Column="0" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -436,14 +452,76 @@
             </Button>
         </Grid>
 
+        <toolkit:GridSplitter
+            x:Name="MasterDetailSplitter"
+            Grid.RowSpan="3"
+            Grid.Column="1"
+            Canvas.ZIndex="6"
+            Margin="-3,0"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            AutomationProperties.Name="{Binding DetailResizePanesText}"
+            DoubleTapped="MasterDetailSplitter_DoubleTapped"
+            DragIncrement="1"
+            IsTabStop="True"
+            IsThumbVisible="True"
+            KeyboardIncrement="8"
+            KeyUp="MasterDetailSplitter_KeyUp"
+            ManipulationCompleted="MasterDetailSplitter_ManipulationCompleted"
+            ResizeBehavior="PreviousAndNext"
+            ResizeDirection="Columns"
+            Style="{StaticResource WidgetMasterDetailSplitterStyle}"
+            Visibility="Collapsed" />
+
+        <StackPanel
+            x:Name="WideDetailEmptyState"
+            Grid.RowSpan="3"
+            Grid.Column="2"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            MaxWidth="260"
+            Spacing="8"
+            Visibility="Collapsed">
+            <FontIcon
+                HorizontalAlignment="Center"
+                FontSize="24"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Glyph="&#xE70F;"
+                Opacity="0.72" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                FontSize="{Binding TitleTextSize}"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{Binding WideDetailEmptyTitle}"
+                TextAlignment="Center" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                FontSize="{Binding SecondaryTextSize}"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Text="{Binding WideDetailEmptyText}"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+            <Button
+                HorizontalAlignment="Center"
+                Click="AddCard_Click"
+                Style="{StaticResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon FontSize="12" Glyph="&#xE710;" />
+                    <TextBlock Text="{Binding AddPlaceholderText}" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
         <!-- Detail page fills the entire widget content area. -->
         <Grid
             x:Name="DetailPage"
             Grid.RowSpan="3"
+            Grid.Column="2"
             Canvas.ZIndex="5"
             Background="Transparent"
             DataContext="{Binding SelectedDetailItem}"
-            Visibility="{Binding ElementName=RootGrid, Path=DataContext.DetailPageVisibility}">
+            Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -454,16 +532,16 @@
                 Grid.Row="0"
                 Padding="8,5"
                 Background="Transparent"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,0,0,1">
+                BorderThickness="0">
                 <StackPanel Spacing="3">
                     <Grid MinHeight="36" ColumnSpacing="4">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="30" />
+                            <ColumnDefinition x:Name="DetailBackColumn" Width="30" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="30" />
                         </Grid.ColumnDefinitions>
                         <Button
+                            x:Name="DetailBackButton"
                             Grid.Column="0"
                             AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DetailBackText}"
                             Click="DetailBackButton_Click"
@@ -486,12 +564,24 @@
                             Text="{Binding CreatedText}"
                             TextTrimming="CharacterEllipsis" />
                         <Button
+                            x:Name="DetailMoreButton"
                             Grid.Column="2"
-                            AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DeleteText}"
-                            Click="DetailDeleteButton_Click"
+                            AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DetailMoreActionsText}"
                             Style="{StaticResource TodoDetailHeaderIconButtonStyle}"
-                            ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DeleteText}">
-                            <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="&#xE74D;" />
+                            ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailMoreActionsText}">
+                            <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="&#xE712;" />
+                            <Button.Flyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                    <MenuFlyoutItem
+                                        x:Name="DetailDeleteMenuItem"
+                                        Click="DetailDeleteMenuItem_Click"
+                                        Text="Delete">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE74D;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </Button.Flyout>
                         </Button>
                     </Grid>
 
@@ -507,16 +597,11 @@
                                 <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Foreground="White" Glyph="{Binding CompletionGlyph}" Opacity="{Binding CompletionGlyphOpacity}" />
                             </Grid>
                         </Button>
-                        <Grid Grid.Column="1" RowSpacing="0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="8" />
-                            </Grid.RowDefinitions>
+                        <Grid Grid.Column="1">
                             <TextBox
                                 x:Name="DetailTitleTextBox"
-                                Height="64"
-                                MinHeight="36"
-                                MaxHeight="180"
+                                MinHeight="40"
+                                MaxHeight="112"
                                 AcceptsReturn="True"
                                 FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
                                 FontWeight="Normal"
@@ -527,17 +612,6 @@
                                 Text="{Binding EditText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                 TextWrapping="Wrap"
                                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
-                            <Border
-                                x:Name="DetailTitleResizeHandle"
-                                Grid.Row="1"
-                                Height="8"
-                                Background="Transparent"
-                                PointerPressed="DetailTitleResizeHandle_PointerPressed"
-                                PointerMoved="DetailTitleResizeHandle_PointerMoved"
-                                PointerReleased="DetailTitleResizeHandle_PointerReleased"
-                                PointerCaptureLost="DetailTitleResizeHandle_PointerCaptureLost">
-                                <Border Width="28" Height="2" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{ThemeResource ControlStrokeColorSecondaryBrush}" CornerRadius="1" />
-                            </Border>
                         </Grid>
                         <Button Grid.Column="2" AutomationProperties.Name="{Binding ImportantToggleText}" Click="DetailImportantButton_Click" Style="{StaticResource TodoDetailHeaderIconButtonStyle}" ToolTipService.ToolTip="{Binding ImportantToggleText}">
                             <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="{Binding ImportantGlyph}" />
@@ -547,73 +621,241 @@
                 </StackPanel>
             </Border>
 
-            <ScrollViewer Grid.Row="1" Margin="0,6" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <StackPanel Spacing="8">
-                    <Border
-                        Padding="0,2"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="0,1">
-                        <Grid ColumnSpacing="4">
+            <ScrollViewer Grid.Row="1" Margin="8,4,8,8" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="12">
+                    <Border BorderThickness="0">
+                        <Grid
+                            x:Name="DetailMetadataGrid"
+                            ColumnSpacing="4"
+                            RowSpacing="4"
+                            SizeChanged="DetailMetadataGrid_SizeChanged">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition x:Name="DetailMetadataColumn0" Width="*" />
+                                <ColumnDefinition x:Name="DetailMetadataColumn1" Width="*" />
+                                <ColumnDefinition x:Name="DetailMetadataColumn2" Width="0" />
+                                <ColumnDefinition x:Name="DetailMetadataColumn3" Width="0" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition x:Name="DetailMetadataRow0" Height="Auto" />
+                                <RowDefinition x:Name="DetailMetadataRow1" Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                            <Button
-                                Grid.Column="0"
-                                AutomationProperties.Name="{Binding MetadataDueDateText}"
-                                Click="MetadataDueDate_Click"
-                                Style="{StaticResource TodoDetailToolbarButtonStyle}"
-                                ToolTipService.ToolTip="{Binding MetadataDueDateText}">
-                                <Grid Width="24" Height="24">
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE787;" />
-                                    <Ellipse Width="4" Height="4" Margin="0,0,1,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{Binding DueStatusVisibility}" />
-                                </Grid>
+                            <Button x:Name="DetailDueDateMetadataButton" Grid.Column="0" AutomationProperties.Name="{Binding MetadataDueDateText}" Click="MetadataDueDate_Click" Style="{StaticResource TodoDetailToolbarButtonStyle}" ToolTipService.ToolTip="{Binding MetadataDueDateText}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE787;" />
+                                    <TextBlock VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.SecondaryTextSize}" MaxLines="1" Text="{Binding MetadataDueDateText}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
                             </Button>
 
-                            <Button
-                                Grid.Column="1"
-                                AutomationProperties.Name="{Binding MetadataReminderText}"
-                                Click="MetadataReminder_Click"
-                                IsEnabled="{Binding HasDueDate}"
-                                Style="{StaticResource TodoDetailToolbarButtonStyle}"
-                                ToolTipService.ToolTip="{Binding MetadataReminderText}">
-                                <Grid Width="24" Height="24">
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xEA8F;" />
-                                    <Ellipse Width="4" Height="4" Margin="0,0,1,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{Binding ReminderSetVisibility}" />
-                                </Grid>
+                            <Button x:Name="DetailReminderMetadataButton" Grid.Column="1" AutomationProperties.Name="{Binding MetadataReminderText}" Click="MetadataReminder_Click" IsEnabled="{Binding HasDueDate}" Style="{StaticResource TodoDetailToolbarButtonStyle}" ToolTipService.ToolTip="{Binding MetadataReminderText}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xEA8F;" />
+                                    <TextBlock VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.SecondaryTextSize}" MaxLines="1" Text="{Binding MetadataReminderText}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
                             </Button>
 
-                            <Button
-                                Grid.Column="2"
-                                AutomationProperties.Name="{Binding MetadataRecurrenceText}"
-                                Click="MetadataRecurrence_Click"
-                                IsEnabled="{Binding HasDueDate}"
-                                Style="{StaticResource TodoDetailToolbarButtonStyle}"
-                                ToolTipService.ToolTip="{Binding MetadataRecurrenceText}">
-                                <Grid Width="24" Height="24">
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE823;" />
-                                    <Ellipse Width="4" Height="4" Margin="0,0,1,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{Binding RecurrenceSetVisibility}" />
-                                </Grid>
+                            <Button x:Name="DetailRecurrenceMetadataButton" Grid.Row="1" Grid.Column="0" AutomationProperties.Name="{Binding MetadataRecurrenceText}" Click="MetadataRecurrence_Click" IsEnabled="{Binding HasDueDate}" Style="{StaticResource TodoDetailToolbarButtonStyle}" ToolTipService.ToolTip="{Binding MetadataRecurrenceText}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE823;" />
+                                    <TextBlock VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.SecondaryTextSize}" MaxLines="1" Text="{Binding MetadataRecurrenceText}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
                             </Button>
 
-                            <Button
-                                Grid.Column="3"
-                                AutomationProperties.Name="{Binding MetadataColorText}"
-                                Click="MetadataColor_Click"
-                                Style="{StaticResource TodoDetailToolbarButtonStyle}"
-                                ToolTipService.ToolTip="{Binding MetadataColorText}">
-                                <Grid Width="24" Height="24">
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE790;" />
-                                    <Border Width="10" Height="3" Margin="0,0,0,1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Background="{Binding ColorMarkerBrush}" CornerRadius="1" Visibility="{Binding ColorMarkerVisibility}" />
-                                </Grid>
+                            <Button x:Name="DetailColorMetadataButton" Grid.Row="1" Grid.Column="1" AutomationProperties.Name="{Binding MetadataColorText}" Click="MetadataColor_Click" Style="{StaticResource TodoDetailToolbarButtonStyle}" ToolTipService.ToolTip="{Binding MetadataColorText}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Grid Width="16" Height="16">
+                                        <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE790;" />
+                                        <Border Width="9" Height="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Background="{Binding ColorMarkerBrush}" CornerRadius="1" Visibility="{Binding ColorMarkerVisibility}" />
+                                    </Grid>
+                                    <TextBlock VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.SecondaryTextSize}" MaxLines="1" Text="{Binding MetadataColorText}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
                             </Button>
                         </Grid>
                     </Border>
 
-                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                    <StackPanel Spacing="5">
+                        <Grid MinHeight="28">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                FontWeight="SemiBold"
+                                Text="{Binding ElementName=RootGrid, Path=DataContext.DetailStepsText}" />
+                            <TextBlock
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.SecondaryTextSize}"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                Text="{Binding StepProgressText}"
+                                Visibility="{Binding StepProgressVisibility}" />
+                        </Grid>
+
+                        <ItemsControl ItemsSource="{Binding Steps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid MinHeight="36" ColumnSpacing="4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="28" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="28" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox
+                                            Grid.Column="0"
+                                            MinWidth="28"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Click="DetailStepCheckBox_Click"
+                                            IsChecked="{Binding IsCompleted, Mode=OneWay}" />
+                                        <TextBox
+                                            Grid.Column="1"
+                                            MinHeight="32"
+                                            Padding="4,3"
+                                            VerticalAlignment="Center"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                            KeyDown="DetailStepTextBox_KeyDown"
+                                            LostFocus="DetailStepTextBox_LostFocus"
+                                            Opacity="{Binding ContentOpacity}"
+                                            Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button
+                                            Grid.Column="2"
+                                            Width="28"
+                                            Height="28"
+                                            MinWidth="28"
+                                            MinHeight="28"
+                                            Padding="0"
+                                            Click="DetailDeleteStepButton_Click"
+                                            Style="{StaticResource SubtleButtonStyle}"
+                                            ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DeleteText}">
+                                            <FontIcon FontSize="11" Glyph="&#xE711;" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Grid ColumnSpacing="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="32" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="DetailNewStepTextBox"
+                                Grid.Column="0"
+                                MinHeight="34"
+                                Padding="8,4"
+                                Background="{ThemeResource SubtleFillColorTransparentBrush}"
+                                BorderThickness="0"
+                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                KeyDown="DetailNewStepTextBox_KeyDown"
+                                PlaceholderText="{Binding ElementName=RootGrid, Path=DataContext.DetailAddStepText}" />
+                            <Button
+                                Grid.Column="1"
+                                Width="32"
+                                Height="32"
+                                MinWidth="32"
+                                MinHeight="32"
+                                Padding="0"
+                                Click="DetailAddStepButton_Click"
+                                Style="{StaticResource SubtleButtonStyle}"
+                                ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailAddStepText}">
+                                <FontIcon FontSize="12" Glyph="&#xE710;" />
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel Spacing="5">
+                        <Grid MinHeight="30">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                FontWeight="SemiBold"
+                                Text="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesText}" />
+                            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="2">
+                                <Button
+                                    x:Name="DetailNotesEditButton"
+                                    AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesEditText}"
+                                    Click="DetailNotesEditButton_Click"
+                                    Style="{StaticResource TodoDetailHeaderIconButtonStyle}"
+                                    ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesEditText}">
+                                    <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Glyph="&#xE70F;" />
+                                </Button>
+                                <Button
+                                    x:Name="DetailNotesDoneButton"
+                                    AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesDoneText}"
+                                    Click="DetailNotesDoneButton_Click"
+                                    Style="{StaticResource TodoDetailConfirmButtonStyle}"
+                                    ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesDoneText}"
+                                    Visibility="Collapsed">
+                                    <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Glyph="&#xE73E;" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <Border
+                            x:Name="DetailNotesReaderHost"
+                            MinHeight="72"
+                            Padding="8,8,8,10"
+                            Background="{ThemeResource WidgetLayerFillSecondaryBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
+                            Tapped="DetailNotesReaderHost_Tapped">
+                            <Grid>
+                                <controls:MarkdownDocumentView
+                                    x:Name="DetailNotesView"
+                                    AreTaskListsInteractive="True"
+                                    FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                    Markdown="{Binding Notes}"
+                                    TaskToggleRequested="DetailNotesView_TaskToggleRequested"
+                                    UseInternalScrollViewer="False" />
+                                <TextBlock
+                                    VerticalAlignment="Top"
+                                    FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    IsHitTestVisible="False"
+                                    Text="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesPlaceholderText}"
+                                    Visibility="{Binding NotesPlaceholderVisibility}" />
+                            </Grid>
+                        </Border>
+
+                        <controls:MarkdownSourceEditor
+                            x:Name="DetailNotesEditor"
+                            MinHeight="116"
+                            MaxHeight="360"
+                            CancelRequested="DetailNotesEditor_CancelRequested"
+                            CommitRequested="DetailNotesEditor_CommitRequested"
+                            EditorFontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                            EditorTextChanged="DetailNotesEditor_EditorTextChanged"
+                            PlaceholderText="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesPlaceholderText}"
+                            Visibility="Collapsed" />
+
+                        <Grid
+                            x:Name="DetailNotesSaveFailure"
+                            MinHeight="30"
+                            ColumnSpacing="8"
+                            Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.SecondaryTextSize}"
+                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                Text="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesSaveFailedText}"
+                                TextWrapping="Wrap" />
+                            <Button
+                                Grid.Column="1"
+                                MinWidth="0"
+                                Padding="8,3"
+                                Click="DetailNotesRetryButton_Click"
+                                Content="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesRetryText}"
+                                Style="{StaticResource SubtleButtonStyle}" />
+                        </Grid>
+                    </StackPanel>
+
+                    <Border BorderThickness="0">
                         <StackPanel>
                             <Button Click="DetailAddFileButton_Click" Style="{StaticResource TodoDetailRowButtonStyle}">
                                 <Grid ColumnSpacing="6">
@@ -668,6 +910,7 @@
         <Border
             x:Name="UndoToast"
             Grid.RowSpan="3"
+            Grid.ColumnSpan="3"
             Canvas.ZIndex="10"
             Margin="10,0,10,10"
             Style="{StaticResource WidgetCompactToastStyle}">
@@ -680,6 +923,7 @@
         <controls:WidgetInlineEditor
             x:Name="TodoInlineEditor"
             Grid.RowSpan="3"
+            Grid.ColumnSpan="3"
             Canvas.ZIndex="20"
             CancelRequested="TodoEditCancelButton_Click"
             CommandFontSize="{Binding FilterTextSize}"
@@ -692,6 +936,7 @@
         <Border
             x:Name="CustomDueDateOverlay"
             Grid.RowSpan="3"
+            Grid.ColumnSpan="3"
             Canvas.ZIndex="21"
             Margin="8"
             MaxWidth="300"

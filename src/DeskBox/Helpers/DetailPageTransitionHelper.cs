@@ -1,4 +1,5 @@
 using System.Numerics;
+using DeskBox.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
 
@@ -13,6 +14,12 @@ internal static class DetailPageTransitionHelper
 
     public static void PlayEnter(UIElement element)
     {
+        if (!WindowsCompatibilityService.AreAnimationsEnabled)
+        {
+            Reset(element);
+            return;
+        }
+
         ElementCompositionPreview.SetIsTranslationEnabled(element, true);
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;
@@ -41,6 +48,12 @@ internal static class DetailPageTransitionHelper
 
     public static async Task PlayExitAsync(UIElement element)
     {
+        if (!WindowsCompatibilityService.AreAnimationsEnabled)
+        {
+            Reset(element);
+            return;
+        }
+
         ElementCompositionPreview.SetIsTranslationEnabled(element, true);
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;

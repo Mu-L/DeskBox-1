@@ -52,9 +52,10 @@ public sealed partial class QuickCaptureWidgetWindow :
     private const int StatusToastUndoMs = 4200;
     private const int ItemsViewTransitionMs = 280;
     private const int ItemsViewTransitionOffsetPx = 6;
+    private const int DetailAutoSaveDelayMs = 600;
+    private const string MasterPaneWidthMetadataKey = "QuickCaptureMasterPaneWidth";
     private static readonly string QuickCaptureTextPreviewDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DeskBox",
+        DeskBoxDataPathService.Current.RootPath,
         "QuickCapture",
         "Preview");
 
@@ -80,6 +81,7 @@ public sealed partial class QuickCaptureWidgetWindow :
     private Button EditCloseButton => QuickCaptureInlineEditor.CloseButton;
     private Button EditCancelButton => QuickCaptureInlineEditor.CancelButton;
     private Button EditSaveButton => QuickCaptureInlineEditor.SaveButton;
+    private TextBox DetailBodyTextBox => DetailMarkdownEditor.SourceTextBox;
 
     // ── Backward-compatible aliases for base class fields ──────
     private SettingsService _settingsService => SettingsService;
@@ -127,7 +129,17 @@ public sealed partial class QuickCaptureWidgetWindow :
     private bool _isCreatingDetail;
     private bool _isClosingDetail;
     private bool _isSavingDetail;
+    private bool _isDetailEditing;
+    private bool _showDetailInSinglePane;
+    private bool _isDualPane;
+    private bool _suppressDetailEditorChanges;
+    private bool _detailHasUnsavedChanges;
+    private readonly SemaphoreSlim _detailSaveGate = new(1, 1);
+    private long _detailEditRevision;
+    private long _detailSavedRevision;
     private bool _detailIsPinned;
+    private TextContentFormat _detailContentFormat = TextContentFormat.Markdown;
+    private string _detailOriginalBody = string.Empty;
     private QuickCaptureAppearancePreset _detailAppearance = QuickCaptureAppearancePreset.Default;
     private List<DroppedFilePath> _pendingDetailAttachments = [];
     private long _detailTransitionGeneration;
@@ -143,6 +155,7 @@ public sealed partial class QuickCaptureWidgetWindow :
     private bool _internalQuickCaptureDragCanReorder;
     private bool _quickCaptureTabDropHandled;
     private bool _segmentedLayoutRefreshDeferred;
+    private bool _isSynchronizingQuickCaptureViewSelection;
     private QuickCaptureViewMode? _internalQuickCaptureDragView;
     private bool _selectionPointerPressed;
     private bool _isBoxSelecting;
@@ -151,6 +164,10 @@ public sealed partial class QuickCaptureWidgetWindow :
     private List<QuickCaptureItemViewModel> _selectionSnapshot = [];
     private HashSet<QuickCaptureItemViewModel> _selectionPreviewItems = [];
     private List<QuickCaptureSelectionHitTestItem> _selectionHitTestItems = [];
+    private readonly MasterDetailLayoutPolicy _masterDetailLayoutPolicy = new();
+    private readonly MarkdownDocumentService _markdownDocumentService = new();
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _detailAutoSaveTimer;
+    private double? _persistedMasterPaneWidth;
 
     public QuickCaptureWidgetViewModel ViewModel { get; }
 
@@ -242,6 +259,7 @@ public sealed partial class QuickCaptureWidgetWindow :
     protected override void OnRootElementLoaded()
     {
         ApplySurfaceStyle();
+        ApplyResponsiveDetailLayout();
         RootGrid.Focus(FocusState.Programmatic);
         DispatcherQueue.TryEnqueue(() =>
         {
@@ -251,6 +269,7 @@ public sealed partial class QuickCaptureWidgetWindow :
             // before the view was ready. Refresh the view from cache to
             // ensure items are visible.
             ViewModel.RefreshAfterViewReady();
+            ReconcileDetailSelection(autoSelectFirst: true);
         });
     }
 
@@ -285,14 +304,11 @@ public sealed partial class QuickCaptureWidgetWindow :
         _chromeDescriptor = new WidgetContentFactory(_localizationService).GetDescriptor(WidgetKind.QuickCapture);
         _chromeModeResolver = new WidgetChromeModeResolver(settingsService);
         InitializeComponent();
+        InitializeResponsiveDetail();
         
         // ✅ Set localized title
         this.Title = _localizationService.T("Window.QuickCapture.Title");
         
-        DetailBodyTextBox.AddHandler(
-            UIElement.PreviewKeyDownEvent,
-            new KeyEventHandler(DetailBodyTextBox_KeyDown),
-            handledEventsToo: true);
         RootGrid.DataContext = ViewModel;
         QuickCaptureShell.TitleGlyph = "\uE70F";
         QuickCaptureShell.TitleIconKind = WidgetTitleIconKindNames.QuickCapture;
@@ -599,8 +615,9 @@ _isHideAnimationRunning = true;
         PerformanceLogger.RecordTransientUiTimerReleased();
     }
 
-    public void HideWindow()
+    public async void HideWindow()
     {
+        await FlushPendingDetailSaveAsync();
         if (!PrepareTrayHideAnimation())
         {
             return;
@@ -609,7 +626,7 @@ _isHideAnimationRunning = true;
         PlayTrayHideAnimation(CompleteTrayHideAnimation);
     }
 
-    public void CloseWindow()
+    public async void CloseWindow()
     {
         if (!DispatcherQueue.HasThreadAccess)
         {
@@ -623,6 +640,7 @@ _isHideAnimationRunning = true;
         }
 
         _isClosing = true;
+        await FlushPendingDetailSaveAsync();
         Visible = false;
 
         // Unsubscribe from external events BEFORE Close() so that
@@ -636,6 +654,7 @@ _isHideAnimationRunning = true;
         _appWindow.Changed -= OnAppWindowChanged;
 
         ReleaseAutoRestoreTimer();
+        ReleaseDetailAutoSaveTimer();
         ReleaseTopMostSafetyTimer();
         StopBackdropRefreshTimer();
         _trayAnimation.Stop();
@@ -712,6 +731,7 @@ _isHideAnimationRunning = true;
             Activated -= QuickCaptureWidgetWindow_Activated;
             _appWindow.Changed -= OnAppWindowChanged;
             ReleaseAutoRestoreTimer();
+            ReleaseDetailAutoSaveTimer();
 
             // TrayAnimation.Stop() was already called in CloseWindow().
             // Call again only as a fallback; Stop() is safe to call twice.
@@ -764,6 +784,7 @@ _isHideAnimationRunning = true;
         QuickCaptureInlineEditor.Title = _localizationService.T("QuickCapture.Edit");
         QuickCaptureInlineEditor.CancelText = _localizationService.T("Common.Cancel");
         QuickCaptureInlineEditor.SaveText = _localizationService.T("Common.Save");
+        DetailMarkdownEditor.TextResolver = _localizationService.T;
     }
 
     private void OnLanguageChanged()
@@ -805,6 +826,7 @@ _isHideAnimationRunning = true;
         if (e.PropertyName == nameof(QuickCaptureWidgetViewModel.ItemsViewTransitionToken))
         {
             PlayItemsViewTransition();
+            ReconcileDetailSelection(autoSelectFirst: true);
         }
 
         if (e.PropertyName == nameof(QuickCaptureWidgetViewModel.TabStyle))
@@ -843,6 +865,8 @@ _isHideAnimationRunning = true;
         ApplyBackdropPreference();
         QueueBackdropRefresh();
         ApplyTitleBarLayout();
+        ApplyResponsiveDetailLayout();
+        RefreshDetailPresentation();
     }
 
     public WidgetTrayBatchAnimationEntry? BeginSharedTrayShowAnimation()

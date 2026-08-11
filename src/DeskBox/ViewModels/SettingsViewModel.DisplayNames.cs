@@ -258,6 +258,18 @@ public partial class SettingsViewModel
         };
     }
 
+    public string GetTodoLayoutModeDisplayName(string mode)
+    {
+        return SettingsService.NormalizeTodoLayoutMode(mode) switch
+        {
+            SettingsService.TodoLayoutModeSinglePane =>
+                _localizationService.T("Settings.Todo.LayoutMode.SinglePane"),
+            SettingsService.TodoLayoutModeDualPane =>
+                _localizationService.T("Settings.Todo.LayoutMode.DualPane"),
+            _ => _localizationService.T("Settings.Todo.LayoutMode.Auto")
+        };
+    }
+
     public string GetTodoDefaultFilterDisplayName(string filter)
     {
         return NormalizeTodoDefaultFilter(filter) switch

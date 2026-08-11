@@ -14,6 +14,43 @@ namespace DeskBox.ViewModels;
 
 public partial class SettingsViewModel
 {
+    public string SelectedTodoLayoutMode
+    {
+        get => _selectedTodoLayoutMode;
+        set
+        {
+            string normalized = SettingsService.NormalizeTodoLayoutMode(value);
+            if (!SetProperty(ref _selectedTodoLayoutMode, normalized))
+            {
+                return;
+            }
+
+            bool canUseWideDetail = normalized != SettingsService.TodoLayoutModeSinglePane;
+            if (TodoUseWideDetailPane != canUseWideDetail)
+            {
+                bool wasApplyingSnapshot = _isApplyingSettingsSnapshot;
+                _isApplyingSettingsSnapshot = true;
+                try
+                {
+                    TodoUseWideDetailPane = canUseWideDetail;
+                }
+                finally
+                {
+                    _isApplyingSettingsSnapshot = wasApplyingSnapshot;
+                }
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.TodoLayoutMode = normalized;
+            _settingsService.Settings.TodoUseWideDetailPane = canUseWideDetail;
+            _settingsService.SaveDebounced();
+        }
+    }
+
     public string SelectedTodoNewTaskPosition
     {
         get => _selectedTodoNewTaskPosition;
@@ -579,6 +616,10 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     QuickCaptureShowCreatedTime = true;
                     QuickCaptureItemPreviewLineCount = SettingsService.DefaultQuickCaptureItemPreviewLineCount;
                     QuickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
+                    QuickCaptureDefaultFormat = SettingsService.QuickCaptureFormatMarkdown;
+                    QuickCaptureWideLayout = SettingsService.QuickCaptureWideLayoutAuto;
+                    QuickCaptureWideOpenMode = SettingsService.QuickCaptureWideOpenReading;
+                    QuickCaptureAllowRemoteImages = false;
                     SelectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
                     SelectedQuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
                     QuickCaptureShowTabBar = true;
@@ -591,6 +632,10 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     _settingsService.Settings.QuickCaptureShowCreatedTime = true;
                     _settingsService.Settings.QuickCaptureItemPreviewLineCount = SettingsService.DefaultQuickCaptureItemPreviewLineCount;
                     _settingsService.Settings.QuickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
+                    _settingsService.Settings.QuickCaptureDefaultFormat = SettingsService.QuickCaptureFormatMarkdown;
+                    _settingsService.Settings.QuickCaptureWideLayout = SettingsService.QuickCaptureWideLayoutAuto;
+                    _settingsService.Settings.QuickCaptureWideOpenMode = SettingsService.QuickCaptureWideOpenReading;
+                    _settingsService.Settings.QuickCaptureAllowRemoteImages = false;
                     _settingsService.Settings.QuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
                     _settingsService.Settings.QuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
                     _settingsService.Settings.QuickCaptureShowTabBar = true;
@@ -609,6 +654,9 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     TodoShowClearCompletedButton = true;
                     TodoConfirmBeforeDelete = false;
                     TodoReminderEnabled = true;
+                    SelectedTodoLayoutMode = SettingsService.TodoLayoutModeAuto;
+                    TodoUseWideDetailPane = true;
+                    TodoAutoSelectFirstInWideLayout = true;
                     SelectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
                     SelectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
                     SelectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
@@ -628,6 +676,9 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     _settingsService.Settings.TodoShowClearCompletedButton = true;
                     _settingsService.Settings.TodoConfirmBeforeDelete = false;
                     _settingsService.Settings.TodoReminderEnabled = true;
+                    _settingsService.Settings.TodoLayoutMode = SettingsService.TodoLayoutModeAuto;
+                    _settingsService.Settings.TodoUseWideDetailPane = true;
+                    _settingsService.Settings.TodoAutoSelectFirstInWideLayout = true;
                     _settingsService.Settings.TodoDefaultReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
                     _settingsService.Settings.TodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
                     _settingsService.Settings.TodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
@@ -965,6 +1016,18 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
     ];
 
     public string[] AvailableTodoDefaultFilterDisplayNames => _cachedTodoDefaultFilterDisplayNames ??= AvailableTodoDefaultFilters.Select(GetTodoDefaultFilterDisplayName).ToArray();
+
+    public string[] AvailableTodoLayoutModes { get; } =
+    [
+        SettingsService.TodoLayoutModeAuto,
+        SettingsService.TodoLayoutModeSinglePane,
+        SettingsService.TodoLayoutModeDualPane
+    ];
+
+    public string[] AvailableTodoLayoutModeDisplayNames =>
+        _cachedTodoLayoutModeDisplayNames ??= AvailableTodoLayoutModes
+            .Select(GetTodoLayoutModeDisplayName)
+            .ToArray();
 
     public string[] AvailableTodoTabStyleDisplayNames => _cachedTodoTabStyleDisplayNames ??= AvailableWidgetTabStyles.Select(GetWidgetTabStyleDisplayName).ToArray();
 

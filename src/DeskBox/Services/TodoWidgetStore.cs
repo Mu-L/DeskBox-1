@@ -18,9 +18,7 @@ public sealed class TodoWidgetStore
     public TodoWidgetStore(string widgetId)
         : this(
             Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DeskBox",
-                "data",
+                DeskBoxDataPathService.Current.DataDirectory,
                 "widgets"),
             widgetId)
     {
@@ -77,7 +75,9 @@ public sealed class TodoWidgetStore
             item.ColorMarker = TodoItem.NormalizeColorMarker(item.ColorMarker);
             item.Recurrence = TodoRecurrence.Normalize(item.Recurrence, item.DueDate);
             item.RecurrenceSeriesId = TodoRecurrenceService.NormalizeSeriesId(item.RecurrenceSeriesId);
-            item.Notes = string.IsNullOrWhiteSpace(item.Notes) ? null : item.Notes.Trim();
+            // Notes may contain Markdown where trailing spaces and indentation
+            // are meaningful, so only collapse an entirely blank document.
+            item.Notes = string.IsNullOrWhiteSpace(item.Notes) ? null : item.Notes;
             item.Steps ??= [];
             item.Attachments ??= [];
             NormalizeSteps(item.Steps);

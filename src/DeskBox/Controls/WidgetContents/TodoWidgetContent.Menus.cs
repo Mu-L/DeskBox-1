@@ -53,18 +53,19 @@ public sealed partial class TodoWidgetContent
         var localization = App.Current.LocalizationService;
 
         var editItem = CreateTodoContextCommand("Todo.Menu.Edit", "\uE70F");
-        editItem.Click += (_, _) =>
+        editItem.Click += async (_, _) =>
         {
             flyout.Hide();
             ClearCopySelection();
             ClearTodoListContainerSelection();
             CloseCustomDueDateOverlay();
-            if (ViewModel?.OpenDetail(item.Id) is null)
+            MarkDetailSelectionExplicit();
+            if (await OpenDetailItemAsync(item.Id) is null || ViewModel is null)
             {
                 return;
             }
 
-            DetailTitleTextBox.Height = 64;
+            ViewModel.BeginEdit(item.Id);
             ApplyDetailCompletionVisualState();
             DispatcherQueue.TryEnqueue(() =>
             {

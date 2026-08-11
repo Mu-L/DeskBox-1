@@ -80,6 +80,7 @@ docs/seo-content.md
 
 # Debug output files
 wins*.txt
+.debug-data/
 
 # Local WeChat article drafts
 docs/wechat/*.md

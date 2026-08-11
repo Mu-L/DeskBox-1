@@ -260,12 +260,22 @@ public sealed class SettingsService
     public const string TodoDefaultFilterThisMonth = "ThisMonth";
     public const string TodoDefaultFilterImportant = "Important";
     public const string TodoDefaultFilterCompleted = "Completed";
+    public const string TodoLayoutModeAuto = "Auto";
+    public const string TodoLayoutModeSinglePane = "SinglePane";
+    public const string TodoLayoutModeDualPane = "DualPane";
     public const int DefaultTodoReminderOffsetMinutes = 5;
     public const int MinTodoReminderOffsetMinutes = 0;
     public const int MaxTodoReminderOffsetMinutes = 1440;
     public const string QuickCaptureDefaultViewRecords = "Records";
     public const string QuickCaptureDefaultViewPinned = "Pinned";
     public const string QuickCaptureDefaultViewRecent = "Recent";
+    public const string QuickCaptureFormatMarkdown = "Markdown";
+    public const string QuickCaptureFormatPlainText = "PlainText";
+    public const string QuickCaptureWideLayoutAuto = "Auto";
+    public const string QuickCaptureWideLayoutSinglePane = "SinglePane";
+    public const string QuickCaptureWideLayoutDualPane = "DualPane";
+    public const string QuickCaptureWideOpenReading = "Reading";
+    public const string QuickCaptureWideOpenEditing = "Editing";
     public const string WidgetTabStylePivot = "Pivot";
     public const string WidgetTabStyleButton = "Button";
 public const string WeatherTemperatureUnitCelsius = "Celsius";
@@ -416,6 +426,10 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.QuickCaptureShowCreatedTime = true;
         settings.QuickCaptureItemPreviewLineCount = DefaultQuickCaptureItemPreviewLineCount;
         settings.QuickCaptureEditorEnterBehavior = EditorEnterBehaviorCtrlEnterSaves;
+        settings.QuickCaptureDefaultFormat = QuickCaptureFormatMarkdown;
+        settings.QuickCaptureWideLayout = QuickCaptureWideLayoutAuto;
+        settings.QuickCaptureWideOpenMode = QuickCaptureWideOpenReading;
+        settings.QuickCaptureAllowRemoteImages = false;
         settings.AttachmentStorageMode = AttachmentStorageModeLink;
         settings.QuickCaptureDefaultView = QuickCaptureDefaultViewRecords;
         settings.QuickCaptureTabStyle = WidgetTabStyleButton;
@@ -431,6 +445,9 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.TodoConfirmBeforeDelete = false;
         settings.TodoReminderEnabled = true;
         settings.TodoDefaultReminderOffsetMinutes = DefaultTodoReminderOffsetMinutes;
+        settings.TodoUseWideDetailPane = true;
+        settings.TodoLayoutMode = TodoLayoutModeAuto;
+        settings.TodoAutoSelectFirstInWideLayout = true;
         settings.MusicUseArtworkBackdrop = true;
         settings.MusicEnableCoverHoverMotion = true;
         settings.MusicDisplayMode = MusicDisplayModeAuto;
@@ -494,11 +511,7 @@ settings.FocusClickedWidgetOnRaise = false;
 
     public SettingsService()
     {
-        string dataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DeskBox",
-            "data");
-        _settingsPath = InitializeSettingsPath(dataDir);
+        _settingsPath = InitializeSettingsPath(DeskBoxDataPathService.Current.DataDirectory);
     }
 
     internal SettingsService(string dataDir)
@@ -2371,6 +2384,27 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
+        string normalizedFormat = NormalizeQuickCaptureFormat(settings.QuickCaptureDefaultFormat);
+        if (!string.Equals(settings.QuickCaptureDefaultFormat, normalizedFormat, StringComparison.Ordinal))
+        {
+            settings.QuickCaptureDefaultFormat = normalizedFormat;
+            changed = true;
+        }
+
+        string normalizedWideLayout = NormalizeQuickCaptureWideLayout(settings.QuickCaptureWideLayout);
+        if (!string.Equals(settings.QuickCaptureWideLayout, normalizedWideLayout, StringComparison.Ordinal))
+        {
+            settings.QuickCaptureWideLayout = normalizedWideLayout;
+            changed = true;
+        }
+
+        string normalizedWideOpenMode = NormalizeQuickCaptureWideOpenMode(settings.QuickCaptureWideOpenMode);
+        if (!string.Equals(settings.QuickCaptureWideOpenMode, normalizedWideOpenMode, StringComparison.Ordinal))
+        {
+            settings.QuickCaptureWideOpenMode = normalizedWideOpenMode;
+            changed = true;
+        }
+
         int normalizedLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
         if (settings.QuickCaptureRecentLimit != normalizedLimit)
         {
@@ -2443,6 +2477,22 @@ settings.FocusClickedWidgetOnRaise = false;
     internal static bool NormalizeTodoSettings(AppSettings settings)
     {
         bool changed = false;
+
+        string normalizedLayoutMode = NormalizeTodoLayoutMode(
+            settings.TodoLayoutMode,
+            settings.TodoUseWideDetailPane);
+        if (!string.Equals(settings.TodoLayoutMode, normalizedLayoutMode, StringComparison.Ordinal))
+        {
+            settings.TodoLayoutMode = normalizedLayoutMode;
+            changed = true;
+        }
+
+        bool legacyWideDetailValue = normalizedLayoutMode != TodoLayoutModeSinglePane;
+        if (settings.TodoUseWideDetailPane != legacyWideDetailValue)
+        {
+            settings.TodoUseWideDetailPane = legacyWideDetailValue;
+            changed = true;
+        }
 
         int normalizedPreviewLineCount = NormalizeItemPreviewLineCount(
             settings.TodoItemPreviewLineCount);
@@ -2517,6 +2567,30 @@ settings.FocusClickedWidgetOnRaise = false;
         return changed;
     }
 
+    public static string NormalizeTodoLayoutMode(
+        string? mode,
+        bool legacyUseWideDetailPane = true)
+    {
+        if (string.IsNullOrWhiteSpace(mode))
+        {
+            return legacyUseWideDetailPane
+                ? TodoLayoutModeAuto
+                : TodoLayoutModeSinglePane;
+        }
+
+        if (string.Equals(mode, TodoLayoutModeSinglePane, StringComparison.OrdinalIgnoreCase))
+        {
+            return TodoLayoutModeSinglePane;
+        }
+
+        if (string.Equals(mode, TodoLayoutModeDualPane, StringComparison.OrdinalIgnoreCase))
+        {
+            return TodoLayoutModeDualPane;
+        }
+
+        return TodoLayoutModeAuto;
+    }
+
     public static int NormalizeItemPreviewLineCount(int lineCount) =>
         Math.Clamp(lineCount, MinItemPreviewLineCount, MaxItemPreviewLineCount);
 
@@ -2539,6 +2613,28 @@ settings.FocusClickedWidgetOnRaise = false;
             ? WidgetTabStylePivot
             : WidgetTabStyleButton;
     }
+
+    public static string NormalizeQuickCaptureFormat(string? format) =>
+        string.Equals(format, QuickCaptureFormatPlainText, StringComparison.OrdinalIgnoreCase)
+            ? QuickCaptureFormatPlainText
+            : QuickCaptureFormatMarkdown;
+
+    public static string NormalizeQuickCaptureWideLayout(string? layout)
+    {
+        if (string.Equals(layout, QuickCaptureWideLayoutSinglePane, StringComparison.OrdinalIgnoreCase))
+        {
+            return QuickCaptureWideLayoutSinglePane;
+        }
+
+        return string.Equals(layout, QuickCaptureWideLayoutDualPane, StringComparison.OrdinalIgnoreCase)
+            ? QuickCaptureWideLayoutDualPane
+            : QuickCaptureWideLayoutAuto;
+    }
+
+    public static string NormalizeQuickCaptureWideOpenMode(string? mode) =>
+        string.Equals(mode, QuickCaptureWideOpenEditing, StringComparison.OrdinalIgnoreCase)
+            ? QuickCaptureWideOpenEditing
+            : QuickCaptureWideOpenReading;
 
     public static bool IsQuickCaptureTabVisible(AppSettings settings, string? view) => view switch
     {

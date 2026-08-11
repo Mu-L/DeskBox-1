@@ -51,9 +51,15 @@ public sealed partial class QuickCaptureWidgetViewModel
         OnPropertyChanged(nameof(DetailBodyPlaceholderText));
         OnPropertyChanged(nameof(DetailAppearanceText));
         OnPropertyChanged(nameof(DetailCopyText));
+        OnPropertyChanged(nameof(DetailPinText));
         OnPropertyChanged(nameof(DetailCopyImageText));
         OnPropertyChanged(nameof(DetailReplaceImageText));
         OnPropertyChanged(nameof(DetailDeleteText));
+        OnPropertyChanged(nameof(DetailEditText));
+        OnPropertyChanged(nameof(DetailDoneText));
+        OnPropertyChanged(nameof(DetailReadOnlyText));
+        OnPropertyChanged(nameof(DetailNoSelectionText));
+        OnPropertyChanged(nameof(DetailSplitterText));
         OnPropertyChanged(nameof(MaterialDefaultText));
         OnPropertyChanged(nameof(MaterialPaperText));
         OnPropertyChanged(nameof(MaterialYellowText));

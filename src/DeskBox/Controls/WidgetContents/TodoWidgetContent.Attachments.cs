@@ -47,6 +47,12 @@ public sealed partial class TodoWidgetContent
             return;
         }
 
+        await OpenTodoAttachmentAsync(attachment);
+    }
+
+    private async Task OpenTodoAttachmentAsync(TodoAttachmentViewModel attachment)
+    {
+
         try
         {
             if (File.Exists(attachment.FilePath))

@@ -949,6 +949,7 @@ public sealed class TodoWidgetViewModelTests : IDisposable
 
         Assert.Same(item, opened);
         Assert.Same(item, viewModel.SelectedDetailItem);
+        Assert.False(item.IsEditing);
         Assert.True(viewModel.IsDetailPageOpen);
         Assert.Equal(Visibility.Collapsed, viewModel.ListPageVisibility);
         Assert.Equal(Visibility.Visible, viewModel.DetailPageVisibility);
@@ -1066,6 +1067,21 @@ public sealed class TodoWidgetViewModelTests : IDisposable
         Assert.True(await viewModel.DeleteStepAsync(item.Id, step.Id));
         Assert.Empty(item.Attachments);
         Assert.Empty(item.Steps);
+    }
+
+    [Fact]
+    public async Task UpdateNotesAsync_PreservesMarkdownSourceWhitespace()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        TodoItemViewModel item = (await viewModel.AddItemAsync("task"))!;
+        const string source = "  indented\n\nline with hard break  \n";
+
+        Assert.True(await viewModel.UpdateNotesAsync(item.Id, source));
+
+        TodoItem saved = Assert.Single((await CreateStore("todo-widget").LoadAsync()).Items);
+        Assert.Equal(source, item.Notes);
+        Assert.Equal(source, saved.Notes);
     }
 
     [Fact]

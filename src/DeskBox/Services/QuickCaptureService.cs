@@ -55,9 +55,11 @@ public sealed class QuickCaptureService
     public async Task<QuickCaptureItem> AddDetailedItemAsync(
         string? title,
         string body,
-        QuickCaptureAppearancePreset appearancePreset)
+        QuickCaptureAppearancePreset appearancePreset,
+        TextContentFormat contentFormat = TextContentFormat.PlainText)
     {
-        string normalizedBody = NormalizeBody(body);
+        contentFormat = NormalizeContentFormat(contentFormat);
+        string normalizedBody = NormalizeBody(body, contentFormat);
         string? normalizedTitle = NormalizeOptionalText(title);
         if (string.IsNullOrWhiteSpace(normalizedTitle) && string.IsNullOrWhiteSpace(normalizedBody))
         {
@@ -72,6 +74,7 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = normalizedBody,
+                ContentFormat = contentFormat,
                 Title = normalizedTitle,
                 Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text,
                 Url = url,
@@ -100,8 +103,7 @@ public sealed class QuickCaptureService
 
     public async Task<bool> UpdateItemAsync(string itemId, string body)
     {
-        string normalizedBody = NormalizeBody(body);
-        if (string.IsNullOrWhiteSpace(itemId) || string.IsNullOrWhiteSpace(normalizedBody))
+        if (string.IsNullOrWhiteSpace(itemId))
         {
             return false;
         }
@@ -112,6 +114,12 @@ public sealed class QuickCaptureService
             await EnsureLoadedCoreAsync();
             var item = _data!.Items.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.Ordinal));
             if (item is null || item.IsDeleted)
+            {
+                return false;
+            }
+
+            string normalizedBody = NormalizeBody(body, item.ContentFormat);
+            if (string.IsNullOrWhiteSpace(normalizedBody))
             {
                 return false;
             }
@@ -152,6 +160,7 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = normalizedBody,
+                ContentFormat = TextContentFormat.PlainText,
                 Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text,
                 Url = url,
                 SourceKind = QuickCaptureSourceKind.Clipboard,
@@ -203,6 +212,7 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = "Image",
+                ContentFormat = TextContentFormat.PlainText,
                 Type = QuickCaptureItemType.Image,
                 ImagePath = imagePath,
                 ContentHash = contentHash,
@@ -249,6 +259,7 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = "Image",
+                ContentFormat = TextContentFormat.PlainText,
                 Type = QuickCaptureItemType.Image,
                 ImagePath = cachedImagePath,
                 ContentHash = contentHash,
@@ -322,6 +333,7 @@ public sealed class QuickCaptureService
             var item = new QuickCaptureItem
             {
                 Body = recentItem.Body,
+                ContentFormat = TextContentFormat.PlainText,
                 Title = recentItem.Title,
                 Type = recentItem.Type,
                 Url = recentItem.Url,
@@ -500,6 +512,7 @@ public sealed class QuickCaptureService
             {
                 Id = itemId,
                 Body = string.Join(", ", attachments.Select(attachment => attachment.DisplayName)),
+                ContentFormat = TextContentFormat.PlainText,
                 Type = primaryImagePath is null ? QuickCaptureItemType.Text : QuickCaptureItemType.Image,
                 ImagePath = primaryImagePath,
                 Attachments = attachments,
@@ -1119,10 +1132,9 @@ public sealed class QuickCaptureService
         string itemId,
         string? title,
         string body,
-        QuickCaptureAppearancePreset appearancePreset)
+        QuickCaptureAppearancePreset appearancePreset,
+        TextContentFormat? contentFormat = null)
     {
-        string normalizedBody = NormalizeBody(body);
-        string? normalizedTitle = NormalizeOptionalText(title);
         if (string.IsNullOrWhiteSpace(itemId))
         {
             return false;
@@ -1139,6 +1151,10 @@ public sealed class QuickCaptureService
                 return false;
             }
 
+            TextContentFormat effectiveFormat = NormalizeContentFormat(contentFormat ?? item.ContentFormat);
+            string normalizedBody = NormalizeBody(body, effectiveFormat);
+            string? normalizedTitle = NormalizeOptionalText(title);
+
             if (item.Type != QuickCaptureItemType.Image &&
                 string.IsNullOrWhiteSpace(normalizedTitle) &&
                 string.IsNullOrWhiteSpace(normalizedBody))
@@ -1148,6 +1164,7 @@ public sealed class QuickCaptureService
 
             item.Title = normalizedTitle;
             item.Body = normalizedBody;
+            item.ContentFormat = effectiveFormat;
             if (item.Type != QuickCaptureItemType.Image)
             {
                 item.Type = TryDetectUrl(normalizedBody, out string? url)
@@ -1262,11 +1279,17 @@ public sealed class QuickCaptureService
         return CleanupUnusedImageCacheCore(GetReferencedImagePathsCore());
     }
 
-    private static string NormalizeBody(string? body)
+    private static string NormalizeBody(
+        string? body,
+        TextContentFormat contentFormat = TextContentFormat.PlainText)
     {
-        return string.IsNullOrWhiteSpace(body)
-            ? string.Empty
-            : body.Trim();
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return string.Empty;
+        }
+
+        string value = body.Replace("\0", string.Empty, StringComparison.Ordinal);
+        return contentFormat == TextContentFormat.Markdown ? value : value.Trim();
     }
 
     private static string? NormalizeOptionalText(string? value)
@@ -1278,6 +1301,9 @@ public sealed class QuickCaptureService
     {
         return Enum.IsDefined(value) ? value : QuickCaptureAppearancePreset.Default;
     }
+
+    private static TextContentFormat NormalizeContentFormat(TextContentFormat value) =>
+        Enum.IsDefined(value) ? value : TextContentFormat.PlainText;
 
     public void MarkClipboardTextWrittenByDeskBox(string? body)
     {
@@ -1442,6 +1468,7 @@ public sealed class QuickCaptureService
             Id = item.Id,
             Type = item.Type,
             Body = item.Body,
+            ContentFormat = item.ContentFormat,
             Title = item.Title,
             Url = item.Url,
             ImagePath = item.ImagePath,

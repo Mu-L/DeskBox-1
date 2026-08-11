@@ -74,6 +74,18 @@ public class AppSettings
     /// <summary>Enter-key behavior used by Quick Capture multiline editors.</summary>
     public string QuickCaptureEditorEnterBehavior { get; set; } = "CtrlEnterSaves";
 
+    /// <summary>Default format for newly created notes. Valid values: <c>Markdown</c>, <c>PlainText</c>.</summary>
+    public string QuickCaptureDefaultFormat { get; set; } = "Markdown";
+
+    /// <summary>Responsive layout preference. Valid values: <c>Auto</c>, <c>SinglePane</c>, <c>DualPane</c>.</summary>
+    public string QuickCaptureWideLayout { get; set; } = "Auto";
+
+    /// <summary>Initial mode for saved notes in a wide detail pane. Valid values: <c>Reading</c>, <c>Editing</c>.</summary>
+    public string QuickCaptureWideOpenMode { get; set; } = "Reading";
+
+    /// <summary>Whether remote HTTP(S) images may be loaded by the Markdown reader.</summary>
+    public bool QuickCaptureAllowRemoteImages { get; set; }
+
     /// <summary>Default storage behavior for Todo and Quick Capture attachments. Valid values: <c>Link</c>, <c>Copy</c>.</summary>
     public string AttachmentStorageMode { get; set; } = "Link";
 
@@ -129,6 +141,17 @@ public class AppSettings
 
     /// <summary>Default reminder lead time in minutes before a Todo due date.</summary>
     public int TodoDefaultReminderOffsetMinutes { get; set; } = 5;
+
+    public bool TodoUseWideDetailPane { get; set; } = true;
+
+    /// <summary>
+    /// Todo master-detail layout preference. Valid values: <c>Auto</c>,
+    /// <c>SinglePane</c>, and <c>DualPane</c>. An empty value is treated as a
+    /// legacy setting and migrated from <see cref="TodoUseWideDetailPane"/>.
+    /// </summary>
+    public string TodoLayoutMode { get; set; } = string.Empty;
+
+    public bool TodoAutoSelectFirstInWideLayout { get; set; } = true;
 
     /// <summary>Whether the Music widget uses album artwork color as a soft backdrop.</summary>
     public bool MusicUseArtworkBackdrop { get; set; } = true;

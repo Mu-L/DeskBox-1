@@ -204,10 +204,10 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         var editItem = CreateQuickCaptureContextCommand("QuickCapture.Edit", "\uE70F");
-        editItem.Click += (_, _) =>
+        editItem.Click += async (_, _) =>
         {
             flyout.Hide();
-            OpenDetail(item);
+            await OpenDetailAfterSavingAsync(item);
         };
         flyout.Items.Add(editItem);
 

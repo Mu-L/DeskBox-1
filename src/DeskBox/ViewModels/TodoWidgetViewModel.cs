@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using DeskBox.Controls;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
@@ -181,8 +182,19 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         get => _selectedDetailItem;
         private set
         {
+            TodoItemViewModel? previous = _selectedDetailItem;
             if (SetProperty(ref _selectedDetailItem, value))
             {
+                if (previous is not null)
+                {
+                    previous.IsDetailSelected = false;
+                }
+
+                if (value is not null)
+                {
+                    value.IsDetailSelected = true;
+                }
+
                 OnPropertyChanged(nameof(IsDetailPageOpen));
                 OnPropertyChanged(nameof(ListPageVisibility));
                 OnPropertyChanged(nameof(DetailPageVisibility));
@@ -346,6 +358,57 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     public string DetailRemoveAttachmentText => _localizationService.T("Todo.Detail.RemoveAttachment");
 
     public string DetailFileMissingText => _localizationService.T("Todo.Detail.FileMissing");
+
+    public string DetailStepsText => _localizationService.T("Todo.Detail.Steps");
+
+    public string DetailAddStepText => _localizationService.T("Todo.Detail.AddStep");
+
+    public string DetailNotesText => _localizationService.T("Todo.Detail.Notes");
+
+    public string DetailNotesPlaceholderText => _localizationService.T("Todo.Detail.NotesPlaceholder");
+
+    public string DetailNotesEditText => _localizationService.T("Todo.Menu.Edit");
+
+    public string DetailNotesDoneText => _localizationService.T("Common.Save");
+
+    public string DetailNotesRetryText => _localizationService.T("Settings.Update.OneClick.Retry");
+
+    public string DetailNotesSaveFailedText => _localizationService.T("Todo.Detail.NotesSaveFailed");
+
+    public string DetailMoreActionsText => _localizationService.T("Todo.Detail.MoreActions");
+
+    public string DetailResizePanesText => _localizationService.T("Todo.Detail.ResizePanes");
+
+    public string WideDetailEmptyTitle => _localizationService.T("Todo.Detail.EmptyTitle");
+
+    public string WideDetailEmptyText => _localizationService.T("Todo.Detail.EmptyText");
+
+    public MasterDetailLayoutPreference LayoutPreference =>
+        SettingsService.NormalizeTodoLayoutMode(
+            _settingsService?.Settings.TodoLayoutMode,
+            _settingsService?.Settings.TodoUseWideDetailPane ?? true) switch
+        {
+            SettingsService.TodoLayoutModeSinglePane => MasterDetailLayoutPreference.SinglePane,
+            SettingsService.TodoLayoutModeDualPane => MasterDetailLayoutPreference.DualPane,
+            _ => MasterDetailLayoutPreference.Auto
+        };
+
+    public bool UseWideDetailPane => LayoutPreference != MasterDetailLayoutPreference.SinglePane;
+
+    public bool AutoSelectFirstInWideLayout =>
+        _settingsService?.Settings.TodoAutoSelectFirstInWideLayout ?? true;
+
+    public double PreferredMasterPaneWidth =>
+        new MasterDetailLayoutPolicy().NormalizePersistedMasterWidth(
+            TodoMasterDetailSettings.GetMasterPaneWidth(_config));
+
+    public void PersistMasterPaneWidth(double width)
+    {
+        if (TodoMasterDetailSettings.SetMasterPaneWidth(_config, width))
+        {
+            _settingsService?.SaveDebounced();
+        }
+    }
 
     public string DeleteText => _localizationService.T("Common.Delete");
 
@@ -590,7 +653,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         Math.Round(Lerp(4, 11, LayoutDensityScale)),
         Math.Round(Lerp(3, 8, LayoutDensityScale)));
 
-    public Thickness ItemMargin => new(0, 0, 0, Math.Round(Lerp(3, 8, LayoutDensityScale)));
+    public Thickness ItemMargin => new(0, 0, 10, Math.Round(Lerp(3, 8, LayoutDensityScale)));
 
     public Thickness ItemChromeMargin => new(
         -ItemPadding.Left,
@@ -602,7 +665,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public double AddCardMinHeight => Math.Round(Lerp(42, 56, LayoutDensityScale));
 
-    public Thickness AddCardMargin => new(0, 0, 0, Math.Round(Lerp(4, 9, LayoutDensityScale)));
+    public Thickness AddCardMargin => new(0, 0, 10, Math.Round(Lerp(4, 9, LayoutDensityScale)));
 
     public Thickness AddCardPadding => new(
         Math.Round(Lerp(6, 12, LayoutDensityScale)),

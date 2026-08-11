@@ -25,9 +25,7 @@ public sealed class SearchHistoryService
 
     public SearchHistoryService()
         : this(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DeskBox",
-            "data",
+            DeskBoxDataPathService.Current.DataDirectory,
             "search-history.json"))
     {
     }

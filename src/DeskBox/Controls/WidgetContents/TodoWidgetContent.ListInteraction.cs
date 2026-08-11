@@ -319,7 +319,7 @@ public sealed partial class TodoWidgetContent
         e.Handled = true;
     }
 
-    private void TodoItemCard_Tapped(object sender, TappedRoutedEventArgs e)
+    private async void TodoItemCard_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (sender is not FrameworkElement element ||
             element.DataContext is not TodoItemViewModel item ||
@@ -331,22 +331,17 @@ public sealed partial class TodoWidgetContent
 
         ClearCopySelection();
         ClearTodoListContainerSelection();
-        if (ViewModel.OpenDetail(item.Id) is null)
+        MarkDetailSelectionExplicit();
+        if (await OpenDetailItemAsync(item.Id) is null)
         {
             return;
         }
 
-        DetailTitleTextBox.Height = 64;
         ApplyDetailCompletionVisualState();
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            DetailTitleTextBox.Focus(FocusState.Programmatic);
-            DetailTitleTextBox.Select(DetailTitleTextBox.Text?.Length ?? 0, 0);
-        });
         e.Handled = true;
     }
 
-    private void TodoListView_ItemClick(object sender, ItemClickEventArgs e)
+    private async void TodoListView_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not TodoItemViewModel item || ViewModel is null)
         {
@@ -355,18 +350,13 @@ public sealed partial class TodoWidgetContent
 
         ClearCopySelection();
         ClearTodoListContainerSelection();
-        if (ViewModel.OpenDetail(item.Id) is null)
+        MarkDetailSelectionExplicit();
+        if (await OpenDetailItemAsync(item.Id) is null)
         {
             return;
         }
 
-        DetailTitleTextBox.Height = 64;
         ApplyDetailCompletionVisualState();
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            DetailTitleTextBox.Focus(FocusState.Programmatic);
-            DetailTitleTextBox.Select(DetailTitleTextBox.Text?.Length ?? 0, 0);
-        });
     }
 
     private static bool IsInteractiveTodoSource(object? source)

@@ -52,7 +52,6 @@ public sealed partial class TodoWidgetViewModel
             entry.CancelEdit();
         }
 
-        item.BeginEdit();
         IsCreatingDetailItem = false;
         SelectedDetailItem = item;
         return item;
@@ -239,17 +238,33 @@ public sealed partial class TodoWidgetViewModel
             return false;
         }
 
-        string? normalizedNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        // Markdown source is the user's document. Preserve significant leading,
+        // trailing, and line-ending whitespace instead of normalizing it here.
+        string? normalizedNotes = string.IsNullOrWhiteSpace(notes) ? null : notes;
         if (string.Equals(item.Item.Notes, normalizedNotes, StringComparison.Ordinal))
         {
             return true;
         }
 
+        string? previousNotes = item.Item.Notes;
+        DateTimeOffset previousUpdatedAt = item.UpdatedAt;
         item.Item.Notes = normalizedNotes;
         item.UpdatedAt = DateTimeOffset.UtcNow;
         item.RefreshDetailProperties();
-        await SaveAsync();
-        return true;
+        try
+        {
+            await SaveAsync();
+            return true;
+        }
+        catch
+        {
+            // Keep persistence transactional from the editor's point of view.
+            // The source editor retains the draft and can safely retry.
+            item.Item.Notes = previousNotes;
+            item.UpdatedAt = previousUpdatedAt;
+            item.RefreshDetailProperties();
+            throw;
+        }
     }
 
     public async Task<TodoAttachmentViewModel?> AddAttachmentAsync(

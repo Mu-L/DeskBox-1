@@ -88,6 +88,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedQuickCaptureDefaultView = SettingsService.QuickCaptureDefaultViewRecords;
     private string _selectedQuickCaptureTabStyle = SettingsService.WidgetTabStyleButton;
     private string _selectedTodoNewTaskPosition = SettingsService.TodoNewTaskPositionTop;
+    private string _selectedTodoLayoutMode = SettingsService.TodoLayoutModeAuto;
     private string _selectedAttachmentStorageMode = SettingsService.AttachmentStorageModeLink;
     private string _selectedManagedDropAction = SettingsService.ManagedDropActionMove;
     private string _selectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
@@ -146,6 +147,7 @@ private int _selectedWeatherRefreshInterval = 60;
     private string[]? _cachedAttachmentStorageModeDisplayNames;
     private string[]? _cachedManagedDropActionDisplayNames;
     private string[]? _cachedTodoDefaultFilterDisplayNames;
+    private string[]? _cachedTodoLayoutModeDisplayNames;
     private string[]? _cachedTodoTabStyleDisplayNames;
     private string[]? _cachedTodoReminderOffsetDisplayNames;
     private string[]? _cachedMusicDisplayModeDisplayNames;
@@ -202,6 +204,8 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     [ObservableProperty] private bool _todoShowClearCompletedButton = true;
     [ObservableProperty] private bool _todoConfirmBeforeDelete;
     [ObservableProperty] private bool _todoReminderEnabled = true;
+    [ObservableProperty] private bool _todoUseWideDetailPane = true;
+    [ObservableProperty] private bool _todoAutoSelectFirstInWideLayout = true;
     [ObservableProperty] private bool _musicUseArtworkBackdrop = true;
     [ObservableProperty] private bool _musicEnableCoverHoverMotion = true;
 
@@ -351,6 +355,11 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _todoShowCompletedTasks = settings.TodoShowCompletedTasks;
         _todoShowFooterStats = settings.TodoShowFooterStats;
         _todoShowClearCompletedButton = settings.TodoShowClearCompletedButton;
+        _selectedTodoLayoutMode = SettingsService.NormalizeTodoLayoutMode(
+            settings.TodoLayoutMode,
+            settings.TodoUseWideDetailPane);
+        _todoUseWideDetailPane = _selectedTodoLayoutMode != SettingsService.TodoLayoutModeSinglePane;
+        _todoAutoSelectFirstInWideLayout = settings.TodoAutoSelectFirstInWideLayout;
         _todoConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
         _todoReminderEnabled = settings.TodoReminderEnabled;
         _musicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;

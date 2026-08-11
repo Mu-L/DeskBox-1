@@ -199,11 +199,6 @@ public sealed partial class WidgetManager
             return file.Host;
         }
 
-        if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCapture))
-        {
-            return quickCapture.Window;
-        }
-
         return _contentWidgets.TryGetValue(widgetId, out var content)
             ? content
             : null;

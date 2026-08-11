@@ -8,6 +8,13 @@ public sealed class QuickCaptureItem
 
     public string Body { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Storage format of <see cref="Body"/>. Plain text is value zero so
+    /// records written by DeskBox 1.3.9 and earlier migrate without changing
+    /// or reinterpreting their content.
+    /// </summary>
+    public TextContentFormat ContentFormat { get; set; } = TextContentFormat.PlainText;
+
     public string? Title { get; set; }
 
     public string? Url { get; set; }

@@ -292,16 +292,24 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
+        if (e.Key == Windows.System.VirtualKey.F2 && !item.IsRecent)
+        {
+            e.Handled = true;
+            await OpenDetailAfterSavingAsync(item);
+            EnterDetailEditMode();
+            return;
+        }
+
         if (e.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space)
         {
             e.Handled = true;
-            if (item.IsRecent)
+            if (item.IsRecent && !_isDualPane)
             {
                 await CopyItemWithFeedbackAsync(item);
             }
             else
             {
-                OpenDetail(item);
+                await OpenDetailAfterSavingAsync(item);
             }
         }
     }
@@ -376,14 +384,29 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         e.Handled = true;
-        if (item.IsRecent)
+        if (item.IsRecent && !_isDualPane)
         {
             await CopyItemWithFeedbackAsync(item);
         }
         else
         {
-            OpenDetail(item);
+            await OpenDetailAfterSavingAsync(item);
         }
+    }
+
+    private async void QuickCaptureItem_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not QuickCaptureItemViewModel item ||
+            item.IsRecent ||
+            e.OriginalSource is not DependencyObject source ||
+            IsItemActionSource(source))
+        {
+            return;
+        }
+
+        await OpenDetailAfterSavingAsync(item);
+        EnterDetailEditMode();
+        e.Handled = true;
     }
 
     private async void CopyItemButton_Click(object sender, RoutedEventArgs e)

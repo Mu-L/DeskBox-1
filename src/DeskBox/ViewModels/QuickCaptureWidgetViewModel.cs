@@ -182,11 +182,23 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public string DetailCopyText => _localizationService.T("QuickCapture.Detail.Copy");
 
+    public string DetailPinText => _localizationService.T("QuickCapture.Pin");
+
     public string DetailCopyImageText => _localizationService.T("QuickCapture.Detail.CopyImage");
 
     public string DetailReplaceImageText => _localizationService.T("QuickCapture.Detail.ReplaceImage");
 
     public string DetailDeleteText => _localizationService.T("QuickCapture.Detail.Delete");
+
+    public string DetailEditText => _localizationService.T("QuickCapture.Detail.Edit");
+
+    public string DetailDoneText => _localizationService.T("QuickCapture.Detail.Done");
+
+    public string DetailReadOnlyText => _localizationService.T("QuickCapture.Detail.ReadOnly");
+
+    public string DetailNoSelectionText => _localizationService.T("QuickCapture.Detail.NoSelection");
+
+    public string DetailSplitterText => _localizationService.T("QuickCapture.Detail.Splitter");
 
     public string MaterialDefaultText => _localizationService.T("QuickCapture.Material.Default");
 
