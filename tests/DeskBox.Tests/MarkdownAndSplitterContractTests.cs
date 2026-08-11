@@ -301,4 +301,30 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("_detailItem?.IsRecent == true", quickCaptureCode, StringComparison.Ordinal);
         Assert.Contains("BeginDetailEditing()", quickCaptureCode, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TodoAndQuickCapture_CardSurfacesShareTheCompactCornerRadius()
+    {
+        string todoXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.xaml"));
+        string quickCaptureXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+
+        Assert.DoesNotContain("WidgetCornerRadiusMedium", todoXaml, StringComparison.Ordinal);
+        Assert.Contains(
+            "x:Name=\"DetailNotesReaderHost\"",
+            todoXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "x:Name=\"DetailMaterialSurface\"",
+            quickCaptureXaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("CornerRadius=\"8\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.True(
+            todoXaml.Split("WidgetCornerRadiusSmall", StringSplitOptions.None).Length > 10,
+            "Todo card, hover, selection, metadata, and note surfaces should share the compact radius.");
+        Assert.True(
+            quickCaptureXaml.Split("WidgetCornerRadiusSmall", StringSplitOptions.None).Length > 5,
+            "Quick Capture add, list, selection, and detail surfaces should share the compact radius.");
+    }
 }

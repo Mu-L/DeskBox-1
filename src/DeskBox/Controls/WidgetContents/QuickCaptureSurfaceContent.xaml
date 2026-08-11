@@ -17,7 +17,7 @@
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
         <Style x:Key="QuickCaptureSharedMaterialButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
             <Setter Property="Width" Value="28" />
@@ -27,7 +27,7 @@
             <Setter Property="Padding" Value="4" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
     </UserControl.Resources>
 
@@ -119,7 +119,7 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 Click="AddNoteCardButton_Click"
-                CornerRadius="4"
+                CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                 Visibility="{Binding InputAreaVisibility}">
                 <Grid ColumnSpacing="6">
                     <Grid.ColumnDefinitions>
@@ -162,7 +162,7 @@
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="Transparent"
                                 BorderThickness="1"
-                                CornerRadius="4"
+                                CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                                 DragLeave="QuickCaptureItem_DragLeave"
                                 DragOver="QuickCaptureItem_DragOver"
                                 Drop="QuickCaptureItem_Drop"
@@ -185,7 +185,7 @@
                                             Visibility="{Binding ElementName=ItemsList, Path=DataContext.CreatedTimeVisibility}" />
                                     </StackPanel>
                                     <FontIcon Grid.Column="1" Margin="4,0,0,0" FontSize="12" Glyph="{Binding PinGlyph}" Opacity="0.72" VerticalAlignment="Center" />
-                                    <Border Grid.ColumnSpan="2" Margin="-8,-6" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="4" Opacity="0.10" IsHitTestVisible="False" Visibility="{Binding DetailSelectionVisibility}" />
+                                    <Border Grid.ColumnSpan="2" Margin="-8,-6" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="{StaticResource WidgetCornerRadiusSmall}" Opacity="0.10" IsHitTestVisible="False" Visibility="{Binding DetailSelectionVisibility}" />
                                     <Border Grid.ColumnSpan="2" Width="2" Margin="-8,-6" HorizontalAlignment="Left" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="1" IsHitTestVisible="False" Visibility="{Binding DetailSelectionVisibility}" />
                                 </Grid>
                             </Border>
@@ -288,7 +288,7 @@
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="Transparent"
                     BorderThickness="0"
-                    CornerRadius="8">
+                    CornerRadius="{StaticResource WidgetCornerRadiusSmall}">
                     <Grid RowSpacing="3">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />

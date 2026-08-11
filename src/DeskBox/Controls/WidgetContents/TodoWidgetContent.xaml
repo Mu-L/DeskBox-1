@@ -22,7 +22,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
         <Style x:Key="TodoColorFilterSelectedButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
@@ -34,7 +34,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
         <Style x:Key="TodoCardIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
@@ -44,7 +44,7 @@
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
         <Style x:Key="TodoDetailHeaderIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
@@ -54,7 +54,7 @@
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
         <Style x:Key="TodoDetailConfirmButtonStyle" TargetType="Button" BasedOn="{StaticResource TodoDetailHeaderIconButtonStyle}">
@@ -62,7 +62,7 @@
             <Setter Property="Height" Value="30" />
             <Setter Property="MinWidth" Value="30" />
             <Setter Property="MinHeight" Value="30" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
         <Style x:Key="TodoDetailToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
@@ -72,7 +72,7 @@
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
         <Style x:Key="TodoCardBorderStyle" TargetType="Border">
@@ -81,7 +81,7 @@
             <Setter Property="Background" Value="{ThemeResource WidgetLayerFillSecondaryBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource WidgetLayerStrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
         <Style x:Key="TodoDetailRowButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
@@ -97,7 +97,7 @@
             <Setter Property="Background" Value="{ThemeResource WidgetLayerFillSecondaryBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource WidgetLayerStrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusMedium}" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
         <Style x:Key="TodoDetailTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource WidgetBorderlessInputTextBoxStyle}">
@@ -219,7 +219,7 @@
                         BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                         BorderThickness="1"
                         Click="AddCard_Click"
-                        CornerRadius="{StaticResource WidgetCornerRadiusMedium}">
+                        CornerRadius="{StaticResource WidgetCornerRadiusSmall}">
                             <Grid ColumnSpacing="4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="32" />
@@ -290,7 +290,7 @@
                                     x:Name="TodoItemHoverBackground"
                                     Grid.ColumnSpan="4"
                                     Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
-                                    CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
+                                    CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                     IsHitTestVisible="False"
                                     Opacity="0" />
@@ -299,7 +299,7 @@
                                     Grid.ColumnSpan="4"
                                     Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                    CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
+                                    CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                                     IsHitTestVisible="False"
                                     Opacity="0.10"
                                     Visibility="{Binding DetailSelectionVisibility}" />
@@ -308,7 +308,7 @@
                                     Grid.ColumnSpan="4"
                                     Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                    CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
+                                    CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                                     IsHitTestVisible="False"
                                     Opacity="0.12"
                                     Visibility="{Binding CopySelectionVisibility}" />
@@ -799,7 +799,7 @@
                             Background="{ThemeResource WidgetLayerFillSecondaryBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="0"
-                            CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
+                            CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                             Tapped="DetailNotesReaderHost_Tapped">
                             <Grid>
                                 <controls:MarkdownDocumentView
