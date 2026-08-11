@@ -72,3 +72,13 @@ public interface IWidgetResponsiveLayoutContent
 
     void CancelResponsiveLayoutTransition();
 }
+
+/// <summary>
+/// Optional contract for content that must lay itself out from the host's
+/// viewport instead of its own desired size. This avoids a child retaining an
+/// obsolete width when its internal minimums are wider than the resized host.
+/// </summary>
+public interface IWidgetHostViewportContent
+{
+    void OnHostViewportSizeChanged(double width, double height);
+}

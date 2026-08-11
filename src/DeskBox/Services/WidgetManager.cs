@@ -109,7 +109,6 @@ public sealed partial class WidgetManager
     private readonly WidgetSessionManager _sessionManager;
     private readonly FileWidgetHostDiagnostics _fileWidgetHostDiagnostics;
     private readonly Dictionary<string, FileWidgetSession> _fileWidgets = new();
-    private readonly Dictionary<string, (QuickCaptureWidgetWindow Window, QuickCaptureWidgetViewModel ViewModel)> _quickCaptureWidgets = new();
     private readonly Dictionary<string, ContentWidgetWindow> _contentWidgets = new();
     private readonly HashSet<IntPtr> _widgetWindowHandles = new();
     private readonly HashSet<string> _deletedWidgetIds = [];
@@ -118,7 +117,6 @@ public sealed partial class WidgetManager
     private readonly SemaphoreSlim _trayVisibilityOperationGate = new(1, 1);
     private readonly TrayToggleRequestQueue _trayToggleRequestQueue;
 
-    public IReadOnlyDictionary<string, (QuickCaptureWidgetWindow Window, QuickCaptureWidgetViewModel ViewModel)> QuickCaptureWidgets => _quickCaptureWidgets;
     internal IReadOnlyDictionary<string, ContentWidgetWindow> ContentWidgets => _contentWidgets;
 
     public bool WidgetsRaisedFromTray => _widgetsRaisedFromTray;
@@ -427,7 +425,7 @@ public sealed partial class WidgetManager
                     request.CancellationToken)),
             new(
                 WidgetKind.QuickCapture,
-                async request => await CreateQuickCaptureWidgetFromConfigAsync(
+                async request => await CreateContentWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
                     request.RevealAfterCreate,
@@ -831,38 +829,22 @@ public sealed partial class WidgetManager
 
         if (config.WidgetKind == WidgetKind.QuickCapture)
         {
-            if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))
+            ContentWidgetWindow quickCaptureWindow;
+            if (_contentWidgets.TryGetValue(widgetId, out var existingQuickCapture))
             {
-                quickCaptureEntry.Window.RestoreBoundsForCurrentTopology();
-                if (reveal)
-                {
-                    quickCaptureEntry.Window.RevealFromTray(autoRestoreOnReveal);
-                }
-                else
-                {
-                    quickCaptureEntry.Window.PrepareTrayShowAnimation();
-                    quickCaptureEntry.Window.ShowPreparedAtDesktopLayer();
-                    quickCaptureEntry.Window.CompleteTrayShowWithoutAnimation();
-                }
-
-                return true;
-            }
-
-            var quickCaptureWindow = (QuickCaptureWidgetWindow)await CreateRegisteredWidgetFromConfigAsync(
-                config,
-                keepPreparedForAnimation: !reveal);
-            quickCaptureWindow.RestoreBoundsForCurrentTopology();
-            if (reveal)
-            {
-                quickCaptureWindow.RevealFromTray(autoRestoreOnReveal);
+                quickCaptureWindow = existingQuickCapture;
             }
             else
             {
-                quickCaptureWindow.PrepareTrayShowAnimation();
-                quickCaptureWindow.ShowPreparedAtDesktopLayer();
-                quickCaptureWindow.CompleteTrayShowWithoutAnimation();
+                quickCaptureWindow = await CreateContentWidgetFromConfigAsync(
+                    config,
+                    keepPreparedForAnimation: !reveal);
             }
 
+            ShowLoadedWidgetWindow(
+                quickCaptureWindow,
+                reveal,
+                autoRestoreOnReveal);
             return true;
         }
 
@@ -960,7 +942,7 @@ public sealed partial class WidgetManager
         using var perfScope = PerformanceLogger.Measure("WidgetManager.SetAllWidgetsVisible", $"visible={visible}");
         App.LogVerbose(
             $"[TrayBatch] SetAllVisible requested visible={visible} raised={_widgetsRaisedFromTray} " +
-            $"loadedFile={_fileWidgets.Count} loadedQuick={_quickCaptureWidgets.Count} loadedContent={_contentWidgets.Count}");
+            $"loadedFile={_fileWidgets.Count} loadedContent={_contentWidgets.Count}");
         CancelActiveTrayAnimationsAndRestorePositions();
         if (visible)
         {
@@ -1102,16 +1084,6 @@ public sealed partial class WidgetManager
         {
             App.Log($"[WidgetManager] Retiring widget window for delete: {widgetId}");
             _fileWidgets.Remove(widgetId);
-        }
-
-        if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))
-        {
-            App.Log($"[WidgetManager] Retiring quick capture widget window for delete: {widgetId}");
-            quickCaptureEntry.ViewModel.Dispose();
-            _quickCaptureWidgets.Remove(widgetId);
-            _widgetWindowHandles.Remove(quickCaptureEntry.Window.WindowHandle);
-            try { quickCaptureEntry.Window.HideWindow(); } catch (Exception ex) { App.Log($"[WidgetManager] HideWindow failed during delete: {ex.Message}"); }
-            try { quickCaptureEntry.Window.Close(); } catch (Exception ex) { App.Log($"[WidgetManager] Close failed during delete: {ex.Message}"); }
         }
 
         if (_contentWidgets.TryGetValue(widgetId, out var contentWindow))
@@ -1438,13 +1410,6 @@ public sealed partial class WidgetManager
             return true;
         }
 
-        if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCaptureEntry))
-        {
-            quickCaptureEntry.Window.HideWindow();
-            SetWidgetGroupVisibility(quickCaptureEntry.Window.Config, isVisible: false);
-            return true;
-        }
-
         if (_contentWidgets.TryGetValue(widgetId, out var contentWindow))
         {
             contentWindow.HideWindow();
@@ -1466,7 +1431,7 @@ public sealed partial class WidgetManager
         }
 
         App.Log(
-            $"[TrayBatch] RestoreDesktopLayer force={force} file={_fileWidgets.Count} quick={_quickCaptureWidgets.Count} content={_contentWidgets.Count}");
+            $"[TrayBatch] RestoreDesktopLayer force={force} file={_fileWidgets.Count} content={_contentWidgets.Count}");
         foreach (var window in GetLoadedDesktopWindows())
         {
             try
@@ -1585,20 +1550,6 @@ public sealed partial class WidgetManager
         }
 
         _fileWidgets.Clear();
-
-        foreach (var (_, (window, viewModel)) in _quickCaptureWidgets)
-        {
-            viewModel.Dispose();
-            try
-            {
-                window.Close();
-            }
-            catch
-            {
-            }
-        }
-
-        _quickCaptureWidgets.Clear();
 
         foreach (ContentWidgetWindow window in _contentWidgets.Values
                      .DistinctBy(candidate => candidate.WindowHandle)

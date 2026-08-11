@@ -24,6 +24,10 @@ public sealed partial class TodoWidgetContent
         _notesAutosaveTimer.Tick += NotesAutosaveTimer_Tick;
         DetailNotesView.AttachmentResolver = ResolveSelectedTodoAttachment;
         DetailNotesView.AttachmentOpenRequested += DetailNotesView_AttachmentOpenRequested;
+        DetailNotesReaderHost.AddHandler(
+            UIElement.DoubleTappedEvent,
+            new DoubleTappedEventHandler(DetailNotesReaderHost_DoubleTapped),
+            handledEventsToo: true);
         ApplyNotesEditingVisualState(isEditing: false);
     }
 

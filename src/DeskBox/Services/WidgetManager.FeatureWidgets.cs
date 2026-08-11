@@ -55,7 +55,7 @@ public sealed partial class WidgetManager
             TaskContinuationOptions.OnlyOnFaulted);
     }
 
-    public async Task<QuickCaptureWidgetWindow> CreateOrShowQuickCaptureWidgetAsync(bool reveal = true, bool focusNewInput = false)
+    public async Task<ContentWidgetWindow> CreateOrShowQuickCaptureWidgetAsync(bool reveal = true, bool focusNewInput = false)
     {
         SetFeatureWidgetEnabledState(WidgetKind.QuickCapture, true);
         RestoreDeletedQuickCaptureConfigs();
@@ -80,7 +80,7 @@ public sealed partial class WidgetManager
         config.IsVisible = true;
         await _settingsService.SaveAsync();
 
-        var window = await CreateQuickCaptureWidgetFromConfigAsync(config);
+        var window = await CreateContentWidgetFromConfigAsync(config);
         if (reveal)
         {
             window.RevealFromTray(autoRestore: false);
@@ -88,7 +88,7 @@ public sealed partial class WidgetManager
 
         if (focusNewInput)
         {
-            window.FocusInputForNewNote();
+            window.TriggerAddAction();
         }
 
         return window;
@@ -283,7 +283,10 @@ public sealed partial class WidgetManager
 
     private void CloseLoadedQuickCaptureWidgets()
     {
-        foreach (var (_, (window, _)) in _quickCaptureWidgets.ToList())
+        foreach (ContentWidgetWindow window in _contentWidgets.Values
+                     .Where(window => window.Config.WidgetKind == WidgetKind.QuickCapture)
+                     .DistinctBy(window => window.WindowHandle)
+                     .ToList())
         {
             CloseFeatureWidgetInstance(window);
         }
@@ -569,13 +572,6 @@ public sealed partial class WidgetManager
 
     internal IDesktopWidgetWindow? GetFeatureWidget(WidgetKind kind)
     {
-        if (kind == WidgetKind.QuickCapture)
-        {
-            return _quickCaptureWidgets.Values
-                .Select(entry => (IDesktopWidgetWindow)entry.Window)
-                .FirstOrDefault(window => window.Config.WidgetKind == kind);
-        }
-
         return _contentWidgets.Values
             .FirstOrDefault(w => w.Config.WidgetKind == kind);
     }
@@ -891,8 +887,7 @@ public sealed partial class WidgetManager
 
     private static bool IsContentFeatureWidgetKind(WidgetKind kind)
     {
-        return FeatureWidgetSettings.IsFeatureWidget(kind) &&
-               kind != WidgetKind.QuickCapture;
+        return FeatureWidgetSettings.IsFeatureWidget(kind);
     }
 
     private void SetFeatureWidgetEnabledState(WidgetKind kind, bool enabled)
@@ -928,15 +923,7 @@ public sealed partial class WidgetManager
 
         window.Config.IsVisible = false;
 
-        if (window.Config.WidgetKind == WidgetKind.QuickCapture &&
-            _quickCaptureWidgets.TryGetValue(window.Config.Id, out var quickCaptureEntry) &&
-            ReferenceEquals(quickCaptureEntry.Window, window))
-        {
-            _quickCaptureWidgets.Remove(window.Config.Id);
-            _widgetWindowHandles.Remove(window.WindowHandle);
-            quickCaptureEntry.ViewModel.Dispose();
-        }
-        else if (window.Config.WidgetKind == WidgetKind.File &&
+        if (window.Config.WidgetKind == WidgetKind.File &&
                  _fileWidgets.TryGetValue(window.Config.Id, out var fileEntry) &&
                  ReferenceEquals(fileEntry.Host, window))
         {
@@ -963,145 +950,6 @@ public sealed partial class WidgetManager
         {
             App.ScheduleLightMemoryCleanup(completedHeavyOperation: true);
         }
-    }
-
-    private async Task<QuickCaptureWidgetWindow> CreateQuickCaptureWidgetFromConfigAsync(
-        WidgetConfig config,
-        bool keepPreparedForAnimation = false,
-        bool revealAfterCreate = false,
-        bool showRaisedWhileInitializing = false,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (_quickCaptureWidgets.TryGetValue(config.Id, out var existing))
-        {
-            return existing.Window;
-        }
-
-        config.WidgetKind = WidgetKind.QuickCapture;
-        config.Name = string.IsNullOrWhiteSpace(config.Name)
-            ? _localizationService.T("QuickCapture.Name")
-            : config.Name;
-        config.IsDisabled = false;
-        NormalizeWidgetBounds(config);
-
-        var dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        var viewModel = new QuickCaptureWidgetViewModel(
-            config,
-            _quickCaptureService,
-            _settingsService,
-            _localizationService,
-            dispatcherQueue);
-        var window = new QuickCaptureWidgetWindow(viewModel, _settingsService, _localizationService);
-
-        _themeService.TrackWindow(window);
-        _quickCaptureWidgets[config.Id] = (window, viewModel);
-        RegisterCreatedSurfaceHost(config, window);
-        RestoreWidgetGroupTransientState(config.Id);
-        _widgetWindowHandles.Add(window.WindowHandle);
-        ApplyCapsuleArrangementIfChanged(force: true);
-
-        window.Closed += (_, _) =>
-        {
-            if (_quickCaptureWidgets.TryGetValue(config.Id, out var currentEntry) &&
-                ReferenceEquals(currentEntry.Window, window))
-            {
-                _quickCaptureWidgets.Remove(config.Id);
-            }
-
-            UnregisterSurfaceHost(window);
-            _widgetWindowHandles.Remove(window.WindowHandle);
-            if (IsDeleted(config.Id) || FindConfig(config.Id) is null)
-            {
-                return;
-            }
-
-            if (_suppressClosedVisibilityPersistence.Contains(config.Id))
-            {
-                return;
-            }
-
-            if (_quickCaptureWidgets.ContainsKey(config.Id))
-            {
-                return;
-            }
-
-            config.IsVisible = false;
-            SetWidgetGroupVisibility(config, isVisible: false);
-            _settingsService.SaveDebounced();
-        };
-
-        try
-        {
-            window.PrepareTrayShowAnimation();
-            if (!keepPreparedForAnimation)
-            {
-                window.Activate();
-                window.PushToBottom();
-            }
-            else if (showRaisedWhileInitializing)
-            {
-                QueueDeferredQuickCaptureInitialization(config, window, viewModel);
-                return window;
-            }
-
-            await viewModel.InitializeAsync().WaitAsync(cancellationToken);
-            if (!keepPreparedForAnimation)
-            {
-                window.CompleteTrayShowWithoutAnimation();
-                if (revealAfterCreate)
-                {
-                    window.RevealFromTray(autoRestore: false);
-                }
-            }
-        }
-        catch
-        {
-            _quickCaptureWidgets.Remove(config.Id);
-            viewModel.Dispose();
-            _widgetWindowHandles.Remove(window.WindowHandle);
-            UnregisterSurfaceHost(window);
-            CloseFailedCreatedWindow(
-                config.Id,
-                window,
-                preserveVisibility: cancellationToken.CanBeCanceled);
-            throw;
-        }
-
-        return window;
-    }
-
-    private void QueueDeferredQuickCaptureInitialization(
-        WidgetConfig config,
-        QuickCaptureWidgetWindow window,
-        QuickCaptureWidgetViewModel viewModel)
-    {
-        App.UiDispatcherQueue.TryEnqueue(async () =>
-        {
-            await Task.Yield();
-            try
-            {
-                await viewModel.InitializeAsync();
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[WidgetManager] Failed to initialize quick capture widget '{config.Name}' ({config.Id}) after show: {ex}");
-                if (_quickCaptureWidgets.TryGetValue(config.Id, out var entry) &&
-                    ReferenceEquals(entry.Window, window))
-                {
-                    _quickCaptureWidgets.Remove(config.Id);
-                    viewModel.Dispose();
-                    try
-                    {
-                        window.Close();
-                    }
-                    catch
-                    {
-                    }
-                }
-            }
-        });
     }
 
 }

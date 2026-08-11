@@ -89,6 +89,20 @@ public static partial class MarkdownEditCommandEngine
     {
         if (length == 0)
         {
+            if (start >= prefix.Length &&
+                start + suffix.Length <= source.Length &&
+                source.AsSpan(start - prefix.Length, prefix.Length).SequenceEqual(prefix) &&
+                source.AsSpan(start, suffix.Length).SequenceEqual(suffix))
+            {
+                edit = new MarkdownTextEdit(
+                    start - prefix.Length,
+                    prefix.Length + suffix.Length,
+                    string.Empty,
+                    start - prefix.Length,
+                    0);
+                return true;
+            }
+
             edit = new MarkdownTextEdit(
                 start,
                 0,
@@ -137,7 +151,7 @@ public static partial class MarkdownEditCommandEngine
         int length,
         out MarkdownTextEdit edit)
     {
-        if (length == 0 || !source.AsSpan(start, length).Contains('\n'))
+        if (length == 0 || !ContainsLineBreak(source.AsSpan(start, length)))
         {
             return TryWrap(source, start, length, "`", "`", out edit);
         }
@@ -146,6 +160,29 @@ public static partial class MarkdownEditCommandEngine
         string newline = DetectNewline(source);
         string prefix = "```" + newline;
         string suffix = newline + "```";
+
+        if (selected.StartsWith(prefix, StringComparison.Ordinal) &&
+            selected.EndsWith(suffix, StringComparison.Ordinal))
+        {
+            string unwrapped = selected[prefix.Length..^suffix.Length];
+            edit = new MarkdownTextEdit(start, length, unwrapped, start, unwrapped.Length);
+            return true;
+        }
+
+        if (start >= prefix.Length &&
+            start + length + suffix.Length <= source.Length &&
+            source.AsSpan(start - prefix.Length, prefix.Length).SequenceEqual(prefix) &&
+            source.AsSpan(start + length, suffix.Length).SequenceEqual(suffix))
+        {
+            edit = new MarkdownTextEdit(
+                start - prefix.Length,
+                prefix.Length + length + suffix.Length,
+                selected,
+                start - prefix.Length,
+                selected.Length);
+            return true;
+        }
+
         edit = new MarkdownTextEdit(
             start,
             length,
@@ -162,6 +199,11 @@ public static partial class MarkdownEditCommandEngine
         out MarkdownTextEdit edit)
     {
         string selected = length == 0 ? string.Empty : source.Substring(start, length);
+        if (length > 0 && TryUnwrapLink(source, start, length, selected, out edit))
+        {
+            return true;
+        }
+
         string replacement = $"[{selected}](https://)";
         edit = new MarkdownTextEdit(
             start,
@@ -172,6 +214,44 @@ public static partial class MarkdownEditCommandEngine
         return true;
     }
 
+    private static bool TryUnwrapLink(
+        string source,
+        int start,
+        int length,
+        string selected,
+        out MarkdownTextEdit edit)
+    {
+        Match completeLink = CompleteLinkRegex().Match(selected);
+        if (completeLink.Success)
+        {
+            string label = completeLink.Groups["label"].Value;
+            edit = new MarkdownTextEdit(start, length, label, start, label.Length);
+            return true;
+        }
+
+        if (start == 0 || source[start - 1] != '[' || start + length >= source.Length ||
+            !source.AsSpan(start + length).StartsWith("](", StringComparison.Ordinal))
+        {
+            return Fail(out edit);
+        }
+
+        int destinationEnd = source.IndexOf(')', start + length + 2);
+        if (destinationEnd < 0)
+        {
+            return Fail(out edit);
+        }
+
+        int syntaxStart = start - 1;
+        int syntaxLength = destinationEnd - syntaxStart + 1;
+        edit = new MarkdownTextEdit(
+            syntaxStart,
+            syntaxLength,
+            selected,
+            syntaxStart,
+            selected.Length);
+        return true;
+    }
+
     private static bool TryInsertTable(
         string source,
         int start,
@@ -179,12 +259,28 @@ public static partial class MarkdownEditCommandEngine
         out MarkdownTextEdit edit)
     {
         string newline = DetectNewline(source);
-        string replacement = string.Join(
+        int insertionStart = FindLineStart(source, start);
+        string table = string.Join(
             newline,
             "| Column 1 | Column 2 |",
             "| --- | --- |",
             "| Content | Content |");
-        edit = new MarkdownTextEdit(start, length, replacement, start + 2, "Column 1".Length);
+        bool needsLeadingNewline = insertionStart > 0 &&
+                                   !IsLineBreak(source[insertionStart - 1]);
+        bool needsTrailingNewline = insertionStart < source.Length &&
+                                    !IsLineBreak(source[insertionStart]);
+        string leading = needsLeadingNewline ? newline : string.Empty;
+        string trailing = needsTrailingNewline ? newline : string.Empty;
+        string replacement = leading + table + trailing;
+
+        // Tables are block inserts. Never split or destroy note text: insert
+        // before the current line and select the first header for immediate edit.
+        edit = new MarkdownTextEdit(
+            insertionStart,
+            0,
+            replacement,
+            insertionStart + leading.Length + 2,
+            "Column 1".Length);
         return true;
     }
 
@@ -275,20 +371,15 @@ public static partial class MarkdownEditCommandEngine
             return new LineTransform(info.Original, info.PrefixLength, info.PrefixLength);
         }
 
-        string content = targetKind switch
-        {
-            LineKind.Task when info.Kind is LineKind.List or LineKind.OrderedList or LineKind.Task => info.Content,
-            LineKind.List when info.Kind is LineKind.List or LineKind.OrderedList or LineKind.Task => info.Content,
-            LineKind.Heading when info.Kind == LineKind.Heading => info.Content,
-            _ => info.Original[info.Indent.Length..]
-        };
-        int oldPrefixLength = targetKind switch
-        {
-            LineKind.Task when info.Kind is LineKind.List or LineKind.OrderedList or LineKind.Task => info.PrefixLength,
-            LineKind.List when info.Kind is LineKind.List or LineKind.OrderedList or LineKind.Task => info.PrefixLength,
-            LineKind.Heading when info.Kind == LineKind.Heading => info.PrefixLength,
-            _ => info.Indent.Length
-        };
+        // Heading, list, task, and quote are mutually exclusive block styles in
+        // the toolbar. Convert an existing block marker instead of producing
+        // invalid combinations such as "- ## title" or "## - item".
+        string content = info.Kind == LineKind.Plain
+            ? info.Original[info.Indent.Length..]
+            : info.Content;
+        int oldPrefixLength = info.Kind == LineKind.Plain
+            ? info.Indent.Length
+            : info.PrefixLength;
         return new LineTransform(
             info.Indent + marker + content,
             oldPrefixLength,
@@ -405,20 +496,35 @@ public static partial class MarkdownEditCommandEngine
         out int blockStart,
         out int blockEnd)
     {
-        blockStart = source.LastIndexOf('\n', Math.Max(0, selectionStart - 1));
-        blockStart = blockStart < 0 ? 0 : blockStart + 1;
+        blockStart = FindLineStart(source, selectionStart);
 
         int selectionEnd = selectionStart + selectionLength;
         int lookupEnd = selectionLength > 0 && selectionEnd <= source.Length &&
-                        source[selectionEnd - 1] == '\n'
+                        IsLineBreak(source[selectionEnd - 1])
             ? selectionEnd - 1
             : selectionEnd;
-        blockEnd = source.IndexOf('\n', lookupEnd);
-        blockEnd = blockEnd < 0 ? source.Length : blockEnd;
-        if (blockEnd > blockStart && source[blockEnd - 1] == '\r')
+        blockEnd = source.Length;
+        for (int index = Math.Clamp(lookupEnd, 0, source.Length); index < source.Length; index++)
         {
-            blockEnd--;
+            if (IsLineBreak(source[index]))
+            {
+                blockEnd = index;
+                break;
+            }
         }
+    }
+
+    private static int FindLineStart(string source, int position)
+    {
+        for (int index = Math.Min(position, source.Length) - 1; index >= 0; index--)
+        {
+            if (IsLineBreak(source[index]))
+            {
+                return index + 1;
+            }
+        }
+
+        return 0;
     }
 
     private static List<LinePart> SplitLines(string block)
@@ -427,16 +533,22 @@ public static partial class MarkdownEditCommandEngine
         int start = 0;
         for (int index = 0; index < block.Length; index++)
         {
-            if (block[index] != '\n')
+            if (!IsLineBreak(block[index]))
             {
                 continue;
             }
 
-            int contentEnd = index > start && block[index - 1] == '\r' ? index - 1 : index;
+            int newlineEnd = index + 1;
+            if (block[index] == '\r' && newlineEnd < block.Length && block[newlineEnd] == '\n')
+            {
+                newlineEnd++;
+            }
+
             lines.Add(new LinePart(
-                block[start..contentEnd],
-                block[contentEnd..(index + 1)]));
-            start = index + 1;
+                block[start..index],
+                block[index..newlineEnd]));
+            start = newlineEnd;
+            index = newlineEnd - 1;
         }
 
         lines.Add(new LinePart(block[start..], string.Empty));
@@ -491,8 +603,20 @@ public static partial class MarkdownEditCommandEngine
             content);
     }
 
-    private static string DetectNewline(string source) =>
-        source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+    private static string DetectNewline(string source)
+    {
+        if (source.Contains("\r\n", StringComparison.Ordinal))
+        {
+            return "\r\n";
+        }
+
+        return source.Contains('\r') ? "\r" : "\n";
+    }
+
+    private static bool ContainsLineBreak(ReadOnlySpan<char> value) =>
+        value.Contains('\r') || value.Contains('\n');
+
+    private static bool IsLineBreak(char value) => value is '\r' or '\n';
 
     private static bool Fail(out MarkdownTextEdit edit)
     {
@@ -517,6 +641,9 @@ public static partial class MarkdownEditCommandEngine
 
     [GeneratedRegex(@"^[ \t]*")]
     private static partial Regex LeadingWhitespaceRegex();
+
+    [GeneratedRegex(@"^\[(?<label>[^\]\r\n]*)\]\([^\r\n)]*\)$")]
+    private static partial Regex CompleteLinkRegex();
 
     private enum LineKind
     {

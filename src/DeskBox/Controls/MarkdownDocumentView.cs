@@ -21,6 +21,13 @@ namespace DeskBox.Controls;
 /// </summary>
 public sealed class MarkdownDocumentView : UserControl
 {
+    private const double BodyLineHeightRatio = 1.72;
+    private const double TaskLineHeightRatio = 2.16;
+    private const double HeadingLineHeightRatio = 1.42;
+    private const double CodeLineHeightRatio = 1.60;
+    private const double ParagraphSpacing = 5;
+    private const double ListItemSpacing = 3;
+
     private readonly RichTextBlock _documentText = new()
     {
         IsTextSelectionEnabled = true,
@@ -317,6 +324,11 @@ public sealed class MarkdownDocumentView : UserControl
     {
         Paragraph paragraph = CreateParagraph(fontSize, fontWeight);
         ApplyParagraphIndent(paragraph, quoteDepth, listDepth);
+        if (fontSize > BaseFontSize * 1.05)
+        {
+            paragraph.LineHeight = Math.Ceiling(fontSize * HeadingLineHeightRatio);
+            paragraph.Margin = new Thickness(paragraph.Margin.Left, 9, 0, 5);
+        }
         AppendQuoteMarker(paragraph, quoteDepth);
         if (leaf.Inline is { } container)
         {
@@ -339,9 +351,17 @@ public sealed class MarkdownDocumentView : UserControl
             MdBlock? firstContent = item.FirstOrDefault(child => child is not ListBlock);
             var paragraph = CreateParagraph(BaseFontSize, FontWeights.Normal);
             ApplyParagraphIndent(paragraph, quoteDepth, listDepth);
+            paragraph.Margin = new Thickness(
+                paragraph.Margin.Left,
+                ListItemSpacing,
+                0,
+                ListItemSpacing);
             AppendQuoteMarker(paragraph, quoteDepth);
             if (taskState is { } isChecked)
             {
+                paragraph.LineHeight = Math.Max(
+                    paragraph.LineHeight,
+                    Math.Ceiling(BaseFontSize * TaskLineHeightRatio));
                 paragraph.Inlines.Add(new InlineUIContainer { Child = CreateTaskMarker(isChecked) });
                 paragraph.Inlines.Add(new Run { Text = " " });
             }
@@ -380,7 +400,8 @@ public sealed class MarkdownDocumentView : UserControl
     {
         var paragraph = CreateParagraph(Math.Max(11, BaseFontSize - 1), FontWeights.Normal);
         paragraph.FontFamily = new FontFamily("Cascadia Mono, Consolas");
-        paragraph.Margin = new Thickness(Indent(quoteDepth, listDepth), 6, 0, 6);
+        paragraph.LineHeight = Math.Ceiling(paragraph.FontSize * CodeLineHeightRatio);
+        paragraph.Margin = new Thickness(Indent(quoteDepth, listDepth), 8, 0, 8);
         AppendQuoteMarker(paragraph, quoteDepth);
         AppendText(paragraph.Inlines, code.Lines.ToString());
         _documentText.Blocks.Add(paragraph);
@@ -395,6 +416,8 @@ public sealed class MarkdownDocumentView : UserControl
                 row.IsHeader ? FontWeights.SemiBold : FontWeights.Normal);
             paragraph.FontFamily = new FontFamily("Cascadia Mono, Consolas");
             ApplyParagraphIndent(paragraph, quoteDepth, listDepth);
+            paragraph.LineHeight = Math.Ceiling(paragraph.FontSize * CodeLineHeightRatio);
+            paragraph.Margin = new Thickness(paragraph.Margin.Left, 2, 0, 2);
             AppendQuoteMarker(paragraph, quoteDepth);
             foreach (TableCell cell in row.OfType<TableCell>())
             {
@@ -413,14 +436,20 @@ public sealed class MarkdownDocumentView : UserControl
     {
         FontSize = fontSize,
         FontWeight = fontWeight,
-        Margin = new Thickness(0, 3, 0, 3)
+        LineHeight = Math.Ceiling(fontSize * BodyLineHeightRatio),
+        LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+        Margin = new Thickness(0, ParagraphSpacing, 0, ParagraphSpacing)
     };
 
     private static double Indent(int quoteDepth, int listDepth) =>
         quoteDepth * 10 + listDepth * 18;
 
     private static void ApplyParagraphIndent(Paragraph paragraph, int quoteDepth, int listDepth) =>
-        paragraph.Margin = new Thickness(Indent(quoteDepth, listDepth), 3, 0, 3);
+        paragraph.Margin = new Thickness(
+            Indent(quoteDepth, listDepth),
+            paragraph.Margin.Top,
+            0,
+            paragraph.Margin.Bottom);
 
     private static void AppendQuoteMarker(Paragraph paragraph, int quoteDepth)
     {
@@ -437,7 +466,10 @@ public sealed class MarkdownDocumentView : UserControl
     private static void AppendText(InlineCollection destination, string? text)
     {
         string value = text ?? string.Empty;
-        string[] parts = value.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        string[] parts = value
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n');
         for (int index = 0; index < parts.Length; index++)
         {
             if (index > 0)
@@ -483,7 +515,9 @@ public sealed class MarkdownDocumentView : UserControl
             MinWidth = 0,
             MinHeight = 0,
             Padding = new Thickness(0),
-            Margin = new Thickness(0, -2, 0, -3),
+            Margin = new Thickness(0, 0, 2, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            RenderTransform = new TranslateTransform { Y = 6 },
             Tag = _taskListIndex++
         };
         if (AreTaskListsInteractive)

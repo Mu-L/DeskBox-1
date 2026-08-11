@@ -124,6 +124,13 @@ public sealed partial class ContentWidgetWindow
         });
     }
 
+    internal Task RevealItemAsync(string? itemId)
+    {
+        return _contentHost.CurrentContent is QuickCaptureSurfaceContent quickCapture
+            ? quickCapture.RevealItemAsync(itemId)
+            : Task.CompletedTask;
+    }
+
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         // A feature member inside a group is only the current Surface page.

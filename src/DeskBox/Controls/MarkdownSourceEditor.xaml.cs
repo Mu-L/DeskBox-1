@@ -25,6 +25,7 @@ public sealed partial class MarkdownSourceEditor : UserControl
     private Func<string, string>? _textResolver;
     private int _textRevision;
     private bool _isTextCompositionActive;
+    private bool _isEditorPointerActive;
 
     public MarkdownSourceEditor()
     {
@@ -37,9 +38,28 @@ public sealed partial class MarkdownSourceEditor : UserControl
             PreviewKeyDownEvent,
             new KeyEventHandler(EditorTextBox_PreviewKeyDown),
             handledEventsToo: true);
-        EditorTextBox.LostFocus += EditorTextBox_LostFocus;
+        EditorTextBox.AddHandler(
+            PointerPressedEvent,
+            new PointerEventHandler(EditorTextBox_PointerPressed),
+            handledEventsToo: true);
+        EditorTextBox.AddHandler(
+            PointerReleasedEvent,
+            new PointerEventHandler(EditorTextBox_PointerReleased),
+            handledEventsToo: true);
+        EditorTextBox.AddHandler(
+            TappedEvent,
+            new TappedEventHandler(EditorTextBox_Tapped),
+            handledEventsToo: true);
+        EditorTextBox.AddHandler(
+            KeyUpEvent,
+            new KeyEventHandler(EditorTextBox_KeyUp),
+            handledEventsToo: true);
         EditorTextBox.TextCompositionStarted += (_, _) => _isTextCompositionActive = true;
-        EditorTextBox.TextCompositionEnded += (_, _) => _isTextCompositionActive = false;
+        EditorTextBox.TextCompositionEnded += (_, _) =>
+        {
+            _isTextCompositionActive = false;
+            QueueEditorViewportCapture();
+        };
         ApplyToolbarVisibility();
         ApplyLocalizedText();
     }
@@ -133,6 +153,8 @@ public sealed partial class MarkdownSourceEditor : UserControl
         {
             EditorTextBox.Select(EditorTextBox.Text.Length, 0);
         }
+
+        RememberEditorViewport();
     }
 
     public bool FindNext(string? value, StringComparison comparison = StringComparison.CurrentCultureIgnoreCase)
@@ -158,6 +180,7 @@ public sealed partial class MarkdownSourceEditor : UserControl
 
         EditorTextBox.Focus(FocusState.Programmatic);
         EditorTextBox.Select(index, value.Length);
+        RememberEditorViewport();
         return true;
     }
 
@@ -261,25 +284,77 @@ public sealed partial class MarkdownSourceEditor : UserControl
         _textRevision++;
         SetValue(TextProperty, EditorTextBox.Text);
         EditorTextChanged?.Invoke(this, EventArgs.Empty);
+        QueueEditorViewportCapture();
     }
 
     private void EditorTextBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
-        if (EditorTextBox.FocusState != FocusState.Unfocused)
+        if (_isEditorPointerActive)
         {
-            _lastEditorViewport = CaptureEditorViewport();
+            RememberEditorViewport();
         }
     }
 
-    private void EditorTextBox_LostFocus(object sender, RoutedEventArgs e) =>
+    private void EditorTextBox_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _isEditorPointerActive = true;
+        QueueEditorViewportCapture();
+    }
+
+    private void EditorTextBox_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        RememberEditorViewport();
+        _isEditorPointerActive = false;
+    }
+
+    private void EditorTextBox_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        RememberEditorViewport();
+        _isEditorPointerActive = false;
+    }
+
+    private void EditorTextBox_KeyUp(object sender, KeyRoutedEventArgs e) =>
+        RememberEditorViewport();
+
+    private void QueueEditorViewportCapture()
+    {
+        int revision = _textRevision;
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (revision == _textRevision &&
+                    EditorTextBox.FocusState != FocusState.Unfocused)
+                {
+                    RememberEditorViewport();
+                }
+            });
+    }
+
+    private void RememberEditorViewport()
+    {
         _lastEditorViewport = CaptureEditorViewport();
+    }
 
     private void FormattingCommandBar_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!IsReadOnly)
+        if (IsReadOnly)
         {
-            _pendingCommandViewport = CaptureEditorViewport();
+            return;
         }
+
+        // The editor pointer session locks the last user selection before the
+        // toolbar can alter TextBox focus/selection. Use the live value only as
+        // a fallback when no snapshot exists for the current text revision.
+        EditorViewportSnapshot current = CaptureEditorViewport();
+        _pendingCommandViewport =
+            _lastEditorViewport is { } previous && previous.TextRevision == _textRevision
+                ? previous with
+                {
+                    HorizontalOffset = current.HorizontalOffset,
+                    VerticalOffset = current.VerticalOffset
+                }
+                : current;
     }
 
     private void EditorTextBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
@@ -437,9 +512,8 @@ public sealed partial class MarkdownSourceEditor : UserControl
         int selectionStart = EditorTextBox.SelectionStart;
         int selectionLength = EditorTextBox.SelectionLength;
         string text = EditorTextBox.Text;
-        int lineStart = text.LastIndexOf('\n', Math.Max(0, selectionStart - 1));
-        lineStart = lineStart < 0 ? 0 : lineStart + 1;
-        string line = text[lineStart..selectionStart].TrimEnd('\r');
+        int lineStart = FindEditorLineStart(text, selectionStart);
+        string line = text[lineStart..selectionStart];
         Match match = MarkdownListLineRegex().Match(line);
         if (!match.Success)
         {
@@ -448,8 +522,9 @@ public sealed partial class MarkdownSourceEditor : UserControl
 
         if (string.IsNullOrWhiteSpace(match.Groups["content"].Value))
         {
-            ReplaceTextRange(lineStart, selectionStart + selectionLength - lineStart, Environment.NewLine);
-            EditorTextBox.Select(lineStart + Environment.NewLine.Length, 0);
+            string newline = DetectEditorNewline(text);
+            ReplaceTextRange(lineStart, selectionStart + selectionLength - lineStart, newline);
+            EditorTextBox.Select(lineStart + newline.Length, 0);
             return true;
         }
 
@@ -459,13 +534,36 @@ public sealed partial class MarkdownSourceEditor : UserControl
             marker = $"{number + 1}{match.Groups["punctuation"].Value}";
         }
 
-        string continuation = Environment.NewLine +
+        string continuation = DetectEditorNewline(text) +
                               match.Groups["indent"].Value +
                               marker + " " +
                               match.Groups["task"].Value;
         ReplaceTextRange(selectionStart, selectionLength, continuation);
         EditorTextBox.Select(selectionStart + continuation.Length, 0);
         return true;
+    }
+
+    private static int FindEditorLineStart(string text, int position)
+    {
+        for (int index = Math.Min(position, text.Length) - 1; index >= 0; index--)
+        {
+            if (text[index] is '\r' or '\n')
+            {
+                return index + 1;
+            }
+        }
+
+        return 0;
+    }
+
+    private static string DetectEditorNewline(string text)
+    {
+        if (text.Contains("\r\n", StringComparison.Ordinal))
+        {
+            return "\r\n";
+        }
+
+        return text.Contains('\r') ? "\r" : Environment.NewLine;
     }
 
     private void ApplyLocalizedText()

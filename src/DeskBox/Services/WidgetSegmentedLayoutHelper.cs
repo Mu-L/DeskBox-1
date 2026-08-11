@@ -6,6 +6,13 @@ namespace DeskBox.Services;
 
 public static class WidgetSegmentedLayoutHelper
 {
+    // EqualPanel subtracts its inter-item spacing before dividing the final
+    // arrange width. A transient near-zero host width can therefore produce a
+    // negative child width inside the Toolkit control. Keep the Segmented
+    // surface wider than its own chrome even when its parent is momentarily
+    // compressed during a content or display-topology transition.
+    public const double MinimumSafeWidth = 96;
+
     // Retained so callers can initialize all widget presentation helpers in
     // one place. Segmented width changes are now fully owned by Toolkit's
     // EqualPanel, so no dispatcher follow-up is necessary.
@@ -13,6 +20,7 @@ public static class WidgetSegmentedLayoutHelper
 
     public static void ApplyNaturalItemWidths(Segmented segmented)
     {
+        segmented.MinWidth = MinimumSafeWidth;
         foreach (SegmentedItem item in segmented.Items.OfType<SegmentedItem>())
         {
             ResetToolkitManagedWidth(item);
@@ -23,6 +31,7 @@ public static class WidgetSegmentedLayoutHelper
 
     public static void ApplyEqualItemWidths(Segmented segmented)
     {
+        segmented.MinWidth = MinimumSafeWidth;
         SegmentedItem[] items = segmented.Items
             .OfType<SegmentedItem>()
             .ToArray();

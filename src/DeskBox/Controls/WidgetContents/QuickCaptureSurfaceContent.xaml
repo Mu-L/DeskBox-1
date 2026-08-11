@@ -3,250 +3,382 @@
     x:Class="DeskBox.Controls.WidgetContents.QuickCaptureSurfaceContent"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DeskBox.Controls"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <Style x:Key="QuickCaptureSharedDetailIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style x:Key="QuickCaptureSharedMaterialButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+    </UserControl.Resources>
+
     <Grid
-        x:Name="Root"
-        Padding="{Binding RootPadding}"
-        RowSpacing="{Binding RootRowSpacing}"
+        x:Name="ResponsiveContentGrid"
         AllowDrop="True"
         DragOver="Root_DragOver"
-        Drop="Root_Drop">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+        Drop="Root_Drop"
+        Padding="{Binding RootPadding}"
+        SizeChanged="ResponsiveContentGrid_SizeChanged">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="MasterColumn" Width="*" />
+            <ColumnDefinition x:Name="SplitterColumn" Width="0" />
+            <ColumnDefinition x:Name="DetailColumn" Width="0" />
+        </Grid.ColumnDefinitions>
 
-        <Grid ColumnSpacing="5">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Button
-                x:Name="RecordsButton"
-                Grid.Column="0"
-                MinWidth="0"
-                MinHeight="26"
-                Padding="6,2"
-                AllowDrop="True"
-                Click="ViewButton_Click"
-                Content="{Binding RecordsTabText}"
-                DragOver="QuickCaptureTab_DragOver"
-                Drop="QuickCaptureTab_Drop"
-                Tag="Records"
-                UseSystemFocusVisuals="True" />
-            <Button
-                x:Name="PinnedButton"
-                Grid.Column="1"
-                MinWidth="0"
-                MinHeight="26"
-                Padding="6,2"
-                AllowDrop="True"
-                Click="ViewButton_Click"
-                Content="{Binding PinnedTabText}"
-                DragOver="QuickCaptureTab_DragOver"
-                Drop="QuickCaptureTab_Drop"
-                Tag="Pinned"
-                UseSystemFocusVisuals="True"
-                Visibility="{Binding PinnedTabVisibility}" />
-            <Button
-                x:Name="RecentButton"
-                Grid.Column="2"
-                MinWidth="0"
-                MinHeight="26"
-                Padding="6,2"
-                Click="ViewButton_Click"
-                Content="{Binding RecentTabText}"
-                Tag="Recent"
-                UseSystemFocusVisuals="True"
-                Visibility="{Binding RecentTabVisibility}" />
-        </Grid>
+        <Grid x:Name="ListPage" Grid.Column="0" RowSpacing="5">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-        <Grid Grid.Row="1" Margin="0,5,0,0" ColumnSpacing="5">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox
-                x:Name="SearchTextBox"
-                Grid.Column="0"
-                MinHeight="{Binding InputHeight}"
-                Padding="{Binding InputPadding}"
-                FontSize="{Binding TextSize}"
-                KeyDown="SearchTextBox_KeyDown"
-                PlaceholderText="{Binding SearchPlaceholderText}"
-                Style="{StaticResource WidgetSearchTextBoxStyle}"
-                Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <Button
-                Grid.Column="1"
-                Width="{Binding InputButtonSize}"
-                Height="{Binding InputButtonSize}"
-                MinWidth="{Binding InputButtonSize}"
-                MinHeight="{Binding InputButtonSize}"
-                Click="ClearSearchButton_Click"
-                Style="{StaticResource WidgetCompactIconButtonStyle}">
-                <FontIcon FontSize="{Binding InputActionIconSize}" Glyph="&#xE711;" />
-            </Button>
-        </Grid>
+            <Grid ColumnSpacing="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <toolkit:Segmented
+                    x:Name="QuickCaptureViewSegmented"
+                    Grid.Column="0"
+                    MinWidth="96"
+                    MinHeight="{Binding SegmentHeight}"
+                    FontSize="{Binding SegmentTextSize}"
+                    HorizontalAlignment="Stretch"
+                    SelectedIndex="0"
+                    SelectionChanged="QuickCaptureViewSegmented_SelectionChanged"
+                    SizeChanged="QuickCaptureViewSegmented_SizeChanged"
+                    Visibility="Collapsed">
+                    <toolkit:SegmentedItem AllowDrop="True" DragOver="QuickCaptureTab_DragOver" Drop="QuickCaptureTab_Drop" Tag="Records" Visibility="{Binding RecordsTabVisibility}">
+                        <TextBlock FontSize="{Binding SegmentTextSize}" MaxLines="1" Text="{Binding RecordsTabText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </toolkit:SegmentedItem>
+                    <toolkit:SegmentedItem AllowDrop="True" DragOver="QuickCaptureTab_DragOver" Drop="QuickCaptureTab_Drop" Tag="Pinned" Visibility="{Binding PinnedTabVisibility}">
+                        <TextBlock FontSize="{Binding SegmentTextSize}" MaxLines="1" Text="{Binding PinnedTabText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </toolkit:SegmentedItem>
+                    <toolkit:SegmentedItem Tag="Recent" Visibility="{Binding RecentTabVisibility}">
+                        <TextBlock FontSize="{Binding SegmentTextSize}" MaxLines="1" Text="{Binding RecentTabText}" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </toolkit:SegmentedItem>
+                </toolkit:Segmented>
+                <Button
+                    Grid.Column="1"
+                    Width="24"
+                    Height="24"
+                    MinWidth="24"
+                    Click="SearchButton_Click"
+                    Style="{StaticResource WidgetCompactIconButtonStyle}"
+                    ToolTipService.ToolTip="{Binding SearchPlaceholderText}">
+                    <FontIcon FontSize="12" Glyph="&#xE721;" />
+                </Button>
+            </Grid>
 
-        <Grid Grid.Row="2" Margin="0,5,0,5" ColumnSpacing="5">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox
-                x:Name="InputTextBox"
-                Grid.Column="0"
-                MinHeight="{Binding InputHeight}"
-                Padding="{Binding InputPadding}"
-                AcceptsReturn="True"
-                FontSize="{Binding TextSize}"
-                KeyDown="InputTextBox_KeyDown"
-                PlaceholderText="{Binding InputPlaceholderText}"
-                Style="{StaticResource WidgetBorderlessInputTextBoxStyle}"
-                Text="{Binding InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                TextWrapping="Wrap" />
-            <Button
-                Grid.Column="1"
-                Width="{Binding InputButtonSize}"
-                Height="{Binding InputButtonSize}"
-                MinWidth="{Binding InputButtonSize}"
-                MinHeight="{Binding InputButtonSize}"
-                Click="AddButton_Click"
-                IsEnabled="{Binding CanAddInput}"
-                Style="{StaticResource WidgetCompactIconButtonStyle}">
-                <FontIcon FontSize="{Binding InputActionIconSize}" Glyph="&#xE710;" />
-            </Button>
-        </Grid>
-
-        <Grid Grid.Row="3">
-            <ListView
-                x:Name="ItemsList"
-                Background="Transparent"
-                CanDragItems="True"
-                DragItemsCompleted="ItemsList_DragItemsCompleted"
-                DragItemsStarting="ItemsList_DragItemsStarting"
-                IsItemClickEnabled="True"
-                ItemClick="ItemsList_ItemClick"
-                ItemsSource="{Binding Items}"
-                KeyDown="ItemsList_KeyDown"
-                SelectionMode="Extended"
-                Visibility="{Binding ListVisibility}">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Border
-                            x:Name="QuickCaptureSurfaceItemRoot"
-                            AllowDrop="True"
-                            Background="Transparent"
-                            BorderBrush="Transparent"
-                            BorderThickness="1"
-                            CornerRadius="7"
-                            DragLeave="QuickCaptureItem_DragLeave"
-                            DragOver="QuickCaptureItem_DragOver"
-                            Drop="QuickCaptureItem_Drop"
-                            PointerPressed="QuickCaptureItem_PointerPressed"
-                            PointerReleased="QuickCaptureItem_PointerReleased">
-                            <Grid
-                                MinHeight="46"
-                                Padding="8,6"
-                                ColumnSpacing="7">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon
-                                    Grid.Column="0"
-                                    FontSize="{Binding TypeIconSize}"
-                                    Glyph="{Binding TypeGlyph}"
-                                    VerticalAlignment="Center" />
-                                <StackPanel Grid.Column="1" Spacing="2">
-                                    <TextBlock
-                                        FontSize="{Binding TextSize}"
-                                        MaxLines="3"
-                                        Text="{Binding DisplayText}"
-                                        TextTrimming="CharacterEllipsis"
-                                        TextWrapping="Wrap" />
-                                    <TextBlock
-                                        FontSize="{Binding SecondaryTextSize}"
-                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                        Text="{Binding UpdatedAtText}" />
-                                </StackPanel>
-                                <StackPanel
-                                    Grid.Column="2"
-                                    Orientation="Horizontal"
-                                    Spacing="2">
-                                    <Button
-                                        Width="26"
-                                        Height="26"
-                                        MinWidth="26"
-                                        Padding="0"
-                                        AutomationProperties.Name="{Binding PinTooltip}"
-                                        Click="PinItemButton_Click"
-                                        Tag="{Binding}"
-                                        ToolTipService.ToolTip="{Binding PinTooltip}">
-                                        <FontIcon FontSize="{Binding ActionIconSize}" Glyph="{Binding PinGlyph}" />
-                                    </Button>
-                                    <Button
-                                        Width="26"
-                                        Height="26"
-                                        MinWidth="26"
-                                        Padding="0"
-                                        Click="CopyItemButton_Click"
-                                        Tag="{Binding}">
-                                        <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE8C8;" />
-                                    </Button>
-                                    <Button
-                                        Width="26"
-                                        Height="26"
-                                        MinWidth="26"
-                                        Padding="0"
-                                        Click="DeleteItemButton_Click"
-                                        Tag="{Binding}">
-                                        <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE74D;" />
-                                    </Button>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-
-            <StackPanel
-                Margin="16"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Spacing="7"
-                Visibility="{Binding EmptyStateVisibility}">
-                <FontIcon
-                    HorizontalAlignment="Center"
-                    FontSize="{Binding EmptyIconSize}"
-                    Glyph="&#xE8A5;" />
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    FontSize="{Binding TitleTextSize}"
-                    Text="{Binding EmptyStateTitle}" />
-                <TextBlock
-                    HorizontalAlignment="Center"
+            <Grid Grid.Row="1" ColumnSpacing="5" Visibility="{Binding SearchBoxVisibility}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox
+                    x:Name="SearchTextBox"
+                    MinHeight="{Binding InputHeight}"
+                    Padding="{Binding InputPadding}"
                     FontSize="{Binding TextSize}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="{Binding EmptyStateText}"
-                    TextAlignment="Center"
-                    TextWrapping="Wrap" />
-            </StackPanel>
+                    KeyDown="SearchTextBox_KeyDown"
+                    PlaceholderText="{Binding SearchPlaceholderText}"
+                    Style="{StaticResource WidgetSearchTextBoxStyle}"
+                    Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="1" Width="26" Height="26" MinWidth="26" Click="ClearSearchButton_Click" Style="{StaticResource WidgetCompactIconButtonStyle}">
+                    <FontIcon FontSize="12" Glyph="&#xE711;" />
+                </Button>
+            </Grid>
 
-            <ProgressRing
-                Width="22"
-                Height="22"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                IsActive="{Binding IsSwitchingView}"
-                Visibility="{Binding ViewSwitchLoadingVisibility}" />
+            <Button
+                Grid.Row="2"
+                MinHeight="42"
+                Padding="8,5"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                Click="AddNoteCardButton_Click"
+                CornerRadius="4"
+                Visibility="{Binding InputAreaVisibility}">
+                <Grid ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="26" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon HorizontalAlignment="Center" FontSize="14" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE710;" />
+                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{Binding TextSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding AddNoteText}" />
+                </Grid>
+            </Button>
+
+            <Grid Grid.Row="3">
+                <ListView
+                    x:Name="ItemsList"
+                    Background="Transparent"
+                    CanDragItems="True"
+                    DragItemsCompleted="ItemsList_DragItemsCompleted"
+                    DragItemsStarting="ItemsList_DragItemsStarting"
+                    IsItemClickEnabled="True"
+                    ItemClick="ItemsList_ItemClick"
+                    ItemsSource="{Binding Items}"
+                    KeyDown="ItemsList_KeyDown"
+                    SelectionMode="Extended"
+                    Visibility="{Binding ListVisibility}">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0" />
+                            <Setter Property="MinHeight" Value="0" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="BorderThickness" Value="0" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border
+                                x:Name="QuickCaptureSurfaceItemRoot"
+                                AllowDrop="True"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                DragLeave="QuickCaptureItem_DragLeave"
+                                DragOver="QuickCaptureItem_DragOver"
+                                Drop="QuickCaptureItem_Drop"
+                                Loaded="QuickCaptureItem_Loaded"
+                                Margin="0,2"
+                                PointerPressed="QuickCaptureItem_PointerPressed"
+                                PointerReleased="QuickCaptureItem_PointerReleased"
+                                RightTapped="QuickCaptureItem_RightTapped">
+                                <Grid MinHeight="50" Padding="8,6" ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock FontSize="{Binding TextSize}" MaxLines="3" Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            FontSize="{Binding SecondaryTextSize}"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding CreatedAtText}"
+                                            Visibility="{Binding ElementName=ItemsList, Path=DataContext.CreatedTimeVisibility}" />
+                                    </StackPanel>
+                                    <FontIcon Grid.Column="1" Margin="4,0,0,0" FontSize="12" Glyph="{Binding PinGlyph}" Opacity="0.72" VerticalAlignment="Center" />
+                                    <Border Grid.ColumnSpan="2" Margin="-8,-6" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="4" Opacity="0.10" IsHitTestVisible="False" Visibility="{Binding DetailSelectionVisibility}" />
+                                    <Border Grid.ColumnSpan="2" Width="2" Margin="-8,-6" HorizontalAlignment="Left" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="1" IsHitTestVisible="False" Visibility="{Binding DetailSelectionVisibility}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <StackPanel Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="7" Visibility="{Binding EmptyStateVisibility}">
+                    <FontIcon HorizontalAlignment="Center" FontSize="{Binding EmptyIconSize}" Glyph="&#xE8A5;" />
+                    <TextBlock HorizontalAlignment="Center" FontSize="{Binding TitleTextSize}" Text="{Binding EmptyStateTitle}" />
+                    <TextBlock HorizontalAlignment="Center" FontSize="{Binding TextSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding EmptyStateText}" TextAlignment="Center" TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
         </Grid>
+
+        <toolkit:GridSplitter
+            x:Name="PaneSplitter"
+            Grid.Column="1"
+            Margin="-3,0"
+            HorizontalAlignment="Stretch"
+            DoubleTapped="PaneSplitter_DoubleTapped"
+            DragIncrement="1"
+            IsTabStop="True"
+            IsThumbVisible="True"
+            KeyboardIncrement="8"
+            ManipulationCompleted="PaneSplitter_ManipulationCompleted"
+            ResizeBehavior="PreviousAndNext"
+            ResizeDirection="Columns"
+            Style="{StaticResource WidgetMasterDetailSplitterStyle}" />
+
+        <Grid x:Name="DetailPage" Grid.Column="2" Padding="4,0,0,0" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Border
+                x:Name="DetailHeader"
+                Grid.Row="0"
+                MinHeight="36"
+                Padding="4,2"
+                Background="Transparent"
+                BorderBrush="Transparent"
+                BorderThickness="0"
+                SizeChanged="DetailHeader_SizeChanged">
+                <Grid x:Name="DetailHeaderLayoutGrid" MinHeight="32" ColumnSpacing="3">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="DetailBackColumn" Width="30" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="DetailBackButton"
+                        Click="DetailBackButton_Click"
+                        Style="{StaticResource QuickCaptureSharedDetailIconButtonStyle}"
+                        ToolTipService.ToolTip="{Binding DetailBackText}">
+                        <FontIcon FontSize="14" Glyph="&#xE72B;" />
+                    </Button>
+                    <TextBlock
+                        x:Name="DetailTimestampText"
+                        Grid.Column="1"
+                        Margin="6,0,4,0"
+                        VerticalAlignment="Center"
+                        FontSize="{Binding DetailHeaderTextSize}"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        MaxLines="1"
+                        TextTrimming="CharacterEllipsis"
+                        Visibility="{Binding CreatedTimeVisibility}" />
+                    <StackPanel
+                        x:Name="DetailHeaderActions"
+                        Grid.Column="2"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal"
+                        Spacing="0">
+                        <Grid Width="30" Height="30">
+                            <Button x:Name="DetailEditButton" Click="DetailEditButton_Click" Style="{StaticResource QuickCaptureSharedDetailIconButtonStyle}" ToolTipService.ToolTip="{Binding DetailEditText}"><FontIcon FontSize="12" Glyph="&#xE70F;" /></Button>
+                            <Button x:Name="DetailDoneButton" Click="DetailDoneButton_Click" Style="{StaticResource QuickCaptureSharedDetailIconButtonStyle}" ToolTipService.ToolTip="{Binding DetailDoneText}" Visibility="Collapsed"><FontIcon FontSize="12" Glyph="&#xE73E;" /></Button>
+                        </Grid>
+                        <Button x:Name="DetailPinButton" Click="DetailPinButton_Click" Style="{StaticResource QuickCaptureSharedDetailIconButtonStyle}" ToolTipService.ToolTip="{Binding DetailPinText}"><FontIcon x:Name="DetailPinIcon" FontSize="12" /></Button>
+                        <Button x:Name="DetailCopyButton" Click="DetailCopyButton_Click" Style="{StaticResource QuickCaptureSharedDetailIconButtonStyle}" ToolTipService.ToolTip="{Binding DetailCopyText}"><FontIcon FontSize="12" Glyph="&#xE8C8;" /></Button>
+                        <Button x:Name="DetailDeleteButton" Click="DetailDeleteButton_Click" Style="{StaticResource QuickCaptureSharedDetailIconButtonStyle}" ToolTipService.ToolTip="{Binding DetailDeleteText}"><FontIcon FontSize="12" Glyph="&#xE74D;" /></Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid x:Name="DetailContent" Grid.Row="1" Margin="4,0,4,6" RowSpacing="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border
+                    x:Name="DetailMaterialSurface"
+                    Grid.Row="0"
+                    MinHeight="132"
+                    Padding="8,2,8,8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="8">
+                    <Grid RowSpacing="3">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ScrollViewer
+                            x:Name="DetailAttachmentScroller"
+                            Grid.Row="1"
+                            MaxHeight="118"
+                            HorizontalScrollBarVisibility="Auto"
+                            HorizontalScrollMode="Enabled"
+                            VerticalScrollBarVisibility="Disabled"
+                            VerticalScrollMode="Disabled"
+                            Visibility="Collapsed">
+                            <ItemsControl x:Name="DetailAttachmentsList">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="5" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button
+                                            MinWidth="104"
+                                            MaxWidth="144"
+                                            Padding="6,4"
+                                            Click="DetailOpenAttachmentButton_Click"
+                                            Style="{StaticResource SubtleButtonStyle}">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <FontIcon FontSize="12" Glyph="&#xE723;" />
+                                                <TextBlock MaxLines="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                        <Button
+                            x:Name="DetailAddFileButton"
+                            Grid.Row="2"
+                            MinHeight="32"
+                            Padding="6,3"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Click="DetailAddFileButton_Click"
+                            Style="{StaticResource SubtleButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <FontIcon FontSize="12" Glyph="&#xE723;" />
+                                <TextBlock VerticalAlignment="Center" FontSize="{Binding TextSize}" Text="{Binding AddFileText}" />
+                            </StackPanel>
+                        </Button>
+                        <Grid
+                            x:Name="DetailBodyReaderSurface"
+                            Grid.Row="0"
+                            MinHeight="80"
+                            Margin="2,6,2,2">
+                            <controls:MarkdownDocumentView
+                                x:Name="DetailMarkdownView"
+                                MinHeight="80"
+                                Margin="8,10,8,6"
+                                FontSize="{Binding TextSize}"
+                                TaskToggleRequested="DetailMarkdownView_TaskToggleRequested"
+                                Visibility="Collapsed" />
+                            <controls:MarkdownSourceEditor
+                                x:Name="DetailMarkdownEditor"
+                                MinHeight="80"
+                                EditorFontSize="{Binding TextSize}"
+                                PlaceholderText="{Binding DetailBodyPlaceholderText}"
+                                Visibility="Collapsed" />
+                        </Grid>
+                    </Grid>
+                </Border>
+                <StackPanel x:Name="DetailMaterialPalette" Grid.Row="1" Margin="2,0,0,0" Orientation="Horizontal" Spacing="5" Visibility="Collapsed">
+                    <Button x:Name="DefaultMaterialButton" Click="DetailMaterialButton_Click" Style="{StaticResource QuickCaptureSharedMaterialButtonStyle}" Tag="Default" ToolTipService.ToolTip="{Binding MaterialDefaultText}"><Border Width="18" Height="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="3" /></Button>
+                    <Button x:Name="PaperMaterialButton" Click="DetailMaterialButton_Click" Style="{StaticResource QuickCaptureSharedMaterialButtonStyle}" Tag="Paper" ToolTipService.ToolTip="{Binding MaterialPaperText}"><Border Width="18" Height="12" Background="#FFF4EEE2" CornerRadius="3" /></Button>
+                    <Button x:Name="YellowMaterialButton" Click="DetailMaterialButton_Click" Style="{StaticResource QuickCaptureSharedMaterialButtonStyle}" Tag="StickyYellow" ToolTipService.ToolTip="{Binding MaterialYellowText}"><Border Width="18" Height="12" Background="#FFFFD96A" CornerRadius="3" /></Button>
+                    <Button x:Name="RoseMaterialButton" Click="DetailMaterialButton_Click" Style="{StaticResource QuickCaptureSharedMaterialButtonStyle}" Tag="Rose" ToolTipService.ToolTip="{Binding MaterialRoseText}"><Border Width="18" Height="12" Background="#FFF2A7B8" CornerRadius="3" /></Button>
+                    <Button x:Name="MintMaterialButton" Click="DetailMaterialButton_Click" Style="{StaticResource QuickCaptureSharedMaterialButtonStyle}" Tag="Mint" ToolTipService.ToolTip="{Binding MaterialMintText}"><Border Width="18" Height="12" Background="#FFA8D8B5" CornerRadius="3" /></Button>
+                    <Button x:Name="BlueMaterialButton" Click="DetailMaterialButton_Click" Style="{StaticResource QuickCaptureSharedMaterialButtonStyle}" Tag="MistBlue" ToolTipService.ToolTip="{Binding MaterialBlueText}"><Border Width="18" Height="12" Background="#FFA9C7E8" CornerRadius="3" /></Button>
+                </StackPanel>
+            </Grid>
+
+            <Grid x:Name="DetailEmptyState" Grid.RowSpan="3" Background="Transparent" Visibility="Collapsed">
+                <StackPanel MaxWidth="240" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
+                    <FontIcon HorizontalAlignment="Center" FontSize="28" Glyph="&#xE70F;" Opacity="0.65" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding EmptyStateText}" TextAlignment="Center" TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+        <TextBox x:Name="InputTextBox" Visibility="Collapsed" />
     </Grid>
 </UserControl>

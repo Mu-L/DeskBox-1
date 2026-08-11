@@ -51,6 +51,9 @@ public sealed partial class TodoWidgetContent : UserControl
     private bool _isResponsiveLayoutTransitionActive;
     private bool _segmentedLayoutRefreshPending;
     private bool _todoSegmentedRestoreQueued;
+    private EventHandler<object>? _todoSegmentedRenderingHandler;
+    private int _todoSegmentedStableFrameCount;
+    private double _todoSegmentedLastCandidateWidth;
     private DateTimeOffset _suppressColorFilterClickUntil;
     private Windows.Foundation.Point _colorFilterDragStartPoint;
     private Windows.Foundation.Point _selectionStartPoint;
@@ -163,6 +166,7 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private void TodoWidgetContent_Unloaded(object sender, RoutedEventArgs e)
     {
+        CancelTodoSegmentedRestore();
         if (ViewModel is not null)
         {
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
@@ -274,6 +278,7 @@ public sealed partial class TodoWidgetContent : UserControl
     // and reveal it once the master pane has a real layout slot.
     private void SuspendTodoSegmented()
     {
+        CancelTodoSegmentedRestore();
         if (TodoFilterSegmented is not null)
         {
             TodoFilterSegmented.Visibility = Visibility.Collapsed;
@@ -290,26 +295,60 @@ public sealed partial class TodoWidgetContent : UserControl
         }
 
         _todoSegmentedRestoreQueued = true;
-        bool enqueued = DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () =>
-            {
-                _todoSegmentedRestoreQueued = false;
-                if (ViewModel?.TabBarVisibility != Visibility.Visible ||
-                    ListHeaderArea.Visibility != Visibility.Visible ||
-                    ListHeaderArea.ActualWidth < 48)
-                {
-                    return;
-                }
+        _todoSegmentedStableFrameCount = 0;
+        _todoSegmentedLastCandidateWidth = 0;
+        _todoSegmentedRenderingHandler = TodoSegmentedRestore_Rendering;
+        CompositionTarget.Rendering += _todoSegmentedRenderingHandler;
+    }
 
-                TodoFilterSegmented.Visibility = Visibility.Visible;
-                ApplySegmentedStyle();
-            });
-
-        if (!enqueued)
+    private void TodoSegmentedRestore_Rendering(object? sender, object e)
+    {
+        if (!IsLoaded ||
+            _isResponsiveLayoutTransitionActive ||
+            ViewModel?.TabBarVisibility != Visibility.Visible ||
+            ListHeaderArea.Visibility != Visibility.Visible)
         {
-            _todoSegmentedRestoreQueued = false;
+            _todoSegmentedStableFrameCount = 0;
+            return;
         }
+
+        double candidateWidth = Math.Min(ListHeaderArea.ActualWidth, RootGrid.ActualWidth);
+        if (!double.IsFinite(candidateWidth) ||
+            candidateWidth < WidgetSegmentedLayoutHelper.MinimumSafeWidth)
+        {
+            _todoSegmentedStableFrameCount = 0;
+            _todoSegmentedLastCandidateWidth = candidateWidth;
+            return;
+        }
+
+        if (Math.Abs(candidateWidth - _todoSegmentedLastCandidateWidth) > 0.5)
+        {
+            _todoSegmentedLastCandidateWidth = candidateWidth;
+            _todoSegmentedStableFrameCount = 1;
+            return;
+        }
+
+        if (++_todoSegmentedStableFrameCount < 3)
+        {
+            return;
+        }
+
+        CancelTodoSegmentedRestore();
+        TodoFilterSegmented.Visibility = Visibility.Visible;
+        ApplySegmentedStyle();
+    }
+
+    private void CancelTodoSegmentedRestore()
+    {
+        if (_todoSegmentedRenderingHandler is not null)
+        {
+            CompositionTarget.Rendering -= _todoSegmentedRenderingHandler;
+            _todoSegmentedRenderingHandler = null;
+        }
+
+        _todoSegmentedRestoreQueued = false;
+        _todoSegmentedStableFrameCount = 0;
+        _todoSegmentedLastCandidateWidth = 0;
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)

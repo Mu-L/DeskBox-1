@@ -10,24 +10,37 @@
 
     <UserControl.Resources>
         <Style x:Key="MarkdownFormattingButtonStyle" TargetType="AppBarButton">
-            <Setter Property="Width" Value="32" />
-            <Setter Property="Height" Value="32" />
-            <Setter Property="MinWidth" Value="32" />
-            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="MinHeight" Value="36" />
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0" />
+            <Setter Property="Margin" Value="0,-2,0,2" />
             <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="AllowFocusOnInteraction" Value="False" />
             <Setter Property="UseSystemFocusVisuals" Value="True" />
         </Style>
         <Style x:Key="MarkdownFormattingIconStyle" TargetType="FontIcon">
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
-            <!-- Segoe glyphs sit slightly below their visual center at this size. -->
-            <Setter Property="Margin" Value="0,-2,0,0" />
+            <Setter Property="IsTextScaleFactorEnabled" Value="False" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <TranslateTransform Y="-7" />
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="MarkdownFormattingSymbolIconStyle" TargetType="SymbolIcon">
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <TranslateTransform Y="-7" />
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
 
@@ -40,10 +53,10 @@
         <CommandBar
             x:Name="FormattingCommandBar"
             Grid.Row="0"
-            Height="34"
-            MinHeight="34"
+            Height="40"
+            MinHeight="40"
             HorizontalAlignment="Left"
-            Padding="0"
+            Padding="0,0,0,4"
             Background="Transparent"
             ClosedDisplayMode="Compact"
             DefaultLabelPosition="Collapsed"
@@ -68,6 +81,11 @@
                     Glyph="I"
                     Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
+            <AppBarButton x:Name="StrikeButton" Click="FormatButton_Click" Label="Strikethrough" Tag="Strike">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Clear" Style="{StaticResource MarkdownFormattingSymbolIconStyle}" />
+                </AppBarButton.Icon>
+            </AppBarButton>
             <AppBarButton x:Name="HeadingButton" Click="FormatButton_Click" Label="Heading" Tag="Heading">
                 <FontIcon Glyph="&#xE8D2;" Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
@@ -80,17 +98,21 @@
             <AppBarButton x:Name="LinkButton" Click="FormatButton_Click" Label="Link" Tag="Link">
                 <FontIcon Glyph="&#xE71B;" Style="{StaticResource MarkdownFormattingIconStyle}" />
             </AppBarButton>
-
-            <CommandBar.SecondaryCommands>
-                <AppBarButton x:Name="StrikeButton" Click="FormatButton_Click" Icon="Clear" Label="Strikethrough" Tag="Strike" />
-                <AppBarButton x:Name="QuoteButton" Click="FormatButton_Click" Icon="Comment" Label="Quote" Tag="Quote" />
-                <AppBarButton x:Name="CodeButton" Click="FormatButton_Click" Label="Code" Tag="Code">
-                    <AppBarButton.Icon>
-                        <FontIcon Glyph="&#xE943;" Style="{StaticResource MarkdownFormattingIconStyle}" />
-                    </AppBarButton.Icon>
-                </AppBarButton>
-                <AppBarButton x:Name="TableButton" Click="FormatButton_Click" Icon="ViewAll" Label="Table" Tag="Table" />
-            </CommandBar.SecondaryCommands>
+            <AppBarButton x:Name="QuoteButton" Click="FormatButton_Click" Label="Quote" Tag="Quote">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Comment" Style="{StaticResource MarkdownFormattingSymbolIconStyle}" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Name="CodeButton" Click="FormatButton_Click" Label="Code" Tag="Code">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE943;" Style="{StaticResource MarkdownFormattingIconStyle}" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Name="TableButton" Click="FormatButton_Click" Label="Table" Tag="Table">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="ViewAll" Style="{StaticResource MarkdownFormattingSymbolIconStyle}" />
+                </AppBarButton.Icon>
+            </AppBarButton>
         </CommandBar>
 
         <TextBox

@@ -1079,8 +1079,11 @@ public sealed partial class WidgetManager
 
         if (group.IsVisible && persistentWindow.Visible)
         {
-            using var frameTimeout = CancellationTokenSource.CreateLinkedTokenSource(
-                request.CancellationToken);
+            // Once the prepared view has entered the live presenter this
+            // transaction must settle atomically. A later navigation request
+            // waits on the surface gate; it must not cancel us between the
+            // visual swap and the group identity commit.
+            using var frameTimeout = new CancellationTokenSource();
             frameTimeout.CancelAfter(WidgetGroupFirstFrameTimeout);
             try
             {
@@ -1088,7 +1091,7 @@ public sealed partial class WidgetManager
                     frameTimeout.Token);
             }
             catch (OperationCanceledException)
-                when (!request.CancellationToken.IsCancellationRequested)
+                when (frameTimeout.IsCancellationRequested)
             {
                 App.Log(
                     $"[WidgetGroup] In-place first-frame wait timed out; " +
@@ -1098,12 +1101,6 @@ public sealed partial class WidgetManager
                 LogWidgetSurfaceEvidence(group, "timeout-rollback");
                 return false;
             }
-        }
-
-        request.CancellationToken.ThrowIfCancellationRequested();
-        if (!_widgetGroupSwitchRequests.IsCurrent(request))
-        {
-            throw new OperationCanceledException(request.CancellationToken);
         }
 
         TransferCapsuleIdentity(previousActiveId, targetConfig.Id);
@@ -1135,7 +1132,7 @@ public sealed partial class WidgetManager
             await transition.CompleteAsync(
                 request.Origin,
                 forward: targetIndex >= previousIndex,
-                request.CancellationToken);
+                CancellationToken.None);
         }
         catch
         {
@@ -1952,19 +1949,6 @@ public sealed partial class WidgetManager
             {
                 _fileWidgets.Remove(widgetId);
             }
-            if (_quickCaptureWidgets.TryGetValue(widgetId, out var quickCapture) &&
-                ReferenceEquals(quickCapture.Window, window))
-            {
-                _quickCaptureWidgets.Remove(widgetId);
-                try
-                {
-                    quickCapture.ViewModel.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    App.Log($"[WidgetGroup] Quick Capture view model dispose failed id={widgetId}: {ex}");
-                }
-            }
             if (_contentWidgets.TryGetValue(widgetId, out var content) &&
                 ReferenceEquals(content, window))
             {
@@ -2175,13 +2159,9 @@ public sealed partial class WidgetManager
         IWidgetTransientStateContent? transientStateTarget =
             _contentWidgets.TryGetValue(widgetId, out var contentWindow)
                 ? contentWindow.CurrentContent as IWidgetTransientStateContent
-                : _quickCaptureWidgets.TryGetValue(
-                    widgetId,
-                    out var quickCapture)
-                    ? quickCapture.Window
-                    : _fileWidgets.TryGetValue(widgetId, out var file)
-                        ? file.Content
-                        : null;
+                : _fileWidgets.TryGetValue(widgetId, out var file)
+                    ? file.Content
+                    : null;
         if (transientStateTarget is not null)
         {
             transientStateTarget.RestoreTransientState(

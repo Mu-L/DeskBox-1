@@ -27,8 +27,27 @@ public sealed class MarkdownAndSplitterContractTests
             "src/DeskBox/Controls/MarkdownSourceEditor.xaml.cs"));
 
         Assert.Contains("IsDynamicOverflowEnabled=\"True\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Height=\"40\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("HorizontalAlignment=\"Left\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Margin\" Value=\"0,-2,0,2\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MarkdownFormattingSymbolIconStyle", xaml, StringComparison.Ordinal);
+        Assert.Contains("AllowFocusOnInteraction\" Value=\"False", xaml, StringComparison.Ordinal);
+        Assert.Contains("<TranslateTransform Y=\"-7\" />", xaml, StringComparison.Ordinal);
+        Assert.Contains("Padding=\"0,0,0,4\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("<CommandBar.SecondaryCommands>", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"StrikeButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TableButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("PrepareEditorCommandViewport", code, StringComparison.Ordinal);
         Assert.Contains("RestoreEditorViewport", code, StringComparison.Ordinal);
+        Assert.Contains("previous with", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("EditorTextBox.LostFocus +=", code, StringComparison.Ordinal);
+        Assert.Contains("PointerPressedEvent", code, StringComparison.Ordinal);
+        Assert.Contains("PointerReleasedEvent", code, StringComparison.Ordinal);
+        Assert.Contains("TappedEvent", code, StringComparison.Ordinal);
+        Assert.Contains("KeyUpEvent", code, StringComparison.Ordinal);
+        Assert.Contains("RememberEditorViewport", code, StringComparison.Ordinal);
+        Assert.Contains("_isEditorPointerActive", code, StringComparison.Ordinal);
+        Assert.Contains("SelectionChanged=\"EditorTextBox_SelectionChanged\"", xaml, StringComparison.Ordinal);
         Assert.Contains("EditorTextBox.SelectedText = replacement", code, StringComparison.Ordinal);
         Assert.Contains("DispatcherQueuePriority.Low", code, StringComparison.Ordinal);
         Assert.Contains("TryContinueMarkdownList", code, StringComparison.Ordinal);
@@ -54,6 +73,32 @@ public sealed class MarkdownAndSplitterContractTests
     }
 
     [Fact]
+    public void Reader_UsesComfortableTypographyThatScalesWithTheSystemFontSize()
+    {
+        string reader = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/MarkdownDocumentView.cs"));
+        string surface = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string surfaceCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+
+        Assert.Contains("BodyLineHeightRatio = 1.72", reader, StringComparison.Ordinal);
+        Assert.Contains("TaskLineHeightRatio = 2.16", reader, StringComparison.Ordinal);
+        Assert.Contains("HeadingLineHeightRatio = 1.42", reader, StringComparison.Ordinal);
+        Assert.Contains("CodeLineHeightRatio = 1.60", reader, StringComparison.Ordinal);
+        Assert.Contains("LineStackingStrategy.BlockLineHeight", reader, StringComparison.Ordinal);
+        Assert.Contains("ListItemSpacing = 3", reader, StringComparison.Ordinal);
+        Assert.Contains("Margin = new Thickness(0, 0, 2, 0)", reader, StringComparison.Ordinal);
+        Assert.Contains("RenderTransform = new TranslateTransform { Y = 6 }", reader, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailBodyReaderSurface\"", surface, StringComparison.Ordinal);
+        Assert.Contains("<Grid\n                            x:Name=\"DetailBodyReaderSurface\"", surface.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.Contains("DetailBodyReaderSurface.AddHandler", surfaceCode, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailBackColumn\"", surface, StringComparison.Ordinal);
+        Assert.Contains("DetailBackColumn.Width = new GridLength(8)", surfaceCode, StringComparison.Ordinal);
+        Assert.Contains("DetailBackColumn.Width = new GridLength(30)", surfaceCode, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SegmentedTabs_LeaveWidthCalculationToToolkitDuringResponsiveLayout()
     {
         string helper = File.ReadAllText(TestPaths.FromRepository(
@@ -76,9 +121,52 @@ public sealed class MarkdownAndSplitterContractTests
 
         Assert.Contains("x:Name=\"TodoFilterSegmented\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Visibility=\"Collapsed\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MinWidth=\"96\"", xaml, StringComparison.Ordinal);
         Assert.Contains("QueueTodoSegmentedRestore", code, StringComparison.Ordinal);
-        Assert.Contains("DispatcherQueuePriority.Low", code, StringComparison.Ordinal);
-        Assert.Contains("ListHeaderArea.ActualWidth < 48", code, StringComparison.Ordinal);
+        Assert.Contains("CompositionTarget.Rendering", code, StringComparison.Ordinal);
+        Assert.Contains("_todoSegmentedStableFrameCount < 3", code, StringComparison.Ordinal);
+        Assert.Contains("WidgetSegmentedLayoutHelper.MinimumSafeWidth", code, StringComparison.Ordinal);
+        Assert.Contains("CancelTodoSegmentedRestore", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GroupContentAnimation_HasACompletionFallback()
+    {
+        string shell = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetShell.xaml.cs"));
+
+        Assert.Contains("completionFallback", shell, StringComparison.Ordinal);
+        Assert.Contains("profile.DurationMilliseconds + 250", shell, StringComparison.Ordinal);
+        Assert.Contains("completionFallback.Tick", shell, StringComparison.Ordinal);
+        Assert.Contains("completionFallback?.Stop()", shell, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GroupContentSwitch_CannotBeCancelledAfterTheLivePresenterSwap()
+    {
+        string groups = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetManager.Groups.cs"));
+
+        int begin = groups.IndexOf(
+            "preparation.BeginTransition()",
+            StringComparison.Ordinal);
+        int end = groups.IndexOf(
+            "SaveWidgetGroupActiveMemberDeferred()",
+            begin,
+            StringComparison.Ordinal);
+        Assert.True(begin >= 0 && end > begin);
+
+        string committedTransaction = groups[begin..end];
+        Assert.Contains("new CancellationTokenSource()", committedTransaction, StringComparison.Ordinal);
+        Assert.Contains("CancellationToken.None", committedTransaction, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "request.CancellationToken.ThrowIfCancellationRequested()",
+            committedTransaction,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "_widgetGroupSwitchRequests.IsCurrent(request)",
+            committedTransaction,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -105,20 +193,107 @@ public sealed class MarkdownAndSplitterContractTests
     }
 
     [Fact]
-    public void QuickCapture_WiresSharedReaderEditorAndPersistedSplitter()
+    public void QuickCapture_UsesOneSharedSurfaceForStandaloneAndGroupedHosts()
     {
         string xaml = File.ReadAllText(TestPaths.FromRepository(
-            "src/DeskBox/Views/QuickCaptureWidgetWindow.xaml"));
-        string responsive = File.ReadAllText(TestPaths.FromRepository(
-            "src/DeskBox/Views/QuickCaptureWidgetWindow.ResponsiveDetail.cs"));
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string surface = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+        string manager = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetManager.cs"));
+        string features = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetManager.FeatureWidgets.cs"));
+        string transientState = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Models/WidgetMemberTransientStates.cs"));
 
         Assert.Contains("x:Name=\"PaneSplitter\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Margin=\"-3,0\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Style=\"{StaticResource WidgetMasterDetailSplitterStyle}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("controls:MarkdownDocumentView", xaml, StringComparison.Ordinal);
         Assert.Contains("controls:MarkdownSourceEditor", xaml, StringComparison.Ordinal);
-        Assert.Contains("MasterPaneWidthMetadataKey", responsive, StringComparison.Ordinal);
-        Assert.Contains("DetailAutoSaveDelayMs", responsive, StringComparison.Ordinal);
-        Assert.Contains("_detailItem?.IsRecent == true", responsive, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailMaterialSurface\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailDeleteButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailAddFileButton\"\n                            Grid.Row=\"2\"", xaml.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailMarkdownEditor\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("RightTapped=\"QuickCaptureItem_RightTapped\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MasterPaneWidthMetadataKey", surface, StringComparison.Ordinal);
+        Assert.Contains("IWidgetAddActionContent", surface, StringComparison.Ordinal);
+        Assert.Contains("DetailMarkdownView_TaskToggleRequested", surface, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan.FromMilliseconds(DetailAutoSaveDelayMs)", surface, StringComparison.Ordinal);
+        Assert.Contains("DetailMarkdownEditor_EditorTextChanged", surface, StringComparison.Ordinal);
+        Assert.Contains("BeginDetailEditing", surface, StringComparison.Ordinal);
+        Assert.Contains("SaveDetailAsync(completeEditing: false)", surface, StringComparison.Ordinal);
+        Assert.Contains("CreateAppearanceContextSubmenu", surface, StringComparison.Ordinal);
+        Assert.Contains("RestorePendingDetailState", surface, StringComparison.Ordinal);
+        Assert.Contains("SelectedDetailItemId", transientState, StringComparison.Ordinal);
+        Assert.Contains("DetailDraft", transientState, StringComparison.Ordinal);
+        Assert.Contains("WidgetKind.QuickCapture,\n                async request => await CreateContentWidgetFromConfigAsync", manager.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.Contains("CreateContentWidgetFromConfigAsync(config)", features, StringComparison.Ordinal);
+        Assert.Contains("return FeatureWidgetSettings.IsFeatureWidget(kind);", features, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GroupedQuickCapture_UsesTheSameLayoutAndTabPreferences()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string code = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+
+        Assert.Contains("x:Name=\"QuickCaptureViewSegmented\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PaneSplitter\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MarkdownDocumentView", xaml, StringComparison.Ordinal);
+        Assert.Contains("MarkdownSourceEditor", xaml, StringComparison.Ordinal);
+        Assert.Contains("QuickCaptureWideLayoutSinglePane", code, StringComparison.Ordinal);
+        Assert.Contains("QuickCaptureWideLayoutDualPane", code, StringComparison.Ordinal);
+        Assert.Contains("WidgetSegmentedStyleHelper.Apply", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.TabStyle", code, StringComparison.Ordinal);
+        Assert.Contains("Config.Metadata[MasterPaneWidthMetadataKey]", code, StringComparison.Ordinal);
+        Assert.Contains("IWidgetResponsiveLayoutContent", code, StringComparison.Ordinal);
+        Assert.Contains("IWidgetHostViewportContent", code, StringComparison.Ordinal);
+        Assert.Contains("OnHostViewportSizeChanged", code, StringComparison.Ordinal);
+        Assert.Contains("_hostViewportWidth", code, StringComparison.Ordinal);
+        Assert.Contains("MasterColumn.MinWidth = 0;", code, StringComparison.Ordinal);
+        Assert.Contains("DetailColumn.MinWidth = 0;", code, StringComparison.Ordinal);
+        Assert.Contains("DetailColumn.Width = new GridLength(layout.DetailWidth);", code, StringComparison.Ordinal);
+
+        string shell = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetShell.xaml.cs"));
+        Assert.Contains(
+            "NotifyHostedContentViewportSize(e.NewSize.Width, e.NewSize.Height)",
+            shell,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "viewportContent.OnHostViewportSizeChanged(width, height)",
+            shell,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TodoAndQuickCapture_ReadSurfaces_LookEditableAndSupportDoubleClickEditing()
+    {
+        string todoXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.xaml"));
+        string quickCaptureXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string quickCaptureCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+        string todoCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.DetailNotesAndSteps.cs"));
+
+        Assert.Contains("x:Name=\"DetailNotesReaderHost\"", todoXaml, StringComparison.Ordinal);
+        Assert.Contains("DetailNotesReaderHost.AddHandler", todoCode, StringComparison.Ordinal);
+        Assert.Contains("handledEventsToo: true", todoCode, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{ThemeResource WidgetLayerFillSecondaryBrush}\"", todoXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailBodyReaderSurface\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.Contains("DetailBodyReaderSurface.AddHandler", quickCaptureCode, StringComparison.Ordinal);
+        Assert.Contains("handledEventsToo: true", quickCaptureCode, StringComparison.Ordinal);
+        Assert.Contains("Padding=\"4,0,0,0\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailHeaderActions\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.Contains("SizeChanged=\"DetailHeader_SizeChanged\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.Contains("CompactDetailHeaderWidth = 300", quickCaptureCode, StringComparison.Ordinal);
+        Assert.Contains("Grid.SetRow(DetailHeaderActions, useTwoRows ? 1 : 0)", quickCaptureCode, StringComparison.Ordinal);
+        Assert.Contains("_detailItem?.IsRecent == true", quickCaptureCode, StringComparison.Ordinal);
+        Assert.Contains("BeginDetailEditing()", quickCaptureCode, StringComparison.Ordinal);
     }
 }

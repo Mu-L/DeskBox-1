@@ -54,7 +54,7 @@ public sealed partial class WidgetManager
         double sinceLastToggleMs = (now - _lastTrayLayerToggleUtc).TotalMilliseconds;
         App.LogVerbose(
             $"[TrayBatch] Raise requested raised={_widgetsRaisedFromTray} toggling={_isTogglingWidgetsDesktopLayer} " +
-            $"sinceLastMs={sinceLastToggleMs:F0} loadedFile={_fileWidgets.Count} loadedQuick={_quickCaptureWidgets.Count} loadedContent={_contentWidgets.Count}");
+            $"sinceLastMs={sinceLastToggleMs:F0} loadedFile={_fileWidgets.Count} loadedContent={_contentWidgets.Count}");
         // ⭐ 移除 320ms 节流限制，确保即时响应
         if (_isTogglingWidgetsDesktopLayer)
         {
@@ -154,33 +154,6 @@ public sealed partial class WidgetManager
         {
             App.LogVerbose($"[TrayBatch] Prepare skipped reason=disabled widget={FormatWidget(config)}");
             return null;
-        }
-
-        if (config.WidgetKind == WidgetKind.QuickCapture)
-        {
-            if (!GetFeatureWidgetEnabledState(WidgetKind.QuickCapture))
-            {
-                App.LogVerbose($"[TrayBatch] Prepare skipped reason=quick-capture-disabled widget={FormatWidget(config)}");
-                return null;
-            }
-
-            if (_quickCaptureWidgets.TryGetValue(config.Id, out var existingQuickCapture))
-            {
-                App.LogVerbose($"[TrayBatch] Prepare useLoaded widget={FormatWidget(config)} {FormatHostWindow(existingQuickCapture.Window)}");
-                existingQuickCapture.Window.RestoreBoundsForCurrentTopology();
-                if (!existingQuickCapture.Window.Visible)
-                {
-                    existingQuickCapture.Window.PrepareTrayShowAnimation();
-                }
-                return existingQuickCapture.Window;
-            }
-
-            App.LogVerbose($"[TrayBatch] Prepare createQuick widget={FormatWidget(config)} raisedInit={showRaisedWhileInitializing}");
-            var quickCaptureWindow = await CreateRegisteredWidgetFromConfigAsync(
-                config,
-                keepPreparedForAnimation: true,
-                showRaisedWhileInitializing: showRaisedWhileInitializing);
-            return quickCaptureWindow;
         }
 
         if (config.WidgetKind != WidgetKind.File)

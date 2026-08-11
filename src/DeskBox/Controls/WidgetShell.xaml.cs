@@ -637,6 +637,12 @@ public sealed partial class WidgetShell : UserControl
         _responsiveLayoutContent = content as IWidgetResponsiveLayoutContent;
         ShellContent = content.View;
         content.OnCompactStateChanged(_isCollapsed);
+        NotifyHostedContentViewportSize(
+            ContentTransitionViewport.ActualWidth,
+            ContentTransitionViewport.ActualHeight);
+        DispatcherQueue.TryEnqueue(() => NotifyHostedContentViewportSize(
+            ContentTransitionViewport.ActualWidth,
+            ContentTransitionViewport.ActualHeight));
         HostedContentChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -988,6 +994,11 @@ public sealed partial class WidgetShell : UserControl
 
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        Microsoft.UI.Dispatching.DispatcherQueueTimer? completionFallback =
+            DispatcherQueue.CreateTimer();
+        completionFallback.IsRepeating = false;
+        completionFallback.Interval = TimeSpan.FromMilliseconds(
+            Math.Max(250, profile.DurationMilliseconds + 250));
         bool settled = false;
         void Settle(bool cancelled)
         {
@@ -997,6 +1008,8 @@ public sealed partial class WidgetShell : UserControl
             }
 
             settled = true;
+            completionFallback?.Stop();
+            completionFallback = null;
             storyboard.Stop();
             SetContentTransitionVisuals(incomingVisible: !cancelled);
             if (cancelled)
@@ -1010,6 +1023,7 @@ public sealed partial class WidgetShell : UserControl
         }
 
         storyboard.Completed += (_, _) => Settle(cancelled: false);
+        completionFallback.Tick += (_, _) => Settle(cancelled: false);
         CancellationTokenRegistration registration = cancellationToken.Register(
             () => DispatcherQueue.TryEnqueue(() => Settle(cancelled: true)));
         _ = completion.Task.ContinueWith(
@@ -1018,6 +1032,7 @@ public sealed partial class WidgetShell : UserControl
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
         storyboard.Begin();
+        completionFallback?.Start();
         return completion.Task;
     }
 
@@ -1071,6 +1086,25 @@ public sealed partial class WidgetShell : UserControl
             0,
             Math.Max(0, e.NewSize.Width),
             Math.Max(0, e.NewSize.Height));
+
+        if (!_isResponsiveLayoutTransitionActive)
+        {
+            NotifyHostedContentViewportSize(e.NewSize.Width, e.NewSize.Height);
+        }
+    }
+
+    private void NotifyHostedContentViewportSize(double width, double height)
+    {
+        if (_hostedContent is not IWidgetHostViewportContent viewportContent ||
+            !double.IsFinite(width) ||
+            !double.IsFinite(height) ||
+            width <= 0 ||
+            height <= 0)
+        {
+            return;
+        }
+
+        viewportContent.OnHostViewportSizeChanged(width, height);
     }
 
     public void RollbackContentTransition(IWidgetContent outgoingContent)
@@ -1166,6 +1200,9 @@ public sealed partial class WidgetShell : UserControl
         _responsiveLayoutContent?.CompleteResponsiveLayoutTransition(
                 _responsiveTargetContentWidth,
                 _responsiveTargetContentHeight);
+        NotifyHostedContentViewportSize(
+            _responsiveTargetContentWidth,
+            _responsiveTargetContentHeight);
         _isResponsiveLayoutTransitionActive = false;
     }
 

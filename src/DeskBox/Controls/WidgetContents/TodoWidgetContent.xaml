@@ -136,6 +136,7 @@
             <toolkit:Segmented
                 x:Name="TodoFilterSegmented"
                 MinHeight="{Binding SegmentHeight}"
+                MinWidth="96"
                 FontSize="{Binding SegmentTextSize}"
                 HorizontalAlignment="Stretch"
                 Visibility="Collapsed"
@@ -791,27 +792,32 @@
                             </StackPanel>
                         </Grid>
 
-                        <Grid
+                        <Border
                             x:Name="DetailNotesReaderHost"
                             MinHeight="72"
-                            Padding="4,4,4,8"
-                            DoubleTapped="DetailNotesReaderHost_DoubleTapped"
+                            Padding="8,8,8,10"
+                            Background="{ThemeResource WidgetLayerFillSecondaryBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
                             Tapped="DetailNotesReaderHost_Tapped">
-                            <controls:MarkdownDocumentView
-                                x:Name="DetailNotesView"
-                                AreTaskListsInteractive="True"
-                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
-                                Markdown="{Binding Notes}"
-                                TaskToggleRequested="DetailNotesView_TaskToggleRequested"
-                                UseInternalScrollViewer="False" />
-                            <TextBlock
-                                VerticalAlignment="Top"
-                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
-                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                IsHitTestVisible="False"
-                                Text="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesPlaceholderText}"
-                                Visibility="{Binding NotesPlaceholderVisibility}" />
-                        </Grid>
+                            <Grid>
+                                <controls:MarkdownDocumentView
+                                    x:Name="DetailNotesView"
+                                    AreTaskListsInteractive="True"
+                                    FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                    Markdown="{Binding Notes}"
+                                    TaskToggleRequested="DetailNotesView_TaskToggleRequested"
+                                    UseInternalScrollViewer="False" />
+                                <TextBlock
+                                    VerticalAlignment="Top"
+                                    FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    IsHitTestVisible="False"
+                                    Text="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesPlaceholderText}"
+                                    Visibility="{Binding NotesPlaceholderVisibility}" />
+                            </Grid>
+                        </Border>
 
                         <controls:MarkdownSourceEditor
                             x:Name="DetailNotesEditor"
