@@ -79,8 +79,8 @@
             <Setter Property="MinHeight" Value="48" />
             <Setter Property="Padding" Value="8,5" />
             <Setter Property="Background" Value="{ThemeResource WidgetLayerFillSecondaryBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource WidgetLayerStrokeBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
@@ -210,14 +210,14 @@
                 </ListView.Resources>
                 <ListView.Header>
                     <Button
-                        Margin="{Binding AddCardMargin}"
-                        MinHeight="{Binding AddCardMinHeight}"
-                        Padding="{Binding AddCardPadding}"
+                        Margin="0,2"
+                        MinHeight="42"
+                        Padding="8,5"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
                         Background="{ThemeResource WidgetLayerFillSecondaryBrush}"
-                        BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
-                        BorderThickness="1"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
                         Click="AddCard_Click"
                         CornerRadius="{StaticResource WidgetCornerRadiusSmall}">
                             <Grid ColumnSpacing="4">
@@ -267,9 +267,9 @@
                         <Border
                             x:Name="TodoItemRoot"
                             AllowDrop="True"
-                            Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemMargin}"
-                            MinHeight="{Binding ElementName=TodoListView, Path=DataContext.ItemMinHeight}"
-                            Padding="{Binding ElementName=TodoListView, Path=DataContext.ItemPadding}"
+                            Margin="0,2"
+                            MinHeight="50"
+                            Padding="8,6"
                             Style="{StaticResource TodoCardBorderStyle}"
                             DataContextChanged="TodoItem_DataContextChanged"
                             DragLeave="TodoItem_DragLeave"
@@ -289,7 +289,7 @@
                                 <Border
                                     x:Name="TodoItemHoverBackground"
                                     Grid.ColumnSpan="4"
-                                    Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
+                                    Margin="-8,-6"
                                     CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                     IsHitTestVisible="False"
@@ -297,7 +297,7 @@
 
                                 <Border
                                     Grid.ColumnSpan="4"
-                                    Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
+                                    Margin="-8,-6"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
                                     CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                                     IsHitTestVisible="False"
@@ -306,12 +306,23 @@
 
                                 <Border
                                     Grid.ColumnSpan="4"
-                                    Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemChromeMargin}"
+                                    Margin="-8,-6"
                                     Background="{ThemeResource AccentFillColorDefaultBrush}"
                                     CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
                                     IsHitTestVisible="False"
                                     Opacity="0.12"
                                     Visibility="{Binding CopySelectionVisibility}" />
+
+                                <Border
+                                    x:Name="TodoDetailSelectionIndicator"
+                                    Grid.ColumnSpan="4"
+                                    Width="2"
+                                    Margin="-8,-6"
+                                    HorizontalAlignment="Left"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    CornerRadius="1"
+                                    IsHitTestVisible="False"
+                                    Visibility="{Binding DetailSelectionVisibility}" />
 
                                 <Button Grid.Column="0" AutomationProperties.Name="{Binding CompletionToggleText}" Click="ItemCompletionButton_Click" Style="{StaticResource TodoCardIconButtonStyle}" ToolTipService.ToolTip="{Binding CompletionToggleText}">
                                     <Grid Width="{Binding ElementName=TodoListView, Path=DataContext.CompletionIndicatorSize}" Height="18">
@@ -342,7 +353,7 @@
 
                                 <StackPanel
                                     Grid.Column="2"
-                                    Margin="{Binding ElementName=TodoListView, Path=DataContext.ItemContentMargin}"
+                                    Margin="0"
                                     VerticalAlignment="Center"
                                     Opacity="{Binding ContentOpacity}"
                                     Spacing="2">
