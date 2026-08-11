@@ -72,7 +72,7 @@ public sealed partial class QuickCaptureWidgetViewModel
             null,
             body,
             QuickCaptureAppearancePreset.Default,
-            ResolveDefaultContentFormat());
+            ResolveEditorContentFormat());
         if (SelectedView is QuickCaptureViewMode.Pinned or QuickCaptureViewMode.Recent)
         {
             SelectedView = QuickCaptureViewMode.Records;
@@ -100,7 +100,7 @@ public sealed partial class QuickCaptureWidgetViewModel
             title,
             body,
             appearancePreset,
-            contentFormat ?? ResolveDefaultContentFormat());
+            contentFormat ?? ResolveEditorContentFormat());
         if (SelectedView != QuickCaptureViewMode.Records)
         {
             SelectedView = QuickCaptureViewMode.Records;
@@ -354,11 +354,7 @@ public sealed partial class QuickCaptureWidgetViewModel
             contentFormat);
     }
 
-    private TextContentFormat ResolveDefaultContentFormat() =>
-        SettingsService.NormalizeQuickCaptureFormat(_settingsService.Settings.QuickCaptureDefaultFormat) ==
-        SettingsService.QuickCaptureFormatPlainText
-            ? TextContentFormat.PlainText
-            : TextContentFormat.Markdown;
+    private TextContentFormat ResolveEditorContentFormat() => EditorContentFormat;
 
     public Task<bool> SetPinnedAsync(string itemId, bool isPinned)
     {

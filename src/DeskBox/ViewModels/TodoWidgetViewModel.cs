@@ -379,6 +379,9 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public string DetailResizePanesText => _localizationService.T("Todo.Detail.ResizePanes");
 
+    public string DetailResizeTitleEditorText =>
+        _localizationService.T("Todo.Detail.ResizeTitleEditor");
+
     public string WideDetailEmptyTitle => _localizationService.T("Todo.Detail.EmptyTitle");
 
     public string WideDetailEmptyText => _localizationService.T("Todo.Detail.EmptyText");
@@ -402,9 +405,28 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         new MasterDetailLayoutPolicy().NormalizePersistedMasterWidth(
             TodoMasterDetailSettings.GetMasterPaneWidth(_config));
 
+    public double? PreferredTitleEditorHeight =>
+        TodoMasterDetailSettings.GetTitleEditorHeight(_config);
+
     public void PersistMasterPaneWidth(double width)
     {
         if (TodoMasterDetailSettings.SetMasterPaneWidth(_config, width))
+        {
+            _settingsService?.SaveDebounced();
+        }
+    }
+
+    public void PersistTitleEditorHeight(double height)
+    {
+        if (TodoMasterDetailSettings.SetTitleEditorHeight(_config, height))
+        {
+            _settingsService?.SaveDebounced();
+        }
+    }
+
+    public void ClearPreferredTitleEditorHeight()
+    {
+        if (TodoMasterDetailSettings.ClearTitleEditorHeight(_config))
         {
             _settingsService?.SaveDebounced();
         }

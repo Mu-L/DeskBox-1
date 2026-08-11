@@ -867,6 +867,10 @@ _isHideAnimationRunning = true;
         QueueBackdropRefresh();
         ApplyTitleBarLayout();
         ApplyResponsiveDetailLayout();
+        if (_isDetailEditing && _detailItem?.IsRecent != true)
+        {
+            _detailContentFormat = ViewModel.EditorContentFormat;
+        }
         RefreshDetailPresentation();
     }
 

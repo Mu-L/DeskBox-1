@@ -355,6 +355,12 @@ public sealed partial class TodoWidgetContent
             hoverBackgroundBorder.Opacity = isHovered ? 1 : 0;
         }
 
+        if (FindVisualChild<Button>(itemRoot, "TodoImportantItemButton") is { } importantButton)
+        {
+            importantButton.Opacity = isHovered ? 1 : 0;
+            importantButton.IsHitTestVisible = isHovered;
+        }
+
         if (FindVisualChild<Border>(itemRoot, "TodoItemActionHost") is { } actions)
         {
             actions.Opacity = isHovered ? 1 : 0;

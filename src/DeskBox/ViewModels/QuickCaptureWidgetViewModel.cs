@@ -386,6 +386,10 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     public string EditorEnterBehavior => SettingsService.NormalizeEditorEnterBehavior(
         _settingsService.Settings.QuickCaptureEditorEnterBehavior);
 
+    public TextContentFormat EditorContentFormat =>
+        SettingsService.ResolveQuickCaptureEditorContentFormat(
+            _settingsService.Settings.QuickCaptureDefaultFormat);
+
     public Visibility CreatedTimeVisibility => _settingsService.Settings.QuickCaptureShowCreatedTime
         ? Visibility.Visible
         : Visibility.Collapsed;

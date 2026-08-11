@@ -12,6 +12,9 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("WidgetMasterDetailSplitterStyle", appXaml, StringComparison.Ordinal);
         Assert.Contains("TargetType=\"Control\"", appXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"SplitterHoverTrack\"", appXaml, StringComparison.Ordinal);
+        Assert.Contains("Target=\"SplitterThumb.Width\" Value=\"64\"", appXaml, StringComparison.Ordinal);
+        Assert.Contains("Target=\"SplitterThumb.Height\" Value=\"2\"", appXaml, StringComparison.Ordinal);
+        Assert.Contains("Target=\"SplitterThumb.RadiusX\" Value=\"1\"", appXaml, StringComparison.Ordinal);
         Assert.Contains("Width=\"2\"", appXaml, StringComparison.Ordinal);
         Assert.Contains("Height=\"24\"", appXaml, StringComparison.Ordinal);
         Assert.Contains("SplitterWidth = 8", File.ReadAllText(TestPaths.FromRepository(
@@ -209,8 +212,13 @@ public sealed class MarkdownAndSplitterContractTests
             "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.MasterDetail.cs"));
         string detail = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.DetailNotesAndSteps.cs"));
+        string titleSizing = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.TitleEditorSizing.cs"));
 
         Assert.Contains("<toolkit:GridSplitter", xaml, StringComparison.Ordinal);
+        Assert.Contains("<toolkit:PropertySizer", xaml, StringComparison.Ordinal);
+        Assert.Contains("Binding=\"{Binding Height, ElementName=DetailTitleTextBox, Mode=TwoWay}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("TextChanged=\"DetailTitleTextBox_TextChanged\"", xaml, StringComparison.Ordinal);
         Assert.Contains("WidgetMasterDetailSplitterStyle", xaml, StringComparison.Ordinal);
         Assert.Contains("MarkdownDocumentView", xaml, StringComparison.Ordinal);
         Assert.Contains("MarkdownSourceEditor", xaml, StringComparison.Ordinal);
@@ -221,6 +229,9 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("DetailMetadataColumn3", xaml, StringComparison.Ordinal);
         Assert.Contains("TimeSpan.FromMilliseconds(600)", detail, StringComparison.Ordinal);
         Assert.Contains("TryToggleTask", detail, StringComparison.Ordinal);
+        Assert.Contains("TodoTitleEditorHeightPolicy.ResolveHeight", titleSizing, StringComparison.Ordinal);
+        Assert.Contains("MeasureDetailTitleContentHeight", titleSizing, StringComparison.Ordinal);
+        Assert.Contains("PersistTitleEditorHeight", titleSizing, StringComparison.Ordinal);
     }
 
     [Fact]

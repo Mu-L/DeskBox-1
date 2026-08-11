@@ -88,6 +88,24 @@ public sealed class QuickCaptureSidebarFoundationTests : IDisposable
     public void Settings_NormalizeQuickCaptureFormat(string? value, string expected) =>
         Assert.Equal(expected, SettingsService.NormalizeQuickCaptureFormat(value));
 
+    [Fact]
+    public void Settings_DefaultEditorFormat_IsMarkdown() =>
+        Assert.Equal(
+            SettingsService.QuickCaptureFormatMarkdown,
+            new AppSettings().QuickCaptureDefaultFormat);
+
+    [Theory]
+    [InlineData(null, TextContentFormat.Markdown)]
+    [InlineData("invalid", TextContentFormat.Markdown)]
+    [InlineData("Markdown", TextContentFormat.Markdown)]
+    [InlineData("plaintext", TextContentFormat.PlainText)]
+    public void Settings_ResolveEditorContentFormat(
+        string? value,
+        TextContentFormat expected) =>
+        Assert.Equal(
+            expected,
+            SettingsService.ResolveQuickCaptureEditorContentFormat(value));
+
     [Theory]
     [InlineData(null, SettingsService.QuickCaptureWideLayoutAuto)]
     [InlineData("invalid", SettingsService.QuickCaptureWideLayoutAuto)]

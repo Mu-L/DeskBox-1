@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "Formato de las notas nuevas",
-    "Settings.QuickCapture.Format.Description": "Elige el formato de origen de las notas nuevas",
+    "Settings.QuickCapture.Format.Title": "Formato de edición",
+    "Settings.QuickCapture.Format.Description": "Elige si el editor de notas usa Markdown o texto sin formato",
+    "Todo.Detail.ResizeTitleEditor": "Cambia la altura del editor del título; haz doble clic para restaurar la altura automática",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "Texto sin formato",
     "Settings.QuickCapture.WideLayout.Title": "Diseño ancho",

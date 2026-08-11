@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "Format des nouvelles notes",
-    "Settings.QuickCapture.Format.Description": "Choisissez le format source des nouvelles notes",
+    "Settings.QuickCapture.Format.Title": "Format d’édition",
+    "Settings.QuickCapture.Format.Description": "Choisissez si l’éditeur de notes utilise Markdown ou du texte brut",
+    "Todo.Detail.ResizeTitleEditor": "Redimensionnez l’éditeur du titre; double-cliquez pour rétablir la hauteur automatique",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "Texte brut",
     "Settings.QuickCapture.WideLayout.Title": "Disposition large",

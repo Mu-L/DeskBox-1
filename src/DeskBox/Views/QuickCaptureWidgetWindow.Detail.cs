@@ -131,11 +131,7 @@ public sealed partial class QuickCaptureWidgetWindow
         _detailEditRevision = string.IsNullOrEmpty(initialBody) ? 0 : 1;
         _detailSavedRevision = 0;
         _detailHasUnsavedChanges = _detailEditRevision != _detailSavedRevision;
-        _detailContentFormat = SettingsService.NormalizeQuickCaptureFormat(
-            _settingsService.Settings.QuickCaptureDefaultFormat) ==
-            SettingsService.QuickCaptureFormatPlainText
-                ? TextContentFormat.PlainText
-                : TextContentFormat.Markdown;
+        _detailContentFormat = ViewModel.EditorContentFormat;
         _detailIsPinned = false;
         _detailAppearance = QuickCaptureAppearancePreset.Default;
         _pendingDetailAttachments = [];
@@ -158,11 +154,13 @@ public sealed partial class QuickCaptureWidgetWindow
         _detailAutoSaveTimer?.Stop();
         _detailItem = item;
         _isCreatingDetail = false;
-        _detailContentFormat = item.ContentFormat;
         _isDetailEditing = !item.IsRecent &&
             (!_isDualPane || SettingsService.NormalizeQuickCaptureWideOpenMode(
                 _settingsService.Settings.QuickCaptureWideOpenMode) ==
                 SettingsService.QuickCaptureWideOpenEditing);
+        _detailContentFormat = _isDetailEditing
+            ? ViewModel.EditorContentFormat
+            : item.ContentFormat;
         _detailHasUnsavedChanges = false;
         _detailEditRevision = 0;
         _detailSavedRevision = 0;

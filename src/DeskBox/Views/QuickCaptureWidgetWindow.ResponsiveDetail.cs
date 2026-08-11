@@ -315,6 +315,7 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
+        _detailContentFormat = _detailItem?.ContentFormat ?? ViewModel.EditorContentFormat;
         _isDetailEditing = false;
         RefreshDetailPresentation();
     }
@@ -355,6 +356,7 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
+        _detailContentFormat = ViewModel.EditorContentFormat;
         _isDetailEditing = true;
         _detailOriginalBody = DetailMarkdownEditor.Text;
         RefreshDetailPresentation();

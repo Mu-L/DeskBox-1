@@ -1520,7 +1520,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                         <ComboBox MinWidth="220" ItemsSource="{Binding AvailableItemPreviewLineCountOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureItemPreviewLineCount, Mode=TwoWay}" />
                                     </toolkit:SettingsCard>
                                     <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.Format.Description" svc:Localized.HeaderKey="Settings.QuickCapture.Format.Title">
-                                        <ComboBox MinWidth="190" ItemsSource="{Binding AvailableQuickCaptureFormatOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureDefaultFormat, Mode=TwoWay}" />
+                                        <ComboBox MinWidth="190" ItemsSource="{Binding AvailableQuickCaptureFormatOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureEditorFormat, Mode=TwoWay}" />
                                     </toolkit:SettingsCard>
                                     <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.ContentEditor.EnterBehavior.Description" svc:Localized.HeaderKey="Settings.ContentEditor.EnterBehavior.Title">
                                         <ComboBox MinWidth="220" ItemsSource="{Binding AvailableEditorEnterBehaviorOptions}" controls:SettingsComboBox.Value="{Binding QuickCaptureEditorEnterBehavior, Mode=TwoWay}" />

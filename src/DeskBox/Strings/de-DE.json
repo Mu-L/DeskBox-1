@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "Format für neue Notizen",
-    "Settings.QuickCapture.Format.Description": "Quellformat für neu erstellte Notizen auswählen",
+    "Settings.QuickCapture.Format.Title": "Bearbeitungsformat",
+    "Settings.QuickCapture.Format.Description": "Markdown oder Nur-Text für den Notizeditor auswählen",
+    "Todo.Detail.ResizeTitleEditor": "Höhe des Aufgabentitelfelds ändern; doppelklicken für automatische Höhe",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "Nur Text",
     "Settings.QuickCapture.WideLayout.Title": "Breites Layout",

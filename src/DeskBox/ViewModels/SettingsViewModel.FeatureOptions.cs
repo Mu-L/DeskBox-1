@@ -631,7 +631,7 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     QuickCaptureShowCreatedTime = true;
                     QuickCaptureItemPreviewLineCount = SettingsService.DefaultQuickCaptureItemPreviewLineCount;
                     QuickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
-                    QuickCaptureDefaultFormat = SettingsService.QuickCaptureFormatMarkdown;
+                    QuickCaptureEditorFormat = SettingsService.QuickCaptureFormatMarkdown;
                     QuickCaptureWideLayout = SettingsService.QuickCaptureWideLayoutAuto;
                     QuickCaptureWideOpenMode = SettingsService.QuickCaptureWideOpenReading;
                     QuickCaptureAllowRemoteImages = false;

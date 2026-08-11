@@ -74,7 +74,10 @@ public class AppSettings
     /// <summary>Enter-key behavior used by Quick Capture multiline editors.</summary>
     public string QuickCaptureEditorEnterBehavior { get; set; } = "CtrlEnterSaves";
 
-    /// <summary>Default format for newly created notes. Valid values: <c>Markdown</c>, <c>PlainText</c>.</summary>
+    /// <summary>
+    /// Preferred Quick Capture editor format. The property name is retained for compatibility with
+    /// existing settings files. Valid values: <c>Markdown</c>, <c>PlainText</c>.
+    /// </summary>
     public string QuickCaptureDefaultFormat { get; set; } = "Markdown";
 
     /// <summary>Responsive layout preference. Valid values: <c>Auto</c>, <c>SinglePane</c>, <c>DualPane</c>.</summary>

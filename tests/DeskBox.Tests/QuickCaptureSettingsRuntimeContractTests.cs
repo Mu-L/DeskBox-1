@@ -31,6 +31,37 @@ public sealed class QuickCaptureSettingsRuntimeContractTests
     }
 
     [Fact]
+    public void ExistingNotes_UseGlobalFormatWhenEnteringEitherEditorHost()
+    {
+        string shared = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+        string standaloneDetail = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.Detail.cs"));
+        string standaloneResponsive = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.ResponsiveDetail.cs"));
+        shared = shared.ReplaceLineEndings("\n");
+        standaloneDetail = standaloneDetail.ReplaceLineEndings("\n");
+        standaloneResponsive = standaloneResponsive.ReplaceLineEndings("\n");
+
+        Assert.Contains(
+            "_detailContentFormat = _isDetailEditing\n            ? ViewModel.EditorContentFormat\n            : item.ContentFormat;",
+            shared,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_detailContentFormat = ViewModel.EditorContentFormat;\n        _isDetailEditing = true;",
+            shared,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_detailContentFormat = _isDetailEditing\n            ? ViewModel.EditorContentFormat\n            : item.ContentFormat;",
+            standaloneDetail,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_detailContentFormat = ViewModel.EditorContentFormat;\n        _isDetailEditing = true;",
+            standaloneResponsive,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MarkdownEditors_ConsumeTheirFeatureEnterBehavior()
     {
         string editor = File.ReadAllText(TestPaths.FromRepository(

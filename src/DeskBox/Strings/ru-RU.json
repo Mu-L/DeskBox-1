@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "Формат новых заметок",
-    "Settings.QuickCapture.Format.Description": "Выберите исходный формат для новых заметок",
+    "Settings.QuickCapture.Format.Title": "Формат редактирования",
+    "Settings.QuickCapture.Format.Description": "Выберите Markdown или обычный текст для редактора заметок",
+    "Todo.Detail.ResizeTitleEditor": "Изменить высоту редактора названия; двойной щелчок возвращает автоматическую высоту",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "Обычный текст",
     "Settings.QuickCapture.WideLayout.Title": "Широкий макет",

@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "新しいメモの形式",
-    "Settings.QuickCapture.Format.Description": "新しく作成するメモのソース形式を選択します",
+    "Settings.QuickCapture.Format.Title": "編集形式",
+    "Settings.QuickCapture.Format.Description": "メモエディターで Markdown またはプレーンテキストを使用するか選択します",
+    "Todo.Detail.ResizeTitleEditor": "タスクタイトル入力欄の高さを調整します。ダブルクリックで自動調整に戻します",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "プレーンテキスト",
     "Settings.QuickCapture.WideLayout.Title": "ワイド レイアウト",

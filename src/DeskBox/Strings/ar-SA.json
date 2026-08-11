@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "تنسيق الملاحظة الجديدة",
-    "Settings.QuickCapture.Format.Description": "اختر تنسيق المصدر المستخدم للملاحظات الجديدة",
+    "Settings.QuickCapture.Format.Title": "تنسيق التحرير",
+    "Settings.QuickCapture.Format.Description": "اختر ما إذا كان محرر الملاحظات يستخدم Markdown أو نصًا عاديًا",
+    "Todo.Detail.ResizeTitleEditor": "غيّر ارتفاع محرر عنوان المهمة؛ انقر نقرًا مزدوجًا لاستعادة الارتفاع التلقائي",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "نص عادي",
     "Settings.QuickCapture.WideLayout.Title": "التخطيط العريض",

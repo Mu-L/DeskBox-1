@@ -424,8 +424,13 @@
                                         <VisualState x:Name="Vertical" />
                                         <VisualState x:Name="Horizontal">
                                             <VisualState.Setters>
-                                                <Setter Target="SplitterThumb.Width" Value="24" />
-                                                <Setter Target="SplitterThumb.Height" Value="4" />
+                                                <Setter Target="SplitterHoverTrack.Width" Value="72" />
+                                                <Setter Target="SplitterHoverTrack.Height" Value="4" />
+                                                <Setter Target="SplitterHoverTrack.CornerRadius" Value="2" />
+                                                <Setter Target="SplitterThumb.Width" Value="64" />
+                                                <Setter Target="SplitterThumb.Height" Value="2" />
+                                                <Setter Target="SplitterThumb.RadiusX" Value="1" />
+                                                <Setter Target="SplitterThumb.RadiusY" Value="1" />
                                             </VisualState.Setters>
                                         </VisualState>
                                     </VisualStateGroup>

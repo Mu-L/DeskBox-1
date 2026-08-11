@@ -28,4 +28,22 @@ public sealed class TodoMasterDetailSettingsTests
 
         Assert.Null(TodoMasterDetailSettings.GetMasterPaneWidth(config));
     }
+
+    [Fact]
+    public void TitleEditorHeight_RoundTripsClampsAndCanReturnToAutomatic()
+    {
+        var config = new WidgetConfig { WidgetKind = WidgetKind.Todo };
+
+        Assert.Null(TodoMasterDetailSettings.GetTitleEditorHeight(config));
+        Assert.True(TodoMasterDetailSettings.SetTitleEditorHeight(config, 156.5));
+        Assert.False(TodoMasterDetailSettings.SetTitleEditorHeight(config, 156.5));
+        Assert.Equal(156.5, TodoMasterDetailSettings.GetTitleEditorHeight(config));
+
+        Assert.True(TodoMasterDetailSettings.SetTitleEditorHeight(config, 900));
+        Assert.Equal(
+            TodoTitleEditorHeightPolicy.AbsoluteMaximumHeight,
+            TodoMasterDetailSettings.GetTitleEditorHeight(config));
+        Assert.True(TodoMasterDetailSettings.ClearTitleEditorHeight(config));
+        Assert.Null(TodoMasterDetailSettings.GetTitleEditorHeight(config));
+    }
 }

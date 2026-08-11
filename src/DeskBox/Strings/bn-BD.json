@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "নতুন নোটের ফরম্যাট",
-    "Settings.QuickCapture.Format.Description": "নতুন নোটের জন্য ব্যবহৃত সোর্স ফরম্যাট বেছে নিন",
+    "Settings.QuickCapture.Format.Title": "সম্পাদনার ফরম্যাট",
+    "Settings.QuickCapture.Format.Description": "নোট এডিটরে Markdown নাকি সাধারণ টেক্সট ব্যবহার হবে তা বেছে নিন",
+    "Todo.Detail.ResizeTitleEditor": "কাজের শিরোনাম এডিটরের উচ্চতা বদলান; স্বয়ংক্রিয় উচ্চতায় ফিরতে ডাবল-ক্লিক করুন",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "সাধারণ টেক্সট",
     "Settings.QuickCapture.WideLayout.Title": "প্রশস্ত লেআউট",

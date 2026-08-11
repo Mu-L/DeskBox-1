@@ -73,7 +73,9 @@ public sealed class SettingsCopyAndHierarchyTests
             ["Widget.Group.NavigationStyle"] = "格子组切换方式",
             ["Settings.WidgetGroupNavigation.Stack"] = "单项切换",
             ["Widget.DeleteFolderToRecycleBin"] = "同时移入回收站",
-            ["Search.Delete.Action"] = "移入回收站"
+            ["Search.Delete.Action"] = "移入回收站",
+            ["Settings.QuickCapture.Format.Title"] = "编辑格式",
+            ["Settings.QuickCapture.Format.Description"] = "选择随记编辑器使用 Markdown 或纯文本"
         };
 
         foreach ((string key, string value) in expected)
@@ -229,6 +231,11 @@ public sealed class SettingsCopyAndHierarchyTests
 
         Assert.DoesNotContain("IsOn=\"{Binding QuickCaptureShowRecordsTab", quickCapture, StringComparison.Ordinal);
         Assert.DoesNotContain("IsOn=\"{Binding TodoShowAllTab", todo, StringComparison.Ordinal);
+        Assert.Contains(
+            "controls:SettingsComboBox.Value=\"{Binding QuickCaptureEditorFormat, Mode=TwoWay}\"",
+            quickCapture,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("QuickCaptureDefaultFormat", quickCapture, StringComparison.Ordinal);
     }
 
     [Fact]

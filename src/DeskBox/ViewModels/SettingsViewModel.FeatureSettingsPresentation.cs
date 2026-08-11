@@ -52,7 +52,7 @@ public partial class SettingsViewModel
     public string QuickCaptureContentSummaryText => string.Join(
         " · ",
         GetItemPreviewLineCountDisplayName(QuickCaptureItemPreviewLineCount),
-        GetQuickCaptureFormatDisplayName(QuickCaptureDefaultFormat),
+        GetQuickCaptureFormatDisplayName(QuickCaptureEditorFormat),
         GetEditorEnterBehaviorDisplayName(QuickCaptureEditorEnterBehavior));
 
     public string TodoContentSummaryText => string.Join(
@@ -92,7 +92,7 @@ public partial class SettingsViewModel
             : Visibility.Visible;
 
     public Visibility QuickCaptureRemoteImagesVisibility =>
-        QuickCaptureDefaultFormat == SettingsService.QuickCaptureFormatMarkdown
+        QuickCaptureEditorFormat == SettingsService.QuickCaptureFormatMarkdown
             ? Visibility.Visible
             : Visibility.Collapsed;
 

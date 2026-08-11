@@ -288,6 +288,7 @@ public sealed partial class TodoWidgetViewModel
         OnPropertyChanged(nameof(DetailNotesSaveFailedText));
         OnPropertyChanged(nameof(DetailMoreActionsText));
         OnPropertyChanged(nameof(DetailResizePanesText));
+        OnPropertyChanged(nameof(DetailResizeTitleEditorText));
         OnPropertyChanged(nameof(WideDetailEmptyTitle));
         OnPropertyChanged(nameof(WideDetailEmptyText));
         OnPropertyChanged(nameof(DeleteText));

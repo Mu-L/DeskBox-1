@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "New note format",
-    "Settings.QuickCapture.Format.Description": "Choose the source format used for newly created notes",
+    "Settings.QuickCapture.Format.Title": "Editing format",
+    "Settings.QuickCapture.Format.Description": "Choose whether the note editor uses Markdown or plain text",
+    "Todo.Detail.ResizeTitleEditor": "Resize the task title editor; double-click to restore automatic height",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "Plain text",
     "Settings.QuickCapture.WideLayout.Title": "Wide layout",

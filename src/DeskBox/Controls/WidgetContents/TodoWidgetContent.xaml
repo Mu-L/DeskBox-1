@@ -283,7 +283,7 @@
                                     <ColumnDefinition Width="32" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="32" />
+                                    <ColumnDefinition Width="28" />
                                 </Grid.ColumnDefinitions>
 
                                 <Border
@@ -402,8 +402,21 @@
                                     </Button>
                                 </StackPanel>
 
-                                <Button Grid.Column="3" AutomationProperties.Name="{Binding ImportantToggleText}" Click="ImportantItemButton_Click" Style="{StaticResource TodoCardIconButtonStyle}" ToolTipService.ToolTip="{Binding ImportantToggleText}">
-                                    <FontIcon FontSize="{Binding ElementName=TodoListView, Path=DataContext.PrimaryIconSize}" Glyph="{Binding ImportantGlyph}" />
+                                <Button
+                                    x:Name="TodoImportantItemButton"
+                                    Grid.Column="3"
+                                    Width="28"
+                                    Height="28"
+                                    MinWidth="28"
+                                    MinHeight="28"
+                                    AutomationProperties.Name="{Binding ImportantToggleText}"
+                                    Click="ImportantItemButton_Click"
+                                    IsHitTestVisible="False"
+                                    IsTabStop="False"
+                                    Opacity="0"
+                                    Style="{StaticResource TodoCardIconButtonStyle}"
+                                    ToolTipService.ToolTip="{Binding ImportantToggleText}">
+                                    <FontIcon FontSize="{Binding ElementName=TodoListView, Path=DataContext.SmallIconSize}" Glyph="{Binding ImportantGlyph}" />
                                 </Button>
                             </Grid>
                         </Border>
@@ -609,10 +622,16 @@
                             </Grid>
                         </Button>
                         <Grid Grid.Column="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="8" />
+                            </Grid.RowDefinitions>
                             <TextBox
                                 x:Name="DetailTitleTextBox"
-                                MinHeight="40"
-                                MaxHeight="112"
+                                Grid.Row="0"
+                                Height="76"
+                                MinHeight="56"
+                                MaxHeight="240"
                                 AcceptsReturn="True"
                                 FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
                                 FontWeight="Normal"
@@ -621,8 +640,30 @@
                                 PlaceholderText="{Binding ElementName=RootGrid, Path=DataContext.AddPlaceholderText}"
                                 Style="{StaticResource TodoDetailTextBoxStyle}"
                                 Text="{Binding EditText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                TextChanged="DetailTitleTextBox_TextChanged"
                                 TextWrapping="Wrap"
                                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                            <toolkit:PropertySizer
+                                x:Name="DetailTitleHeightSizer"
+                                Grid.Row="1"
+                                Height="8"
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DetailResizeTitleEditorText}"
+                                Binding="{Binding Height, ElementName=DetailTitleTextBox, Mode=TwoWay}"
+                                DoubleTapped="DetailTitleHeightSizer_DoubleTapped"
+                                DragIncrement="1"
+                                IsTabStop="True"
+                                IsThumbVisible="True"
+                                KeyboardIncrement="8"
+                                KeyUp="DetailTitleHeightSizer_KeyUp"
+                                ManipulationMode="TranslateY"
+                                ManipulationCompleted="DetailTitleHeightSizer_ManipulationCompleted"
+                                ManipulationStarted="DetailTitleHeightSizer_ManipulationStarted"
+                                Maximum="240"
+                                Minimum="56"
+                                Orientation="Horizontal"
+                                Style="{StaticResource WidgetMasterDetailSplitterStyle}"
+                                ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailResizeTitleEditorText}" />
                         </Grid>
                         <Button Grid.Column="2" AutomationProperties.Name="{Binding ImportantToggleText}" Click="DetailImportantButton_Click" Style="{StaticResource TodoDetailHeaderIconButtonStyle}" ToolTipService.ToolTip="{Binding ImportantToggleText}">
                             <FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="{Binding ImportantGlyph}" />

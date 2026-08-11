@@ -96,6 +96,7 @@ public sealed partial class QuickCaptureWidgetViewModel
         ApplyTabVisibilityFromSettings();
         OnPropertyChanged(nameof(ItemPreviewLineCount));
         OnPropertyChanged(nameof(EditorEnterBehavior));
+        OnPropertyChanged(nameof(EditorContentFormat));
         OnPropertyChanged(nameof(CreatedTimeVisibility));
         OnPropertyChanged(nameof(RecentCaptureStatusText));
         OnPropertyChanged(nameof(RecentCaptureStatusVisibility));

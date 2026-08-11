@@ -20,6 +20,7 @@ public sealed partial class TodoWidgetContent
     private void TodoWidgetContent_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         ApplyMasterDetailLayout(e.NewSize.Width);
+        QueueDetailTitleHeightUpdate();
         QueueTodoSegmentedRestore();
     }
 

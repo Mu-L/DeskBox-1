@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "नई नोट का फ़ॉर्मेट",
-    "Settings.QuickCapture.Format.Description": "नई नोट के लिए स्रोत फ़ॉर्मेट चुनें",
+    "Settings.QuickCapture.Format.Title": "संपादन फ़ॉर्मेट",
+    "Settings.QuickCapture.Format.Description": "चुनें कि नोट संपादक Markdown या सादा पाठ इस्तेमाल करे",
+    "Todo.Detail.ResizeTitleEditor": "कार्य शीर्षक संपादक की ऊंचाई बदलें; स्वचालित ऊंचाई के लिए डबल-क्लिक करें",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "सादा पाठ",
     "Settings.QuickCapture.WideLayout.Title": "चौड़ा लेआउट",

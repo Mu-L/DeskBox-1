@@ -323,7 +323,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         ItemsList.ScrollIntoView(item);
         if (_pendingDetailEditing && !item.IsRecent)
         {
-            _isDetailEditing = true;
+            BeginDetailEditing();
             if (_pendingDetailDraft is { } draft &&
                 !string.Equals(draft, item.Body, StringComparison.Ordinal))
             {
@@ -604,6 +604,16 @@ public sealed partial class QuickCaptureSurfaceContent :
             return;
         }
 
+        if (e.PropertyName == nameof(QuickCaptureWidgetViewModel.EditorContentFormat))
+        {
+            if (_isDetailEditing && _detailItem?.IsRecent != true)
+            {
+                _detailContentFormat = ViewModel.EditorContentFormat;
+                RefreshDetailPresentation();
+            }
+            return;
+        }
+
         if (e.PropertyName != nameof(QuickCaptureWidgetViewModel.ItemsViewTransitionToken))
         {
             return;
@@ -870,11 +880,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         _isCreatingDetail = true;
         _detailItem = null;
         _detailAppearance = QuickCaptureAppearancePreset.Default;
-        _detailContentFormat = SettingsService.NormalizeQuickCaptureFormat(
-            _settingsService.Settings.QuickCaptureDefaultFormat) ==
-            SettingsService.QuickCaptureFormatPlainText
-                ? TextContentFormat.PlainText
-                : TextContentFormat.Markdown;
+        _detailContentFormat = ViewModel.EditorContentFormat;
         _pendingDetailAttachments.Clear();
         _isDetailEditing = true;
         _detailEditRevision = 0;
@@ -901,12 +907,14 @@ public sealed partial class QuickCaptureSurfaceContent :
         _isCreatingDetail = false;
         _detailItem = item;
         _detailAppearance = item.AppearancePreset;
-        _detailContentFormat = item.ContentFormat;
         _pendingDetailAttachments.Clear();
         _isDetailEditing = !item.IsRecent &&
             (!_isDualPane || SettingsService.NormalizeQuickCaptureWideOpenMode(
                 _settingsService.Settings.QuickCaptureWideOpenMode) ==
                 SettingsService.QuickCaptureWideOpenEditing);
+        _detailContentFormat = _isDetailEditing
+            ? ViewModel.EditorContentFormat
+            : item.ContentFormat;
         _detailEditRevision = 0;
         _detailSavedRevision = 0;
         _detailHasUnsavedChanges = false;
@@ -1038,6 +1046,7 @@ public sealed partial class QuickCaptureSurfaceContent :
             return false;
         }
 
+        _detailContentFormat = ViewModel.EditorContentFormat;
         _isDetailEditing = true;
         RefreshDetailPresentation();
         DispatcherQueue.TryEnqueue(() =>
@@ -1558,7 +1567,9 @@ public sealed partial class QuickCaptureSurfaceContent :
     {
         if (sender is Button { Tag: QuickCaptureItemViewModel item })
         {
-            await RunAsync(() => ViewModel.TogglePinnedAsync(item));
+            await RunAsync(() => item.IsRecent
+                ? ViewModel.PinRecentItemAsync(item)
+                : ViewModel.TogglePinnedAsync(item));
         }
     }
 
@@ -1607,10 +1618,7 @@ public sealed partial class QuickCaptureSurfaceContent :
                 await OpenDetailAfterSavingAsync(item);
                 if (_detailItem is not null)
                 {
-                    _isDetailEditing = true;
-                    RefreshDetailPresentation();
-                    DispatcherQueue.TryEnqueue(() =>
-                        DetailMarkdownEditor.FocusEditor(moveCaretToEnd: false));
+                    BeginDetailEditing();
                 }
             };
             flyout.Items.Add(editItem);
@@ -2224,9 +2232,55 @@ public sealed partial class QuickCaptureSurfaceContent :
             return;
         }
 
+        SetQuickCaptureItemPinButtonVisible(border, false);
         ApplyQuickCaptureItemMaterialSurface(
             border,
             border.DataContext as QuickCaptureItemViewModel);
+    }
+
+    private void QuickCaptureItem_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        SetQuickCaptureItemPinButtonVisible(sender as DependencyObject, true);
+    }
+
+    private void QuickCaptureItem_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        SetQuickCaptureItemPinButtonVisible(sender as DependencyObject, false);
+    }
+
+    private static void SetQuickCaptureItemPinButtonVisible(
+        DependencyObject? itemRoot,
+        bool isVisible)
+    {
+        if (itemRoot is null ||
+            FindQuickCaptureVisualChild<Button>(itemRoot, "QuickCapturePinItemButton") is not { } button)
+        {
+            return;
+        }
+
+        button.Opacity = isVisible ? 1 : 0;
+        button.IsHitTestVisible = isVisible;
+    }
+
+    private static T? FindQuickCaptureVisualChild<T>(DependencyObject parent, string name)
+        where T : FrameworkElement
+    {
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T typed && string.Equals(typed.Name, name, StringComparison.Ordinal))
+            {
+                return typed;
+            }
+
+            if (FindQuickCaptureVisualChild<T>(child, name) is { } nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private void QuickCaptureItem_DataContextChanged(
@@ -2235,6 +2289,7 @@ public sealed partial class QuickCaptureSurfaceContent :
     {
         if (sender is Border border)
         {
+            SetQuickCaptureItemPinButtonVisible(border, false);
             // ListView virtualizes and reuses this Border. Reapply the
             // material for every new item so clipboard entries cannot inherit
             // a colored record background from the previous DataContext.

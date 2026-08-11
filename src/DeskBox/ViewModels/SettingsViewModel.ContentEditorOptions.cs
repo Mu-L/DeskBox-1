@@ -7,7 +7,7 @@ public partial class SettingsViewModel
 {
     private int _quickCaptureItemPreviewLineCount = SettingsService.DefaultQuickCaptureItemPreviewLineCount;
     private string _quickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
-    private string _quickCaptureDefaultFormat = SettingsService.QuickCaptureFormatMarkdown;
+    private string _quickCaptureEditorFormat = SettingsService.QuickCaptureFormatMarkdown;
     private string _quickCaptureWideLayout = SettingsService.QuickCaptureWideLayoutAuto;
     private string _quickCaptureWideOpenMode = SettingsService.QuickCaptureWideOpenReading;
     private bool _quickCaptureAllowRemoteImages;
@@ -123,16 +123,16 @@ public partial class SettingsViewModel
         }
     }
 
-    public string QuickCaptureDefaultFormat
+    public string QuickCaptureEditorFormat
     {
-        get => _quickCaptureDefaultFormat;
+        get => _quickCaptureEditorFormat;
         set
         {
             SetQuickCaptureSetting(
-                ref _quickCaptureDefaultFormat,
+                ref _quickCaptureEditorFormat,
                 SettingsService.NormalizeQuickCaptureFormat(value),
                 normalized => _settingsService.Settings.QuickCaptureDefaultFormat = normalized,
-                nameof(QuickCaptureDefaultFormat));
+                nameof(QuickCaptureEditorFormat));
             RefreshQuickCaptureContentPresentation();
         }
     }
@@ -237,7 +237,7 @@ public partial class SettingsViewModel
             settings.QuickCaptureItemPreviewLineCount);
         _quickCaptureEditorEnterBehavior = SettingsService.NormalizeEditorEnterBehavior(
             settings.QuickCaptureEditorEnterBehavior);
-        _quickCaptureDefaultFormat = SettingsService.NormalizeQuickCaptureFormat(
+        _quickCaptureEditorFormat = SettingsService.NormalizeQuickCaptureFormat(
             settings.QuickCaptureDefaultFormat);
         _quickCaptureWideLayout = SettingsService.NormalizeQuickCaptureWideLayout(
             settings.QuickCaptureWideLayout);
@@ -254,7 +254,7 @@ public partial class SettingsViewModel
     {
         QuickCaptureItemPreviewLineCount = settings.QuickCaptureItemPreviewLineCount;
         QuickCaptureEditorEnterBehavior = settings.QuickCaptureEditorEnterBehavior;
-        QuickCaptureDefaultFormat = settings.QuickCaptureDefaultFormat;
+        QuickCaptureEditorFormat = settings.QuickCaptureDefaultFormat;
         QuickCaptureWideLayout = settings.QuickCaptureWideLayout;
         QuickCaptureWideOpenMode = settings.QuickCaptureWideOpenMode;
         QuickCaptureAllowRemoteImages = settings.QuickCaptureAllowRemoteImages;

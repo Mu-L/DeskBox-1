@@ -2619,6 +2619,11 @@ settings.FocusClickedWidgetOnRaise = false;
             ? QuickCaptureFormatPlainText
             : QuickCaptureFormatMarkdown;
 
+    public static TextContentFormat ResolveQuickCaptureEditorContentFormat(string? format) =>
+        NormalizeQuickCaptureFormat(format) == QuickCaptureFormatPlainText
+            ? TextContentFormat.PlainText
+            : TextContentFormat.Markdown;
+
     public static string NormalizeQuickCaptureWideLayout(string? layout)
     {
         if (string.Equals(layout, QuickCaptureWideLayoutSinglePane, StringComparison.OrdinalIgnoreCase))

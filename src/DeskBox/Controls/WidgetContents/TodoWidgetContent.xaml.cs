@@ -135,8 +135,10 @@ public sealed partial class TodoWidgetContent : UserControl
 
             RefreshFilterButtons();
             _masterPaneWidth = value?.PreferredMasterPaneWidth;
+            _detailTitlePreferredHeight = value?.PreferredTitleEditorHeight;
             SynchronizeDetailNotes();
             ApplyMasterDetailLayout(ActualWidth);
+            QueueDetailTitleHeightUpdate();
         }
     }
 
@@ -161,6 +163,7 @@ public sealed partial class TodoWidgetContent : UserControl
         App.Current.ThemeService.AppearanceChanged += OnThemeAppearanceChanged;
         ApplySegmentedStyle();
         ApplyMasterDetailLayout(ActualWidth);
+        QueueDetailTitleHeightUpdate();
         QueueTodoSegmentedRestore();
     }
 
@@ -438,6 +441,11 @@ public sealed partial class TodoWidgetContent : UserControl
             {
                 EnsureWideDetailSelection();
             }
+        }
+
+        if (e.PropertyName == nameof(TodoWidgetViewModel.SelectedDetailItem))
+        {
+            QueueDetailTitleHeightUpdate();
         }
 
         if (e.PropertyName is nameof(TodoWidgetViewModel.LayoutPreference) or

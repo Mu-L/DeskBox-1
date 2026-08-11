@@ -1,6 +1,7 @@
 {
-    "Settings.QuickCapture.Format.Title": "新随记格式",
-    "Settings.QuickCapture.Format.Description": "选择新建随记使用的正文格式",
+    "Settings.QuickCapture.Format.Title": "编辑格式",
+    "Settings.QuickCapture.Format.Description": "选择随记编辑器使用 Markdown 或纯文本",
+    "Todo.Detail.ResizeTitleEditor": "调整待办标题输入框高度，双击恢复自动高度",
     "Settings.QuickCapture.Format.Markdown": "Markdown",
     "Settings.QuickCapture.Format.PlainText": "纯文本",
     "Settings.QuickCapture.WideLayout.Title": "宽屏布局",
