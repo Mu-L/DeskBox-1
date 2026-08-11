@@ -3,6 +3,7 @@ using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.ViewModels;
+using System.ComponentModel;
 using System.Globalization;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -62,6 +63,7 @@ public sealed partial class QuickCaptureSurfaceContent :
     private long _detailEditRevision;
     private long _detailSavedRevision;
     private bool _isSynchronizingViewSelection;
+    private long _viewSwitchRevision;
     private QuickCaptureItemViewModel? _detailItem;
     private QuickCaptureAppearancePreset _detailAppearance;
     private TextContentFormat _detailContentFormat = TextContentFormat.Markdown;
@@ -121,6 +123,7 @@ public sealed partial class QuickCaptureSurfaceContent :
             throw;
         }
         ResponsiveContentGrid.DataContext = ViewModel;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         if (config.Metadata.TryGetValue(MasterPaneWidthMetadataKey, out string? persisted) &&
             double.TryParse(persisted, NumberStyles.Float, CultureInfo.InvariantCulture, out double width))
         {
@@ -554,6 +557,29 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
     }
 
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_isDisposed ||
+            e.PropertyName != nameof(QuickCaptureWidgetViewModel.ItemsViewTransitionToken))
+        {
+            return;
+        }
+
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            ReconcileDetailSelection();
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_isDisposed)
+            {
+                ReconcileDetailSelection();
+            }
+        });
+    }
+
     public void OnHostViewportSizeChanged(double width, double height)
     {
         if (!double.IsFinite(width) || width <= 0)
@@ -702,7 +728,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         SearchTextBox.Focus(FocusState.Programmatic);
     }
 
-    private void ViewButton_Click(object sender, RoutedEventArgs e)
+    private async void ViewButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string tag } ||
             !Enum.TryParse(tag, ignoreCase: true, out QuickCaptureViewMode mode))
@@ -710,9 +736,7 @@ public sealed partial class QuickCaptureSurfaceContent :
             return;
         }
 
-        ViewModel.SelectedView = mode;
-        ItemsList.SelectedItems.Clear();
-        UpdateSelectedViewVisual();
+        await SwitchViewAsync(mode);
     }
 
     private async void ItemsList_ItemClick(object sender, ItemClickEventArgs e)
@@ -837,7 +861,10 @@ public sealed partial class QuickCaptureSurfaceContent :
     {
         bool hasDetail = _isCreatingDetail || _detailItem is not null;
         bool isReadOnly = _detailItem?.IsRecent == true;
-        DetailEmptyState.Visibility = _isDualPane && !hasDetail
+        DetailEmptyState.Visibility = _isDualPane &&
+                                      !hasDetail &&
+                                      ViewModel.Items.Count > 0 &&
+                                      !ViewModel.IsSwitchingView
             ? Visibility.Visible
             : Visibility.Collapsed;
         DetailHeader.Visibility = hasDetail
@@ -2084,7 +2111,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         };
     }
 
-    private void QuickCaptureViewSegmented_SelectionChanged(
+    private async void QuickCaptureViewSegmented_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
     {
@@ -2093,14 +2120,65 @@ public sealed partial class QuickCaptureSurfaceContent :
             return;
         }
 
-        ViewModel.SelectedView = QuickCaptureViewSegmented.SelectedIndex switch
+        QuickCaptureViewMode mode = QuickCaptureViewSegmented.SelectedIndex switch
         {
             1 => QuickCaptureViewMode.Pinned,
             2 => QuickCaptureViewMode.Recent,
             _ => QuickCaptureViewMode.Records
         };
+
+        await SwitchViewAsync(mode);
+    }
+
+    private async Task SwitchViewAsync(QuickCaptureViewMode mode)
+    {
+        long revision = ++_viewSwitchRevision;
+        if (ViewModel.SelectedView == mode)
+        {
+            UpdateSelectedViewVisual();
+            return;
+        }
+
+        await FlushPendingDetailSaveAsync();
+        if (_isDisposed || revision != _viewSwitchRevision)
+        {
+            return;
+        }
+
+        if (_detailHasUnsavedChanges)
+        {
+            UpdateSelectedViewVisual();
+            return;
+        }
+
+        ClearDetailForViewChange();
+        ViewModel.SelectedView = mode;
         ItemsList.SelectedItems.Clear();
-        ReconcileDetailSelection();
+        RefreshDetailPresentation();
+        UpdateSelectedViewVisual();
+    }
+
+    private void ClearDetailForViewChange()
+    {
+        _detailAutoSaveTimer?.Stop();
+        foreach (QuickCaptureItemViewModel item in ViewModel.Items)
+        {
+            item.IsDetailSelected = false;
+        }
+
+        _detailItem = null;
+        _isCreatingDetail = false;
+        _isDetailEditing = false;
+        _detailHasUnsavedChanges = false;
+        _detailEditRevision = 0;
+        _detailSavedRevision = 0;
+        _showDetailInSinglePane = false;
+        _pendingDetailAttachments.Clear();
+        SetDetailEditorText(string.Empty);
+        DetailMarkdownView.Markdown = string.Empty;
+        RefreshDetailAttachments();
+        ApplyResponsiveLayout();
+        RefreshDetailPresentation();
     }
 
     private void QuickCaptureViewSegmented_SizeChanged(
@@ -2217,6 +2295,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         DetailMarkdownEditor.EditorTextChanged -= DetailMarkdownEditor_EditorTextChanged;
         DetailMarkdownEditor.CommitRequested -= DetailMarkdownEditor_CommitRequested;
         DetailMarkdownView.AttachmentOpenRequested -= DetailMarkdownView_AttachmentOpenRequested;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         ViewModel.Dispose();
     }
 }

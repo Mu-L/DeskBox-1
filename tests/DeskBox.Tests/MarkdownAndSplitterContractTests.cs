@@ -351,4 +351,20 @@ public sealed class MarkdownAndSplitterContractTests
             quickCaptureXaml.ReplaceLineEndings("\n"),
             StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void QuickCapture_ViewChangesClearStaleDetailsAndReconcileAfterRefresh()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string code = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+
+        Assert.Contains("Text=\"{Binding DetailNoSelectionText}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.PropertyChanged += ViewModel_PropertyChanged", code, StringComparison.Ordinal);
+        Assert.Contains("nameof(QuickCaptureWidgetViewModel.ItemsViewTransitionToken)", code, StringComparison.Ordinal);
+        Assert.Contains("ClearDetailForViewChange();", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.Items.Count > 0", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.PropertyChanged -= ViewModel_PropertyChanged", code, StringComparison.Ordinal);
+    }
 }

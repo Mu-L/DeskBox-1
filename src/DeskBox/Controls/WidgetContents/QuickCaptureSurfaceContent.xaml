@@ -375,7 +375,7 @@
             <Grid x:Name="DetailEmptyState" Grid.RowSpan="3" Background="Transparent" Visibility="Collapsed">
                 <StackPanel MaxWidth="240" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
                     <FontIcon HorizontalAlignment="Center" FontSize="28" Glyph="&#xE70F;" Opacity="0.65" />
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding EmptyStateText}" TextAlignment="Center" TextWrapping="Wrap" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding DetailNoSelectionText}" TextAlignment="Center" TextWrapping="Wrap" />
                 </StackPanel>
             </Grid>
         </Grid>
