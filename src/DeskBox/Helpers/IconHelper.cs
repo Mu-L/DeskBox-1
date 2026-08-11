@@ -16,6 +16,7 @@ public static class IconHelper
     private const int MaxDecodedBitmapCacheEntries = 160;
     private const long MaxDecodedBitmapCacheBytes = 48L * 1024 * 1024;
     private const int MaxThumbnailCacheEntries = 128;
+    private const long MaxThumbnailCacheBytes = 32L * 1024 * 1024;
     private const string SharedCacheScope = "shared";
 
     // Icon bytes cache: path → PNG bytes (for shell icons, not image thumbnails)
@@ -34,6 +35,20 @@ public static class IconHelper
     private static readonly object s_thumbLock = new();
     private static readonly LinkedList<string> s_thumbLru = new();
     private static readonly Dictionary<string, Task<BitmapImage?>> s_thumbCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, long> s_thumbEstimatedBytes = new(StringComparer.OrdinalIgnoreCase);
+    private static long s_totalThumbnailEstimatedBytes;
+
+    internal readonly record struct IdleIconCacheReleaseResult(
+        int ReleasedThumbnails,
+        int ReleasedDecodedBitmaps,
+        int ReleasedIconByteEntries,
+        long ReleasedEstimatedBytes)
+    {
+        public bool ReleasedAnything =>
+            ReleasedThumbnails > 0 ||
+            ReleasedDecodedBitmaps > 0 ||
+            ReleasedIconByteEntries > 0;
+    }
 
     private static readonly SemaphoreSlim s_iconLoadSemaphore = new(4, 4);
     private static readonly SemaphoreSlim s_thumbLoadSemaphore = new(2, 2);
@@ -257,6 +272,9 @@ public static class IconHelper
                     path,
                     normalizedDecodePixelWidth);
                 s_thumbCache[cacheKey] = task;
+                long estimatedBytes = EstimateDecodedBitmapBytes(normalizedDecodePixelWidth);
+                s_thumbEstimatedBytes[cacheKey] = estimatedBytes;
+                s_totalThumbnailEstimatedBytes += estimatedBytes;
                 s_thumbLru.AddFirst(cacheKey);
                 EvictThumbnailCacheIfNeeded();
             }
@@ -309,8 +327,7 @@ public static class IconHelper
 
             foreach (var staleKey in staleKeys)
             {
-                s_thumbCache.Remove(staleKey);
-                RemoveThumbnailLruKey(staleKey);
+                RemoveThumbnailCacheEntry(staleKey);
             }
         }
     }
@@ -321,12 +338,16 @@ public static class IconHelper
     /// </summary>
     private static void EvictThumbnailCacheIfNeeded()
     {
-        while (s_thumbCache.Count > MaxThumbnailCacheEntries && s_thumbLru.Count > 0)
+        while ((s_thumbCache.Count > MaxThumbnailCacheEntries ||
+                s_totalThumbnailEstimatedBytes > MaxThumbnailCacheBytes) &&
+               s_thumbLru.Count > 0)
         {
             var oldestKey = s_thumbLru.Last!.Value;
-            s_thumbLru.RemoveLast();
-            s_thumbCache.Remove(oldestKey);
+            RemoveThumbnailCacheEntry(oldestKey);
         }
+
+        PerformanceLogger.ThumbnailEstimatedBytes =
+            Math.Max(0, s_totalThumbnailEstimatedBytes);
     }
 
     private static async Task<BitmapImage?> CreateMediaThumbnailAsync(
@@ -389,11 +410,23 @@ public static class IconHelper
         {
             if (s_thumbCache.TryGetValue(cacheKey, out var current) && ReferenceEquals(current, task))
             {
-                s_thumbCache.Remove(cacheKey);
-                RemoveThumbnailLruKey(cacheKey);
+                RemoveThumbnailCacheEntry(cacheKey);
                 PerformanceLogger.ThumbnailCacheCount = s_thumbCache.Count;
             }
         }
+    }
+
+    private static void RemoveThumbnailCacheEntry(string cacheKey)
+    {
+        s_thumbCache.Remove(cacheKey);
+        RemoveThumbnailLruKey(cacheKey);
+        if (s_thumbEstimatedBytes.Remove(cacheKey, out long estimatedBytes))
+        {
+            s_totalThumbnailEstimatedBytes -= estimatedBytes;
+        }
+
+        PerformanceLogger.ThumbnailEstimatedBytes =
+            Math.Max(0, s_totalThumbnailEstimatedBytes);
     }
 
     private static void RemoveThumbnailLruKey(string cacheKey)
@@ -504,8 +537,7 @@ public static class IconHelper
                     .ToList();
                 foreach (var key in keysToRemove)
                 {
-                    s_thumbCache.Remove(key);
-                    RemoveThumbnailLruKey(key);
+                    RemoveThumbnailCacheEntry(key);
                 }
                 PerformanceLogger.ThumbnailCacheCount = s_thumbCache.Count;
             }
@@ -572,8 +604,97 @@ public static class IconHelper
         {
             s_thumbCache.Clear();
             s_thumbLru.Clear();
+            s_thumbEstimatedBytes.Clear();
+            s_totalThumbnailEstimatedBytes = 0;
             PerformanceLogger.ThumbnailCacheCount = 0;
+            PerformanceLogger.ThumbnailEstimatedBytes = 0;
         }
+    }
+
+    /// <summary>
+    /// Releases decoded image caches that can be recreated from disk. Visible
+    /// widgets keep a half-sized warm LRU; fully hidden widgets release all
+    /// decoded images and icon bytes so the 30-second cleanup is meaningful.
+    /// Live XAML image sources remain valid because they own their own reference.
+    /// </summary>
+    internal static IdleIconCacheReleaseResult ReleaseIdleCaches(bool allWidgetsHidden)
+    {
+        int thumbnailCountBefore;
+        int thumbnailCountAfter;
+        long thumbnailBytesBefore;
+        long thumbnailBytesAfter;
+        lock (s_thumbLock)
+        {
+            thumbnailCountBefore = s_thumbCache.Count;
+            thumbnailBytesBefore = s_totalThumbnailEstimatedBytes;
+            int targetCount = allWidgetsHidden ? 0 : MaxThumbnailCacheEntries / 2;
+            long targetBytes = allWidgetsHidden ? 0 : MaxThumbnailCacheBytes / 2;
+            while ((s_thumbCache.Count > targetCount ||
+                    s_totalThumbnailEstimatedBytes > targetBytes) &&
+                   s_thumbLru.Last is { } oldest)
+            {
+                RemoveThumbnailCacheEntry(oldest.Value);
+            }
+
+            if (allWidgetsHidden && s_thumbCache.Count > 0)
+            {
+                s_thumbCache.Clear();
+                s_thumbLru.Clear();
+                s_thumbEstimatedBytes.Clear();
+                s_totalThumbnailEstimatedBytes = 0;
+            }
+
+            PerformanceLogger.ThumbnailCacheCount = s_thumbCache.Count;
+            PerformanceLogger.ThumbnailEstimatedBytes =
+                Math.Max(0, s_totalThumbnailEstimatedBytes);
+            thumbnailCountAfter = s_thumbCache.Count;
+            thumbnailBytesAfter = s_totalThumbnailEstimatedBytes;
+        }
+
+        int bitmapCountBefore;
+        int bitmapCountAfter;
+        long bitmapBytesBefore;
+        long bitmapBytesAfter;
+        lock (s_bitmapCacheLock)
+        {
+            bitmapCountBefore = s_bitmapImageCache.Count;
+            bitmapBytesBefore = s_totalBitmapEstimatedBytes;
+            int targetCount = allWidgetsHidden ? 0 : MaxDecodedBitmapCacheEntries / 2;
+            long targetBytes = allWidgetsHidden ? 0 : MaxDecodedBitmapCacheBytes / 2;
+            while ((s_bitmapImageCache.Count > targetCount ||
+                    s_totalBitmapEstimatedBytes > targetBytes) &&
+                   s_bitmapLru.Last is { } oldest)
+            {
+                RemoveDecodedBitmap(oldest.Value);
+            }
+
+            if (allWidgetsHidden && s_bitmapImageCache.Count > 0)
+            {
+                s_bitmapImageCache.Clear();
+                s_bitmapLru.Clear();
+                s_bitmapLruNodes.Clear();
+                s_bitmapEstimatedBytes.Clear();
+                s_totalBitmapEstimatedBytes = 0;
+                UpdateDecodedBitmapDiagnostics();
+            }
+
+            bitmapCountAfter = s_bitmapImageCache.Count;
+            bitmapBytesAfter = s_totalBitmapEstimatedBytes;
+        }
+
+        int iconByteEntriesBefore = s_iconBytesCache.Count;
+        if (allWidgetsHidden)
+        {
+            s_iconBytesCache.Clear();
+            PerformanceLogger.IconCacheCount = 0;
+        }
+
+        return new IdleIconCacheReleaseResult(
+            Math.Max(0, thumbnailCountBefore - thumbnailCountAfter),
+            Math.Max(0, bitmapCountBefore - bitmapCountAfter),
+            Math.Max(0, iconByteEntriesBefore - s_iconBytesCache.Count),
+            Math.Max(0, thumbnailBytesBefore - thumbnailBytesAfter) +
+                Math.Max(0, bitmapBytesBefore - bitmapBytesAfter));
     }
 
     /// <summary>
@@ -601,8 +722,7 @@ public static class IconHelper
             foreach (string key in s_thumbCache.Keys.Where(
                          key => key.StartsWith(thumbnailPrefix, StringComparison.OrdinalIgnoreCase)).ToList())
             {
-                s_thumbCache.Remove(key);
-                RemoveThumbnailLruKey(key);
+                RemoveThumbnailCacheEntry(key);
             }
 
             PerformanceLogger.ThumbnailCacheCount = s_thumbCache.Count;

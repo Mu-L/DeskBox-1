@@ -177,12 +177,11 @@ public sealed partial class WeatherWidgetViewModel
 
     public void SetViewMode(bool useWeekView)
     {
-        if (IsWeekView == useWeekView)
+        if (IsWeekView != useWeekView)
         {
-            return;
+            IsWeekView = useWeekView;
         }
 
-        IsWeekView = useWeekView;
         _hasViewModeOverride = true;
         if (WeatherWidgetViewModeSettings.SetWeekView(
                 _config,

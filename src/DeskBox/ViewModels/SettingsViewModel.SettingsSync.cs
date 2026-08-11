@@ -424,6 +424,17 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedTodoDefaultFilterText));
         OnPropertyChanged(nameof(SelectedTodoTabStyleText));
         OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
+        OnPropertyChanged(nameof(QuickCaptureLayoutSummaryText));
+        OnPropertyChanged(nameof(QuickCaptureTabStyleIndex));
+        RefreshQuickCaptureTabsPresentation();
+        RefreshQuickCaptureContentPresentation();
+        OnPropertyChanged(nameof(TodoLayoutSummaryText));
+        OnPropertyChanged(nameof(TodoWideOptionsVisibility));
+        OnPropertyChanged(nameof(TodoTabStyleIndex));
+        RefreshTodoTabsPresentation();
+        RefreshTodoContentPresentation();
+        OnPropertyChanged(nameof(TodoReminderSummaryText));
+        OnPropertyChanged(nameof(TodoFooterDisplaySummaryText));
         OnPropertyChanged(nameof(SelectedMusicDisplayModeText));
     }
 }

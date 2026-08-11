@@ -383,6 +383,9 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     public int ItemPreviewLineCount => SettingsService.NormalizeItemPreviewLineCount(
         _settingsService.Settings.QuickCaptureItemPreviewLineCount);
 
+    public string EditorEnterBehavior => SettingsService.NormalizeEditorEnterBehavior(
+        _settingsService.Settings.QuickCaptureEditorEnterBehavior);
+
     public Visibility CreatedTimeVisibility => _settingsService.Settings.QuickCaptureShowCreatedTime
         ? Visibility.Visible
         : Visibility.Collapsed;

@@ -174,6 +174,7 @@ public sealed partial class WidgetManager
 
     public void BeginWidgetInteraction(string reason)
     {
+        App.NotifyMemoryCleanupActivity();
         _idlePeerOrderGeneration++;
         _sessionManager.BeginInteraction(reason);
     }
@@ -183,6 +184,8 @@ public sealed partial class WidgetManager
         _sessionManager.EndInteraction(reason);
         if (!_sessionManager.IsInteractionActive)
         {
+            RestoreTemporarilyRaisedWidgetsToDesktopLayer(
+                $"{reason}-interaction-ended");
             QueueIdleWidgetZOrderNormalization(reason);
         }
     }
@@ -513,6 +516,7 @@ public sealed partial class WidgetManager
         }
 
         App.Log($"[WidgetManager] Refresh visible widget desktop layers reason={reason}");
+        ClearTemporaryRaiseLease(reason);
         foreach (var window in GetLoadedDesktopWindows())
         {
             if (!window.Visible)
@@ -1031,6 +1035,7 @@ public sealed partial class WidgetManager
         App.LogVerbose($"[TrayBatch] SetAllVisible preparedHide={windowsToHide.Count}");
         PlayPreparedTrayHideAnimations(windowsToHide);
 
+        ClearTemporaryRaiseLease("set-all-hidden");
         SetWidgetsRaisedFromTray(false);
         _sessionManager.MarkHidden("set-all-hidden");
         _trayRaiseBatchGeneration++;
@@ -1432,6 +1437,7 @@ public sealed partial class WidgetManager
 
         App.Log(
             $"[TrayBatch] RestoreDesktopLayer force={force} file={_fileWidgets.Count} content={_contentWidgets.Count}");
+        ClearTemporaryRaiseLease("raised-session-restored");
         foreach (var window in GetLoadedDesktopWindows())
         {
             try

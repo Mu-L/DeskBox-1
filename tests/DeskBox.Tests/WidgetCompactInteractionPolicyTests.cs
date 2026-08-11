@@ -79,6 +79,58 @@ public sealed class WidgetCompactInteractionPolicyTests
     }
 
     [Fact]
+    public void CanHoverExpand_InteractionRegionDwellAllowsHoverWithoutStealingActiveInput()
+    {
+        WidgetCompactInteractionSnapshot moveHandle = CollapsedSnapshot() with
+        {
+            IsPointerInside = true,
+            IsPointerOverMoveHandle = true
+        };
+        WidgetCompactInteractionSnapshot actions = moveHandle with
+        {
+            IsPointerOverMoveHandle = false,
+            IsPointerOverActions = true
+        };
+
+        Assert.False(WidgetCompactInteractionPolicy.CanHoverExpand(
+            WidgetCollapseBehavior.Smart,
+            moveHandle));
+        Assert.True(WidgetCompactInteractionPolicy.CanHoverExpand(
+            WidgetCollapseBehavior.Smart,
+            moveHandle,
+            allowInteractionRegionDwell: true));
+        Assert.True(WidgetCompactInteractionPolicy.CanHoverExpand(
+            WidgetCollapseBehavior.Smart,
+            actions,
+            allowInteractionRegionDwell: true));
+        Assert.False(WidgetCompactInteractionPolicy.CanHoverExpand(
+            WidgetCollapseBehavior.Smart,
+            actions with { InteractionDepth = 1 },
+            allowInteractionRegionDwell: true));
+        Assert.False(WidgetCompactInteractionPolicy.CanHoverExpand(
+            WidgetCollapseBehavior.Smart,
+            actions with { SuppressHoverExpansion = true },
+            allowInteractionRegionDwell: true));
+    }
+
+    [Theory]
+    [InlineData(180, false, 180)]
+    [InlineData(180, true, 620)]
+    [InlineData(620, true, 620)]
+    [InlineData(800, true, 800)]
+    public void ResolveHoverExpandDelayMilliseconds_PreservesBodyDelayAndAddsControlDwellFloor(
+        int configuredDelay,
+        bool allowInteractionRegionDwell,
+        int expected)
+    {
+        Assert.Equal(
+            expected,
+            WidgetCompactInteractionPolicy.ResolveHoverExpandDelayMilliseconds(
+                configuredDelay,
+                allowInteractionRegionDwell));
+    }
+
+    [Fact]
     public void CanAutoCollapse_RequiresPointerAndInteractionToBeClear()
     {
         WidgetCompactInteractionSnapshot snapshot = CollapsedSnapshot() with

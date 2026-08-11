@@ -680,6 +680,11 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         : SettingsService.NormalizeItemPreviewLineCount(
             _settingsService.Settings.TodoItemPreviewLineCount);
 
+    public string EditorEnterBehavior => _settingsService is null
+        ? SettingsService.EditorEnterBehaviorCtrlEnterSaves
+        : SettingsService.NormalizeEditorEnterBehavior(
+            _settingsService.Settings.TodoEditorEnterBehavior);
+
     public double SmallIconSize => Math.Round(Math.Clamp(TextSize + 1, 11, 15));
 
     public double StandardIconSize => Math.Round(Math.Clamp(TextSize + 3, 14, 18));

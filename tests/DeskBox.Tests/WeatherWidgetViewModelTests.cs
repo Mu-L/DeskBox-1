@@ -207,6 +207,50 @@ public sealed class WeatherWidgetViewModelTests
     }
 
     [Fact]
+    public async Task ExplicitViewSelection_IsPersistedWhenItMatchesTheGlobalDefault()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "DeskBox.Tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var config = CreateConfig();
+            var settings = new DeskBox.Services.SettingsService(root);
+            settings.Settings.WeatherDefaultView =
+                DeskBox.Services.SettingsService.WeatherDefaultViewWeek;
+            settings.UpdateWidget(config, notifySubscribers: false);
+
+            using (var viewModel = new WeatherWidgetViewModel(
+                       config,
+                       new DeskBox.Services.WeatherService(),
+                       TestServices.CreateLocalizationService(),
+                       settings))
+            {
+                Assert.True(viewModel.IsWeekView);
+                Assert.DoesNotContain(
+                    DeskBox.Services.WeatherWidgetViewModeSettings.MetadataKey,
+                    config.Metadata);
+
+                viewModel.SetViewMode(useWeekView: true);
+            }
+
+            Assert.Equal(
+                DeskBox.Services.WeatherWidgetViewModeSettings.WeekValue,
+                config.Metadata[
+                    DeskBox.Services.WeatherWidgetViewModeSettings.MetadataKey]);
+            Assert.True(await settings.FlushPendingSaveAsync());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ViewModeChange_SurvivesSettingsReload()
     {
         string root = Path.Combine(

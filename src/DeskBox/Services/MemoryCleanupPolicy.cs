@@ -16,6 +16,18 @@ internal static class MemoryCleanupPolicy
     internal const long VisibleIdlePrivateBytesThreshold = 320L * 1024 * 1024;
     internal const long VisibleIdleMinimumAllocationBytes = 32L * 1024 * 1024;
     internal const long VisibleIdleWorkingSetTrimThresholdBytes = 220L * 1024 * 1024;
+    internal const long HiddenIdleWorkingSetTrimThresholdBytes = 220L * 1024 * 1024;
+
+    public static bool IsVisibleIdleCandidate(MemoryCleanupActivitySnapshot snapshot)
+    {
+        return snapshot.HasVisibleWidgets &&
+            !snapshot.IsWidgetInteractionActive &&
+            !snapshot.IsSettingsOpen &&
+            !snapshot.IsOnboardingOpen &&
+            !snapshot.IsSearchPopupVisible &&
+            !snapshot.IsDeskBoxForeground &&
+            !snapshot.IsPointerOverDeskBox;
+    }
 
     public static bool CanTrimWorkingSet(MemoryCleanupActivitySnapshot snapshot)
     {
@@ -44,6 +56,16 @@ internal static class MemoryCleanupPolicy
             !isSearchIndexing &&
             !isSearchIndexResident &&
             workingSetBytes >= VisibleIdleWorkingSetTrimThresholdBytes;
+    }
+
+    public static bool ShouldTrimHiddenIdleWorkingSet(
+        MemoryCleanupActivitySnapshot snapshot,
+        bool isSearchIndexing,
+        long workingSetBytes)
+    {
+        return CanTrimWorkingSet(snapshot) &&
+            !isSearchIndexing &&
+            workingSetBytes >= HiddenIdleWorkingSetTrimThresholdBytes;
     }
 
     public static bool ShouldCollectVisibleIdleManagedMemory(

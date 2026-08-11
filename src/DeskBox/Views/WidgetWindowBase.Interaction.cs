@@ -68,7 +68,11 @@ public abstract partial class WidgetWindowBase
 
     protected void StartTopMostSafetyTimer()
     {
-        if (!Win32Helper.IsWindowTopMost(HWnd))
+        // Temporary raises intentionally pulse TOPMOST and immediately return
+        // to the normal band. Logical desktop-layer state, not WS_EX_TOPMOST,
+        // determines whether a safety restoration is still required.
+        if (!WidgetTemporaryRaiseLeasePolicy.ShouldArmSafetyRestore(
+                IsAtDesktopLayer))
         {
             TopMostSafetyTimer?.Stop();
             return;
@@ -95,7 +99,11 @@ public abstract partial class WidgetWindowBase
         if (!IsAtDesktopLayer &&
             App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
         {
-            if (ShouldDeferDesktopLayerRestore())
+            if (WidgetTemporaryRaiseLeasePolicy.ShouldDeferSafetyRestore(
+                    IsDragging,
+                    IsResizing,
+                    HasBlockingFlyoutOpen(),
+                    App.Current.WidgetManager is { IsWidgetInteractionActive: true }))
             {
                 App.LogVerbose($"[ZOrder] {LogPrefix} safety timer: defer restore hwnd=0x{HWnd.ToInt64():X}");
                 sender.Start();
@@ -280,6 +288,8 @@ public abstract partial class WidgetWindowBase
         DisplayChangeWatcher?.ResumeRestore();
         HasMovedTitleBarDrag = false;
         QueueBackdropRefresh();
+        App.Current?.WidgetManager?.RestoreTemporarilyRaisedWidgetsToDesktopLayer(
+            "drag-ended");
         e.Handled = true;
     }
 
@@ -494,6 +504,8 @@ public abstract partial class WidgetWindowBase
         DisplayChangeWatcher?.ResumeRestore();
         HasMovedTitleBarDrag = false;
         QueueBackdropRefresh();
+        App.Current?.WidgetManager?.RestoreTemporarilyRaisedWidgetsToDesktopLayer(
+            "drag-capture-lost");
         e.Handled = true;
     }
 

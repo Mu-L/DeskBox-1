@@ -32,8 +32,9 @@ public partial class App : Application
     private const int TrayContextMenuEstimatedWidth = (int)TrayMenuItemWidth + 16;
     private const int BackgroundMemoryCleanupDelaySeconds = 30;
     private const int BackgroundMemoryDeepCleanupDelaySeconds = 5 * 60;
-    private const int VisibleIdleMemoryMaintenanceInitialDelaySeconds = 90;
-    private const int VisibleIdleMemoryMaintenanceIntervalSeconds = 180;
+    private const int VisibleIdleMemoryRequiredSeconds = 30;
+    private const int VisibleIdleMemoryCheckIntervalSeconds = 5;
+    private const int VisibleIdleMemoryMaintenanceCooldownSeconds = 60;
     private const int SearchIndexIdleUnloadDelaySeconds = 5 * 60;
     private const int SearchIndexIdleUnloadRetrySeconds = 2 * 60;
     private const int SearchPopupShellWarmupDelayMilliseconds = 900;
@@ -103,6 +104,7 @@ public partial class App : Application
     private FileMetaService? _fileMetaService;
     private SearchHotkeyService? _searchHotkeyService;
     private SearchPopupWindow? _searchPopupWindow;
+    private SearchPopupWindow? _searchPopupClosingForIdleCleanup;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _searchPopupIdleTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _searchIndexIdleUnloadTimer;
     private CancellationTokenSource? _searchIndexLifecycleCts;
@@ -112,6 +114,9 @@ public partial class App : Application
     private long _lastVisibleIdleCollectionAllocatedBytes;
     private bool _hasCompletedVisibleIdleCollection;
     private int _visibleIdleMemoryMaintenanceRunning;
+    private readonly VisibleIdleMemoryTracker _visibleIdleMemoryTracker = new(
+        TimeSpan.FromSeconds(VisibleIdleMemoryRequiredSeconds),
+        TimeSpan.FromSeconds(VisibleIdleMemoryMaintenanceCooldownSeconds));
     private SearchHistoryService? _searchHistoryService;
     private SearchResultActionService? _searchActionService;
     private bool _widgetsRaisedFromTray;
@@ -2284,6 +2289,14 @@ public partial class App : Application
     /// </summary>
     internal static long MemoryCleanupEpoch => Volatile.Read(ref s_memoryCleanupEpoch);
 
+    private static void AdvanceMemoryCleanupEpoch(string reason)
+    {
+        long cleanupEpoch = Interlocked.Increment(ref s_memoryCleanupEpoch);
+        PerformanceLogger.Mark(
+            "MemoryCleanupEpochAdvanced",
+            $"epoch={cleanupEpoch} reason={reason}");
+    }
+
     private void StartVisibleIdleMemoryMaintenance()
     {
         if (_visibleIdleMemoryMaintenanceTimer is null)
@@ -2293,8 +2306,12 @@ public partial class App : Application
             _visibleIdleMemoryMaintenanceTimer.Tick += VisibleIdleMemoryMaintenanceTimer_Tick;
         }
 
+        var activity = CaptureMemoryCleanupActivity();
+        _visibleIdleMemoryTracker.Observe(
+            DateTimeOffset.UtcNow,
+            MemoryCleanupPolicy.IsVisibleIdleCandidate(activity));
         ScheduleVisibleIdleMemoryMaintenance(
-            TimeSpan.FromSeconds(VisibleIdleMemoryMaintenanceInitialDelaySeconds));
+            TimeSpan.FromSeconds(VisibleIdleMemoryCheckIntervalSeconds));
     }
 
     private void ScheduleVisibleIdleMemoryMaintenance(TimeSpan delay)
@@ -2329,7 +2346,16 @@ public partial class App : Application
 
             var activity = CaptureMemoryCleanupActivity();
             bool isSearchIndexing = _searchEngineService?.IsCustomIndexing == true;
-            bool isSearchIndexResident = _searchEngineService?.IsCustomIndexResident == true;
+            bool isVisibleIdleCandidate =
+                MemoryCleanupPolicy.IsVisibleIdleCandidate(activity) &&
+                !isSearchIndexing;
+            if (!_visibleIdleMemoryTracker.Observe(
+                    DateTimeOffset.UtcNow,
+                    isVisibleIdleCandidate))
+            {
+                return;
+            }
+
             long totalAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
             long allocatedSinceLastCollection = _hasCompletedVisibleIdleCollection
                 ? Math.Max(0, totalAllocatedBytes - _lastVisibleIdleCollectionAllocatedBytes)
@@ -2337,6 +2363,13 @@ public partial class App : Application
             long managedHeapBytes = GC.GetGCMemoryInfo().HeapSizeBytes;
             using var process = Process.GetCurrentProcess();
             process.Refresh();
+            long workingSetBefore = process.WorkingSet64;
+            long privateBytesBefore = process.PrivateMemorySize64;
+
+            Localized.PruneDeadTargets();
+            _fileMetaService?.Clear();
+            IconHelper.IdleIconCacheReleaseResult cacheRelease =
+                IconHelper.ReleaseIdleCaches(allWidgetsHidden: false);
 
             bool shouldCollectManagedMemory =
                 MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
@@ -2347,18 +2380,6 @@ public partial class App : Application
                     process.PrivateMemorySize64,
                     allocatedSinceLastCollection,
                     _hasCompletedVisibleIdleCollection);
-            bool shouldTrimWorkingSet =
-                MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-                    activity,
-                    isSearchIndexing,
-                    isSearchIndexResident,
-                    process.WorkingSet64);
-            if (!shouldCollectManagedMemory && !shouldTrimWorkingSet)
-            {
-                return;
-            }
-
-            Localized.PruneDeadTargets();
             if (shouldCollectManagedMemory)
             {
                 PerformanceLogger.Mark(
@@ -2387,6 +2408,7 @@ public partial class App : Application
             }
 
             process.Refresh();
+            bool workingSetTrimmed = false;
             if (MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
                     CaptureMemoryCleanupActivity(),
                     _searchEngineService?.IsCustomIndexing == true,
@@ -2399,7 +2421,21 @@ public partial class App : Application
                 PerformanceLogger.SampleMemory("visible-idle-trim-before");
                 await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet);
                 PerformanceLogger.SampleMemory("visible-idle-trim-after");
+                workingSetTrimmed = true;
+                AdvanceMemoryCleanupEpoch("visible-idle-working-set-trim");
             }
+
+            process.Refresh();
+            Log(
+                $"[Memory] Visible idle cleanup completed idleSeconds={VisibleIdleMemoryRequiredSeconds} " +
+                $"workingSetBeforeMB={workingSetBefore / (1024.0 * 1024):F1} " +
+                $"workingSetAfterMB={process.WorkingSet64 / (1024.0 * 1024):F1} " +
+                $"privateBeforeMB={privateBytesBefore / (1024.0 * 1024):F1} " +
+                $"privateAfterMB={process.PrivateMemorySize64 / (1024.0 * 1024):F1} " +
+                $"collected={shouldCollectManagedMemory} trimmed={workingSetTrimmed} " +
+                $"releasedThumbs={cacheRelease.ReleasedThumbnails} " +
+                $"releasedBitmaps={cacheRelease.ReleasedDecodedBitmaps} " +
+                $"releasedIconBytes={cacheRelease.ReleasedIconByteEntries}");
         }
         catch (Exception ex)
         {
@@ -2411,7 +2447,7 @@ public partial class App : Application
             if (_visibleIdleMemoryMaintenanceTimer is not null)
             {
                 ScheduleVisibleIdleMemoryMaintenance(
-                    TimeSpan.FromSeconds(VisibleIdleMemoryMaintenanceIntervalSeconds));
+                    TimeSpan.FromSeconds(VisibleIdleMemoryCheckIntervalSeconds));
             }
         }
     }
@@ -2426,6 +2462,7 @@ public partial class App : Application
         _visibleIdleMemoryMaintenanceTimer.Stop();
         _visibleIdleMemoryMaintenanceTimer.Tick -= VisibleIdleMemoryMaintenanceTimer_Tick;
         _visibleIdleMemoryMaintenanceTimer = null;
+        _visibleIdleMemoryTracker.Reset();
     }
 
     private void MarkVisibleIdleMemoryCollectionBaseline()
@@ -2454,6 +2491,15 @@ public partial class App : Application
     internal static void CancelBackgroundMemoryCleanup()
     {
         Interlocked.Increment(ref s_backgroundMemoryCleanupGeneration);
+        NotifyMemoryCleanupActivity();
+    }
+
+    internal static void NotifyMemoryCleanupActivity()
+    {
+        if (Application.Current is App app)
+        {
+            app._visibleIdleMemoryTracker.Reset();
+        }
     }
 
     internal bool CanRunCompactExpansionWarmup =>
@@ -2498,12 +2544,8 @@ public partial class App : Application
                 return;
             }
 
-            // A short hide only suspends content activity and prunes genuinely
-            // unreachable objects. Keep live XAML/layout pages resident so a
-            // quick tray restore does not turn every capsule cold.
             PerformanceLogger.Mark("BackgroundMemorySoftCleanupTriggered");
-            ScheduleLightMemoryCleanup(
-                requiredBackgroundGeneration: generation);
+            await app.RunBackgroundSoftMemoryCleanupAsync(generation);
 
             int remainingDelaySeconds = Math.Max(
                 1,
@@ -2549,6 +2591,78 @@ public partial class App : Application
         _onboardingWindow is null &&
         _searchPopupWindow?.IsPopupVisible != true;
 
+    private async Task RunBackgroundSoftMemoryCleanupAsync(int generation)
+    {
+        if (generation != Volatile.Read(ref s_backgroundMemoryCleanupGeneration) ||
+            !CanRunBackgroundMemoryCleanup())
+        {
+            return;
+        }
+
+        using var process = Process.GetCurrentProcess();
+        process.Refresh();
+        long workingSetBefore = process.WorkingSet64;
+        long privateBytesBefore = process.PrivateMemorySize64;
+
+        Localized.PruneDeadTargets();
+        _fileMetaService?.Clear();
+        IconHelper.IdleIconCacheReleaseResult cacheRelease =
+            IconHelper.ReleaseIdleCaches(allWidgetsHidden: true);
+        bool searchShellClosed = CloseHiddenSearchPopupShellForIdleCleanup();
+
+        Interlocked.Increment(ref s_activeHeavyMemoryCleanupCount);
+        try
+        {
+            await Task.Run(static () =>
+            {
+                // Hidden widgets can safely finalize unreachable WinUI wrappers,
+                // but avoid LOH compaction here so a short tray hide stays cheap.
+                GC.Collect(
+                    GC.MaxGeneration,
+                    GCCollectionMode.Forced,
+                    blocking: true,
+                    compacting: false);
+                GC.WaitForPendingFinalizers();
+            });
+            MarkVisibleIdleMemoryCollectionBaseline();
+        }
+        finally
+        {
+            Interlocked.Decrement(ref s_activeHeavyMemoryCleanupCount);
+        }
+
+        if (generation != Volatile.Read(ref s_backgroundMemoryCleanupGeneration) ||
+            !CanRunBackgroundMemoryCleanup())
+        {
+            Log("[Memory] Background soft cleanup cancelled after collection because UI became active");
+            return;
+        }
+
+        process.Refresh();
+        bool workingSetTrimmed = MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
+            CaptureMemoryCleanupActivity(),
+            _searchEngineService?.IsCustomIndexing == true,
+            process.WorkingSet64);
+        if (workingSetTrimmed)
+        {
+            await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet);
+            AdvanceMemoryCleanupEpoch("background-soft-working-set-trim");
+        }
+
+        process.Refresh();
+        Log(
+            $"[Memory] Background soft cleanup completed hiddenSeconds={BackgroundMemoryCleanupDelaySeconds} " +
+            $"workingSetBeforeMB={workingSetBefore / (1024.0 * 1024):F1} " +
+            $"workingSetAfterMB={process.WorkingSet64 / (1024.0 * 1024):F1} " +
+            $"privateBeforeMB={privateBytesBefore / (1024.0 * 1024):F1} " +
+            $"privateAfterMB={process.PrivateMemorySize64 / (1024.0 * 1024):F1} " +
+            $"trimmed={workingSetTrimmed} searchShellClosed={searchShellClosed} " +
+            $"releasedThumbs={cacheRelease.ReleasedThumbnails} " +
+            $"releasedBitmaps={cacheRelease.ReleasedDecodedBitmaps} " +
+            $"releasedIconBytes={cacheRelease.ReleasedIconByteEntries} " +
+            $"releasedEstimatedMB={cacheRelease.ReleasedEstimatedBytes / (1024.0 * 1024):F1}");
+    }
+
     internal static void ScheduleLightMemoryCleanup(
         bool completedHeavyOperation = false,
         int? requiredBackgroundGeneration = null)
@@ -2585,14 +2699,23 @@ public partial class App : Application
             var memoryInfo = GC.GetGCMemoryInfo();
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             process.Refresh();
-            bool heavyCleanupRequested = completedHeavyOperation ||
+            long workingSetBefore = process.WorkingSet64;
+            long privateBytesBefore = process.PrivateMemorySize64;
+            // Always consume the pending marker. Using it as the right-hand side
+            // of an || expression leaves it stuck at 1 whenever this invocation
+            // already represents a completed heavy operation. That permanently
+            // blocks visible-idle maintenance and compact-expansion warmup.
+            bool hadPendingHeavyCleanup =
                 Interlocked.Exchange(ref s_pendingHeavyMemoryCleanup, 0) != 0;
+            bool heavyCleanupRequested =
+                completedHeavyOperation || hadPendingHeavyCleanup;
             bool underMemoryPressure =
                 memoryInfo.HeapSizeBytes >= 256L * 1024 * 1024 ||
                 process.PrivateMemorySize64 >= 512L * 1024 * 1024;
             if (heavyCleanupRequested || underMemoryPressure)
             {
                 Interlocked.Increment(ref s_activeHeavyMemoryCleanupCount);
+                bool workingSetTrimmed = false;
                 try
                 {
                     await Task.Run(() =>
@@ -2646,11 +2769,8 @@ public partial class App : Application
                     {
                         await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet);
                         PerformanceLogger.SampleMemory("heavy-cleanup-working-set-trimmed");
-                        long cleanupEpoch =
-                            Interlocked.Increment(ref s_memoryCleanupEpoch);
-                        PerformanceLogger.Mark(
-                            "MemoryCleanupEpochAdvanced",
-                            $"epoch={cleanupEpoch} reason=working-set-trim");
+                        workingSetTrimmed = true;
+                        AdvanceMemoryCleanupEpoch("heavy-working-set-trim");
                     }
                     else
                     {
@@ -2660,6 +2780,14 @@ public partial class App : Application
                         PerformanceLogger.SampleMemory("heavy-cleanup-completed");
                     }
 
+                    process.Refresh();
+                    Log(
+                        $"[Memory] Deep cleanup completed " +
+                        $"workingSetBeforeMB={workingSetBefore / (1024.0 * 1024):F1} " +
+                        $"workingSetAfterMB={process.WorkingSet64 / (1024.0 * 1024):F1} " +
+                        $"privateBeforeMB={privateBytesBefore / (1024.0 * 1024):F1} " +
+                        $"privateAfterMB={process.PrivateMemorySize64 / (1024.0 * 1024):F1} " +
+                        $"trimmed={workingSetTrimmed}");
                 }
                 finally
                 {
@@ -3147,6 +3275,13 @@ public partial class App : Application
         };
         popup.Closed += (_, _) =>
         {
+            bool closedForIdleCleanup =
+                ReferenceEquals(_searchPopupClosingForIdleCleanup, popup);
+            if (closedForIdleCleanup)
+            {
+                _searchPopupClosingForIdleCleanup = null;
+            }
+
             if (ReferenceEquals(_searchPopupWindow, popup))
             {
                 _searchPopupWindow = null;
@@ -3156,13 +3291,41 @@ public partial class App : Application
             _fileMetaService?.Dispose();
             _fileMetaService = null;
             PerformanceLogger.SampleMemory("search-popup-closed");
-            ScheduleLightMemoryCleanup(completedHeavyOperation: true);
-            ScheduleBackgroundMemoryCleanup();
+            if (!closedForIdleCleanup)
+            {
+                ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+                ScheduleBackgroundMemoryCleanup();
+            }
         };
         viewModel.HidePopupCallback = () => popup.HidePopup();
         stopwatch.Stop();
         Log($"[Search] Popup shell created in {stopwatch.ElapsedMilliseconds} ms");
         PerformanceLogger.SampleMemory("search-popup-created");
+    }
+
+    private bool CloseHiddenSearchPopupShellForIdleCleanup()
+    {
+        if (_searchPopupWindow is not { IsPopupVisible: false } popup)
+        {
+            return false;
+        }
+
+        try
+        {
+            _searchPopupClosingForIdleCleanup = popup;
+            popup.Close();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (ReferenceEquals(_searchPopupClosingForIdleCleanup, popup))
+            {
+                _searchPopupClosingForIdleCleanup = null;
+            }
+
+            Log($"[Memory] Failed to close idle search popup shell: {ex.Message}");
+            return false;
+        }
     }
 
     private void ScheduleSearchPopupIdleCleanup()

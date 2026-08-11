@@ -87,6 +87,8 @@ public partial class SettingsViewModel
                 return;
             }
 
+            RefreshQuickCaptureContentPresentation();
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -109,6 +111,8 @@ public partial class SettingsViewModel
                 return;
             }
 
+            RefreshQuickCaptureContentPresentation();
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -122,31 +126,44 @@ public partial class SettingsViewModel
     public string QuickCaptureDefaultFormat
     {
         get => _quickCaptureDefaultFormat;
-        set => SetQuickCaptureSetting(
-            ref _quickCaptureDefaultFormat,
-            SettingsService.NormalizeQuickCaptureFormat(value),
-            normalized => _settingsService.Settings.QuickCaptureDefaultFormat = normalized,
-            nameof(QuickCaptureDefaultFormat));
+        set
+        {
+            SetQuickCaptureSetting(
+                ref _quickCaptureDefaultFormat,
+                SettingsService.NormalizeQuickCaptureFormat(value),
+                normalized => _settingsService.Settings.QuickCaptureDefaultFormat = normalized,
+                nameof(QuickCaptureDefaultFormat));
+            RefreshQuickCaptureContentPresentation();
+        }
     }
 
     public string QuickCaptureWideLayout
     {
         get => _quickCaptureWideLayout;
-        set => SetQuickCaptureSetting(
-            ref _quickCaptureWideLayout,
-            SettingsService.NormalizeQuickCaptureWideLayout(value),
-            normalized => _settingsService.Settings.QuickCaptureWideLayout = normalized,
-            nameof(QuickCaptureWideLayout));
+        set
+        {
+            SetQuickCaptureSetting(
+                ref _quickCaptureWideLayout,
+                SettingsService.NormalizeQuickCaptureWideLayout(value),
+                normalized => _settingsService.Settings.QuickCaptureWideLayout = normalized,
+                nameof(QuickCaptureWideLayout));
+            OnPropertyChanged(nameof(QuickCaptureLayoutSummaryText));
+            OnPropertyChanged(nameof(QuickCaptureWideOptionsVisibility));
+        }
     }
 
     public string QuickCaptureWideOpenMode
     {
         get => _quickCaptureWideOpenMode;
-        set => SetQuickCaptureSetting(
-            ref _quickCaptureWideOpenMode,
-            SettingsService.NormalizeQuickCaptureWideOpenMode(value),
-            normalized => _settingsService.Settings.QuickCaptureWideOpenMode = normalized,
-            nameof(QuickCaptureWideOpenMode));
+        set
+        {
+            SetQuickCaptureSetting(
+                ref _quickCaptureWideOpenMode,
+                SettingsService.NormalizeQuickCaptureWideOpenMode(value),
+                normalized => _settingsService.Settings.QuickCaptureWideOpenMode = normalized,
+                nameof(QuickCaptureWideOpenMode));
+            OnPropertyChanged(nameof(QuickCaptureLayoutSummaryText));
+        }
     }
 
     public bool QuickCaptureAllowRemoteImages
@@ -177,6 +194,8 @@ public partial class SettingsViewModel
                 return;
             }
 
+            RefreshTodoContentPresentation();
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -198,6 +217,8 @@ public partial class SettingsViewModel
             {
                 return;
             }
+
+            RefreshTodoContentPresentation();
 
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
@@ -253,6 +274,9 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableQuickCaptureFormatDisplayNames));
         OnPropertyChanged(nameof(AvailableQuickCaptureWideLayoutDisplayNames));
         OnPropertyChanged(nameof(AvailableQuickCaptureWideOpenModeDisplayNames));
+        OnPropertyChanged(nameof(QuickCaptureLayoutSummaryText));
+        OnPropertyChanged(nameof(QuickCaptureContentSummaryText));
+        OnPropertyChanged(nameof(TodoContentSummaryText));
     }
 
     private string GetEditorEnterBehaviorDisplayName(string behavior) =>

@@ -827,6 +827,7 @@ _isHideAnimationRunning = true;
         {
             PlayItemsViewTransition();
             ReconcileDetailSelection(autoSelectFirst: true);
+            DispatcherQueue.TryEnqueue(RefreshItemMaterialSurfaces);
         }
 
         if (e.PropertyName == nameof(QuickCaptureWidgetViewModel.TabStyle))

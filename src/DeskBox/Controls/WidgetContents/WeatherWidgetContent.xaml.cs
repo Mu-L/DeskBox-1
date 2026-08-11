@@ -77,6 +77,7 @@ public sealed partial class WeatherWidgetContent : UserControl
     }
 
     private bool _isViewLoaded;
+    private bool _isSynchronizingViewSelection;
 
     private void WeatherWidgetContent_Loaded(object sender, RoutedEventArgs e)
     {
@@ -211,7 +212,9 @@ public sealed partial class WeatherWidgetContent : UserControl
 
     private void WeatherViewSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (DataContext is WeatherWidgetViewModel viewModel &&
+        if (_isViewLoaded &&
+            !_isSynchronizingViewSelection &&
+            DataContext is WeatherWidgetViewModel viewModel &&
             WeatherViewSegmented.SelectedIndex >= 0)
         {
             viewModel.SetViewMode(useWeekView: WeatherViewSegmented.SelectedIndex == 1);
@@ -223,7 +226,15 @@ public sealed partial class WeatherWidgetContent : UserControl
         int selectedIndex = _viewModel.IsWeekView ? 1 : 0;
         if (WeatherViewSegmented.SelectedIndex != selectedIndex)
         {
-            WeatherViewSegmented.SelectedIndex = selectedIndex;
+            _isSynchronizingViewSelection = true;
+            try
+            {
+                WeatherViewSegmented.SelectedIndex = selectedIndex;
+            }
+            finally
+            {
+                _isSynchronizingViewSelection = false;
+            }
         }
     }
 

@@ -396,7 +396,6 @@
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center"
                     FontSize="{Binding CaptionTextSize}"
-                    SelectedIndex="0"
                     SelectionChanged="WeatherViewSegmented_SelectionChanged"
                     Style="{StaticResource PivotSegmentedStyle}"
                     Visibility="{Binding ViewSwitchVisibility}">

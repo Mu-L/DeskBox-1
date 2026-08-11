@@ -1,5 +1,69 @@
 # Changelog
 
+## 1.4.0 - 2026-08-11
+
+### English
+
+#### Todo and Quick Capture workspaces
+
+- Todo and Quick Capture now share a responsive master/detail foundation. Narrow widgets use a focused single-pane flow; wide widgets can keep the list and editor visible together with a persisted, adjustable splitter.
+- Standalone and grouped Quick Capture hosts now use the same surface, layout policy, tab visibility, preview-line limit, material refresh, selection restore, and edit behavior.
+- Todo notes and Quick Capture records gain native Markdown editing and safe preview, including formatting commands, task lists, tables, source-preserving edits, configurable Enter behavior, and compatibility with existing plain-text records.
+- Quick Capture attachments can be removed directly while editing in the shared host. Pending files and persisted attachments follow the same empty-record safeguards as the standalone editor.
+
+#### Settings and live application
+
+- Todo and Quick Capture settings now use the same compact hierarchy: the feature switch comes first, wide-layout behavior follows it, related controls are grouped in native expanders, and related display choices use concise multi-selection menus.
+- Quick Capture wide-open mode, tab visibility, list preview lines, Markdown defaults, and Enter behavior now update both active hosts instead of waiting for a reconstruction or affecting only the legacy window.
+- Weather view selection is no longer overwritten by the segmented control's template default during initialization. Explicit Day or Week choices persist even when they match the global default.
+- Quick Capture materials refresh correctly after recycled list containers, theme changes, view switches, and unsaved paper-style changes. Clipboard-history rows cannot inherit a saved note's paper color.
+
+#### Capsule, groups, and desktop layer
+
+- Smart hover expansion is rearmed after a Todo or Quick Capture member is switched into an existing group window. Real pointer movement can repair a missing routed entry event, and a deliberate dwell over title controls can expand without stealing an active click.
+- Segmented tabs are realized against the final expanded width before the capsule animation starts, preventing Todo and Quick Capture tabs from appearing after the body.
+- Rapid group-member wheel input is coalesced per surface, while completed live presenter swaps are protected from stale cancellation callbacks.
+- Temporary title and interaction raises are tracked with generation-safe leases. The complete batch returns to the desktop layer after interaction, and stale delayed callbacks cannot release a newer raise.
+- Desktop-layer ownership is reasserted during idle normalization so moving or interacting with a widget does not leave it above applications or break its Win+D desktop behavior.
+
+#### Memory and reliability
+
+- Hidden widgets now perform a soft cleanup after 30 seconds: dead localization targets, file metadata, icon and thumbnail caches, an unused search shell, eligible managed objects, and a high working set are released without waiting for the deep-cleanup timer.
+- When widgets remain visible but DeskBox has had no foreground, pointer, settings, search, onboarding, or widget interaction for 30 seconds, visible-idle maintenance releases caches and performs allocation-aware managed collection. Any new activity restarts the idle window.
+- The heavy-cleanup marker is always consumed, preventing a stale flag from permanently disabling visible-idle maintenance and compact-expansion warmup.
+- Version metadata is aligned across the application, package manifest, x64 installer, and ARM64 installer at 1.4.0 / 1.4.0.0.
+
+### 中文
+
+#### 待办与随记工作区
+
+- 待办与随记统一使用响应式列表/详情基础结构。窄格子采用聚焦单页流程，宽格子可以同时展示列表和编辑区，并保存可调整的分隔条位置。
+- 独立随记和组内随记改为使用同一共享宿主，宽屏布局、顶部标签、列表预览行数、纸张材质、选择恢复和编辑行为保持一致。
+- 待办备注与随记加入原生 Markdown 编辑和安全预览，支持格式命令、任务列表、表格、保留源文的编辑方式和可配置回车行为；已有纯文本记录继续兼容。
+- 共享随记宿主补齐附件删除。未保存文件和已持久化附件都可以在编辑状态直接移除，并继续遵守空记录保护。
+
+#### 设置与即时生效
+
+- 待办与随记设置统一为紧凑层级：顶部先展示功能总开关，其后是宽屏布局；同类配置收进原生风琴，相关显示项使用简洁的多选菜单。
+- 随记宽屏打开方式、顶部标签、列表预览行数、Markdown 默认格式和回车行为会同步更新当前共享宿主，不再只影响旧窗口或必须重建后才生效。
+- 修复天气分段控件在初始化时用模板默认值覆盖真实设置的问题。用户明确选择的日视图或周视图会可靠保存，包括与全局默认相同的选择。
+- 修复随记列表复用、主题变化、标签切换和未保存纸张样式下的材质刷新；剪贴板记录不会再继承其他随记的纸张颜色。
+
+#### 胶囊、格子组与桌面层级
+
+- 待办或随记切换进已有格子组窗口后，会重新挂接悬停自动展开。真实鼠标移动可以修复缺失的进入事件，鼠标停在标题控制区也可经过稳妥延迟后展开，同时不会抢走正在发生的点击。
+- 胶囊展开前会按最终宽度预先准备顶部分段标签，避免待办和随记的标签晚于正文出现。
+- 格子组的连续滚轮请求会按窗口合并，已经完成的真实内容切换也不会被旧的取消回调撤销。
+- 标题点击和交互触发的临时前置改用带代次的租约管理。整批格子会在交互结束后回到桌面层，旧延迟回调无法释放后来的新状态。
+- 空闲层级校正会重新确认桌面宿主关系，避免移动或操作格子后长期压在其他应用上方，或导致 Win+D 保留桌面格子的行为失效。
+
+#### 内存与可靠性
+
+- 全部格子隐藏 30 秒后执行轻量回收，释放无效本地化订阅、文件元数据、图标与缩略图缓存、闲置搜索壳、符合条件的托管对象和过高工作集，无需等待深度回收定时器。
+- 格子仍显示时，若 DeskBox 连续 30 秒没有前台、鼠标、设置、搜索、新手引导或格子交互，也会释放缓存并按新增分配量执行托管回收；任何新操作都会重新计算空闲时间。
+- 修复重度清理标记未被消费后长期阻止可见空闲回收和胶囊预热的问题。
+- 应用、应用包、x64 安装器和 ARM64 安装器版本统一为 1.4.0 / 1.4.0.0。
+
 ## 1.3.9 - 2026-08-09
 
 ### English

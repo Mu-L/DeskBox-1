@@ -273,6 +273,11 @@ public sealed partial class ContentWidgetWindow
                     cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 _hostTransition.Complete();
+                // The persistent group HWND never changes, so a pointer that
+                // stayed over the capsule will not naturally enter the newly
+                // hosted member. Re-arm Smart hover after the visual swap has
+                // fully settled as well as when SetContent first fires.
+                _owner.RearmCompactHoverAfterHostedContentChange();
                 _isCompleted = true;
             }
             catch

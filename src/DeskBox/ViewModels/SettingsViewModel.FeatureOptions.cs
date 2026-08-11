@@ -25,6 +25,9 @@ public partial class SettingsViewModel
                 return;
             }
 
+            OnPropertyChanged(nameof(TodoLayoutSummaryText));
+            OnPropertyChanged(nameof(TodoWideOptionsVisibility));
+
             bool canUseWideDetail = normalized != SettingsService.TodoLayoutModeSinglePane;
             if (TodoUseWideDetailPane != canUseWideDetail)
             {
@@ -61,6 +64,9 @@ public partial class SettingsViewModel
                 return;
             }
 
+            OnPropertyChanged(nameof(SelectedTodoNewTaskPositionText));
+            RefreshTodoContentPresentation();
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -68,7 +74,6 @@ public partial class SettingsViewModel
 
             _settingsService.Settings.TodoNewTaskPosition = _selectedTodoNewTaskPosition;
             _settingsService.SaveDebounced();
-            OnPropertyChanged(nameof(SelectedTodoNewTaskPositionText));
         }
     }
 
@@ -128,6 +133,9 @@ public partial class SettingsViewModel
                 return;
             }
 
+            OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewText));
+            RefreshQuickCaptureTabsPresentation();
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -136,7 +144,6 @@ public partial class SettingsViewModel
             EnsureQuickCaptureTabEnabled(_selectedQuickCaptureDefaultView);
             _settingsService.Settings.QuickCaptureDefaultView = _selectedQuickCaptureDefaultView;
             _settingsService.SaveDebounced();
-            OnPropertyChanged(nameof(SelectedQuickCaptureDefaultViewText));
         }
     }
 
@@ -152,6 +159,9 @@ public partial class SettingsViewModel
                 return;
             }
 
+            OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleText));
+            OnPropertyChanged(nameof(QuickCaptureTabStyleIndex));
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -159,7 +169,6 @@ public partial class SettingsViewModel
 
             _settingsService.Settings.QuickCaptureTabStyle = _selectedQuickCaptureTabStyle;
             _settingsService.SaveDebounced();
-            OnPropertyChanged(nameof(SelectedQuickCaptureTabStyleText));
         }
     }
 
@@ -175,6 +184,9 @@ public partial class SettingsViewModel
                 return;
             }
 
+            OnPropertyChanged(nameof(SelectedTodoDefaultFilterText));
+            RefreshTodoTabsPresentation();
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -183,7 +195,6 @@ public partial class SettingsViewModel
             EnsureTodoTabEnabled(_selectedTodoDefaultFilter);
             _settingsService.Settings.TodoDefaultFilter = _selectedTodoDefaultFilter;
             _settingsService.SaveDebounced();
-            OnPropertyChanged(nameof(SelectedTodoDefaultFilterText));
         }
     }
 
@@ -243,6 +254,9 @@ public partial class SettingsViewModel
                 return;
             }
 
+            OnPropertyChanged(nameof(SelectedTodoTabStyleText));
+            OnPropertyChanged(nameof(TodoTabStyleIndex));
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -250,7 +264,6 @@ public partial class SettingsViewModel
 
             _settingsService.Settings.TodoTabStyle = _selectedTodoTabStyle;
             _settingsService.SaveDebounced();
-            OnPropertyChanged(nameof(SelectedTodoTabStyleText));
         }
     }
 
@@ -267,6 +280,9 @@ public partial class SettingsViewModel
                 return;
             }
 
+            OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
+            OnPropertyChanged(nameof(TodoReminderSummaryText));
+
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -274,7 +290,6 @@ public partial class SettingsViewModel
 
             _settingsService.Settings.TodoDefaultReminderOffsetMinutes = normalizedValue;
             _settingsService.SaveDebounced();
-            OnPropertyChanged(nameof(SelectedTodoReminderOffsetMinutesText));
         }
     }
 

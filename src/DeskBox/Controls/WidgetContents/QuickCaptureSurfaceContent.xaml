@@ -29,6 +29,15 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
+        <Style x:Key="QuickCaptureSharedAttachmentActionButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
+        </Style>
     </UserControl.Resources>
 
     <Grid
@@ -163,6 +172,7 @@
                                 BorderBrush="Transparent"
                                 BorderThickness="0"
                                 CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
+                                DataContextChanged="QuickCaptureItem_DataContextChanged"
                                 DragLeave="QuickCaptureItem_DragLeave"
                                 DragOver="QuickCaptureItem_DragOver"
                                 Drop="QuickCaptureItem_Drop"
@@ -177,7 +187,12 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Spacing="2">
-                                        <TextBlock FontSize="{Binding TextSize}" MaxLines="3" Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                        <TextBlock
+                                            FontSize="{Binding TextSize}"
+                                            MaxLines="{Binding ElementName=ItemsList, Path=DataContext.ItemPreviewLineCount}"
+                                            Text="{Binding DisplayText}"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="Wrap" />
                                         <TextBlock
                                             FontSize="{Binding SecondaryTextSize}"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -312,17 +327,42 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Button
+                                        <Grid
                                             MinWidth="104"
-                                            MaxWidth="144"
-                                            Padding="6,4"
-                                            Click="DetailOpenAttachmentButton_Click"
-                                            Style="{StaticResource SubtleButtonStyle}">
-                                            <StackPanel Orientation="Horizontal" Spacing="5">
-                                                <FontIcon FontSize="12" Glyph="&#xE723;" />
-                                                <TextBlock MaxLines="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                        </Button>
+                                            MaxWidth="174"
+                                            ColumnSpacing="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button
+                                                Grid.Column="0"
+                                                MinWidth="76"
+                                                MaxWidth="144"
+                                                Padding="6,4"
+                                                HorizontalContentAlignment="Stretch"
+                                                Click="DetailOpenAttachmentButton_Click"
+                                                Style="{StaticResource SubtleButtonStyle}">
+                                                <Grid ColumnSpacing="5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <FontIcon FontSize="12" Glyph="&#xE723;" />
+                                                    <TextBlock Grid.Column="1" MaxLines="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                                </Grid>
+                                            </Button>
+                                            <Button
+                                                Grid.Column="1"
+                                                AutomationProperties.Name="{Binding ElementName=ResponsiveContentGrid, Path=DataContext.DetailRemoveAttachmentText}"
+                                                Click="DetailRemoveAttachmentButton_Click"
+                                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                Style="{StaticResource QuickCaptureSharedAttachmentActionButtonStyle}"
+                                                ToolTipService.ToolTip="{Binding ElementName=ResponsiveContentGrid, Path=DataContext.DetailRemoveAttachmentText}"
+                                                Visibility="{Binding ElementName=DetailMarkdownEditor, Path=Visibility}">
+                                                <FontIcon FontSize="10" Glyph="&#xE74D;" />
+                                            </Button>
+                                        </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -349,7 +389,7 @@
                             <controls:MarkdownDocumentView
                                 x:Name="DetailMarkdownView"
                                 MinHeight="80"
-                                Margin="8,10,8,6"
+                                Margin="8,10,0,6"
                                 FontSize="{Binding TextSize}"
                                 TaskToggleRequested="DetailMarkdownView_TaskToggleRequested"
                                 Visibility="Collapsed" />
@@ -357,6 +397,7 @@
                                 x:Name="DetailMarkdownEditor"
                                 MinHeight="80"
                                 EditorFontSize="{Binding TextSize}"
+                                EditorEnterBehavior="{Binding EditorEnterBehavior}"
                                 PlaceholderText="{Binding DetailBodyPlaceholderText}"
                                 Visibility="Collapsed" />
                         </Grid>

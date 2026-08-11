@@ -99,6 +99,22 @@ public sealed class MarkdownAndSplitterContractTests
     }
 
     [Fact]
+    public void Reader_KeepsScrollbarNearSurfaceEdgeAndClearOfText()
+    {
+        string reader = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/MarkdownDocumentView.cs"));
+        string surface = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string standalone = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.xaml"));
+
+        Assert.Contains("InternalScrollBarContentClearance = 12", reader, StringComparison.Ordinal);
+        Assert.Contains("_documentText.Margin = UseInternalScrollViewer", reader, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"8,10,0,6\"", surface, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"8,6,0,6\"", standalone, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SegmentedTabs_LeaveWidthCalculationToToolkitDuringResponsiveLayout()
     {
         string helper = File.ReadAllText(TestPaths.FromRepository(
@@ -127,6 +143,21 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("_todoSegmentedStableFrameCount < 3", code, StringComparison.Ordinal);
         Assert.Contains("WidgetSegmentedLayoutHelper.MinimumSafeWidth", code, StringComparison.Ordinal);
         Assert.Contains("CancelTodoSegmentedRestore", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CapsuleExpansion_PreparesSegmentedTabsBeforeTheFirstAnimationFrame()
+    {
+        string quickCapture = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+        string todo = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.xaml.cs"));
+
+        Assert.Contains("PrepareSegmentedForExpansion(targetContentWidth)", quickCapture, StringComparison.Ordinal);
+        Assert.Contains("QuickCaptureViewSegmented.Visibility = Visibility.Visible", quickCapture, StringComparison.Ordinal);
+        Assert.Contains("PrepareTodoSegmentedForExpansion(targetContentWidth)", todo, StringComparison.Ordinal);
+        Assert.Contains("TodoFilterSegmented.Visibility = Visibility.Visible", todo, StringComparison.Ordinal);
+        Assert.Contains("ApplySegmentedLayout(allowDuringTransition: true)", todo, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.3.9-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.9)
+[![Latest release](https://img.shields.io/badge/release-1.4.0-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.0)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ The six newer language packs prioritize the main file-widget and onboarding flow
 
 ## Download
 
-Download DeskBox 1.3.9 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.9):
+Download DeskBox 1.4.0 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.0):
 
-- [DeskBox 1.3.9 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.9/DeskBox_Setup_1.3.9_x64.exe) — most Intel and AMD PCs.
-- [DeskBox 1.3.9 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.9/DeskBox_Setup_1.3.9_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.4.0 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.0/DeskBox_Setup_1.4.0_x64.exe) — most Intel and AMD PCs.
+- [DeskBox 1.4.0 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.0/DeskBox_Setup_1.4.0_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
@@ -65,8 +65,9 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 
 ### Todo and Quick Capture
 
-- Track tasks with due dates, reminders, recurrence, color markers, attachments, filters, and batch actions.
-- Save reusable text, links, images, and files in Quick Capture with pinning, paper styles, attachments, and focused editing.
+- Work in responsive Todo and Quick Capture list/detail layouts that switch between single- and dual-pane modes, with an adjustable master pane on wide widgets.
+- Track tasks with due dates, reminders, recurrence, color markers, Markdown notes, attachments, filters, and batch actions.
+- Save reusable text, links, images, and files in Quick Capture with pinning, paper styles, Markdown editing and preview, removable attachments, and focused editing.
 - Keep attachment files linked to their original location or copy them into DeskBox-managed storage.
 
 ### Desktop search
@@ -101,17 +102,17 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
 - Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
-## What is new in 1.3.9
+## What is new in 1.4.0
 
-- **Predictable capsule behavior:** entering smart auto-hide now starts from the real pointer position, retries a deferred collapse, limits simultaneous resize animations, and keeps the currently expanded capsule above its DeskBox peers.
-- **Visible widgets after launch:** every enabled standalone widget and the active surface of each widget group returns for a new application session, with a temporary foreground presentation so the restored layout is immediately visible.
-- **Complete multi-item drag:** file widgets, search results, standalone Quick Capture, and grouped Quick Capture preserve the full selection when dragging. Mixed file-and-folder batches remain intact.
-- **Consistent batch keyboard actions:** Delete now applies to the selected Quick Capture and Todo items instead of only the drag anchor or focused row.
-- **Honest large-transfer feedback:** progress appears before expensive preparation finishes, stays indeterminate while the byte total is unknown, and changes to an explicit canceling state as soon as Cancel is pressed. Canceled batches roll back completed work where possible.
-- **Reliable group-title scrolling:** mouse-wheel navigation wraps through group members and keeps its pending target until the switch actually completes.
-- **Shorter visual onboarding:** the first-run guide is now one introduction, two optional real exercises, and a final choice. It states that managed drops move files by default and confirms practice only after the real operation succeeds.
+- **Responsive Todo and Quick Capture workspaces:** both widgets now use a unified list/detail foundation with reliable single- and dual-pane layouts, an adjustable splitter, and consistent behavior in standalone windows and widget groups.
+- **Markdown editing where it matters:** Todo notes and Quick Capture records gain a native formatting toolbar, safe preview, interactive task lists, configurable Enter behavior, and lossless source preservation. Existing plain-text records remain compatible.
+- **Simpler feature settings:** Todo and Quick Capture now share the same compact hierarchy, place their main switch first, group related controls into native expanders, and combine related display choices into concise selectors.
+- **Capsules expand reliably after content switches:** Smart hover is rebuilt from the real pointer after grouped content changes, supports a deliberate dwell over controls, and realizes segmented tabs before the expansion animation becomes visible.
+- **Desktop layering returns to rest:** temporary title and interaction raises are tracked as explicit leases and restored safely, preventing moved or interacted widgets from remaining above applications or losing their desktop behavior.
+- **Memory is reclaimed after real idle time:** hidden widgets perform a 30-second soft cleanup, while visible but untouched DeskBox surfaces release caches and eligible managed memory after 30 seconds without interrupting active work.
+- **Settings and attachments apply immediately:** weather view selection, Quick Capture layout/tab preferences, preview line counts, editor shortcuts, note materials, and attachment removal now work through the active shared hosts.
 
-Read the full [changelog](CHANGELOG.md) or the [1.3.9 release notes](docs/releases/v1.3.9.md).
+Read the full [changelog](CHANGELOG.md) or the [1.4.0 release notes](docs/releases/v1.4.0.md).
 
 ## Current interface
 
@@ -214,8 +215,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.3.9_x64.exe
-Output\DeskBox_Setup_1.3.9_arm64.exe
+Output\DeskBox_Setup_1.4.0_x64.exe
+Output\DeskBox_Setup_1.4.0_arm64.exe
 ```
 
 ## Project layout

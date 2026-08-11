@@ -5,6 +5,36 @@ namespace DeskBox.Tests;
 public sealed class RuntimeActivityPolicyTests
 {
     [Fact]
+    public void VisibleIdleMemoryTracker_TriggersAfterThirtySecondsAndRespectsCooldown()
+    {
+        var tracker = new VisibleIdleMemoryTracker(
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(60));
+        DateTimeOffset start = new(2026, 8, 11, 10, 0, 0, TimeSpan.Zero);
+
+        Assert.False(tracker.Observe(start, isEligible: true));
+        Assert.False(tracker.Observe(start.AddSeconds(29), isEligible: true));
+        Assert.True(tracker.Observe(start.AddSeconds(30), isEligible: true));
+        Assert.False(tracker.Observe(start.AddSeconds(89), isEligible: true));
+        Assert.True(tracker.Observe(start.AddSeconds(90), isEligible: true));
+    }
+
+    [Fact]
+    public void VisibleIdleMemoryTracker_RestartsIdleWindowAfterActivity()
+    {
+        var tracker = new VisibleIdleMemoryTracker(
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(60));
+        DateTimeOffset start = new(2026, 8, 11, 10, 0, 0, TimeSpan.Zero);
+
+        Assert.False(tracker.Observe(start, isEligible: true));
+        Assert.False(tracker.Observe(start.AddSeconds(20), isEligible: false));
+        Assert.False(tracker.Observe(start.AddSeconds(21), isEligible: true));
+        Assert.False(tracker.Observe(start.AddSeconds(50), isEligible: true));
+        Assert.True(tracker.Observe(start.AddSeconds(51), isEligible: true));
+    }
+
+    [Fact]
     public void MemoryCleanupPolicy_AllowsTrimOnlyWhenEveryUiSurfaceIsInactive()
     {
         Assert.True(MemoryCleanupPolicy.CanTrimWorkingSet(
@@ -146,6 +176,60 @@ public sealed class RuntimeActivityPolicyTests
     public void WidgetCompactWarmupPolicy_AllowsReadyIdleCollapsedWindow()
     {
         Assert.True(WidgetCompactWarmupPolicy.CanRun(CreateWarmupSnapshot()));
+    }
+
+    [Fact]
+    public void MemoryCleanupPolicy_RequiresVisibleInactiveUiForThirtySecondTracker()
+    {
+        var snapshot = new MemoryCleanupActivitySnapshot(
+            HasVisibleWidgets: true,
+            IsWidgetInteractionActive: false,
+            IsSettingsOpen: false,
+            IsOnboardingOpen: false,
+            IsSearchPopupVisible: false,
+            IsDeskBoxForeground: false,
+            IsPointerOverDeskBox: false);
+
+        Assert.True(MemoryCleanupPolicy.IsVisibleIdleCandidate(snapshot));
+        Assert.False(MemoryCleanupPolicy.IsVisibleIdleCandidate(
+            snapshot with { IsPointerOverDeskBox = true }));
+        Assert.False(MemoryCleanupPolicy.IsVisibleIdleCandidate(
+            snapshot with { IsDeskBoxForeground = true }));
+        Assert.False(MemoryCleanupPolicy.IsVisibleIdleCandidate(
+            snapshot with { HasVisibleWidgets = false }));
+    }
+
+    [Fact]
+    public void MemoryCleanupPolicy_TrimsHiddenWorkingSetOnlyAboveThreshold()
+    {
+        var snapshot = new MemoryCleanupActivitySnapshot(
+            HasVisibleWidgets: false,
+            IsWidgetInteractionActive: false,
+            IsSettingsOpen: false,
+            IsOnboardingOpen: false,
+            IsSearchPopupVisible: false,
+            IsDeskBoxForeground: false,
+            IsPointerOverDeskBox: false);
+
+        Assert.True(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
+            snapshot,
+            isSearchIndexing: false,
+            MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes));
+        Assert.False(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
+            snapshot,
+            isSearchIndexing: false,
+            MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes - 1));
+        Assert.False(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
+            snapshot,
+            isSearchIndexing: true,
+            MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes));
+    }
+
+    [Fact]
+    public void UsnJournalIndexService_DoesNotRetryAccessDeniedVolumeInSameSession()
+    {
+        Assert.False(UsnJournalIndexService.ShouldRetryVolumeOpen(5));
+        Assert.True(UsnJournalIndexService.ShouldRetryVolumeOpen(21));
     }
 
     [Theory]

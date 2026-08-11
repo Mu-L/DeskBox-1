@@ -62,6 +62,8 @@ public sealed partial class QuickCaptureWidgetWindow
     {
         CompleteTitleBarClickCollapse(e, _hasMovedTitleBarDrag);
         EndWindowDrag(e);
+        App.Current.WidgetManager?.RestoreTemporarilyRaisedWidgetsToDesktopLayer(
+            "quick-title-released");
     }
 
     private void DragHandle_PointerPressed(object sender, PointerRoutedEventArgs e)

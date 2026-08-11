@@ -156,6 +156,9 @@ public sealed partial class WidgetManager
 
     private void UnregisterSurfaceHost(IDesktopWidgetWindow window)
     {
+        _temporaryRaiseLease = WidgetTemporaryRaiseLeasePolicy.Forget(
+            _temporaryRaiseLease,
+            window.WindowHandle);
         _widgetSurfaces.UnregisterHost(window);
     }
 

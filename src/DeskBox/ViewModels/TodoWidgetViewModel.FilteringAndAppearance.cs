@@ -325,6 +325,7 @@ public sealed partial class TodoWidgetViewModel
         OnPropertyChanged(nameof(UseWideDetailPane));
         OnPropertyChanged(nameof(AutoSelectFirstInWideLayout));
         OnPropertyChanged(nameof(ItemPreviewLineCount));
+        OnPropertyChanged(nameof(EditorEnterBehavior));
 
         bool filterChanged = false;
         if (updateFilter)

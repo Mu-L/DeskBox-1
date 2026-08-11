@@ -9,9 +9,47 @@ namespace DeskBox.Services;
 /// </summary>
 internal sealed class WidgetGroupSwitchRequestCoordinator
 {
+    internal static readonly TimeSpan WheelGestureQuietPeriod =
+        TimeSpan.FromMilliseconds(700);
+
     private readonly object _gate = new();
     private readonly Dictionary<string, WidgetGroupSwitchRequest> _currentRequests =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> _lastWheelStepAt =
+        new(StringComparer.Ordinal);
+
+    public bool TryAcceptWheelStep(
+        string groupId,
+        DateTimeOffset observedAt,
+        out TimeSpan sincePreviousStep)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
+
+        lock (_gate)
+        {
+            if (_lastWheelStepAt.TryGetValue(groupId, out var previous))
+            {
+                sincePreviousStep = observedAt - previous;
+                if (sincePreviousStep >= TimeSpan.Zero &&
+                    sincePreviousStep < WheelGestureQuietPeriod)
+                {
+                    // Refresh the timestamp for every tail event. Precision
+                    // touchpad inertia can arrive in several waves, and the
+                    // gesture should not re-arm until the whole stream has
+                    // actually gone quiet.
+                    _lastWheelStepAt[groupId] = observedAt;
+                    return false;
+                }
+            }
+            else
+            {
+                sincePreviousStep = TimeSpan.MaxValue;
+            }
+
+            _lastWheelStepAt[groupId] = observedAt;
+            return true;
+        }
+    }
 
     public WidgetGroupSwitchRequest Begin(
         string groupId,
@@ -106,6 +144,7 @@ internal sealed class WidgetGroupSwitchRequestCoordinator
         {
             requests = _currentRequests.Values.ToList();
             _currentRequests.Clear();
+            _lastWheelStepAt.Clear();
         }
 
         // Keep callbacks outside the coordinator lock for the same reason as

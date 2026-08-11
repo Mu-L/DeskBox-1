@@ -94,6 +94,12 @@ public sealed partial class MarkdownSourceEditor : UserControl
         typeof(MarkdownSourceEditor),
         new PropertyMetadata(true, OnToolbarVisibilityChanged));
 
+    public static readonly DependencyProperty EditorEnterBehaviorProperty = DependencyProperty.Register(
+        nameof(EditorEnterBehavior),
+        typeof(string),
+        typeof(MarkdownSourceEditor),
+        new PropertyMetadata(SettingsService.EditorEnterBehaviorCtrlEnterSaves));
+
     public string Text
     {
         get => (string)GetValue(TextProperty);
@@ -122,6 +128,12 @@ public sealed partial class MarkdownSourceEditor : UserControl
     {
         get => (bool)GetValue(ShowFormattingToolbarProperty);
         set => SetValue(ShowFormattingToolbarProperty, value);
+    }
+
+    public string EditorEnterBehavior
+    {
+        get => (string)GetValue(EditorEnterBehaviorProperty);
+        set => SetValue(EditorEnterBehaviorProperty, value);
     }
 
     public Func<string, string>? TextResolver
@@ -378,7 +390,8 @@ public sealed partial class MarkdownSourceEditor : UserControl
             return;
         }
 
-        if (control && e.Key == VirtualKey.Enter)
+        if (e.Key == VirtualKey.Enter &&
+            SettingsService.ShouldSubmitEditorOnEnter(EditorEnterBehavior, control))
         {
             e.Handled = true;
             CommitRequested?.Invoke(this, EventArgs.Empty);

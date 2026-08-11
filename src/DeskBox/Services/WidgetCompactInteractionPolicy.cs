@@ -34,6 +34,8 @@ internal readonly record struct WidgetCompactInteractionSnapshot(
 
 internal static class WidgetCompactInteractionPolicy
 {
+    internal const int InteractionRegionHoverDelayFloorMilliseconds = 620;
+
     public static WidgetCompactInteractionSnapshot SynchronizeForSmartEntry(
         WidgetCompactInteractionSnapshot snapshot,
         bool isPointerPhysicallyInside)
@@ -54,17 +56,33 @@ internal static class WidgetCompactInteractionPolicy
 
     public static bool CanHoverExpand(
         WidgetCollapseBehavior behavior,
-        WidgetCompactInteractionSnapshot snapshot)
+        WidgetCompactInteractionSnapshot snapshot,
+        bool allowInteractionRegionDwell = false)
     {
+        bool hasEligibleHoverIntent = allowInteractionRegionDwell
+            ? snapshot.IsPointerInside
+            : snapshot.IsExpansionZoneActive &&
+                !snapshot.IsPointerOverMoveHandle &&
+                !snapshot.IsPointerOverActions;
+
         return behavior == WidgetCollapseBehavior.Smart &&
             snapshot.IsCollapsed &&
             snapshot.IsPointerInside &&
-            snapshot.IsExpansionZoneActive &&
-            !snapshot.IsPointerOverMoveHandle &&
-            !snapshot.IsPointerOverActions &&
+            hasEligibleHoverIntent &&
             !snapshot.IsDropInside &&
             !snapshot.HasActiveInteraction &&
             !snapshot.SuppressHoverExpansion;
+    }
+
+    public static int ResolveHoverExpandDelayMilliseconds(
+        int configuredDelayMilliseconds,
+        bool allowInteractionRegionDwell)
+    {
+        return allowInteractionRegionDwell
+            ? Math.Max(
+                configuredDelayMilliseconds,
+                InteractionRegionHoverDelayFloorMilliseconds)
+            : configuredDelayMilliseconds;
     }
 
     public static bool CanAutoCollapse(

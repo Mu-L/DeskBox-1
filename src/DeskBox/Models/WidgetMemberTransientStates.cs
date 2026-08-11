@@ -7,7 +7,8 @@ public sealed record QuickCaptureWidgetTransientState(
     string FocusTarget,
     string? SelectedDetailItemId = null,
     bool IsDetailEditing = false,
-    string? DetailDraft = null);
+    string? DetailDraft = null,
+    bool WasDetailVisibleInSinglePane = false);
 
 public sealed record FileWidgetTransientState(
     string[] SelectedPaths,

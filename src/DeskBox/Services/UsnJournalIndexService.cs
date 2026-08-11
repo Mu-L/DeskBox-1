@@ -32,6 +32,7 @@ public sealed partial class UsnJournalIndexService : IDisposable
     private const uint FsctlQueryUsnJournal = 0x000900F4;
 
     private const int ErrorHandleEof = 38;
+    private const int ErrorAccessDenied = 5;
     private const int ErrorJournalDeleteInProgress = 1178;
     private const int ErrorJournalNotActive = 1179;
     private const int ErrorJournalEntryDeleted = 1181;
@@ -167,6 +168,7 @@ public sealed partial class UsnJournalIndexService : IDisposable
     private readonly ConcurrentDictionary<string, UsnEntry> _index = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, VolumeState> _volumeStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTime> _capacityLimitedVolumes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _sessionUnavailableVolumes = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _indexMutationLock = new();
     private readonly ManualResetEventSlim _pauseGate = new(true);
     private CancellationTokenSource? _scanCts;
@@ -290,6 +292,7 @@ public sealed partial class UsnJournalIndexService : IDisposable
             _index.Clear();
             _volumeStates.Clear();
             _capacityLimitedVolumes.Clear();
+            _sessionUnavailableVolumes.Clear();
             _isAvailable = false;
         }
         Volatile.Write(ref _incrementalVolumeCount, 0);
@@ -424,9 +427,12 @@ public sealed partial class UsnJournalIndexService : IDisposable
 
             Interlocked.Exchange(ref _isScanning, 0);
 
-            if (eligibleRoots.Count > 0 && !token.IsCancellationRequested)
+            string[] monitorRoots = eligibleRoots
+                .Where(root => !_sessionUnavailableVolumes.ContainsKey(root.TrimEnd('\\')))
+                .ToArray();
+            if (monitorRoots.Length > 0 && !token.IsCancellationRequested)
             {
-                Task[] monitors = eligibleRoots
+                Task[] monitors = monitorRoots
                     .Select(root => MonitorVolumeAsync(root, eligibleRoots.Count, epoch, token))
                     .ToArray();
                 await Task.WhenAll(monitors).ConfigureAwait(false);
@@ -472,7 +478,21 @@ public sealed partial class UsnJournalIndexService : IDisposable
             handle = CreateFile(volumePath, GenericRead, FileShareRead | FileShareWrite, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
             if (handle.IsInvalid)
             {
-                App.Log($"[UsnIndex] Cannot open {volumePath} (elevation required). Skipping volume.");
+                int error = Marshal.GetLastWin32Error();
+                if (!ShouldRetryVolumeOpen(error))
+                {
+                    if (_sessionUnavailableVolumes.TryAdd(root, 0))
+                    {
+                        App.Log(
+                            $"[UsnIndex] Cannot open {volumePath} (access denied). " +
+                            "Using the directory index for this session.");
+                    }
+                }
+                else
+                {
+                    App.Log($"[UsnIndex] Cannot open {volumePath}: {error}. Retrying with backoff.");
+                }
+
                 return null;
             }
 
@@ -757,6 +777,11 @@ public sealed partial class UsnJournalIndexService : IDisposable
         int failures = 0;
         while (IsCurrentSession(epoch, token))
         {
+            if (_sessionUnavailableVolumes.ContainsKey(root.TrimEnd('\\')))
+            {
+                return;
+            }
+
             _pauseGate.Wait(token);
             if (!_volumeStates.TryGetValue(root, out VolumeState? state))
             {
@@ -985,6 +1010,8 @@ public sealed partial class UsnJournalIndexService : IDisposable
         int seconds = Math.Min(60, 1 << Math.Min(6, Math.Max(0, failures - 1)));
         return Task.Delay(TimeSpan.FromSeconds(seconds), token);
     }
+
+    internal static bool ShouldRetryVolumeOpen(int error) => error != ErrorAccessDenied;
 
     private static bool TryQueryJournal(SafeFileHandle handle, out UsnJournalData journal)
     {

@@ -102,15 +102,23 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private async void InputTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key != Windows.System.VirtualKey.Enter ||
-            (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift) &
-             Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down)
+        if (e.Key != Windows.System.VirtualKey.Enter)
         {
             return;
         }
 
+        bool controlPressed = Win32Helper.IsKeyPressed(
+            Windows.System.VirtualKey.Control);
         e.Handled = true;
-        await ViewModel.AddInputAsync();
+        if (SettingsService.ShouldSubmitEditorOnEnter(
+                _settingsService.Settings.QuickCaptureEditorEnterBehavior,
+                controlPressed))
+        {
+            await ViewModel.AddInputAsync();
+            return;
+        }
+
+        TextBoxEditorShortcutHelper.InsertLineBreak(InputTextBox);
     }
 
     private async Task OpenNewDetailAsync(string? initialBody = null)

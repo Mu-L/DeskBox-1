@@ -22,11 +22,13 @@ function Read-RequiredMatch {
 }
 
 $csproj = Join-Path $root 'src\DeskBox\DeskBox.csproj'
+$packageManifest = Join-Path $root 'src\DeskBox\Package.appxmanifest'
 $x64Installer = Join-Path $root 'installer\DeskBox.iss'
 $arm64Installer = Join-Path $root 'installer\DeskBox.arm64.iss'
 
 $projectVersion = Read-RequiredMatch $csproj '<Version>([^<]+)</Version>' 'project version'
 $projectVersionInfo = Read-RequiredMatch $csproj '<FileVersion>([^<]+)</FileVersion>' 'project file version'
+$packageVersionInfo = Read-RequiredMatch $packageManifest 'Version="([^"]+)"' 'package version'
 $x64Version = Read-RequiredMatch $x64Installer '#define MyAppVersion "([^"]+)"' 'x64 installer version'
 $x64VersionInfo = Read-RequiredMatch $x64Installer '#define MyAppVersionInfo "([^"]+)"' 'x64 installer file version'
 $arm64Version = Read-RequiredMatch $arm64Installer '#define MyAppVersion "([^"]+)"' 'ARM64 installer version'
@@ -36,6 +38,7 @@ $checks = @(
     @{ Name = 'x64 installer'; Actual = $x64Version; Expected = $projectVersion }
     @{ Name = 'ARM64 installer'; Actual = $arm64Version; Expected = $projectVersion }
     @{ Name = 'project file version'; Actual = $projectVersionInfo; Expected = "$projectVersion.0" }
+    @{ Name = 'package version'; Actual = $packageVersionInfo; Expected = "$projectVersion.0" }
     @{ Name = 'x64 installer file version'; Actual = $x64VersionInfo; Expected = "$projectVersion.0" }
     @{ Name = 'ARM64 installer file version'; Actual = $arm64VersionInfo; Expected = "$projectVersion.0" }
 )

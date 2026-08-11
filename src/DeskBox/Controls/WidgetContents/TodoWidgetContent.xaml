@@ -837,6 +837,7 @@
                             CancelRequested="DetailNotesEditor_CancelRequested"
                             CommitRequested="DetailNotesEditor_CommitRequested"
                             EditorFontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                            EditorEnterBehavior="{Binding ElementName=RootGrid, Path=DataContext.EditorEnterBehavior}"
                             EditorTextChanged="DetailNotesEditor_EditorTextChanged"
                             PlaceholderText="{Binding ElementName=RootGrid, Path=DataContext.DetailNotesPlaceholderText}"
                             Visibility="Collapsed" />

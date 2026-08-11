@@ -212,7 +212,14 @@ public sealed partial class TodoWidgetContent : UserControl
         bool isCollapsing)
     {
         _isResponsiveLayoutTransitionActive = true;
-        SuspendTodoSegmented();
+        CancelTodoSegmentedRestore();
+        if (!isCollapsing &&
+            double.IsFinite(targetContentWidth) &&
+            targetContentWidth >= WidgetSegmentedLayoutHelper.MinimumSafeWidth)
+        {
+            ApplyMasterDetailLayout(targetContentWidth);
+            PrepareTodoSegmentedForExpansion(targetContentWidth);
+        }
     }
 
     internal void CompleteResponsiveLayoutTransition(
@@ -242,9 +249,9 @@ public sealed partial class TodoWidgetContent : UserControl
         QueueTodoSegmentedRestore();
     }
 
-    private void ApplySegmentedLayout()
+    private void ApplySegmentedLayout(bool allowDuringTransition = false)
     {
-        if (_isResponsiveLayoutTransitionActive)
+        if (_isResponsiveLayoutTransitionActive && !allowDuringTransition)
         {
             _segmentedLayoutRefreshPending = true;
             return;
@@ -258,6 +265,28 @@ public sealed partial class TodoWidgetContent : UserControl
         {
             WidgetSegmentedLayoutHelper.ApplyNaturalItemWidths(TodoFilterSegmented);
         }
+    }
+
+    private void PrepareTodoSegmentedForExpansion(double targetContentWidth)
+    {
+        if (TodoFilterSegmented is null ||
+            ViewModel?.TabBarVisibility != Visibility.Visible ||
+            ListHeaderArea.Visibility != Visibility.Visible ||
+            !double.IsFinite(targetContentWidth) ||
+            targetContentWidth < WidgetSegmentedLayoutHelper.MinimumSafeWidth)
+        {
+            return;
+        }
+
+        // The shell has already frozen its presenter at targetContentWidth.
+        // It is therefore safe for Toolkit's EqualPanel to realize the real
+        // tabs before the first expansion frame. Keep the delayed restore only
+        // for first-load or other layouts that do not yet own a safe slot.
+        CancelTodoSegmentedRestore();
+        TodoFilterSegmented.Visibility = Visibility.Visible;
+        WidgetSegmentedStyleHelper.Apply(TodoFilterSegmented, ViewModel?.TabStyle);
+        ApplySegmentedLayout(allowDuringTransition: true);
+        _segmentedLayoutRefreshPending = false;
     }
 
     private void ApplySegmentedStyle()

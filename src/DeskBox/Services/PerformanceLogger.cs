@@ -40,6 +40,8 @@ public static class PerformanceLogger
     /// <summary>Thumbnail cache entry count, updated by IconHelper.</summary>
     public static int ThumbnailCacheCount { get; set; }
 
+    public static long ThumbnailEstimatedBytes { get; set; }
+
     /// <summary>Icon cache entry count, updated by IconHelper.</summary>
     public static int IconCacheCount { get; set; }
 
@@ -164,6 +166,7 @@ public static class PerformanceLogger
                 $"gcMemoryLoadMB={LastGcMemoryLoad / (1024.0 * 1024):F1} " +
                 $"handles={LastHandleCount} " +
                 $"thumbCache={ThumbnailCacheCount} " +
+                $"thumbCacheMB={ThumbnailEstimatedBytes / (1024.0 * 1024):F1} " +
                 $"iconCache={IconCacheCount} " +
                 $"decodedBitmapCache={DecodedBitmapCacheCount} " +
                 $"decodedBitmapMB={DecodedBitmapEstimatedBytes / (1024.0 * 1024):F1} " +

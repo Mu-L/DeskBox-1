@@ -117,6 +117,7 @@ public abstract partial class WidgetWindowBase
     private long _compactExpansionWarmupEpoch = -1;
     private Queue<DependencyObject>? _compactExpansionPrimeQueue;
     private bool _isCompactHoverRecoveryRegistered;
+    private bool _collapseHoverTimerAllowsInteractionRegionDwell;
     private int _compactInteractionDepth;
     private int _compactBoundsSettleStage;
     private WidgetCompactState _compactState = WidgetCompactState.Expanded;
@@ -130,7 +131,8 @@ public abstract partial class WidgetWindowBase
         bool Animate,
         int? DurationMilliseconds,
         bool AllowDuringInteraction,
-        bool RequireHoverEligibility);
+        bool RequireHoverEligibility,
+        bool AllowInteractionRegionDwell);
 
     private bool IsCompactExpansionReady =>
         WidgetCompactWarmupPolicy.IsExpansionReady(
@@ -478,6 +480,7 @@ public abstract partial class WidgetWindowBase
 
     protected void BeginCompactInteraction()
     {
+        App.NotifyMemoryCleanupActivity();
         _compactInteractionDepth++;
         CancelTimer(ref _collapseLeaveTimer);
         if (UsesSmartCollapseBehavior() && !_targetCollapsed)
@@ -556,6 +559,7 @@ public abstract partial class WidgetWindowBase
         WidgetShellControl.ExpandRequested += WidgetShellControl_ExpandRequested;
         WidgetShellControl.CompactBodyExpandRequested += WidgetShellControl_CompactBodyExpandRequested;
         WidgetShellControl.CompactPointerEntered += WidgetShellControl_CompactPointerEntered;
+        WidgetShellControl.CompactPointerMoved += WidgetShellControl_CompactPointerMoved;
         WidgetShellControl.CompactPointerExited += WidgetShellControl_CompactPointerExited;
         WidgetShellControl.CompactExpansionPointerEntered += WidgetShellControl_CompactExpansionPointerEntered;
         WidgetShellControl.CompactExpansionPointerExited += WidgetShellControl_CompactExpansionPointerExited;
@@ -616,6 +620,7 @@ public abstract partial class WidgetWindowBase
         WidgetShellControl.ExpandRequested -= WidgetShellControl_ExpandRequested;
         WidgetShellControl.CompactBodyExpandRequested -= WidgetShellControl_CompactBodyExpandRequested;
         WidgetShellControl.CompactPointerEntered -= WidgetShellControl_CompactPointerEntered;
+        WidgetShellControl.CompactPointerMoved -= WidgetShellControl_CompactPointerMoved;
         WidgetShellControl.CompactPointerExited -= WidgetShellControl_CompactPointerExited;
         WidgetShellControl.CompactExpansionPointerEntered -= WidgetShellControl_CompactExpansionPointerEntered;
         WidgetShellControl.CompactExpansionPointerExited -= WidgetShellControl_CompactExpansionPointerExited;
@@ -1084,12 +1089,69 @@ public abstract partial class WidgetWindowBase
         }
 
         // A grouped host can swap the live body while it is collapsed. The
-        // previous member's warm-up is no longer valid for the incoming tree.
+        // previous member's warm-up and hover request are no longer valid for
+        // the incoming tree. In particular, a pointer that remains over the
+        // persistent group HWND does not produce another routed PointerEntered,
+        // so merely warming the new tree can leave Smart expansion permanently
+        // unarmed until the user clicks.
+        CancelTimer(ref _collapseHoverTimer);
+        CancelPendingCompactExpansion();
         InvalidateCompactExpansionReadiness();
         CancelCompactExpansionWarmup();
         if (_targetCollapsed && _compactExpansionWarmupCancellation is null)
         {
             QueueCompactExpansionWarmup();
+        }
+
+        // Let SetContent finish attaching the incoming view before measuring
+        // the compact body. The native probe then reconstructs hover state even
+        // when WinUI correctly omits a second entry event for the shared HWND.
+        DispatcherQueue.TryEnqueue(RearmCompactHoverAfterHostedContentChange);
+    }
+
+    protected void RearmCompactHoverAfterHostedContentChange()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(RearmCompactHoverAfterHostedContentChange);
+            return;
+        }
+
+        if (!_collapseInitialized ||
+            !_targetCollapsed ||
+            !UsesSmartCollapseBehavior() ||
+            IsClosing)
+        {
+            return;
+        }
+
+        CancelTimer(ref _collapseHoverTimer);
+        _isPointerOverWidget = false;
+        _isPointerOverCompactExpansionZone = false;
+        _isPointerOverCompactMoveHandle = false;
+        _isPointerOverCompactActions = false;
+        _compactState = WidgetCompactState.Collapsed;
+        UpdateCompactViewState();
+        QueueCompactExpansionWarmup();
+        StartCompactHoverRecoveryProbe();
+        SynchronizeCompactHoverFromCurrentCursor();
+
+        WidgetCompactInteractionSnapshot snapshot =
+            CaptureCompactInteractionSnapshot();
+        if (snapshot.IsPointerInside &&
+            !WidgetCompactInteractionPolicy.CanHoverExpand(
+                EffectiveCollapseBehavior,
+                snapshot,
+                allowInteractionRegionDwell: true))
+        {
+            App.Log(
+                $"[Compact] Hosted-content hover rearm blocked " +
+                $"kind={Config.WidgetKind} id={Config.Id} " +
+                $"interactionDepth={snapshot.InteractionDepth} " +
+                $"boundsInteraction={snapshot.IsBoundsInteractionActive} " +
+                $"dragging={snapshot.IsDragging} resizing={snapshot.IsResizing} " +
+                $"dropInside={snapshot.IsDropInside} " +
+                $"blockingSurface={snapshot.HasBlockingSurface}");
         }
     }
 
@@ -1292,6 +1354,13 @@ public abstract partial class WidgetWindowBase
                 CancelTimer(ref _collapseHoverTimer);
                 UpdateCompactViewState();
             }
+
+            // The icon/move handle and trailing action strip are deliberately
+            // separate hit targets. They should still honor Smart hover after
+            // a longer dwell, while a quick press continues to win and cancels
+            // the pending expansion.
+            TryScheduleCompactHoverExpansion(
+                allowInteractionRegionDwell: true);
             return;
         }
 
@@ -1607,6 +1676,35 @@ public abstract partial class WidgetWindowBase
         TryScheduleCompactHoverExpansion();
     }
 
+    private void WidgetShellControl_CompactPointerMoved(object? sender, EventArgs e)
+    {
+        if (!_targetCollapsed ||
+            !UsesSmartCollapseBehavior() ||
+            _isCollapseAnimationRendering ||
+            _isShellTransitionActive ||
+            IsClosing ||
+            !Win32Helper.GetCursorPos(out Win32Helper.POINT cursor))
+        {
+            return;
+        }
+
+        bool recoveredMissingRoutedEntry = !_isPointerOverWidget;
+
+        // Receiving this routed move proves that this HWND owns the pointer.
+        // Rebuild the compact-region flags from real geometry without relying
+        // on WindowFromPoint, which may still identify an Explorer desktop host
+        // for a no-activate window. This repairs the missing PointerEntered that
+        // can follow a Todo/QuickCapture content swap in a persistent group HWND.
+        RunCompactHoverRecoveryProbe(cursor, HWnd);
+
+        if (recoveredMissingRoutedEntry && _isPointerOverWidget)
+        {
+            PerformanceLogger.Mark(
+                "CompactHoverPointerMoveRecovered",
+                $"kind={Config.WidgetKind} id={Config.Id}");
+        }
+    }
+
     private void WidgetShellControl_CompactExpansionPointerEntered(object? sender, EventArgs e)
     {
         // Child-region entry is authoritative. Window resize and asynchronous content
@@ -1628,6 +1726,8 @@ public abstract partial class WidgetWindowBase
         {
             _compactState = WidgetCompactState.Collapsed;
             UpdateCompactViewState();
+            TryScheduleCompactHoverExpansion(
+                allowInteractionRegionDwell: true);
         }
     }
 
@@ -1666,6 +1766,8 @@ public abstract partial class WidgetWindowBase
         _isPointerOverCompactActions = true;
         CancelTimer(ref _collapseHoverTimer);
         UpdateCompactViewState();
+        TryScheduleCompactHoverExpansion(
+            allowInteractionRegionDwell: true);
     }
 
     private void WidgetShellControl_CompactActionPointerExited(object? sender, EventArgs e)
@@ -1684,6 +1786,8 @@ public abstract partial class WidgetWindowBase
             _compactState = WidgetCompactState.Collapsed;
         }
         UpdateCompactViewState();
+        TryScheduleCompactHoverExpansion(
+            allowInteractionRegionDwell: true);
     }
 
     private void WidgetShellControl_CompactMoveHandlePointerExited(object? sender, EventArgs e)
@@ -1693,34 +1797,69 @@ public abstract partial class WidgetWindowBase
         TryScheduleCompactHoverExpansion();
     }
 
-    private void TryScheduleCompactHoverExpansion()
+    private void TryScheduleCompactHoverExpansion(
+        bool allowInteractionRegionDwell = false)
     {
-        if (_collapseHoverTimer is not null ||
-            !WidgetCompactInteractionPolicy.CanHoverExpand(
-            EffectiveCollapseBehavior,
-            CaptureCompactInteractionSnapshot()))
+        WidgetCompactInteractionSnapshot snapshot =
+            CaptureCompactInteractionSnapshot();
+        if (!WidgetCompactInteractionPolicy.CanHoverExpand(
+                EffectiveCollapseBehavior,
+                snapshot,
+                allowInteractionRegionDwell))
         {
             return;
         }
 
+        if (_collapseHoverTimer is not null)
+        {
+            // Moving from an interaction region into the body upgrades the
+            // conservative dwell to the user's normal hover response delay.
+            if (_collapseHoverTimerAllowsInteractionRegionDwell &&
+                !allowInteractionRegionDwell)
+            {
+                CancelTimer(ref _collapseHoverTimer);
+            }
+            else
+            {
+                return;
+            }
+        }
+
+        int configuredDelay =
+            SettingsService.NormalizeWidgetCompactExpandDelayMs(
+                SettingsService.Settings.WidgetCompactExpandDelayMs);
+        int effectiveDelay =
+            WidgetCompactInteractionPolicy.ResolveHoverExpandDelayMilliseconds(
+                configuredDelay,
+                allowInteractionRegionDwell);
+        bool scheduledForInteractionRegion = allowInteractionRegionDwell;
+        _collapseHoverTimerAllowsInteractionRegionDwell =
+            scheduledForInteractionRegion;
         _compactState = WidgetCompactState.ExpandPending;
         ScheduleTimer(
             ref _collapseHoverTimer,
-            SettingsService.NormalizeWidgetCompactExpandDelayMs(
-                SettingsService.Settings.WidgetCompactExpandDelayMs),
+            effectiveDelay,
             () =>
             {
                 _collapseHoverTimer = null;
+                _collapseHoverTimerAllowsInteractionRegionDwell = false;
                 if (WidgetCompactInteractionPolicy.CanHoverExpand(
-                    EffectiveCollapseBehavior,
-                    CaptureCompactInteractionSnapshot()) &&
+                        EffectiveCollapseBehavior,
+                        CaptureCompactInteractionSnapshot(),
+                        scheduledForInteractionRegion) &&
                     IsPointerRoutedToThisWindow())
                 {
+                    PerformanceLogger.Mark(
+                        "CompactHoverExpandRequested",
+                        $"region={(scheduledForInteractionRegion ? "interaction" : "body")} " +
+                        $"delayMs={effectiveDelay} kind={Config.WidgetKind} id={Config.Id}");
                     SetCollapsedState(
                         false,
                         persistManualState: false,
                         animate: true,
-                        requireHoverEligibility: true);
+                        requireHoverEligibility: true,
+                        allowInteractionRegionHoverEligibility:
+                            scheduledForInteractionRegion);
                 }
             });
     }
@@ -2087,6 +2226,7 @@ public abstract partial class WidgetWindowBase
         int? durationMs = null,
         bool allowDuringInteraction = false,
         bool requireHoverEligibility = false,
+        bool allowInteractionRegionHoverEligibility = false,
         bool bypassExpansionReadiness = false)
     {
         if (!_collapseInitialized || IsClosing ||
@@ -2114,7 +2254,8 @@ public abstract partial class WidgetWindowBase
                 animate,
                 durationMs,
                 allowDuringInteraction,
-                requireHoverEligibility);
+                requireHoverEligibility,
+                allowInteractionRegionHoverEligibility);
             return;
         }
 
@@ -2226,7 +2367,8 @@ public abstract partial class WidgetWindowBase
         bool animate,
         int? durationMs,
         bool allowDuringInteraction,
-        bool requireHoverEligibility)
+        bool requireHoverEligibility,
+        bool allowInteractionRegionDwell)
     {
         long generation = ++_compactExpansionRequestGeneration;
         _pendingCompactExpansion = new PendingCompactExpansion(
@@ -2235,7 +2377,8 @@ public abstract partial class WidgetWindowBase
             animate,
             durationMs,
             allowDuringInteraction,
-            requireHoverEligibility);
+            requireHoverEligibility,
+            allowInteractionRegionDwell);
         _compactState = WidgetCompactState.ExpandPending;
         UpdateCompactViewState();
 
@@ -2274,7 +2417,8 @@ public abstract partial class WidgetWindowBase
         if (request.RequireHoverEligibility &&
             (!WidgetCompactInteractionPolicy.CanHoverExpand(
                 EffectiveCollapseBehavior,
-                CaptureCompactInteractionSnapshot()) ||
+                CaptureCompactInteractionSnapshot(),
+                request.AllowInteractionRegionDwell) ||
              !IsPointerRoutedToThisWindow()))
         {
             _compactState = WidgetCompactState.Collapsed;
@@ -2294,9 +2438,11 @@ public abstract partial class WidgetWindowBase
             false,
             request.PersistManualState,
             request.Animate,
-            request.DurationMilliseconds,
-            request.AllowDuringInteraction,
-            request.RequireHoverEligibility,
+            durationMs: request.DurationMilliseconds,
+            allowDuringInteraction: request.AllowDuringInteraction,
+            requireHoverEligibility: request.RequireHoverEligibility,
+            allowInteractionRegionHoverEligibility:
+                request.AllowInteractionRegionDwell,
             bypassExpansionReadiness: true);
     }
 

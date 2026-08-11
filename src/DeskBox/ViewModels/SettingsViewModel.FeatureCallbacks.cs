@@ -37,10 +37,29 @@ public partial class SettingsViewModel
         RefreshQuickCaptureClipboardDiagnostics();
     }
 
-    partial void OnQuickCaptureShowTabBarChanged(bool value) => PersistQuickCaptureTabSettings();
-    partial void OnQuickCaptureShowRecordsTabChanged(bool value) => PersistQuickCaptureTabSettings();
-    partial void OnQuickCaptureShowPinnedTabChanged(bool value) => PersistQuickCaptureTabSettings();
-    partial void OnQuickCaptureShowRecentTabChanged(bool value) => PersistQuickCaptureTabSettings();
+    partial void OnQuickCaptureShowTabBarChanged(bool value)
+    {
+        PersistQuickCaptureTabSettings();
+        RefreshQuickCaptureTabsPresentation();
+    }
+
+    partial void OnQuickCaptureShowRecordsTabChanged(bool value)
+    {
+        PersistQuickCaptureTabSettings();
+        RefreshQuickCaptureTabsPresentation();
+    }
+
+    partial void OnQuickCaptureShowPinnedTabChanged(bool value)
+    {
+        PersistQuickCaptureTabSettings();
+        RefreshQuickCaptureTabsPresentation();
+    }
+
+    partial void OnQuickCaptureShowRecentTabChanged(bool value)
+    {
+        PersistQuickCaptureTabSettings();
+        RefreshQuickCaptureTabsPresentation();
+    }
 
     private void PersistQuickCaptureTabSettings()
     {
@@ -114,14 +133,53 @@ public partial class SettingsViewModel
         App.Current?.TodoReminderService?.Refresh();
     }
 
-    partial void OnTodoShowTabBarChanged(bool value) => PersistTodoTabSettings();
-    partial void OnTodoShowAllTabChanged(bool value) => PersistTodoTabSettings();
-    partial void OnTodoShowActiveTabChanged(bool value) => PersistTodoTabSettings();
-    partial void OnTodoShowTodayTabChanged(bool value) => PersistTodoTabSettings();
-    partial void OnTodoShowThisWeekTabChanged(bool value) => PersistTodoTabSettings();
-    partial void OnTodoShowThisMonthTabChanged(bool value) => PersistTodoTabSettings();
-    partial void OnTodoShowImportantTabChanged(bool value) => PersistTodoTabSettings();
-    partial void OnTodoShowCompletedTabChanged(bool value) => PersistTodoTabSettings();
+    partial void OnTodoShowTabBarChanged(bool value)
+    {
+        PersistTodoTabSettings();
+        RefreshTodoTabsPresentation();
+    }
+
+    partial void OnTodoShowAllTabChanged(bool value)
+    {
+        PersistTodoTabSettings();
+        RefreshTodoTabsPresentation();
+    }
+
+    partial void OnTodoShowActiveTabChanged(bool value)
+    {
+        PersistTodoTabSettings();
+        RefreshTodoTabsPresentation();
+    }
+
+    partial void OnTodoShowTodayTabChanged(bool value)
+    {
+        PersistTodoTabSettings();
+        RefreshTodoTabsPresentation();
+    }
+
+    partial void OnTodoShowThisWeekTabChanged(bool value)
+    {
+        PersistTodoTabSettings();
+        RefreshTodoTabsPresentation();
+    }
+
+    partial void OnTodoShowThisMonthTabChanged(bool value)
+    {
+        PersistTodoTabSettings();
+        RefreshTodoTabsPresentation();
+    }
+
+    partial void OnTodoShowImportantTabChanged(bool value)
+    {
+        PersistTodoTabSettings();
+        RefreshTodoTabsPresentation();
+    }
+
+    partial void OnTodoShowCompletedTabChanged(bool value)
+    {
+        PersistTodoTabSettings();
+        RefreshTodoTabsPresentation();
+    }
 
     partial void OnTodoUseWideDetailPaneChanged(bool value)
     {
@@ -136,6 +194,7 @@ public partial class SettingsViewModel
 
     partial void OnTodoAutoSelectFirstInWideLayoutChanged(bool value)
     {
+        OnPropertyChanged(nameof(TodoLayoutSummaryText));
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
         {
             return;
@@ -188,6 +247,7 @@ public partial class SettingsViewModel
 
     partial void OnTodoShowCompletedTasksChanged(bool value)
     {
+        RefreshTodoContentPresentation();
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
         {
             return;
@@ -199,6 +259,7 @@ public partial class SettingsViewModel
 
     partial void OnTodoShowFooterStatsChanged(bool value)
     {
+        OnPropertyChanged(nameof(TodoFooterDisplaySummaryText));
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
         {
             return;
@@ -210,6 +271,7 @@ public partial class SettingsViewModel
 
     partial void OnTodoShowClearCompletedButtonChanged(bool value)
     {
+        OnPropertyChanged(nameof(TodoFooterDisplaySummaryText));
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
         {
             return;
@@ -232,6 +294,7 @@ public partial class SettingsViewModel
 
     partial void OnTodoReminderEnabledChanged(bool value)
     {
+        OnPropertyChanged(nameof(TodoReminderSummaryText));
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
         {
             return;
@@ -423,6 +486,7 @@ public partial class SettingsViewModel
 
     partial void OnQuickCaptureShowCreatedTimeChanged(bool value)
     {
+        RefreshQuickCaptureContentPresentation();
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
         {
             return;

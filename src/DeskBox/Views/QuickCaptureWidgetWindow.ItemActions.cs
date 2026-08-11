@@ -210,9 +210,10 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         bool isDark = (itemRoot as FrameworkElement)?.ActualTheme == ElementTheme.Dark;
-        QuickCaptureAppearancePreset preset = item.IsRecent
-            ? QuickCaptureAppearancePreset.Default
-            : item.AppearancePreset;
+        QuickCaptureAppearancePreset preset =
+            QuickCaptureAppearancePolicy.ResolveListPreset(
+                item.AppearancePreset,
+                item.IsRecent);
         surface.Background = GetOrUpdateSolidColorBrush(surface.Background, GetMaterialColor(preset, isDark));
         surface.BorderBrush = preset == QuickCaptureAppearancePreset.Default
             ? GetMaterialBorderBrush(preset, isDark)

@@ -200,6 +200,8 @@ public sealed partial class ContentWidgetWindow
     {
         CompleteTitleBarClickCollapse(e, HasMovedTitleBarDrag);
         EndWindowDragCore(e);
+        App.Current.WidgetManager?.RestoreTemporarilyRaisedWidgetsToDesktopLayer(
+            "content-title-released");
     }
 
     private void DragHandle_PointerPressed(object sender, PointerRoutedEventArgs e)

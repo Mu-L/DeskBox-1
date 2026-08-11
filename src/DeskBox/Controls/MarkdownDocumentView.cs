@@ -27,6 +27,7 @@ public sealed class MarkdownDocumentView : UserControl
     private const double CodeLineHeightRatio = 1.60;
     private const double ParagraphSpacing = 5;
     private const double ListItemSpacing = 3;
+    private const double InternalScrollBarContentClearance = 12;
 
     private readonly RichTextBlock _documentText = new()
     {
@@ -175,6 +176,10 @@ public sealed class MarkdownDocumentView : UserControl
 
     private void ApplyContentHost()
     {
+        _documentText.Margin = UseInternalScrollViewer
+            ? new Thickness(0, 0, InternalScrollBarContentClearance, 0)
+            : new Thickness(0);
+
         if (UseInternalScrollViewer)
         {
             if (!ReferenceEquals(_scrollViewer.Content, _documentText))

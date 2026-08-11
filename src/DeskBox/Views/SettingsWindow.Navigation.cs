@@ -17,6 +17,7 @@ using System.Runtime.InteropServices;
 using Windows.System;
 using WinRT.Interop;
 using DeskBox.Views.SettingsSections;
+using CommunityToolkit.WinUI.Controls;
 
 namespace DeskBox.Views;
 
@@ -25,6 +26,9 @@ public sealed partial class SettingsWindow
     private Storyboard? _settingsSearchHighlightStoryboard;
     private FrameworkElement? _settingsSearchHighlightTarget;
     private double _settingsSearchHighlightOriginalOpacity = 1;
+    private readonly List<SettingsExpander> _featureSettingsExpanders = [];
+    private readonly Dictionary<SettingsExpander, long> _featureSettingsExpanderCallbacks = [];
+    private bool _isSynchronizingFeatureSettingsExpanders;
 
     private void InitializeSettingsSectionElements()
     {
@@ -745,6 +749,158 @@ public sealed partial class SettingsWindow
                     : null
             };
             item.Click += (_, _) => applyValue(value);
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(button);
+    }
+
+    private void FeatureSettingsExpander_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not SettingsExpander expander ||
+            _featureSettingsExpanderCallbacks.ContainsKey(expander))
+        {
+            return;
+        }
+
+        _featureSettingsExpanders.Add(expander);
+        long callback = expander.RegisterPropertyChangedCallback(
+            SettingsExpander.IsExpandedProperty,
+            (dependencyObject, _) =>
+            {
+                if (_isSynchronizingFeatureSettingsExpanders ||
+                    dependencyObject is not SettingsExpander current ||
+                    !current.IsExpanded ||
+                    current.Tag is not string groupTag)
+                {
+                    return;
+                }
+
+                _isSynchronizingFeatureSettingsExpanders = true;
+                try
+                {
+                    foreach (SettingsExpander peer in _featureSettingsExpanders)
+                    {
+                        if (!ReferenceEquals(peer, current) &&
+                            peer.IsExpanded &&
+                            peer.Tag is string peerTag &&
+                            string.Equals(peerTag, groupTag, StringComparison.Ordinal))
+                        {
+                            peer.IsExpanded = false;
+                        }
+                    }
+                }
+                finally
+                {
+                    _isSynchronizingFeatureSettingsExpanders = false;
+                }
+            });
+        _featureSettingsExpanderCallbacks.Add(expander, callback);
+    }
+
+    private void FeatureSettingsEnabledToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleSwitch { IsOn: false, Tag: string groupTag })
+        {
+            return;
+        }
+
+        foreach (SettingsExpander expander in _featureSettingsExpanders)
+        {
+            if (expander.Tag is string expanderGroup &&
+                string.Equals(expanderGroup, groupTag, StringComparison.Ordinal))
+            {
+                expander.IsExpanded = false;
+            }
+        }
+    }
+
+    private void QuickCaptureTabsDropDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DropDownButton button)
+        {
+            return;
+        }
+
+        ShowFeatureMultiSelectMenu(
+            button,
+            ViewModel.AvailableQuickCaptureDefaultViews,
+            ViewModel.GetQuickCaptureTabDisplayName,
+            ViewModel.IsQuickCaptureTabSelected,
+            ViewModel.CanToggleQuickCaptureTab,
+            ViewModel.ToggleQuickCaptureTab);
+    }
+
+    private void TodoTabsDropDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DropDownButton button)
+        {
+            return;
+        }
+
+        ShowFeatureMultiSelectMenu(
+            button,
+            ViewModel.AvailableTodoDefaultFilters,
+            ViewModel.GetTodoTabDisplayName,
+            ViewModel.IsTodoTabSelected,
+            ViewModel.CanToggleTodoTab,
+            ViewModel.ToggleTodoTab);
+    }
+
+    private void TodoFooterDisplayDropDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DropDownButton button)
+        {
+            return;
+        }
+
+        ShowFeatureMultiSelectMenu(
+            button,
+            ["Stats", "ClearCompleted"],
+            ViewModel.GetTodoFooterDisplayOptionName,
+            ViewModel.IsTodoFooterDisplayOptionSelected,
+            _ => true,
+            ViewModel.ToggleTodoFooterDisplayOption);
+    }
+
+    private static void ShowFeatureMultiSelectMenu(
+        DropDownButton button,
+        IReadOnlyList<string> values,
+        Func<string, string> displayValue,
+        Func<string, bool> isSelected,
+        Func<string, bool> canToggle,
+        Action<string> toggle)
+    {
+        double flyoutWidth = Math.Max(220, Math.Max(button.ActualWidth, button.MinWidth));
+        var flyout = new MenuFlyout
+        {
+            ShouldConstrainToRootBounds = false
+        };
+
+        foreach (string value in values)
+        {
+            var item = new ToggleMenuFlyoutItem
+            {
+                Tag = value,
+                Text = displayValue(value),
+                IsChecked = isSelected(value),
+                IsEnabled = canToggle(value),
+                MinWidth = flyoutWidth
+            };
+            item.Click += (_, _) =>
+            {
+                toggle(value);
+                foreach (ToggleMenuFlyoutItem menuItem in flyout.Items.OfType<ToggleMenuFlyoutItem>())
+                {
+                    if (menuItem.Tag is not string itemValue)
+                    {
+                        continue;
+                    }
+
+                    menuItem.IsChecked = isSelected(itemValue);
+                    menuItem.IsEnabled = canToggle(itemValue);
+                }
+            };
             flyout.Items.Add(item);
         }
 

@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.3.9-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.9)
+[![最新版本](https://img.shields.io/badge/release-1.4.0-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.0)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.3.9) 下载 DeskBox 1.3.9。
+在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.0) 下载 DeskBox 1.4.0。
 
-- [DeskBox 1.3.9 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.9/DeskBox_Setup_1.3.9_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.3.9 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.3.9/DeskBox_Setup_1.3.9_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.4.0 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.0/DeskBox_Setup_1.4.0_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.4.0 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.0/DeskBox_Setup_1.4.0_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -65,8 +65,9 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ### 待办与随记
 
-- 待办支持截止日期、提醒、重复、颜色标记、多附件、筛选与批量操作。
-- 随记支持文本、链接、图片和文件，提供固定、纸张样式、多附件与专注编辑。
+- 待办与随记使用响应式列表/详情布局，宽屏可双栏展示并调整列表宽度，窄屏会自动切换为单页浏览。
+- 待办支持截止日期、提醒、重复、颜色标记、Markdown 备注、多附件、筛选与批量操作。
+- 随记支持文本、链接、图片和文件，提供固定、纸张样式、Markdown 编辑与预览、附件删除和专注编辑。
 - 附件可以关联原文件，也可以复制到 DeskBox 管理的数据目录。
 
 ### 桌面搜索
@@ -101,17 +102,17 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.3.9 更新亮点
+## 1.4.0 更新亮点
 
-- **胶囊展开更稳定。** 开启悬停自动展开时会重新读取真实鼠标位置，延迟收起会自动重试，同时限制并发尺寸动画。当前展开的胶囊会保持在其他 DeskBox 格子上方。
-- **启动后直接看到格子。** 每次启动都会恢复所有已启用的独立格子，以及每个格子组当前使用的页面，并以临时前景状态显示。
-- **多选拖拽保持完整。** 文件格子、搜索结果、独立随记和组内随记都会拖动完整选择。文件与文件夹混合选择也不会丢项。
-- **批量键盘操作补齐。** 在随记和待办中按 Delete 会处理当前全部选中项，不再只处理焦点所在的一项。
-- **大文件进度更诚实。** 准备阶段尚未算出总大小时会显示不确定进度。点击取消后立即进入取消中状态，并在可能的情况下撤回这一批已经完成的操作。
-- **格子组滚轮切换恢复正常。** 标题滚轮可以循环切换，并会等到当前切换真正完成后再处理下一个目标。
-- **新手引导更短也更直观。** 流程调整为一屏介绍、两次可跳过的真实练习和结束选择，明确说明默认拖入会移动文件，练习只在真实操作成功后完成。
+- **待办与随记使用响应式工作区。** 两类格子统一列表/详情基础结构，支持可靠的单栏、双栏、可调分隔条，独立窗口和格子组中的行为保持一致。
+- **原生 Markdown 编辑。** 待办备注与随记加入原生格式工具栏、安全预览、可交互任务列表和可配置回车行为，并保持 Markdown 源文无损；旧的纯文本记录继续兼容。
+- **设置层级更简洁。** 待办与随记统一层级，顶部先放总开关，同类选项收进原生风琴，相关显示项合并为紧凑选择器。
+- **切换内容后胶囊仍能悬停展开。** 组内成员变化后会根据真实鼠标位置重建悬停状态，鼠标停留在控制区也能经过稳妥延迟后展开；分段标签会在动画开始前准备完成。
+- **临时置顶会可靠回落。** 标题和交互触发的临时前置状态使用明确租约管理，结束后安全恢复桌面层级，避免移动格子后长期压在其他应用上方或影响 Win+D 行为。
+- **真实空闲 30 秒后回收内存。** 全部隐藏时执行轻量清理；格子仍显示但连续 30 秒无操作时，也会释放缓存和符合条件的托管内存，不打断正在进行的交互。
+- **设置与附件立即生效。** 天气视图、随记宽屏与标签、列表行数、编辑器快捷键、纸张材质和附件删除都已接入当前共享宿主。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.3.9 发布说明](docs/releases/v1.3.9.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.0 发布说明](docs/releases/v1.4.0.md)。
 
 ## 当前界面
 
@@ -214,8 +215,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.3.9_x64.exe
-Output\DeskBox_Setup_1.3.9_arm64.exe
+Output\DeskBox_Setup_1.4.0_x64.exe
+Output\DeskBox_Setup_1.4.0_arm64.exe
 ```
 
 ## 项目结构

@@ -184,6 +184,100 @@ public sealed class SettingsCopyAndHierarchyTests
         }
     }
 
+    [Fact]
+    public void QuickCaptureAndTodoSettings_UseTheSameCompactHierarchy()
+    {
+        string root = FindRepositoryRoot();
+        string windowXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.xaml"));
+
+        string quickCapture = SliceSection(
+            windowXaml,
+            "x:Name=\"QuickCaptureSettingsSection\"",
+            "x:Name=\"TodoSettingsSection\"");
+        string todo = SliceSection(
+            windowXaml,
+            "x:Name=\"TodoSettingsSection\"",
+            "x:Name=\"MusicSettingsSection\"");
+
+        Assert.Contains("IsOn=\"{Binding QuickCaptureEnabled, Mode=TwoWay}\"", quickCapture, StringComparison.Ordinal);
+        Assert.Contains("IsOn=\"{Binding TodoEnabled, Mode=TwoWay}\"", todo, StringComparison.Ordinal);
+        Assert.Equal(5, CountOccurrences(quickCapture, "Loaded=\"FeatureSettingsExpander_Loaded\""));
+        Assert.Equal(5, CountOccurrences(todo, "Loaded=\"FeatureSettingsExpander_Loaded\""));
+
+        AssertInOrder(
+            quickCapture,
+            "Settings.QuickCapture.WideLayout.Title",
+            "Settings.QuickCapture.Tabs.Title",
+            "Settings.ContentEditor.Group.Title",
+            "Settings.QuickCapture.ClipboardTitle",
+            "Settings.QuickCapture.Group.Data.Title");
+        AssertInOrder(
+            todo,
+            "Settings.QuickCapture.WideLayout.Title",
+            "Settings.Todo.Tabs.Title",
+            "Settings.ContentEditor.Group.Title",
+            "Settings.Todo.ReminderEnabled.Title",
+            "Settings.Todo.Group.FooterActions.Title");
+
+        Assert.Contains("Click=\"QuickCaptureTabsDropDown_Click\"", quickCapture, StringComparison.Ordinal);
+        Assert.Contains("Click=\"TodoTabsDropDown_Click\"", todo, StringComparison.Ordinal);
+        Assert.Contains("Click=\"TodoFooterDisplayDropDown_Click\"", todo, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding VisibleQuickCaptureDefaultViewOptions}\"", quickCapture, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding VisibleTodoDefaultFilterOptions}\"", todo, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("IsOn=\"{Binding QuickCaptureShowRecordsTab", quickCapture, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsOn=\"{Binding TodoShowAllTab", todo, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void QuickCapturePreviewLineCount_IsBoundInBothWindowHosts()
+    {
+        string root = FindRepositoryRoot();
+        string standaloneWindow = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.xaml"));
+        string sharedSurface = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+
+        Assert.Contains(
+            "MaxLines=\"{Binding ElementName=ItemsListView, Path=DataContext.ItemPreviewLineCount}\"",
+            standaloneWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MaxLines=\"{Binding ElementName=ItemsList, Path=DataContext.ItemPreviewLineCount}\"",
+            sharedSurface,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "TextSize}\" MaxLines=\"3\"",
+            sharedSurface,
+            StringComparison.Ordinal);
+    }
+
+    private static string SliceSection(string xaml, string startToken, string endToken)
+    {
+        int start = xaml.IndexOf(startToken, StringComparison.Ordinal);
+        int end = xaml.IndexOf(endToken, start + startToken.Length, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        return xaml[start..end];
+    }
+
+    private static int CountOccurrences(string source, string value) =>
+        source.Split(value, StringSplitOptions.None).Length - 1;
+
+    private static void AssertInOrder(string source, params string[] values)
+    {
+        int lastIndex = -1;
+        foreach (string value in values)
+        {
+            int index = source.IndexOf(value, lastIndex + 1, StringComparison.Ordinal);
+            Assert.True(index > lastIndex, $"Expected '{value}' after index {lastIndex}.");
+            lastIndex = index;
+        }
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? current = new(AppContext.BaseDirectory);

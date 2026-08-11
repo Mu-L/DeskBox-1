@@ -27,6 +27,7 @@ public sealed partial class WidgetManager
     private bool _hasDeskBoxForegroundSinceRaise;
     private IntPtr _foregroundAtRaiseTime;
     private long _idlePeerOrderGeneration;
+    private WidgetTemporaryRaiseLease _temporaryRaiseLease;
 
     // ── 50ms mouse sampler (方案 B) ──
     // Uses the HIGH bit of GetAsyncKeyState (global physical state) instead of
@@ -90,6 +91,8 @@ public sealed partial class WidgetManager
         App.LogVerbose(
             $"[ZOrder] Expanded lease released reason={reason} " +
             $"generation={generation} owner=0x{windowHandle.ToInt64():X}");
+        RestoreTemporarilyRaisedWidgetsToDesktopLayer(
+            $"{reason}-temporary-raise");
         QueueIdleWidgetZOrderNormalization(reason);
         return true;
     }
@@ -150,15 +153,139 @@ public sealed partial class WidgetManager
         });
     }
 
-    private void QueueSettledIdleWidgetZOrderNormalization(
+    private long TrackTemporarilyRaisedWidgets(
+        IEnumerable<IntPtr> windowHandles,
+        string reason)
+    {
+        _temporaryRaiseLease = WidgetTemporaryRaiseLeasePolicy.Acquire(
+            _temporaryRaiseLease,
+            windowHandles);
+        App.LogVerbose(
+            $"[ZOrder] TemporaryRaise acquired reason={reason} " +
+            $"generation={_temporaryRaiseLease.Generation} " +
+            $"count={_temporaryRaiseLease.ActiveWindowHandles.Count}");
+        return _temporaryRaiseLease.Generation;
+    }
+
+    private void QueueTemporaryRaisedWidgetRestore(
         string reason,
+        long generation,
         TimeSpan delay)
     {
         App.UiDispatcherQueue.TryEnqueue(async () =>
         {
             await Task.Delay(delay);
-            QueueIdleWidgetZOrderNormalization(reason);
+            RestoreTemporarilyRaisedWidgetsToDesktopLayerCore(
+                reason,
+                generation,
+                retryWhenBusy: true);
         });
+    }
+
+    public void RestoreTemporarilyRaisedWidgetsToDesktopLayer(string reason)
+    {
+        if (!HasUiThreadAccess())
+        {
+            App.UiDispatcherQueue.TryEnqueue(
+                () => RestoreTemporarilyRaisedWidgetsToDesktopLayer(reason));
+            return;
+        }
+
+        RestoreTemporarilyRaisedWidgetsToDesktopLayerCore(
+            reason,
+            _temporaryRaiseLease.Generation,
+            retryWhenBusy: false);
+    }
+
+    private bool RestoreTemporarilyRaisedWidgetsToDesktopLayerCore(
+        string reason,
+        long generation,
+        bool retryWhenBusy)
+    {
+        if (!WidgetTemporaryRaiseLeasePolicy.OwnsGeneration(
+                _temporaryRaiseLease,
+                generation))
+        {
+            return false;
+        }
+
+        if (_widgetsRaisedFromTray ||
+            _isTogglingWidgetsDesktopLayer ||
+            _sessionManager.IsInteractionActive ||
+            HasActiveExpandedWidgetLayerLease())
+        {
+            App.LogVerbose(
+                $"[ZOrder] TemporaryRaise restore deferred reason={reason} " +
+                $"generation={generation} trayRaised={_widgetsRaisedFromTray} " +
+                $"toggling={_isTogglingWidgetsDesktopLayer} " +
+                $"interaction={_sessionManager.IsInteractionActive} " +
+                $"expanded={_expandedWidgetLayerLease.IsActive}");
+            if (retryWhenBusy &&
+                !_widgetsRaisedFromTray &&
+                !_expandedWidgetLayerLease.IsActive)
+            {
+                QueueTemporaryRaisedWidgetRestore(
+                    reason,
+                    generation,
+                    TimeSpan.FromMilliseconds(180));
+            }
+
+            return false;
+        }
+
+        IReadOnlyList<IntPtr> handles =
+            _temporaryRaiseLease.ActiveWindowHandles.ToList();
+        _temporaryRaiseLease = WidgetTemporaryRaiseLeasePolicy.Release(
+            _temporaryRaiseLease,
+            generation);
+
+        Dictionary<IntPtr, IDesktopWidgetWindow> windowsByHandle =
+            GetLoadedDesktopWindows()
+                .Where(window => window.WindowHandle != IntPtr.Zero)
+                .GroupBy(window => window.WindowHandle)
+                .ToDictionary(group => group.Key, group => group.First());
+        int restored = 0;
+        foreach (IntPtr handle in handles)
+        {
+            if (!windowsByHandle.TryGetValue(handle, out IDesktopWidgetWindow? window) ||
+                !window.Visible)
+            {
+                continue;
+            }
+
+            try
+            {
+                window.ForceRestoreDesktopLayerFromManager();
+                restored++;
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[WidgetManager] Temporary desktop layer restore failed " +
+                    $"reason={reason} {FormatHostWindow(window)}: {ex}");
+            }
+        }
+
+        App.Log(
+            $"[ZOrder] TemporaryRaise restored reason={reason} " +
+            $"generation={generation} tracked={handles.Count} restored={restored}");
+        QueueIdleWidgetZOrderNormalization(reason);
+        return true;
+    }
+
+    private void ClearTemporaryRaiseLease(string reason)
+    {
+        if (!_temporaryRaiseLease.IsActive)
+        {
+            return;
+        }
+
+        int count = _temporaryRaiseLease.ActiveWindowHandles.Count;
+        _temporaryRaiseLease = WidgetTemporaryRaiseLeasePolicy.Release(
+            _temporaryRaiseLease,
+            _temporaryRaiseLease.Generation);
+        App.LogVerbose(
+            $"[ZOrder] TemporaryRaise cleared reason={reason} count={count}");
     }
 
     private bool NormalizeIdleWidgetZOrder(string reason)
@@ -181,6 +308,13 @@ public sealed partial class WidgetManager
             GetWindowsInIdleHighestFirstOrder(
                 GetLoadedDesktopWindows().Where(window =>
                     window.Visible && !window.IsRaisedAboveDesktopLayer));
+        foreach (IDesktopWidgetWindow window in ordered)
+        {
+            // A peer batch can leave the logical state at DesktopResting while
+            // the native owner was detached. Reassert the owner before sorting.
+            WidgetLayerService.MoveToDesktopBottom(window.WindowHandle);
+        }
+
         bool applied = WidgetLayerService.ApplyPeerOrderHighestToLowest(
             ordered.Select(window => window.WindowHandle).ToList());
         App.LogVerbose(
@@ -249,10 +383,14 @@ public sealed partial class WidgetManager
             window.RaiseTemporarilyFromManager();
         }
 
+        long generation = TrackTemporarilyRaisedWidgets(
+            windows.Select(window => window.WindowHandle),
+            reason);
         bool applied = WidgetLayerService.ApplyPeerOrderHighestToLowest(
             windows.Select(window => window.WindowHandle).ToList());
-        QueueSettledIdleWidgetZOrderNormalization(
+        QueueTemporaryRaisedWidgetRestore(
             $"{reason}-settled",
+            generation,
             TimeSpan.FromMilliseconds(2300));
 
         App.Log(
@@ -272,7 +410,14 @@ public sealed partial class WidgetManager
             .Where(window => window.Visible)
             .Select(window => window.WindowHandle)
             .ToList();
+        long generation = TrackTemporarilyRaisedWidgets(
+            handles,
+            "title-activated-all");
         WidgetLayerService.BringGroupTemporarilyToFront(handles, activeHwnd);
+        QueueTemporaryRaisedWidgetRestore(
+            "title-activated-all-fallback",
+            generation,
+            TimeSpan.FromMilliseconds(2300));
         App.LogVerbose($"[ZOrder] TitleActivatedAll active=0x{activeHwnd.ToInt64():X}");
     }
 

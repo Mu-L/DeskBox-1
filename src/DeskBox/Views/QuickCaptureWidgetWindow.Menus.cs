@@ -345,8 +345,11 @@ public sealed partial class QuickCaptureWidgetWindow
             menuItem.Click += async (_, _) =>
             {
                 owner.Hide();
-                await ViewModel.SetAppearanceAsync(item, preset);
-                DispatcherQueue.TryEnqueue(RefreshItemMaterialSurfaces);
+                if (await ViewModel.SetAppearanceAsync(item, preset))
+                {
+                    await ViewModel.RefreshItemsAsync();
+                    RefreshItemMaterialSurfaces();
+                }
             };
             appearanceMenu.Items.Add(menuItem);
         }
@@ -383,8 +386,11 @@ public sealed partial class QuickCaptureWidgetWindow
             {
                 owner.Hide();
                 ClearQuickCaptureCopySelection();
-                await ViewModel.SetAppearanceAsync(selectedIds, preset);
-                DispatcherQueue.TryEnqueue(RefreshItemMaterialSurfaces);
+                if (await ViewModel.SetAppearanceAsync(selectedIds, preset) > 0)
+                {
+                    await ViewModel.RefreshItemsAsync();
+                    RefreshItemMaterialSurfaces();
+                }
             };
             appearanceMenu.Items.Add(menuItem);
         }

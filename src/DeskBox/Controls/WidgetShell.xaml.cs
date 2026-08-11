@@ -221,6 +221,7 @@ public sealed partial class WidgetShell : UserControl
     public event EventHandler<RoutedEventArgs>? CompactPlayPauseRequested;
     public event EventHandler<RoutedEventArgs>? CompactNextRequested;
     public event EventHandler? CompactPointerEntered;
+    public event EventHandler? CompactPointerMoved;
     public event EventHandler? CompactPointerExited;
     public event EventHandler? CompactExpansionPointerEntered;
     public event EventHandler? CompactExpansionPointerExited;
@@ -4205,6 +4206,14 @@ public sealed partial class WidgetShell : UserControl
 
     private void OverlayDragHandle_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (_isCollapsed && ReferenceEquals(sender, CollapsedChromeLayer))
+        {
+            // CollapsedChromeLayer receives bubbled moves from the whole capsule.
+            // Keep this separate from PointerEntered because swapping grouped
+            // content can leave WinUI's entry state attached to the outgoing tree.
+            CompactPointerMoved?.Invoke(this, EventArgs.Empty);
+        }
+
         if (_pendingDragHandleClickAction != DragHandleClickAction.None && !_hasDragHandlePressMoved)
         {
             Windows.Foundation.Point current = e.GetCurrentPoint(DragHandleElement).Position;
