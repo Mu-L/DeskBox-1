@@ -253,6 +253,11 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("IWidgetHostViewportContent", code, StringComparison.Ordinal);
         Assert.Contains("OnHostViewportSizeChanged", code, StringComparison.Ordinal);
         Assert.Contains("_hostViewportWidth", code, StringComparison.Ordinal);
+        Assert.Contains("_isResponsiveLayoutTransitionActive = true;", code, StringComparison.Ordinal);
+        Assert.Contains("if (!isCollapsing &&", code, StringComparison.Ordinal);
+        Assert.Contains("_hostViewportWidth = targetContentWidth;", code, StringComparison.Ordinal);
+        Assert.Contains("Width = targetContentWidth;", code, StringComparison.Ordinal);
+        Assert.Contains("_isResponsiveLayoutTransitionActive ||", code, StringComparison.Ordinal);
         Assert.Contains("MasterColumn.MinWidth = 0;", code, StringComparison.Ordinal);
         Assert.Contains("DetailColumn.MinWidth = 0;", code, StringComparison.Ordinal);
         Assert.Contains("DetailColumn.Width = new GridLength(layout.DetailWidth);", code, StringComparison.Ordinal);

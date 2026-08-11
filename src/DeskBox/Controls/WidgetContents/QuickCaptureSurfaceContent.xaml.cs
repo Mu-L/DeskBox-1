@@ -70,6 +70,7 @@ public sealed partial class QuickCaptureSurfaceContent :
     private EventHandler<object>? _segmentedRestoreHandler;
     private int _segmentedStableFrames;
     private double _segmentedCandidateWidth;
+    private bool _isResponsiveLayoutTransitionActive;
     private bool _isDisposed;
     private bool _isInitialized;
 
@@ -534,7 +535,24 @@ public sealed partial class QuickCaptureSurfaceContent :
     public void BeginResponsiveLayoutTransition(
         double targetContentWidth,
         double targetContentHeight,
-        bool isCollapsing) => SuspendSegmented();
+        bool isCollapsing)
+    {
+        _isResponsiveLayoutTransitionActive = true;
+        SuspendSegmented();
+
+        // Expansion reveals the live body while the HWND grows. Match the
+        // final expanded layout before the first animation frame, just like
+        // Search, Music, Weather and Todo, so a capsule-width master/detail
+        // surface is never stretched through the intermediate bounds.
+        if (!isCollapsing &&
+            double.IsFinite(targetContentWidth) &&
+            targetContentWidth > 0)
+        {
+            _hostViewportWidth = targetContentWidth;
+            Width = targetContentWidth;
+            ApplyResponsiveLayout();
+        }
+    }
 
     public void OnHostViewportSizeChanged(double width, double height)
     {
@@ -552,9 +570,11 @@ public sealed partial class QuickCaptureSurfaceContent :
         double finalContentWidth,
         double finalContentHeight)
     {
+        _isResponsiveLayoutTransitionActive = false;
         if (double.IsFinite(finalContentWidth) && finalContentWidth > 0)
         {
             _hostViewportWidth = finalContentWidth;
+            Width = finalContentWidth;
         }
 
         ApplyResponsiveLayout();
@@ -563,6 +583,7 @@ public sealed partial class QuickCaptureSurfaceContent :
 
     public void CancelResponsiveLayoutTransition()
     {
+        _isResponsiveLayoutTransitionActive = false;
         ApplyResponsiveLayout();
         QueueSegmentedRestore();
     }
@@ -579,6 +600,7 @@ public sealed partial class QuickCaptureSurfaceContent :
     private void QueueSegmentedRestore()
     {
         if (!IsLoaded ||
+            _isResponsiveLayoutTransitionActive ||
             QuickCaptureViewSegmented is null ||
             QuickCaptureViewSegmented.Visibility == Visibility.Visible ||
             _segmentedRestoreHandler is not null)
@@ -594,6 +616,12 @@ public sealed partial class QuickCaptureSurfaceContent :
 
     private void SegmentedRestore_Rendering(object? sender, object e)
     {
+        if (_isResponsiveLayoutTransitionActive)
+        {
+            _segmentedStableFrames = 0;
+            return;
+        }
+
         double width = Math.Min(ListPage.ActualWidth, ResponsiveContentGrid.ActualWidth);
         if (!double.IsFinite(width) ||
             width < WidgetSegmentedLayoutHelper.MinimumSafeWidth)
