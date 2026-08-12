@@ -5,6 +5,39 @@ namespace DeskBox.Tests;
 public sealed class FileSurfaceParityContractTests
 {
     [Fact]
+    public void UnifiedFileSurface_AutoHidesScrollBarsAfterInactivity()
+    {
+        string root = FindRepositoryRoot();
+        XDocument document = XDocument.Load(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml"));
+        string behavior = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ScrollBars.cs"));
+
+        XElement[] itemViews = document
+            .Descendants()
+            .Where(element => element.Name.LocalName is "GridView" or "ListView")
+            .Where(element =>
+                (string?)element.Attribute(XName.Get(
+                    "Name",
+                    "http://schemas.microsoft.com/winfx/2006/xaml"))
+                is "ItemsGrid" or "ItemsList")
+            .ToArray();
+
+        Assert.Equal(2, itemViews.Length);
+        Assert.All(itemViews, view => Assert.Equal(
+            "Hidden",
+            (string?)view.Attribute(
+                "ScrollViewer.VerticalScrollBarVisibility")));
+        Assert.Contains("TimeSpan.FromSeconds(3)", behavior, StringComparison.Ordinal);
+        Assert.Contains("UIElement.PointerMovedEvent", behavior, StringComparison.Ordinal);
+        Assert.Contains("UIElement.PointerWheelChangedEvent", behavior, StringComparison.Ordinal);
+        Assert.Contains("ScrollBarVisibility.Auto", behavior, StringComparison.Ordinal);
+        Assert.Contains("ScrollBarVisibility.Hidden", behavior, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void UnifiedFileSurface_UsesTheSharedItemSurfaceContract()
     {
         XDocument document = XDocument.Load(Path.Combine(

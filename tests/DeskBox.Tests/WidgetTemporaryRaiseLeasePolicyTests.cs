@@ -4,6 +4,24 @@ namespace DeskBox.Tests;
 
 public sealed class WidgetTemporaryRaiseLeasePolicyTests
 {
+    [Theory]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, false, true, false)]
+    public void DesktopLayerRestore_RequiresVisibleStableWindow(
+        bool isVisible,
+        bool isHideAnimationRunning,
+        bool isClosing,
+        bool expected)
+    {
+        Assert.Equal(expected,
+            WidgetTemporaryRaiseLeasePolicy.CanRestoreDesktopLayer(
+                isVisible,
+                isHideAnimationRunning,
+                isClosing));
+    }
+
     [Fact]
     public void SafetyRestore_ArmsForLogicalRaiseEvenWithoutTopMostState()
     {

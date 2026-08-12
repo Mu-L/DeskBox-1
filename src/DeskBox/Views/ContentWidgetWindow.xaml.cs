@@ -711,7 +711,10 @@ IsHideAnimationRunning = false;
         object args)
     {
         sender.Stop();
-        if (!IsDragging && !IsResizing)
+        if (Visible &&
+            !IsHideAnimationRunning &&
+            !IsDragging &&
+            !IsResizing)
         {
             RestoreDesktopLayer(force: true);
         }
@@ -740,6 +743,8 @@ IsHideAnimationRunning = false;
             return false;
         }
 
+        _autoRestoreTimer?.Stop();
+        CancelPendingDesktopLayerRestore();
 TrayAnimation.NextGeneration();
 TrayAnimation.RevealWindowForTrayShow();
 if (TrayAnimation.IsPositionTransitionActive)
@@ -821,6 +826,8 @@ IsHideAnimationRunning = true;
         IsHideAnimationRunning = false;
         _isHidePrepared = false;
         Visible = false;
+        _autoRestoreTimer?.Stop();
+        CancelPendingDesktopLayerRestore();
         UpdatePersistedVisibility(isVisible: false, persistVisibility: true);
         WidgetLayerService.ClearTopMost(HWnd);
         Win32Helper.ShowWindow(HWnd, Win32Helper.SW_HIDE);

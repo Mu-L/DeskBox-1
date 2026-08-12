@@ -17,6 +17,14 @@ internal readonly record struct WidgetTemporaryRaiseLease(
 /// </summary>
 internal static class WidgetTemporaryRaiseLeasePolicy
 {
+    public static bool CanRestoreDesktopLayer(
+        bool isVisible,
+        bool isHideAnimationRunning,
+        bool isClosing)
+    {
+        return isVisible && !isHideAnimationRunning && !isClosing;
+    }
+
     public static bool ShouldArmSafetyRestore(bool isAtDesktopLayer)
     {
         return !isAtDesktopLayer;

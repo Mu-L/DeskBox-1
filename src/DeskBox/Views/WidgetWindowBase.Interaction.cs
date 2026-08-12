@@ -71,7 +71,11 @@ public abstract partial class WidgetWindowBase
         // Temporary raises intentionally pulse TOPMOST and immediately return
         // to the normal band. Logical desktop-layer state, not WS_EX_TOPMOST,
         // determines whether a safety restoration is still required.
-        if (!WidgetTemporaryRaiseLeasePolicy.ShouldArmSafetyRestore(
+        if (!WidgetTemporaryRaiseLeasePolicy.CanRestoreDesktopLayer(
+                Visible,
+                IsHideAnimationRunning,
+                IsClosing) ||
+            !WidgetTemporaryRaiseLeasePolicy.ShouldArmSafetyRestore(
                 IsAtDesktopLayer))
         {
             TopMostSafetyTimer?.Stop();
@@ -96,6 +100,15 @@ public abstract partial class WidgetWindowBase
     private void TopMostSafetyTimer_Tick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
+        if (!WidgetTemporaryRaiseLeasePolicy.CanRestoreDesktopLayer(
+                Visible,
+                IsHideAnimationRunning,
+                IsClosing))
+        {
+            CancelPendingDesktopLayerRestore();
+            return;
+        }
+
         if (!IsAtDesktopLayer &&
             App.Current.WidgetManager is not { WidgetsRaisedFromTray: true })
         {
@@ -151,6 +164,15 @@ public abstract partial class WidgetWindowBase
 
     protected void RestoreDesktopLayer(bool force = false)
     {
+        if (!WidgetTemporaryRaiseLeasePolicy.CanRestoreDesktopLayer(
+                Visible,
+                IsHideAnimationRunning,
+                IsClosing))
+        {
+            CancelPendingDesktopLayerRestore();
+            return;
+        }
+
         if (!force && !RestoreDesktopLayerWhenIdle && KeepRaisedUntilDeactivate)
         {
             return;
@@ -166,12 +188,17 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
+        CancelPendingDesktopLayerRestore();
+        ClearTopMostOnly();
+        ApplyBackdropPreference();
+    }
+
+    protected void CancelPendingDesktopLayerRestore()
+    {
         TopMostSafetyTimer?.Stop();
         IsRaisedFromManager = false;
         KeepRaisedUntilDeactivate = false;
         RestoreDesktopLayerWhenIdle = false;
-        ClearTopMostOnly();
-        ApplyBackdropPreference();
     }
 
     protected void ClearTopMostOnly()

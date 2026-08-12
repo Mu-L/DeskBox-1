@@ -104,6 +104,8 @@ public sealed partial class FileSurfaceContent :
             UIElement.PreviewKeyDownEvent,
             new KeyEventHandler(ItemsView_PreviewKeyDown),
             handledEventsToo: true);
+        RegisterScrollBarActivityTracking(ItemsGrid);
+        RegisterScrollBarActivityTracking(ItemsList);
         Root.DataContext = ViewModel;
         Root.IsTabStop = true;
         EmptyAddButtonText.Text = T("Widget.AddFile");
@@ -120,6 +122,7 @@ public sealed partial class FileSurfaceContent :
         ViewModel.Items.CollectionChanged += Items_CollectionChanged;
         ActualThemeChanged += FileSurfaceContent_ActualThemeChanged;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
         UpdateEmptyState();
     }
 
@@ -356,8 +359,14 @@ public sealed partial class FileSurfaceContent :
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        HideInactiveScrollBars();
         ApplySelectionRectangleAppearance();
         UpdateEmptyState();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        StopScrollBarHideTimer();
     }
 
     private void Items_CollectionChanged(
@@ -2250,6 +2259,7 @@ public sealed partial class FileSurfaceContent :
         object sender,
         KeyRoutedEventArgs e)
     {
+        ShowScrollBarTemporarily(sender as ListViewBase);
         if (await TryHandleClipboardShortcutAsync(e))
         {
             return;
@@ -2725,6 +2735,8 @@ public sealed partial class FileSurfaceContent :
             CancelItemRename();
         }
         Loaded -= OnLoaded;
+        Unloaded -= OnUnloaded;
+        DisposeScrollBarActivityTracking();
         ActualThemeChanged -= FileSurfaceContent_ActualThemeChanged;
         ViewModel.Items.CollectionChanged -= Items_CollectionChanged;
         ViewModel.Dispose();

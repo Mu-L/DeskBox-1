@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.4.1 - 2026-08-12
+
+### English
+
+#### File widget polish
+
+- File-widget scrollbars now appear during pointer, wheel, and keyboard activity, then hide after three seconds without interaction.
+- Grid and list layouts share the same scrollbar activity tracking and release their timer when the surface is unloaded or disposed.
+
+#### Visibility reliability
+
+- Hide All now cancels pending automatic and topmost safety restoration before the hide animation begins.
+- Desktop-layer restoration is rejected for hidden, actively hiding, or closing widgets, preventing stale callbacks from reopening windows after the user hides them.
+- Application, package, x64 installer, and ARM64 installer versions are aligned on 1.4.1 / 1.4.1.0.
+
+### 中文
+
+#### 文件格子细节
+
+- 文件格子的滚动条会在鼠标移动、滚轮和键盘操作时出现，连续 3 秒无操作后自动隐藏。
+- 图标与列表布局共用滚动条活动跟踪；界面卸载或释放时会停止并解除对应定时器。
+
+#### 显隐可靠性
+
+- “全部收起”会在隐藏动画开始前取消尚未执行的自动恢复和置顶安全恢复。
+- 已隐藏、正在收起或关闭中的格子会拒绝桌面层恢复，避免旧回调在用户主动隐藏后重新显示窗口。
+- 应用、应用包、x64 安装器和 ARM64 安装器版本统一为 1.4.1 / 1.4.1.0。
+
 ## 1.4.0 - 2026-08-11
 
 ### English

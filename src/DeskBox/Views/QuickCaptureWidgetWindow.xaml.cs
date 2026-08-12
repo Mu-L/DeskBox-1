@@ -521,6 +521,8 @@ _isHideAnimationRunning = false;
             return false;
         }
 
+        _autoRestoreTimer?.Stop();
+        CancelPendingDesktopLayerRestore();
 _trayAnimation.NextGeneration();
 _trayAnimation.RevealWindowForTrayShow();
 if (_trayAnimation.IsPositionTransitionActive)
@@ -595,7 +597,11 @@ _isHideAnimationRunning = true;
     private void AutoRestoreTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
-        if (!_isDragging && !_isResizing && !ShouldDeferDesktopLayerRestore())
+        if (Visible &&
+            !_isHideAnimationRunning &&
+            !_isDragging &&
+            !_isResizing &&
+            !ShouldDeferDesktopLayerRestore())
         {
             RestoreDesktopLayer(force: true);
         }

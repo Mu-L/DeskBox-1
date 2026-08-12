@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.4.0-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.0)
+[![最新版本](https://img.shields.io/badge/release-1.4.1-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.0) 下载 DeskBox 1.4.0。
+在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1) 下载 DeskBox 1.4.1。
 
-- [DeskBox 1.4.0 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.0/DeskBox_Setup_1.4.0_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.4.0 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.0/DeskBox_Setup_1.4.0_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.4.1 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.4.1 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -102,17 +102,12 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.4.0 更新亮点
+## 1.4.1 更新亮点
 
-- **待办与随记使用响应式工作区。** 两类格子统一列表/详情基础结构，支持可靠的单栏、双栏、可调分隔条，独立窗口和格子组中的行为保持一致。
-- **原生 Markdown 编辑。** 待办备注与随记加入原生格式工具栏、安全预览、可交互任务列表和可配置回车行为，并保持 Markdown 源文无损；旧的纯文本记录继续兼容。
-- **设置层级更简洁。** 待办与随记统一层级，顶部先放总开关，同类选项收进原生风琴，相关显示项合并为紧凑选择器。
-- **切换内容后胶囊仍能悬停展开。** 组内成员变化后会根据真实鼠标位置重建悬停状态，鼠标停留在控制区也能经过稳妥延迟后展开；分段标签会在动画开始前准备完成。
-- **临时置顶会可靠回落。** 标题和交互触发的临时前置状态使用明确租约管理，结束后安全恢复桌面层级，避免移动格子后长期压在其他应用上方或影响 Win+D 行为。
-- **真实空闲 30 秒后回收内存。** 全部隐藏时执行轻量清理；格子仍显示但连续 30 秒无操作时，也会释放缓存和符合条件的托管内存，不打断正在进行的交互。
-- **设置与附件立即生效。** 天气视图、随记宽屏与标签、列表行数、编辑器快捷键、纸张材质和附件删除都已接入当前共享宿主。
+- **文件格子滚动条按需出现。** 鼠标移动、滚轮或键盘操作时显示滚动条，连续 3 秒无操作后自动隐藏，减少长期占用内容区域。
+- **全部收起后格子保持隐藏。** 收起开始时会取消尚未执行的桌面层恢复定时器；已经隐藏、正在收起或关闭中的窗口也会拒绝旧恢复回调，不再自行弹出。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.0 发布说明](docs/releases/v1.4.0.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.1 发布说明](docs/releases/v1.4.1.md)。
 
 ## 当前界面
 
@@ -215,8 +210,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.4.0_x64.exe
-Output\DeskBox_Setup_1.4.0_arm64.exe
+Output\DeskBox_Setup_1.4.1_x64.exe
+Output\DeskBox_Setup_1.4.1_arm64.exe
 ```
 
 ## 项目结构
