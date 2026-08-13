@@ -67,12 +67,22 @@ public sealed class TodoAttachmentViewModel : ObservableObject
 
     public async Task EnsureThumbnailAsync()
     {
-        if (!IsImage || _thumbnailLoadAttempted)
+        if (!IsImage || Thumbnail is not null || _thumbnailLoadAttempted || !File.Exists(FilePath))
         {
             return;
         }
 
         _thumbnailLoadAttempted = true;
-        Thumbnail = await IconHelper.GetIconAsync(FilePath);
+        try
+        {
+            Thumbnail = await IconHelper.GetIconAsync(FilePath);
+        }
+        finally
+        {
+            // A freshly captured image can briefly be unavailable while its
+            // managed copy is being committed. Keep the placeholder retryable
+            // when virtualization presents the item again.
+            _thumbnailLoadAttempted = Thumbnail is not null;
+        }
     }
 }

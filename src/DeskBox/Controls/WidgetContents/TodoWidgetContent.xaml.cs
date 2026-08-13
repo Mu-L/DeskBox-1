@@ -992,18 +992,6 @@ public sealed partial class TodoWidgetContent : UserControl
         }
     }
 
-    private async void DetailCompletionCheckBox_Click(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel?.SelectedDetailItem is not { } item || sender is not CheckBox checkBox)
-        {
-            return;
-        }
-
-        await SetCompletedWithFeedbackAsync(item, checkBox.IsChecked == true);
-        checkBox.IsChecked = item.IsCompleted;
-        ApplyDetailCompletionVisualState();
-    }
-
     private async void DetailImportantButton_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel?.SelectedDetailItem is not { } item)

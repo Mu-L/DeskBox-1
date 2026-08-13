@@ -1,3 +1,5 @@
+using System.Xml.Linq;
+
 namespace DeskBox.Tests;
 
 public sealed class MarkdownAndSplitterContractTests
@@ -177,7 +179,7 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("DetailBodyReaderSurface.AddHandler", surfaceCode, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"DetailBackColumn\"", surface, StringComparison.Ordinal);
         Assert.Contains("DetailBackColumn.Width = new GridLength(8)", surfaceCode, StringComparison.Ordinal);
-        Assert.Contains("DetailBackColumn.Width = new GridLength(30)", surfaceCode, StringComparison.Ordinal);
+        Assert.Contains("DetailBackColumn.Width = new GridLength(28)", surfaceCode, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -494,12 +496,46 @@ public sealed class MarkdownAndSplitterContractTests
             "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
         string code = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+        string itemSyncCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/ViewModels/QuickCaptureWidgetViewModel.ItemSync.cs"));
+        string viewModelCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/ViewModels/QuickCaptureWidgetViewModel.cs"));
+        string operationsCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/ViewModels/QuickCaptureWidgetViewModel.Operations.cs"));
+        XNamespace xamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement timestamp = XDocument.Parse(xaml)
+            .Descendants()
+            .Single(element =>
+                string.Equals(
+                    (string?)element.Attribute(xamlNamespace + "Name"),
+                    "DetailTimestampText",
+                    StringComparison.Ordinal));
 
-        Assert.Contains("Text=\"{Binding DetailNoSelectionText}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailEmptyState\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding EmptyStateTitle}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding EmptyStateText}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"AddNoteCardButton_Click\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{Binding InputAreaVisibility}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ViewModel.PropertyChanged += ViewModel_PropertyChanged", code, StringComparison.Ordinal);
         Assert.Contains("nameof(QuickCaptureWidgetViewModel.ItemsViewTransitionToken)", code, StringComparison.Ordinal);
         Assert.Contains("ClearDetailForViewChange();", code, StringComparison.Ordinal);
-        Assert.Contains("ViewModel.Items.Count > 0", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("ViewModel.Items.Count > 0", code, StringComparison.Ordinal);
         Assert.Contains("ViewModel.PropertyChanged -= ViewModel_PropertyChanged", code, StringComparison.Ordinal);
+        Assert.Contains("(IsRecordsView || IsPinnedView) && !IsSearchExpanded", viewModelCode, StringComparison.Ordinal);
+        Assert.Contains("bool addPinned = IsPinnedView;", operationsCode, StringComparison.Ordinal);
+        Assert.Contains("pin: addPinned", operationsCode, StringComparison.Ordinal);
+        Assert.Contains("EmptyStateVisibility = hasItems", itemSyncCode, StringComparison.Ordinal);
+        Assert.Contains("(IsRecordsView || IsPinnedView) && !HasSearchText", itemSyncCode, StringComparison.Ordinal);
+        Assert.Equal(
+            "DetailContent",
+            (string?)timestamp.Parent?.Attribute(xamlNamespace + "Name"));
+        Assert.DoesNotContain(
+            "SelectedView is QuickCaptureViewMode.Pinned or QuickCaptureViewMode.Recent",
+            operationsCode,
+            StringComparison.Ordinal);
+        Assert.True(
+            itemSyncCode.IndexOf("SetViewSwitchLoading(false);", StringComparison.Ordinal) <
+            itemSyncCode.IndexOf("ItemsViewTransitionToken++;", StringComparison.Ordinal),
+            "The completed view state must be visible before detail subscribers reconcile the empty tab.");
     }
 }

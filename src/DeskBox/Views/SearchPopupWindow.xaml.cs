@@ -552,7 +552,7 @@ public sealed partial class SearchPopupWindow : Window
 
     private void TopDragHotZone_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        TopDragHandle.Opacity = 0.72;
+        TopDragHandle.Opacity = 1;
         SetPointerCursor(TopDragHotZone, InputSystemCursorShape.SizeAll);
     }
 

@@ -4301,7 +4301,7 @@ public sealed partial class WidgetShell : UserControl
             _isCollapseActionAvailable &&
             _isPointerOverDragHandle &&
             !_isDragHandlePressed;
-        double gripOpacity = showCollapseCue ? 0.9 : 0.76;
+        const double gripOpacity = 1;
         double leftAngle = showCollapseCue ? -13 : 0;
         double rightAngle = showCollapseCue ? 13 : 0;
 

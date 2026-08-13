@@ -884,19 +884,6 @@ public sealed partial class WidgetManager
             return false;
         }
 
-        if (origin == WidgetGroupSwitchOrigin.Wheel &&
-            !_widgetGroupSwitchRequests.TryAcceptWheelStep(
-                requestedGroup.SurfaceId,
-                DateTimeOffset.UtcNow,
-                out TimeSpan sincePreviousStep))
-        {
-            App.Log(
-                $"[WidgetGroup] Suppressed wheel gesture tail " +
-                $"surface={requestedGroup.SurfaceId} target={targetWidgetId} " +
-                $"elapsedMs={sincePreviousStep.TotalMilliseconds:F0}");
-            return true;
-        }
-
         if (_widgetGroupSwitchRequests.IsCurrentTarget(
                 requestedGroup.SurfaceId,
                 targetWidgetId))

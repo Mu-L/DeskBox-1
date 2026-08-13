@@ -36,7 +36,7 @@ The six newer language packs prioritize the main file-widget and onboarding flow
 
 ## Download
 
-Download DeskBox 1.4.1 from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1):
+DeskBox 1.4.2 installers are undergoing local validation and are not being uploaded to GitHub yet. The current public stable release remains available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1):
 
 - [DeskBox 1.4.1 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_x64.exe) — most Intel and AMD PCs.
 - [DeskBox 1.4.1 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
@@ -102,12 +102,15 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
 - Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
-## What is new in 1.4.1
+## What is new in 1.4.2
 
-- **File-widget scrollbars stay out of the way:** scrollbars appear while the pointer, wheel, or keyboard is being used and hide again after three seconds of inactivity.
-- **Hidden widgets stay hidden:** delayed desktop-layer recovery can no longer reopen widgets after Hide All. Pending restore timers are canceled as hiding begins, and hidden, closing, or actively hiding windows reject stale restore callbacks.
+- **Todo completion stays attached to the correct task:** custom sorting, filtering, and recycled list containers no longer redirect a checkmark to another row. Unchecking a task in Completed removes only that task.
+- **Quick Capture images and attachments are easier to recognize:** clipboard images render as thumbnails in both panes and copy back as bitmap data. Todo and Quick Capture share a horizontally scrollable attachment tile strip with image thumbnails, file icons, and hover removal.
+- **Music controls look and size like native Windows transport buttons:** play, pause, previous, and next use filled shapes at one responsive size, alongside a refined cover-mode control bar and song layout.
+- **Widget-group wheel switching remains responsive under rapid input:** the two time-based input blockers are gone, while precision-delta accumulation, latest-target cancellation, and circular first/last navigation remain intact.
+- **Interface and runtime polish continues:** Records and Pinned keep consistent empty states, Pinned can create pinned content directly, the floating drag handle has solid light/dark colors, Markdown rendering is more robust, and search indexing and desktop-layer restoration use tighter memory and lifecycle safeguards.
 
-Read the full [changelog](CHANGELOG.md) or the [1.4.1 release notes](docs/releases/v1.4.1.md).
+Read the full [changelog](CHANGELOG.md) or the [1.4.2 release notes](docs/releases/v1.4.2.md).
 
 ## Current interface
 
@@ -210,8 +213,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.4.1_x64.exe
-Output\DeskBox_Setup_1.4.1_arm64.exe
+Output\DeskBox_Setup_1.4.2_x64.exe
+Output\DeskBox_Setup_1.4.2_arm64.exe
 ```
 
 ## Project layout

@@ -14,10 +14,7 @@ namespace DeskBox.Controls;
 
 public sealed partial class WidgetGroupTitleSwitcher
 {
-    private static readonly TimeSpan WheelCooldown =
-        TimeSpan.FromMilliseconds(220);
     private DateTimeOffset _pointerEnteredAt;
-    private DateTimeOffset _lastWheelSwitchAt;
     private string? _pendingWheelTargetId;
     private double _wheelAccumulator;
     private bool _pickerOpen;
@@ -192,9 +189,22 @@ public sealed partial class WidgetGroupTitleSwitcher
             return false;
         }
 
+        bool consumedStep =
+            WidgetGroupNavigationInteractionPolicy.TryConsumeWheelStep(
+                ref _wheelAccumulator,
+                delta,
+                out int direction);
+        if (!consumedStep)
+        {
+            return true;
+        }
+
+        // Animate only committed wheel steps. Precision touchpads can emit a
+        // dense stream of sub-threshold deltas; restarting storyboards for
+        // every raw delta adds work without communicating another navigation.
         try
         {
-            AnimateWheelDirectionFeedback(scrollsUp: delta > 0);
+            AnimateWheelDirectionFeedback(scrollsUp: direction < 0);
             AnimateScrollSurfaceFeedback();
         }
         catch (Exception ex)
@@ -210,30 +220,9 @@ public sealed partial class WidgetGroupTitleSwitcher
             App.Log($"[WidgetGroup] Wheel feedback animation failed: {ex}");
         }
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        if (now - _lastWheelSwitchAt < WheelCooldown)
-        {
-            // The pointer is already inside the dedicated title switcher hot
-            // zone. Consume cooldown/arming input instead of letting it leak
-            // into the active member's scrollable content.
-            _wheelAccumulator = 0;
-            return true;
-        }
-
-        bool consumedStep =
-            WidgetGroupNavigationInteractionPolicy.TryConsumeWheelStep(
-                ref _wheelAccumulator,
-                delta,
-                out int direction);
-        if (!consumedStep)
-        {
-            return true;
-        }
-
         if (SwitchRelative(direction, WidgetGroupSwitchOrigin.Wheel))
         {
             CancelBoundaryRebound();
-            _lastWheelSwitchAt = now;
         }
         else
         {

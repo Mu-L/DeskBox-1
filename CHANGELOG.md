@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.4.2 - 2026-08-13
+
+### English
+
+#### Todo and Quick Capture correctness
+
+- Todo completion updates now follow the changed task rather than a recycled list container. Custom sorting and filtering no longer redirect a checkmark, and unchecking from Completed removes only the changed task without resetting the rest of the list.
+- The Todo detail header removes the duplicate completion action. Single-pane detail uses a back arrow, the title editor receives the full width, and important, favorite, copy, and delete actions use more consistent spacing and visual states.
+- Quick Capture clipboard images now persist a ready thumbnail for list and detail views. Copying an image-only clipboard record writes bitmap content back to Windows instead of copying its managed file path.
+- Todo and Quick Capture now share equal-size, horizontally scrollable attachment tiles. Image files show thumbnails, other files show a file icon, and each tile reveals its remove action on hover.
+- Records and Pinned retain their empty state after repeated tab switches. Pinned includes the same add card as Records and creates pinned content directly when used from that view.
+- Todo and Quick Capture title icons, action colors, neutral checkboxes, and compact header controls now share a more consistent visual scale and palette.
+
+#### Music and native interface polish
+
+- Music transport controls use filled vector shapes modeled on the Windows media controls. Play, pause, previous, and next share one responsive button size while repeat and volume remain compact auxiliary controls.
+- Cover mode uses a taller frosted control strip, left-aligned song information, theme-neutral material, and a tighter single-line layout; record and control layouts receive matching spacing and hover refinements.
+- The floating search window's drag handle now uses an opaque theme-aware color in both light and dark modes, avoiding visual overlap through translucent layers.
+
+#### Markdown, images, and content safety
+
+- Markdown reading and editing improve responsive toolbar sizing, tables, code blocks, links, task content, image layout reservation, and source-preserving edits.
+- Inline data images are extracted into managed attachments before text limits are applied. Oversized new and legacy bodies are bounded without altering their saved preview semantics, and legacy inline images are migrated once.
+- Direct Todo and Quick Capture deletion paths are simplified, and list/detail action feedback now reports the specific operation that completed or failed.
+
+#### Groups, search, and lifecycle reliability
+
+- Widget-group wheel switching removes the stacked 220 ms and 700 ms time gates that could make rapid input appear frozen. Precision deltas still accumulate into deliberate steps, visual feedback runs only for an effective step, newer targets cancel unfinished older work, and first/last circular navigation remains available.
+- Search indexing uses a bounded change buffer, keeps full-volume USN indexing behind explicit internal opt-in, delays reconciliation outside the startup window, and avoids forced cleanup churn during content updates.
+- Desktop-layer restoration is generation-safe and limited to DeskBox peers, while collapse, resize, and compact animation paths release stale work more reliably.
+- Application, package manifest, x64 installer, and ARM64 installer versions are aligned on 1.4.2 / 1.4.2.0.
+
+### 中文
+
+#### 待办与随记正确性
+
+- 待办完成状态改为跟随实际变化的任务，不再依赖可能被复用的列表容器。自定义排序和筛选时不会误勾其他任务；在“已完成”中取消勾选只移出当前任务，不重置后续列表。
+- 待办详情头部移除重复勾选操作。单列详情使用返回箭头，标题编辑区获得完整宽度，重要、收藏、复制和删除等操作的间距与视觉状态更加一致。
+- 随记剪贴板图片会保存可直接使用的缩略图，并在列表和详情中展示。复制纯图片记录时会把图片本身写回 Windows 剪贴板，不再复制 DeskBox 管理文件的路径。
+- 待办与随记共用等尺寸、可横向滚动的附件方块。图片显示缩略图，其他文件显示文件图标，鼠标移入后展示删除操作。
+- “随记”和“固定”在反复切换标签后都会保留正确空状态；固定页补齐新增卡片，从该页创建的内容默认直接固定。
+- 待办与随记的标题图标、操作颜色、中性勾选框和紧凑头部控件统一视觉尺寸与色彩层级。
+
+#### 音乐与原生界面细节
+
+- 音乐播放控件改用接近 Windows 媒体控制的面性矢量图标。播放、暂停、上一首和下一首共用响应式尺寸，循环和音量继续保持较小的辅助控件规格。
+- 封面模式采用更高的磨砂控制条、左对齐歌曲信息、中性主题材质和紧凑单行布局；唱片与控制模式同步调整间距、悬浮背景和视觉质感。
+- 悬浮搜索窗口顶部拖动手势条改用适配浅色与深色主题的纯色画刷，避免半透明图层重叠造成中间发灰。
+
+#### Markdown、图片与内容安全
+
+- Markdown 阅读和编辑优化响应式工具栏、表格、代码块、链接、任务内容、图片占位高度和保留源文的编辑流程。
+- 内嵌 data 图片会先提取为托管附件，再执行文本长度限制。新旧超长正文都会被安全限制，旧数据中的内嵌图片只迁移一次。
+- 简化待办与随记的直接删除路径，并让列表和详情操作反馈明确指出具体成功或失败的动作。
+
+#### 格子组、搜索与生命周期可靠性
+
+- 格子组滚轮切换移除叠加的 220 ms 与 700 ms 时间限制，解决快速输入看起来“切不动”的问题。触控板细碎增量仍会合并为有效步长，动画只在真正切换时触发，新目标会取消未完成旧工作，并保留首尾循环。
+- 搜索索引加入有界变化缓冲；全卷 USN 索引仅在内部明确启用时运行；索引协调延后到启动窗口之外，内容更新不再反复触发强制内存回收。
+- 桌面层恢复使用代次保护并只调整 DeskBox 同级窗口；收起、尺寸调整和紧凑动画会更可靠地释放过期工作。
+- 应用、应用包清单、x64 安装器和 ARM64 安装器版本统一为 1.4.2 / 1.4.2.0。
+
 ## 1.4.1 - 2026-08-12
 
 ### English

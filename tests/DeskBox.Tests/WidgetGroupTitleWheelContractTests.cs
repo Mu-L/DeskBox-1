@@ -3,7 +3,7 @@ namespace DeskBox.Tests;
 public sealed class WidgetGroupTitleWheelContractTests
 {
     [Fact]
-    public void WheelNavigation_WrapsAndKeepsPendingTargetUntilCompletion()
+    public void WheelNavigation_KeepsCircularNavigationWithoutTimeGates()
     {
         string root = FindRepositoryRoot();
         string interaction = File.ReadAllText(Path.Combine(
@@ -12,16 +12,31 @@ public sealed class WidgetGroupTitleWheelContractTests
         string host = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Views/WidgetWindowBase.Grouping.cs"));
+        string manager = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/WidgetManager.Groups.cs"));
+        string coordinator = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/WidgetGroupSwitchRequestCoordinator.cs"));
 
-        Assert.Contains("wrap: origin is", interaction, StringComparison.Ordinal);
+        Assert.Contains(
+            "wrap: origin is WidgetGroupSwitchOrigin.Keyboard or",
+            interaction,
+            StringComparison.Ordinal);
         Assert.Contains(
             "WidgetGroupSwitchOrigin.Wheel",
             interaction,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "TimeSpan.FromMilliseconds(1200)",
+            "WheelCooldown",
             interaction,
             StringComparison.Ordinal);
+        Assert.DoesNotContain("_lastWheelSwitchAt", interaction, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryAcceptWheelStep", manager, StringComparison.Ordinal);
+        Assert.DoesNotContain("WheelGestureQuietPeriod", coordinator, StringComparison.Ordinal);
+        Assert.True(
+            interaction.IndexOf("TryConsumeWheelStep", StringComparison.Ordinal) <
+            interaction.IndexOf("AnimateWheelDirectionFeedback", StringComparison.Ordinal));
         Assert.Contains(
             "NotifyMemberInvocationCompleted",
             interaction,

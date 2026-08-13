@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -38,6 +39,7 @@ public sealed partial class QuickCaptureSurfaceContent :
 {
     private const string MasterPaneWidthMetadataKey = "QuickCaptureMasterPaneWidth";
     private const int DetailAutoSaveDelayMs = 600;
+    private const int DetailImageDecodePixelWidth = 1200;
     private readonly LocalizationService _localizationService;
     private readonly SettingsService _settingsService;
     private readonly MasterDetailLayoutPolicy _masterDetailLayoutPolicy = new();
@@ -67,6 +69,8 @@ public sealed partial class QuickCaptureSurfaceContent :
     private bool _isSavingDetail;
     private long _detailEditRevision;
     private long _detailSavedRevision;
+    private long _detailImageLoadVersion;
+    private string? _detailPrimaryImagePath;
     private bool _isSynchronizingViewSelection;
     private long _viewSwitchRevision;
     private QuickCaptureItemViewModel? _detailItem;
@@ -470,7 +474,7 @@ public sealed partial class QuickCaptureSurfaceContent :
                 DetailPage.Visibility = Visibility.Collapsed;
             }
             DetailBackButton.Visibility = Visibility.Visible;
-            DetailBackColumn.Width = new GridLength(30);
+            DetailBackColumn.Width = new GridLength(28);
         }
 
         RefreshDetailPresentation();
@@ -1003,7 +1007,6 @@ public sealed partial class QuickCaptureSurfaceContent :
         bool isReadOnly = _detailItem?.IsRecent == true;
         DetailEmptyState.Visibility = _isDualPane &&
                                       !hasDetail &&
-                                      ViewModel.Items.Count > 0 &&
                                       !ViewModel.IsSwitchingView
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1037,12 +1040,22 @@ public sealed partial class QuickCaptureSurfaceContent :
         DetailAddFileButton.Visibility = hasDetail && _isDetailEditing && !isReadOnly
             ? Visibility.Visible
             : Visibility.Collapsed;
-        DetailMarkdownEditor.Visibility = hasDetail && _isDetailEditing && !isReadOnly
+        DetailAttachmentStrip.CanRemove = hasDetail && _isDetailEditing && !isReadOnly;
+        bool hasPrimaryImage = !string.IsNullOrWhiteSpace(_detailPrimaryImagePath);
+        bool showDetailText = _isDetailEditing ||
+                              !hasPrimaryImage ||
+                              HasMeaningfulDetailText();
+        ApplyDetailPrimaryImageLayout(hasPrimaryImage, showDetailText);
+        DetailMarkdownEditor.Visibility = hasDetail &&
+                                          _isDetailEditing &&
+                                          !isReadOnly &&
+                                          showDetailText
             ? Visibility.Visible
             : Visibility.Collapsed;
         DetailMarkdownView.Visibility = hasDetail &&
                                         (!_isDetailEditing || isReadOnly) &&
-                                        !_deferDetailReaderUntilTransitionCompletes
+                                        !_deferDetailReaderUntilTransitionCompletes &&
+                                        showDetailText
             ? Visibility.Visible
             : Visibility.Collapsed;
         DetailMaterialPalette.Visibility = hasDetail && _isDetailEditing && !isReadOnly
@@ -1562,10 +1575,12 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
     }
 
-    private async void DetailOpenAttachmentButton_Click(object sender, RoutedEventArgs e)
+    private async void DetailAttachmentStrip_OpenRequested(
+        object? sender,
+        AttachmentTileEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: TodoAttachmentViewModel attachment } ||
-            !File.Exists(attachment.FilePath))
+        TodoAttachmentViewModel attachment = e.Attachment;
+        if (!File.Exists(attachment.FilePath))
         {
             return;
         }
@@ -1574,13 +1589,16 @@ public sealed partial class QuickCaptureSurfaceContent :
         await Windows.System.Launcher.LaunchFileAsync(file);
     }
 
-    private async void DetailRemoveAttachmentButton_Click(object sender, RoutedEventArgs e)
+    private async void DetailAttachmentStrip_RemoveRequested(
+        object? sender,
+        AttachmentTileEventArgs e)
     {
-        if (!_isDetailEditing || _detailItem?.IsRecent == true ||
-            sender is not FrameworkElement { DataContext: TodoAttachmentViewModel attachment })
+        if (!_isDetailEditing || _detailItem?.IsRecent == true)
         {
             return;
         }
+
+        TodoAttachmentViewModel attachment = e.Attachment;
 
         if (_isCreatingDetail || _detailItem is null)
         {
@@ -1625,6 +1643,27 @@ public sealed partial class QuickCaptureSurfaceContent :
         return _detailItem?.Body ?? string.Empty;
     }
 
+    private bool HasMeaningfulDetailText()
+    {
+        string body = GetDetailPresentationBody();
+        return !string.IsNullOrWhiteSpace(body) &&
+               !(_detailItem?.Type == QuickCaptureItemType.Image &&
+                 string.Equals(body.Trim(), "Image", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void ApplyDetailPrimaryImageLayout(bool hasPrimaryImage, bool showDetailText)
+    {
+        DetailPrimaryImageHost.Visibility = hasPrimaryImage
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DetailPrimaryImageRow.Height = hasPrimaryImage
+            ? new GridLength(showDetailText ? 2 : 1, GridUnitType.Star)
+            : new GridLength(0);
+        DetailBodyTextRow.Height = showDetailText
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(0);
+    }
+
     private void RefreshDetailAttachments()
     {
         IReadOnlyList<TodoAttachmentViewModel> attachments =
@@ -1637,10 +1676,75 @@ public sealed partial class QuickCaptureSurfaceContent :
                     Type = AttachmentStorageService.GetAttachmentType(file.Path)
                 }))
                 .ToArray();
-        DetailAttachmentsList.ItemsSource = attachments;
-        DetailAttachmentScroller.Visibility = attachments.Count > 0
+        DetailAttachmentStrip.ItemsSource = attachments;
+        DetailAttachmentStrip.CanRemove = _isDetailEditing && _detailItem?.IsRecent != true;
+        DetailAttachmentStrip.Visibility = attachments.Count > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
+        bool showPrimaryImage = _detailItem?.Type == QuickCaptureItemType.Image &&
+                                _detailItem.SourceKind == QuickCaptureSourceKind.Clipboard;
+        string? primaryImagePath = showPrimaryImage &&
+                                   !string.IsNullOrWhiteSpace(_detailItem?.ImagePath)
+            ? _detailItem!.ImagePath
+            : null;
+        _ = RefreshDetailPrimaryImageAsync(primaryImagePath);
+    }
+
+    private async Task RefreshDetailPrimaryImageAsync(string? imagePath)
+    {
+        long loadVersion = ++_detailImageLoadVersion;
+        _detailPrimaryImagePath = string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath)
+            ? null
+            : imagePath;
+        DetailPrimaryImage.Source = null;
+
+        bool hasPrimaryImage = _detailPrimaryImagePath is not null;
+        bool showDetailText = _isDetailEditing ||
+                              !hasPrimaryImage ||
+                              HasMeaningfulDetailText();
+        ApplyDetailPrimaryImageLayout(hasPrimaryImage, showDetailText);
+        DetailPrimaryImageLoadingRing.IsActive = hasPrimaryImage;
+        DetailPrimaryImageLoadingRing.Visibility = hasPrimaryImage
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (!hasPrimaryImage)
+        {
+            return;
+        }
+
+        string primaryImagePath = _detailPrimaryImagePath!;
+        try
+        {
+            StorageFile file = await StorageFile.GetFileFromPathAsync(primaryImagePath);
+            using var stream = await file.OpenReadAsync();
+            var bitmap = new BitmapImage
+            {
+                DecodePixelWidth = DetailImageDecodePixelWidth
+            };
+            await bitmap.SetSourceAsync(stream);
+            if (_isDisposed || loadVersion != _detailImageLoadVersion)
+            {
+                return;
+            }
+
+            DetailPrimaryImage.Source = bitmap;
+            DetailPrimaryImageLoadingRing.IsActive = false;
+            DetailPrimaryImageLoadingRing.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            if (_isDisposed || loadVersion != _detailImageLoadVersion)
+            {
+                return;
+            }
+
+            App.Log($"[QuickCaptureSurface] Detail image preview failed: {ex}");
+            _detailPrimaryImagePath = null;
+            DetailPrimaryImageLoadingRing.IsActive = false;
+            DetailPrimaryImageLoadingRing.Visibility = Visibility.Collapsed;
+            ApplyDetailPrimaryImageLayout(hasPrimaryImage: false, showDetailText: true);
+            RefreshDetailPresentation();
+        }
     }
 
     private string? ResolveDetailAttachmentPath(string attachmentId) =>
@@ -2200,13 +2304,20 @@ public sealed partial class QuickCaptureSurfaceContent :
             .ToList();
     }
 
-    private Task CopySelectedQuickCaptureItemsAsync()
+    private async Task CopySelectedQuickCaptureItemsAsync()
     {
         IReadOnlyList<QuickCaptureItemViewModel> selectedItems =
             GetSelectedQuickCaptureItemsInVisibleOrder();
         if (selectedItems.Count == 0)
         {
-            return Task.CompletedTask;
+            return;
+        }
+
+        if (selectedItems.Count == 1 &&
+            QuickCaptureClipboardCopyPolicy.ShouldCopyBitmap(selectedItems[0]))
+        {
+            await CopyItemWithFeedbackAsync(selectedItems[0]);
+            return;
         }
 
         string text = selectedItems.Count == 1
@@ -2218,7 +2329,7 @@ public sealed partial class QuickCaptureSurfaceContent :
                 _localizationService);
         if (string.IsNullOrWhiteSpace(text))
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var dataPackage = new DataPackage
@@ -2234,7 +2345,6 @@ public sealed partial class QuickCaptureSurfaceContent :
                 selectedItems.Count),
             WidgetFeedbackSeverity.Success,
             "quick-copy-selected");
-        return Task.CompletedTask;
     }
 
     private async Task DeleteSelectedQuickCaptureItemsAsync(
@@ -2476,6 +2586,27 @@ public sealed partial class QuickCaptureSurfaceContent :
         ApplyQuickCaptureItemMaterialSurface(
             border,
             border.DataContext as QuickCaptureItemViewModel);
+    }
+
+    private async void QuickCaptureAttachmentPreview_Loaded(object sender, RoutedEventArgs e)
+    {
+        await EnsureQuickCaptureAttachmentThumbnailAsync(
+            (sender as FrameworkElement)?.DataContext);
+    }
+
+    private async void QuickCaptureAttachmentPreview_DataContextChanged(
+        FrameworkElement sender,
+        DataContextChangedEventArgs args)
+    {
+        await EnsureQuickCaptureAttachmentThumbnailAsync(args.NewValue);
+    }
+
+    private static async Task EnsureQuickCaptureAttachmentThumbnailAsync(object? dataContext)
+    {
+        if (dataContext is TodoAttachmentViewModel attachment)
+        {
+            await attachment.EnsureThumbnailAsync();
+        }
     }
 
     private void QuickCaptureItem_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -2819,6 +2950,8 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
 
         _isDisposed = true;
+        _detailImageLoadVersion++;
+        DetailPrimaryImage.Source = null;
         CancelSegmentedRestore();
         Loaded -= OnLoaded;
         ActualThemeChanged -= QuickCaptureSurfaceContent_ActualThemeChanged;

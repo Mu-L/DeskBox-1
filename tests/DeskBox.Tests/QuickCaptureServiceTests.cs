@@ -54,6 +54,35 @@ public sealed class QuickCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ManualCreationMethods_CanCreatePinnedRecordsInNewestFirstOrder()
+    {
+        var service = CreateService();
+        string imagePath = Path.Combine(_tempRoot, "pinned.png");
+        string documentPath = Path.Combine(_tempRoot, "pinned.txt");
+        await File.WriteAllBytesAsync(imagePath, [1, 2, 3, 4]);
+        await File.WriteAllTextAsync(documentPath, "attachment");
+
+        QuickCaptureItem text = await service.AddDetailedItemAsync(
+            null,
+            "pinned text",
+            QuickCaptureAppearancePreset.Default,
+            pin: true);
+        QuickCaptureItem? image = await service.AddImageFileItemAsync(imagePath, pin: true);
+        QuickCaptureItem? attachment = await service.AddItemWithAttachmentsAsync(
+            [documentPath],
+            copyToManagedStorage: false,
+            pin: true);
+        QuickCaptureStoreData data = await service.GetDataAsync();
+
+        Assert.NotNull(image);
+        Assert.NotNull(attachment);
+        Assert.All(data.Items, item => Assert.True(item.IsPinned));
+        Assert.Equal(
+            new[] { attachment!.Id, image!.Id, text.Id },
+            data.Items.OrderBy(item => item.PinnedSortOrder).Select(item => item.Id));
+    }
+
+    [Fact]
     public async Task AddDetailedItemAsync_ExtractsInlineDataImagesIntoManagedAttachments()
     {
         var service = CreateService();
@@ -727,6 +756,24 @@ public sealed class QuickCaptureServiceTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(thumbnailPath));
         Assert.True(File.Exists(thumbnailPath));
         Assert.StartsWith(Path.Combine(_storeRoot, "thumbnails"), thumbnailPath!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AddRecentClipboardImageAsync_PersistsImageAndReadyThumbnail()
+    {
+        var service = CreateService();
+        byte[] imageBytes = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYPj/nwEJMDGgAQAAMQIEA3mLB4MAAAAASUVORK5CYII=");
+
+        QuickCaptureItem? item = await service.AddRecentClipboardImageAsync(
+            imageBytes,
+            QuickCaptureService.DefaultRecentLimit);
+        Assert.NotNull(item);
+        string? thumbnailPath = await service.GetOrCreateImageThumbnailPathAsync(item!.ImagePath);
+
+        Assert.True(File.Exists(item!.ImagePath));
+        Assert.False(string.IsNullOrWhiteSpace(thumbnailPath));
+        Assert.True(File.Exists(thumbnailPath));
     }
 
     [Fact]

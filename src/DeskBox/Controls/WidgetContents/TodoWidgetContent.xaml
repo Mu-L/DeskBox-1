@@ -13,6 +13,8 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
+        <x:Double x:Key="TodoDetailActionIconSize">13</x:Double>
+
         <!-- Keep WinUI's native CheckBox template and interaction states, but
              replace its accent resources with adaptive neutral brushes. -->
         <StaticResource x:Key="CheckBoxCheckBackgroundStrokeChecked" ResourceKey="TextFillColorPrimaryBrush" />
@@ -74,20 +76,21 @@
         </Style>
 
         <Style x:Key="TodoDetailHeaderIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-            <Setter Property="Width" Value="30" />
-            <Setter Property="Height" Value="30" />
-            <Setter Property="MinWidth" Value="30" />
-            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinHeight" Value="28" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
         </Style>
 
         <Style x:Key="TodoDetailConfirmButtonStyle" TargetType="Button" BasedOn="{StaticResource TodoDetailHeaderIconButtonStyle}">
-            <Setter Property="Width" Value="30" />
-            <Setter Property="Height" Value="30" />
-            <Setter Property="MinWidth" Value="30" />
-            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinHeight" Value="28" />
             <Setter Property="CornerRadius" Value="{StaticResource WidgetCornerRadiusSmall}" />
         </Style>
 
@@ -614,13 +617,8 @@
                             Style="{StaticResource TodoDetailConfirmButtonStyle}"
                             ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailBackText}">
                             <FontIcon
-                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}"
-                                Glyph="&#xE73E;"
-                                RenderTransformOrigin="0.5,0.5">
-                                <FontIcon.RenderTransform>
-                                    <ScaleTransform ScaleX="1.3" ScaleY="1.3" />
-                                </FontIcon.RenderTransform>
-                            </FontIcon>
+                                FontSize="{StaticResource TodoDetailActionIconSize}"
+                                Glyph="&#xE72B;" />
                         </Button>
                         <Button
                             x:Name="DetailSaveButton"
@@ -642,14 +640,7 @@
                             Margin="0,0,8,0"
                             HorizontalAlignment="Right"
                             Orientation="Horizontal"
-                            Spacing="0">
-                            <CheckBox
-                                x:Name="DetailCompletionCheckBox"
-                                AutomationProperties.Name="{Binding CompletionToggleText}"
-                                Click="DetailCompletionCheckBox_Click"
-                                IsChecked="{Binding IsCompleted, Mode=OneWay}"
-                                Style="{StaticResource TodoNativeCompletionCheckBoxStyle}"
-                                ToolTipService.ToolTip="{Binding CompletionToggleText}" />
+                            Spacing="2">
                             <Button
                                 x:Name="DetailImportantButton"
                                 AutomationProperties.Name="{Binding ImportantToggleText}"
@@ -657,7 +648,8 @@
                                 Style="{StaticResource TodoDetailHeaderIconButtonStyle}"
                                 ToolTipService.ToolTip="{Binding ImportantToggleText}">
                                 <FontIcon
-                                    FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}"
+                                    FontSize="{StaticResource TodoDetailActionIconSize}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Glyph="{Binding ImportantGlyph}" />
                             </Button>
                             <Button
@@ -667,7 +659,8 @@
                                 Style="{StaticResource TodoDetailHeaderIconButtonStyle}"
                                 ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DeleteText}">
                                 <FontIcon
-                                    FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}"
+                                    FontSize="{StaticResource TodoDetailActionIconSize}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Glyph="&#xE74D;" />
                             </Button>
                         </StackPanel>
@@ -958,6 +951,13 @@
 
                     <Border BorderThickness="0">
                         <StackPanel>
+                            <controls:AttachmentTileStrip
+                                Margin="8,3,8,0"
+                                CanRemove="True"
+                                ItemsSource="{Binding Attachments}"
+                                OpenRequested="DetailAttachmentStrip_OpenRequested"
+                                RemoveAutomationName="{Binding ElementName=RootGrid, Path=DataContext.DetailRemoveAttachmentText}"
+                                RemoveRequested="DetailAttachmentStrip_RemoveRequested" />
                             <Button Click="DetailAddFileButton_Click" Style="{StaticResource TodoDetailRowButtonStyle}">
                                 <Grid ColumnSpacing="6">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -965,25 +965,6 @@
                                     <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}" Text="{Binding ElementName=RootGrid, Path=DataContext.DetailAddFileText}" />
                                 </Grid>
                             </Button>
-                            <ItemsControl ItemsSource="{Binding Attachments}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid MinHeight="44" Padding="8,3" ColumnSpacing="6" Loaded="TodoAttachmentPreview_Loaded">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="36" /><ColumnDefinition Width="*" /><ColumnDefinition Width="28" /></Grid.ColumnDefinitions>
-                                            <Grid Grid.Column="0" Width="36" Height="36">
-                                                <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="3">
-                                                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" Visibility="{Binding ThumbnailVisibility}" />
-                                                </Border>
-                                                <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ElementName=RootGrid, Path=DataContext.StandardIconSize}" Glyph="{Binding Glyph}" Visibility="{Binding FileIconVisibility}" />
-                                            </Grid>
-                                            <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="0" Click="DetailOpenAttachmentButton_Click" Style="{StaticResource SubtleButtonStyle}">
-                                                <TextBlock FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}" MaxLines="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                                            </Button>
-                                            <Button Grid.Column="2" Width="28" Height="28" MinWidth="28" MinHeight="28" AutomationProperties.Name="{Binding ElementName=RootGrid, Path=DataContext.DetailRemoveAttachmentText}" Click="DetailRemoveAttachmentButton_Click" Style="{StaticResource WidgetCompactIconButtonStyle}" ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailRemoveAttachmentText}" VerticalAlignment="Center"><FontIcon FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}" Glyph="&#xE74D;" /></Button>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
                         </StackPanel>
                     </Border>
 

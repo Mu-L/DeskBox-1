@@ -134,7 +134,7 @@ public sealed partial class QuickCaptureWidgetWindow
         _detailSavedRevision = 0;
         _detailHasUnsavedChanges = _detailEditRevision != _detailSavedRevision;
         _detailContentFormat = ViewModel.EditorContentFormat;
-        _detailIsPinned = false;
+        _detailIsPinned = ViewModel.IsPinnedView;
         _detailAppearance = QuickCaptureAppearancePreset.Default;
         _pendingDetailAttachments = [];
         DetailTitleTextBox.Text = string.Empty;
@@ -334,9 +334,9 @@ public sealed partial class QuickCaptureWidgetWindow
 
                 ReportBodyTruncation(attachmentUpdateResult);
                 createdModel = attachmentUpdateResult.Item ?? created.ToModel();
-                if (_detailIsPinned)
+                if (created.IsPinned != _detailIsPinned)
                 {
-                    await ViewModel.SetPinnedAsync(created.Id, true);
+                    await ViewModel.SetPinnedAsync(created.Id, _detailIsPinned);
                 }
 
                 await ViewModel.RefreshItemsAsync();
@@ -351,9 +351,9 @@ public sealed partial class QuickCaptureWidgetWindow
                     _detailContentFormat);
                 ReportBodyTruncation(addResult);
                 createdModel = addResult.Item;
-                if (createdModel is not null && _detailIsPinned)
+                if (createdModel is not null && createdModel.IsPinned != _detailIsPinned)
                 {
-                    await ViewModel.SetPinnedAsync(createdModel.Id, true);
+                    await ViewModel.SetPinnedAsync(createdModel.Id, _detailIsPinned);
                 }
             }
 

@@ -20,6 +20,8 @@
         DragOver="RootGrid_DragOver"
         Drop="RootGrid_Drop">
         <Grid.Resources>
+            <x:Double x:Key="QuickCaptureDetailActionIconSize">13</x:Double>
+
             <Style x:Key="QuickCaptureIconButtonStyle" TargetType="Button">
                 <Setter Property="Width" Value="22" />
                 <Setter Property="Height" Value="22" />
@@ -58,20 +60,21 @@
             <Style x:Key="QuickCaptureConfirmCommandButtonStyle" TargetType="Button" BasedOn="{StaticResource WidgetConfirmCommandButtonStyle}" />
 
             <Style x:Key="QuickCaptureDetailIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-                <Setter Property="Width" Value="30" />
-                <Setter Property="Height" Value="30" />
-                <Setter Property="MinWidth" Value="30" />
-                <Setter Property="MinHeight" Value="30" />
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="MinWidth" Value="28" />
+                <Setter Property="MinHeight" Value="28" />
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
             </Style>
 
-        <Style x:Key="QuickCaptureDetailConfirmButtonStyle" TargetType="Button" BasedOn="{StaticResource QuickCaptureDetailIconButtonStyle}">
-                <Setter Property="Width" Value="30" />
-                <Setter Property="Height" Value="30" />
-                <Setter Property="MinWidth" Value="30" />
-                <Setter Property="MinHeight" Value="30" />
+            <Style x:Key="QuickCaptureDetailConfirmButtonStyle" TargetType="Button" BasedOn="{StaticResource QuickCaptureDetailIconButtonStyle}">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="MinWidth" Value="28" />
+                <Setter Property="MinHeight" Value="28" />
                 <Setter Property="CornerRadius" Value="4" />
             </Style>
 
@@ -721,15 +724,15 @@
                     Background="Transparent"
                     BorderBrush="Transparent"
                     BorderThickness="0">
-                    <Grid MinHeight="32" ColumnSpacing="3">
+                    <Grid MinHeight="30" ColumnSpacing="2">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="30" />
+                            <ColumnDefinition Width="28" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="30" />
-                            <ColumnDefinition Width="30" />
-                            <ColumnDefinition Width="30" />
-                            <ColumnDefinition Width="30" />
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="28" />
                         </Grid.ColumnDefinitions>
                         <Button
                             x:Name="DetailBackButton"
@@ -738,7 +741,7 @@
                             ToolTipService.ToolTip="{Binding DetailBackText}"
                             VerticalAlignment="Center">
                             <FontIcon
-                                FontSize="{Binding ActionIconSize}"
+                                FontSize="{StaticResource QuickCaptureDetailActionIconSize}"
                                 Glyph="&#xE73E;"
                                 RenderTransformOrigin="0.5,0.5">
                                 <FontIcon.RenderTransform>
@@ -777,7 +780,7 @@
                                 Click="DetailEditButton_Click"
                                 Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                                 ToolTipService.ToolTip="{Binding DetailEditText}">
-                                <FontIcon FontSize="12" Glyph="&#xE70F;" />
+                                <FontIcon FontSize="{StaticResource QuickCaptureDetailActionIconSize}" Glyph="&#xE70F;" />
                             </Button>
                             <Button
                                 x:Name="DetailDoneButton"
@@ -785,7 +788,7 @@
                                 Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                                 ToolTipService.ToolTip="{Binding DetailDoneText}"
                                 Visibility="Collapsed">
-                                <FontIcon FontSize="12" Glyph="&#xE73E;" />
+                                <FontIcon FontSize="{StaticResource QuickCaptureDetailActionIconSize}" Glyph="&#xE73E;" />
                             </Button>
                         </Grid>
                         <Button
@@ -794,7 +797,7 @@
                             Click="DetailPinButton_Click"
                             Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                             VerticalAlignment="Center">
-                            <controls:PinStateIcon x:Name="DetailPinIcon" Width="15" Height="15" />
+                            <controls:PinStateIcon x:Name="DetailPinIcon" Width="13" Height="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Button>
                         <Button
                             Grid.Column="5"
@@ -802,7 +805,7 @@
                             Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                             ToolTipService.ToolTip="{Binding DetailCopyText}"
                             VerticalAlignment="Center">
-                            <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE8C8;" />
+                            <FontIcon FontSize="{StaticResource QuickCaptureDetailActionIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE8C8;" />
                         </Button>
                         <Button
                             Grid.Column="6"
@@ -810,7 +813,7 @@
                             Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                             ToolTipService.ToolTip="{Binding DetailDeleteText}"
                             VerticalAlignment="Center">
-                            <FontIcon FontSize="{Binding ActionIconSize}" Glyph="&#xE74D;" />
+                            <FontIcon FontSize="{StaticResource QuickCaptureDetailActionIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74D;" />
                         </Button>
                     </Grid>
                 </Border>

@@ -64,18 +64,19 @@ public sealed partial class QuickCaptureWidgetViewModel
 
         UpdateEmptyStateText();
         bool hasItems = Items.Count > 0;
-        bool showEmptyRecordsAddSurface = IsRecordsView && !HasSearchText;
-        EmptyStateVisibility = hasItems || showEmptyRecordsAddSurface
+        bool showEmptyAddSurface =
+            (IsRecordsView || IsPinnedView) && !HasSearchText;
+        EmptyStateVisibility = hasItems
             ? Visibility.Collapsed
             : Visibility.Visible;
-        ListVisibility = hasItems || showEmptyRecordsAddSurface
+        ListVisibility = hasItems || showEmptyAddSurface
             ? Visibility.Visible
             : Visibility.Collapsed;
         OnPropertyChanged(nameof(RecentCaptureStatusText));
         OnPropertyChanged(nameof(RecentCaptureStatusVisibility));
         OnPropertyChanged(nameof(RecentCaptureActionVisibility));
-        ItemsViewTransitionToken++;
         SetViewSwitchLoading(false);
+        ItemsViewTransitionToken++;
         return Task.CompletedTask;
     }
 

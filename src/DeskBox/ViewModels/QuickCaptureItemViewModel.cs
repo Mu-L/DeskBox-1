@@ -81,7 +81,13 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public IReadOnlyList<TodoAttachmentViewModel> ImageAttachments { get; private set; } = [];
 
+    public TodoAttachmentViewModel? PrimaryImageAttachment => ImageAttachments.FirstOrDefault();
+
     public Visibility ImageAttachmentsVisibility => ImageAttachments.Count > 0
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility ListImagePreviewVisibility => PrimaryImageAttachment is not null
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -221,7 +227,9 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
             RefreshAttachments();
             OnPropertyChanged(nameof(Attachments));
             OnPropertyChanged(nameof(ImageAttachments));
+            OnPropertyChanged(nameof(PrimaryImageAttachment));
             OnPropertyChanged(nameof(ImageAttachmentsVisibility));
+            OnPropertyChanged(nameof(ListImagePreviewVisibility));
             OnPropertyChanged(nameof(AttachmentSummaryVisibility));
             OnPropertyChanged(nameof(AttachmentSummaryText));
         }

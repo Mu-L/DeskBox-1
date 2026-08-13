@@ -331,17 +331,6 @@ public sealed partial class TodoWidgetContent
         CustomDueDateOverlay.Background = new SolidColorBrush(GetNeutralOverlaySurfaceColor(isDark));
         CustomDueDateOverlay.BorderBrush = GetNeutralOverlayBorderBrush(isDark);
         CustomDueDateOverlay.BorderThickness = new Thickness(0.8);
-        ApplyDetailCompletionVisualState();
-    }
-
-    private void ApplyDetailCompletionVisualState()
-    {
-        if (DetailCompletionCheckBox is null || ViewModel?.SelectedDetailItem is not { } item)
-        {
-            return;
-        }
-
-        DetailCompletionCheckBox.IsChecked = item.IsCompleted;
     }
 
     private void ApplySelectionRectangleStyle()

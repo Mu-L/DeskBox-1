@@ -36,7 +36,7 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1) 下载 DeskBox 1.4.1。
+DeskBox 1.4.2 安装包正在本地验证，暂不上传 GitHub。当前公开稳定版仍可在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1) 下载。
 
 - [DeskBox 1.4.1 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
 - [DeskBox 1.4.1 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
@@ -102,12 +102,15 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.4.1 更新亮点
+## 1.4.2 更新亮点
 
-- **文件格子滚动条按需出现。** 鼠标移动、滚轮或键盘操作时显示滚动条，连续 3 秒无操作后自动隐藏，减少长期占用内容区域。
-- **全部收起后格子保持隐藏。** 收起开始时会取消尚未执行的桌面层恢复定时器；已经隐藏、正在收起或关闭中的窗口也会拒绝旧恢复回调，不再自行弹出。
+- **待办勾选不再错位。** 完成状态按实际任务同步，自定义排序、筛选和列表容器复用时不会误勾其他任务；在“已完成”中取消勾选只移出当前任务。
+- **随记图片与附件更直观。** 剪贴板图片在列表和详情中直接显示缩略图，复制时写回图片本身；随记与待办共用横向附件方块，可显示图片缩略图或文件图标，并支持悬浮删除。
+- **音乐控制更接近 Windows。** 播放、暂停、上一首和下一首改为统一尺寸的面性图标，封面模式控制条、歌曲信息和悬浮质感同步调整。
+- **格子组连续滚动更顺手。** 移除会吞掉快速输入的双重时间限制，保留触控板步长合并、最终目标优先和首尾循环，持续向下滚动可循环切换。
+- **界面与运行可靠性继续收紧。** 补齐随记/固定空状态、固定页直接新增、浅深色拖动手势条、Markdown 图片与复杂内容显示，以及搜索索引和桌面层级的内存安全保护。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.1 发布说明](docs/releases/v1.4.1.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.2 发布说明](docs/releases/v1.4.2.md)。
 
 ## 当前界面
 
@@ -210,8 +213,8 @@ ISCC.exe .\installer\DeskBox.arm64.iss
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.4.1_x64.exe
-Output\DeskBox_Setup_1.4.1_arm64.exe
+Output\DeskBox_Setup_1.4.2_x64.exe
+Output\DeskBox_Setup_1.4.2_arm64.exe
 ```
 
 ## 项目结构

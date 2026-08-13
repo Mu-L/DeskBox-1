@@ -212,7 +212,10 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public string MaterialBlueText => _localizationService.T("QuickCapture.Material.Blue");
 
-    public Visibility InputAreaVisibility => IsRecordsView && !IsSearchExpanded ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility InputAreaVisibility =>
+        (IsRecordsView || IsPinnedView) && !IsSearchExpanded
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     public string SearchScopeText => _localizationService.T("QuickCapture.SearchScope");
 

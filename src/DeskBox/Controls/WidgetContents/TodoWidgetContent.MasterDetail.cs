@@ -195,7 +195,6 @@ public sealed partial class TodoWidgetContent
             if (ViewModel.OpenDetail(first.Id) is not null)
             {
                 _wideSelectionWasAutomatic = true;
-                ApplyDetailCompletionVisualState();
             }
 
             ApplyMasterDetailVisibility();

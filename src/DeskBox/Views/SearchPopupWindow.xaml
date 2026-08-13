@@ -901,7 +901,7 @@
               DoubleTapped="TopDragHotZone_DoubleTapped">
             <Border x:Name="TopDragHandle" Width="44" Height="4" CornerRadius="2"
                     HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,5,0,0"
-                    Background="{ThemeResource TextFillColorSecondaryBrush}"
+                    Background="{ThemeResource WidgetDragHandleBrush}"
                     Opacity="0" IsHitTestVisible="False"/>
         </Grid>
 

@@ -62,13 +62,15 @@ public sealed class QuickCaptureService
         string? title,
         string body,
         QuickCaptureAppearancePreset appearancePreset,
-        TextContentFormat contentFormat = TextContentFormat.PlainText)
+        TextContentFormat contentFormat = TextContentFormat.PlainText,
+        bool pin = false)
     {
         QuickCaptureWriteResult result = await AddDetailedItemWithResultAsync(
             title,
             body,
             appearancePreset,
-            contentFormat);
+            contentFormat,
+            pin);
         return result.Item!;
     }
 
@@ -76,7 +78,8 @@ public sealed class QuickCaptureService
         string? title,
         string body,
         QuickCaptureAppearancePreset appearancePreset,
-        TextContentFormat contentFormat = TextContentFormat.PlainText)
+        TextContentFormat contentFormat = TextContentFormat.PlainText,
+        bool pin = false)
     {
         contentFormat = NormalizeContentFormat(contentFormat);
         string normalizedBody = NormalizeBody(body, contentFormat);
@@ -111,8 +114,10 @@ public sealed class QuickCaptureService
                 Attachments = attachments,
                 AppearancePreset = NormalizeAppearancePreset(appearancePreset),
                 SourceKind = QuickCaptureSourceKind.Manual,
+                IsPinned = pin,
                 IsRecent = false,
                 SortOrder = 0,
+                PinnedSortOrder = pin ? 0 : -1,
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -120,9 +125,14 @@ public sealed class QuickCaptureService
             foreach (var existing in _data!.Items)
             {
                 existing.SortOrder++;
+                if (pin && existing.IsPinned)
+                {
+                    existing.PinnedSortOrder++;
+                }
             }
 
             _data.Items.Insert(0, item);
+            NormalizePinnedSortOrders(_data.Items);
             await SaveCoreAsync();
             return new QuickCaptureWriteResult(true, wasTruncated, Clone(item));
         }
@@ -238,7 +248,6 @@ public sealed class QuickCaptureService
         }
 
         string contentHash = ComputeContentHash(imagePngBytes);
-        string imagePath = await SaveImageAsync(imagePngBytes, contentHash);
 
         await _gate.WaitAsync();
         try
@@ -250,6 +259,7 @@ public sealed class QuickCaptureService
                 return null;
             }
 
+            string imagePath = await SaveImageAsync(imagePngBytes, contentHash);
             _data.RecentItems.RemoveAll(item => string.Equals(item.ContentHash, contentHash, StringComparison.Ordinal));
             var now = DateTimeOffset.UtcNow;
             var item = new QuickCaptureItem
@@ -284,20 +294,21 @@ public sealed class QuickCaptureService
         }
     }
 
-    public async Task<QuickCaptureItem?> AddImageFileItemAsync(string imagePath)
+    public async Task<QuickCaptureItem?> AddImageFileItemAsync(
+        string imagePath,
+        bool pin = false)
     {
         if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath) || !IsImageFile(imagePath))
         {
             return null;
         }
 
-        string cachedImagePath = await SaveImageFileAsync(imagePath);
-        string contentHash = Path.GetFileNameWithoutExtension(cachedImagePath);
-
         await _gate.WaitAsync();
         try
         {
             await EnsureLoadedCoreAsync();
+            string cachedImagePath = await SaveImageFileAsync(imagePath);
+            string contentHash = Path.GetFileNameWithoutExtension(cachedImagePath);
             var now = DateTimeOffset.UtcNow;
             var item = new QuickCaptureItem
             {
@@ -308,8 +319,10 @@ public sealed class QuickCaptureService
                 ContentHash = contentHash,
                 Attachments = [CreateImageAttachment(cachedImagePath, now)],
                 SourceKind = QuickCaptureSourceKind.Image,
+                IsPinned = pin,
                 IsRecent = false,
                 SortOrder = 0,
+                PinnedSortOrder = pin ? 0 : -1,
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -317,9 +330,14 @@ public sealed class QuickCaptureService
             foreach (var existing in _data!.Items)
             {
                 existing.SortOrder++;
+                if (pin && existing.IsPinned)
+                {
+                    existing.PinnedSortOrder++;
+                }
             }
 
             _data.Items.Insert(0, item);
+            NormalizePinnedSortOrders(_data.Items);
             await SaveCoreAsync();
             CleanupUnusedImageCacheCore();
             return Clone(item);
@@ -512,7 +530,8 @@ public sealed class QuickCaptureService
 
     public async Task<QuickCaptureItem?> AddItemWithAttachmentsAsync(
         IEnumerable<string> filePaths,
-        bool copyToManagedStorage)
+        bool copyToManagedStorage,
+        bool pin = false)
     {
         string[] paths = filePaths
             .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
@@ -560,7 +579,9 @@ public sealed class QuickCaptureService
                 ImagePath = primaryImagePath,
                 Attachments = attachments,
                 SourceKind = QuickCaptureSourceKind.DragDrop,
+                IsPinned = pin,
                 SortOrder = 0,
+                PinnedSortOrder = pin ? 0 : -1,
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -568,9 +589,14 @@ public sealed class QuickCaptureService
             foreach (QuickCaptureItem existing in _data!.Items)
             {
                 existing.SortOrder++;
+                if (pin && existing.IsPinned)
+                {
+                    existing.PinnedSortOrder++;
+                }
             }
 
             _data.Items.Insert(0, item);
+            NormalizePinnedSortOrders(_data.Items);
             await SaveCoreAsync();
             return Clone(item);
         }
@@ -1090,9 +1116,6 @@ public sealed class QuickCaptureService
             return null;
         }
 
-        string cachedImagePath = await SaveImageFileAsync(imagePath);
-        string contentHash = Path.GetFileNameWithoutExtension(cachedImagePath);
-
         await _gate.WaitAsync();
         try
         {
@@ -1101,10 +1124,11 @@ public sealed class QuickCaptureService
                 string.Equals(entry.Id, itemId, StringComparison.Ordinal) && !entry.IsDeleted);
             if (item is null)
             {
-                CleanupUnusedImageCacheCore();
                 return null;
             }
 
+            string cachedImagePath = await SaveImageFileAsync(imagePath);
+            string contentHash = Path.GetFileNameWithoutExtension(cachedImagePath);
             TodoAttachment? primaryImageAttachment = item.Attachments.FirstOrDefault(attachment =>
                 string.Equals(attachment.FilePath, item.ImagePath, StringComparison.OrdinalIgnoreCase));
             if (primaryImageAttachment is null)
@@ -1644,7 +1668,7 @@ public sealed class QuickCaptureService
             await File.WriteAllBytesAsync(imagePath, imagePngBytes);
         }
 
-        _ = CreateImageThumbnailAsync(imagePath);
+        await CreateImageThumbnailAsync(imagePath);
         return imagePath;
     }
 
@@ -1695,7 +1719,7 @@ public sealed class QuickCaptureService
             await File.WriteAllBytesAsync(imagePath, bytes);
         }
 
-        _ = CreateImageThumbnailAsync(imagePath);
+        await CreateImageThumbnailAsync(imagePath);
         return imagePath;
     }
 

@@ -351,7 +351,6 @@ public sealed partial class TodoWidgetContent
             return;
         }
 
-        ApplyDetailCompletionVisualState();
         e.Handled = true;
     }
 
@@ -370,7 +369,6 @@ public sealed partial class TodoWidgetContent
             return;
         }
 
-        ApplyDetailCompletionVisualState();
     }
 
     private static bool IsInteractiveTodoSource(object? source)

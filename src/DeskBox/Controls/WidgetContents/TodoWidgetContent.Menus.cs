@@ -66,7 +66,6 @@ public sealed partial class TodoWidgetContent
             }
 
             ViewModel.BeginEdit(item.Id);
-            ApplyDetailCompletionVisualState();
             DispatcherQueue.TryEnqueue(() =>
             {
                 DetailTitleTextBox.Focus(FocusState.Programmatic);

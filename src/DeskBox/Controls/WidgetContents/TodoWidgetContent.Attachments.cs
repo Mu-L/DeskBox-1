@@ -40,14 +40,11 @@ public sealed partial class TodoWidgetContent
         }
     }
 
-    private async void DetailOpenAttachmentButton_Click(object sender, RoutedEventArgs e)
+    private async void DetailAttachmentStrip_OpenRequested(
+        object? sender,
+        AttachmentTileEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: TodoAttachmentViewModel attachment })
-        {
-            return;
-        }
-
-        await OpenTodoAttachmentAsync(attachment);
+        await OpenTodoAttachmentAsync(e.Attachment);
     }
 
     private async Task OpenTodoAttachmentAsync(TodoAttachmentViewModel attachment)
@@ -80,22 +77,15 @@ public sealed partial class TodoWidgetContent
         }
     }
 
-    private async void TodoAttachmentPreview_Loaded(object sender, RoutedEventArgs e)
+    private async void DetailAttachmentStrip_RemoveRequested(
+        object? sender,
+        AttachmentTileEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: TodoAttachmentViewModel attachment })
-        {
-            await attachment.EnsureThumbnailAsync();
-        }
-    }
-
-    private async void DetailRemoveAttachmentButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { DataContext: TodoAttachmentViewModel attachment } ||
-            ViewModel?.SelectedDetailItem is not { } item)
+        if (ViewModel?.SelectedDetailItem is not { } item)
         {
             return;
         }
 
-        await ViewModel.DeleteAttachmentAsync(item.Id, attachment.Id);
+        await ViewModel.DeleteAttachmentAsync(item.Id, e.Attachment.Id);
     }
 }

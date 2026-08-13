@@ -17,7 +17,9 @@ public sealed class TodoDetailHeaderLayoutContractTests
             "x:Name=\"DetailHeaderActions\"\n                            Grid.Column=\"2\"\n                            Margin=\"0,0,8,0\"",
             xaml.ReplaceLineEndings("\n"),
             StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"DetailCompletionCheckBox\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"DetailCompletionCheckBox\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"DetailCompletionButton\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("DetailCompletionButton_Click", code, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"DetailSaveButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"DetailSaveButton_Click\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsEnabled=\"{Binding CanSaveEdit}\"", xaml, StringComparison.Ordinal);
@@ -65,10 +67,14 @@ public sealed class TodoDetailHeaderLayoutContractTests
             "Style=\"{StaticResource TodoNativeCompletionCheckBoxStyle}\"",
             xaml,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "Background\" Value=\"{ThemeResource WidgetLayerFillSecondaryBrush}\"",
-            xaml,
-            StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"TodoDetailActionIconSize\">13", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DetailBackButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Glyph=\"&#xE72B;\"", xaml[xaml.IndexOf(
+            "x:Name=\"DetailBackButton\"", StringComparison.Ordinal)..], StringComparison.Ordinal);
+        Assert.Contains("Spacing=\"2\"", xaml[xaml.IndexOf(
+            "x:Name=\"DetailHeaderActions\"", StringComparison.Ordinal)..], StringComparison.Ordinal);
+        Assert.Contains("Width\" Value=\"28\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyDetailCompletionVisualState", code, StringComparison.Ordinal);
         Assert.DoesNotContain("<ColumnDefinition Width=\"30\" />\n                            <ColumnDefinition Width=\"*\" />\n                            <ColumnDefinition Width=\"30\" />", xaml.ReplaceLineEndings("\n"), StringComparison.Ordinal);
     }
 
@@ -83,7 +89,7 @@ public sealed class TodoDetailHeaderLayoutContractTests
         Assert.Contains("x:Key=\"TodoNativeCompletionCheckBoxStyle\"", xaml, StringComparison.Ordinal);
         Assert.Contains("BasedOn=\"{StaticResource DefaultCheckBoxStyle}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TodoCompletionCheckBox\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"DetailCompletionCheckBox\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"DetailCompletionCheckBox\"", xaml, StringComparison.Ordinal);
         Assert.Contains("CheckBoxCheckBackgroundFillChecked", xaml, StringComparison.Ordinal);
         Assert.Contains("ResourceKey=\"TextFillColorPrimaryBrush\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Foreground=\"{ThemeResource TextFillColorSecondaryBrush}\"", xaml, StringComparison.Ordinal);
@@ -108,7 +114,7 @@ public sealed class TodoDetailHeaderLayoutContractTests
     }
 
     [Fact]
-    public void CompletionImportantAndSaveActions_ReportSpecificStatusFeedback()
+    public void ListCompletionAndRetainedDetailActions_ReportSpecificStatusFeedback()
     {
         string contentCode = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.xaml.cs"));
@@ -117,7 +123,6 @@ public sealed class TodoDetailHeaderLayoutContractTests
         string feedbackCode = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.EditingAndUndo.cs"));
 
-        Assert.Contains("SetCompletedWithFeedbackAsync", contentCode, StringComparison.Ordinal);
         Assert.Contains("SetImportantWithFeedbackAsync", contentCode, StringComparison.Ordinal);
         Assert.Contains("SetCompletedWithFeedbackAsync", interactionCode, StringComparison.Ordinal);
         Assert.Contains("SetImportantWithFeedbackAsync", interactionCode, StringComparison.Ordinal);
@@ -160,10 +165,18 @@ public sealed class TodoDetailHeaderLayoutContractTests
             "if (string.IsNullOrWhiteSpace(body) && _pendingDetailAttachments.Count == 0)",
             code,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "x:Name=\"DetailTimestampText\"\n                Grid.Row=\"2\"",
-            xaml.ReplaceLineEndings("\n"),
-            StringComparison.Ordinal);
+        string timestampMarkup = xaml[xaml.IndexOf(
+            "x:Name=\"DetailTimestampText\"",
+            StringComparison.Ordinal)..];
+        Assert.Contains("Grid.Row=\"2\"", timestampMarkup, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"QuickCaptureDetailActionIconSize\">13", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"QuickCaptureSharedDetailIconButtonStyle\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Width\" Value=\"28\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Foreground\" Value=\"{ThemeResource TextFillColorSecondaryBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Width=\"13\" Height=\"13\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Spacing=\"2\"", xaml[xaml.IndexOf(
+            "x:Name=\"DetailHeaderActions\"", StringComparison.Ordinal)..], StringComparison.Ordinal);
+        Assert.Contains("DetailBackColumn.Width = new GridLength(28)", code, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string text, string value) =>

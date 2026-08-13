@@ -69,19 +69,21 @@ public sealed partial class QuickCaptureWidgetViewModel
             return new QuickCaptureWriteResult(false, false, null);
         }
 
+        bool addPinned = IsPinnedView;
         QuickCaptureWriteResult result = await _quickCaptureService.AddDetailedItemWithResultAsync(
             null,
             body,
             QuickCaptureAppearancePreset.Default,
-            ResolveEditorContentFormat());
-        if (SelectedView is QuickCaptureViewMode.Pinned or QuickCaptureViewMode.Recent)
+            ResolveEditorContentFormat(),
+            pin: addPinned);
+        if (SelectedView == QuickCaptureViewMode.Recent)
         {
             SelectedView = QuickCaptureViewMode.Records;
         }
         else
         {
-            // Already on Records view — the view-switch refresh won't fire,
-            // so trigger an explicit refresh to ensure the new item appears.
+            // Records and Pinned stay on their current view, so refresh it
+            // explicitly to make the new item appear without a tab switch.
             RefreshVisibleItemsImmediately();
         }
 
@@ -113,12 +115,14 @@ public sealed partial class QuickCaptureWidgetViewModel
             return new QuickCaptureWriteResult(false, false, null);
         }
 
+        bool addPinned = IsPinnedView;
         QuickCaptureWriteResult result = await _quickCaptureService.AddDetailedItemWithResultAsync(
             title,
             body,
             appearancePreset,
-            contentFormat ?? ResolveEditorContentFormat());
-        if (SelectedView != QuickCaptureViewMode.Records)
+            contentFormat ?? ResolveEditorContentFormat(),
+            pin: addPinned);
+        if (SelectedView == QuickCaptureViewMode.Recent)
         {
             SelectedView = QuickCaptureViewMode.Records;
         }
@@ -132,13 +136,16 @@ public sealed partial class QuickCaptureWidgetViewModel
 
     public async Task<QuickCaptureItemViewModel?> AddImageFileAsync(string imagePath)
     {
-        QuickCaptureItem? item = await _quickCaptureService.AddImageFileItemAsync(imagePath);
+        bool addPinned = IsPinnedView;
+        QuickCaptureItem? item = await _quickCaptureService.AddImageFileItemAsync(
+            imagePath,
+            pin: addPinned);
         if (item is null)
         {
             return null;
         }
 
-        if (SelectedView != QuickCaptureViewMode.Records)
+        if (SelectedView == QuickCaptureViewMode.Recent)
         {
             SelectedView = QuickCaptureViewMode.Records;
         }
@@ -166,9 +173,16 @@ public sealed partial class QuickCaptureWidgetViewModel
             .Select(file => file.Path)
             .ToArray();
 
+        bool addPinned = IsPinnedView;
         QuickCaptureItem? created = regularPaths.Length > 0
-            ? await _quickCaptureService.AddItemWithAttachmentsAsync(regularPaths, copyLinkedFiles)
-            : await _quickCaptureService.AddItemWithAttachmentsAsync(managedPaths, copyToManagedStorage: true);
+            ? await _quickCaptureService.AddItemWithAttachmentsAsync(
+                regularPaths,
+                copyLinkedFiles,
+                pin: addPinned)
+            : await _quickCaptureService.AddItemWithAttachmentsAsync(
+                managedPaths,
+                copyToManagedStorage: true,
+                pin: addPinned);
         if (created is null)
         {
             return null;
@@ -182,7 +196,7 @@ public sealed partial class QuickCaptureWidgetViewModel
                 copyToManagedStorage: true) ?? created;
         }
 
-        if (SelectedView != QuickCaptureViewMode.Records)
+        if (SelectedView == QuickCaptureViewMode.Recent)
         {
             SelectedView = QuickCaptureViewMode.Records;
         }
@@ -267,7 +281,9 @@ public sealed partial class QuickCaptureWidgetViewModel
 
     public async Task CopyItemAsync(QuickCaptureItemViewModel item)
     {
-        string formattedText = QuickCaptureClipboardFormatter.FormatSingle(item, _localizationService);
+        string? formattedText = QuickCaptureClipboardCopyPolicy.ShouldCopyBitmap(item)
+            ? null
+            : QuickCaptureClipboardFormatter.FormatSingle(item, _localizationService);
         await WriteItemToClipboardWithRetryAsync(item, formattedText);
         if (!string.IsNullOrWhiteSpace(formattedText))
         {
@@ -315,10 +331,15 @@ public sealed partial class QuickCaptureWidgetViewModel
             dataPackage.SetText(recordText);
             DeskBoxClipboardWriteScope.MarkWrite(text: recordText);
         }
-        else if (item.Type == QuickCaptureItemType.Image &&
-            !string.IsNullOrWhiteSpace(item.ImagePath) &&
-            File.Exists(item.ImagePath))
+        else if (item.Type == QuickCaptureItemType.Image)
         {
+            if (string.IsNullOrWhiteSpace(item.ImagePath) || !File.Exists(item.ImagePath))
+            {
+                throw new FileNotFoundException(
+                    "The captured clipboard image is no longer available.",
+                    item.ImagePath);
+            }
+
             var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(item.ImagePath);
             dataPackage.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromFile(file));
             DeskBoxClipboardWriteScope.MarkWrite(

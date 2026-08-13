@@ -372,7 +372,6 @@ public sealed partial class TodoWidgetContent
             checkBox.IsChecked = item.IsCompleted;
         }
 
-        ApplyDetailCompletionVisualState();
     }
 
     private async void ImportantItemButton_Click(object sender, RoutedEventArgs e)

@@ -780,19 +780,19 @@
                     Margin="0,2,0,0"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top"
-                    Opacity="0.76">
+                    Opacity="1">
                     <Ellipse
                         Width="3"
                         Height="3"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
-                        Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+                        Fill="{ThemeResource WidgetDragHandleBrush}" />
                     <Border
                         Width="17"
                         Height="3"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
-                        Background="{ThemeResource TextFillColorSecondaryBrush}"
+                        Background="{ThemeResource WidgetDragHandleBrush}"
                         CornerRadius="1.5"
                         RenderTransformOrigin="1,0.5">
                         <Border.RenderTransform>
@@ -804,7 +804,7 @@
                         Height="3"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center"
-                        Background="{ThemeResource TextFillColorSecondaryBrush}"
+                        Background="{ThemeResource WidgetDragHandleBrush}"
                         CornerRadius="1.5"
                         RenderTransformOrigin="0,0.5">
                         <Border.RenderTransform>

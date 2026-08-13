@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="DeskBox.Controls.AttachmentTileStrip"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer
+        x:Name="AttachmentScrollViewer"
+        HorizontalScrollBarVisibility="Auto"
+        HorizontalScrollMode="Enabled"
+        VerticalScrollBarVisibility="Disabled"
+        VerticalScrollMode="Disabled"
+        ZoomMode="Disabled">
+        <ItemsControl x:Name="AttachmentItems">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="6" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Grid
+                        Width="76"
+                        Height="76"
+                        DataContextChanged="AttachmentTile_DataContextChanged"
+                        GotFocus="AttachmentTile_GotFocus"
+                        Loaded="AttachmentTile_Loaded"
+                        LosingFocus="AttachmentTile_LosingFocus"
+                        PointerEntered="AttachmentTile_PointerEntered"
+                        PointerExited="AttachmentTile_PointerExited">
+                        <Button
+                            Width="76"
+                            Height="76"
+                            MinWidth="76"
+                            MinHeight="76"
+                            Padding="0"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"
+                            AutomationProperties.Name="{Binding DisplayName}"
+                            Click="OpenAttachmentButton_Click"
+                            Style="{StaticResource SubtleButtonStyle}"
+                            ToolTipService.ToolTip="{Binding DisplayName}">
+                            <Border
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource WidgetCornerRadiusSmall}">
+                                <Grid>
+                                    <FontIcon
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontSize="24"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Glyph="{Binding Glyph}"
+                                        Visibility="{Binding FileIconVisibility}" />
+                                    <Image
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        Source="{Binding Thumbnail}"
+                                        Stretch="UniformToFill"
+                                        Visibility="{Binding ThumbnailVisibility}" />
+                                    <Border
+                                        Padding="5,3"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Bottom"
+                                        Background="{ThemeResource WidgetOverlaySurfaceBrush}">
+                                        <TextBlock
+                                            FontSize="11"
+                                            MaxLines="1"
+                                            Text="{Binding DisplayName}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </Button>
+                        <Button
+                            x:Name="RemoveAttachmentButton"
+                            Width="24"
+                            Height="24"
+                            MinWidth="24"
+                            MinHeight="24"
+                            Margin="0,3,3,0"
+                            Padding="0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Background="{ThemeResource WidgetOverlaySurfaceBrush}"
+                            Click="RemoveAttachmentButton_Click"
+                            IsHitTestVisible="False"
+                            IsTabStop="False"
+                            Opacity="0"
+                            Style="{StaticResource WidgetCompactIconButtonStyle}">
+                            <FontIcon
+                                FontSize="11"
+                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                Glyph="&#xE74D;" />
+                        </Button>
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </ScrollViewer>
+</UserControl>
