@@ -11,7 +11,13 @@ namespace DeskBox.Services;
 /// </summary>
 internal static class WidgetCompactAnimationCoordinator
 {
-    internal const int MaximumConcurrentBoundsTransitions = 2;
+    // A native bounds/clip transition still has one UI-thread coordinator, but
+    // multiple capsules may animate concurrently (e.g. one collapsing while the
+    // cursor expands the next). Allowing several in-flight transitions avoids
+    // dropping a capsule's animation when the slot is occupied. First-frame
+    // commit pressure is absorbed by the expansion warm-up instead of by
+    // serializing transitions.
+    internal const int MaximumConcurrentBoundsTransitions = 4;
 
     private static readonly Dictionary<long, Action> FrameCallbacks = [];
     private static readonly HashSet<long> BoundsTransitionRegistrations = [];

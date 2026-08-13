@@ -54,21 +54,22 @@ public sealed partial class QuickCaptureWidgetViewModel
         return RefreshVisibleItemsAsync();
     }
 
-    public async Task AddInputAsync()
+    public async Task<QuickCaptureWriteResult> AddInputAsync()
     {
         string body = InputText;
-        await AddTextAsync(body);
+        QuickCaptureWriteResult result = await AddTextAsync(body);
         InputText = string.Empty;
+        return result;
     }
 
-    public async Task AddTextAsync(string body)
+    public async Task<QuickCaptureWriteResult> AddTextAsync(string body)
     {
         if (string.IsNullOrWhiteSpace(body))
         {
-            return;
+            return new QuickCaptureWriteResult(false, false, null);
         }
 
-        await _quickCaptureService.AddDetailedItemAsync(
+        QuickCaptureWriteResult result = await _quickCaptureService.AddDetailedItemWithResultAsync(
             null,
             body,
             QuickCaptureAppearancePreset.Default,
@@ -83,6 +84,8 @@ public sealed partial class QuickCaptureWidgetViewModel
             // so trigger an explicit refresh to ensure the new item appears.
             RefreshVisibleItemsImmediately();
         }
+
+        return result;
     }
 
     public async Task<QuickCaptureItem?> AddDetailedItemAsync(
@@ -91,12 +94,26 @@ public sealed partial class QuickCaptureWidgetViewModel
         QuickCaptureAppearancePreset appearancePreset,
         TextContentFormat? contentFormat = null)
     {
+        QuickCaptureWriteResult result = await AddDetailedItemWithResultAsync(
+            title,
+            body,
+            appearancePreset,
+            contentFormat);
+        return result.Item;
+    }
+
+    public async Task<QuickCaptureWriteResult> AddDetailedItemWithResultAsync(
+        string? title,
+        string body,
+        QuickCaptureAppearancePreset appearancePreset,
+        TextContentFormat? contentFormat = null)
+    {
         if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body))
         {
-            return null;
+            return new QuickCaptureWriteResult(false, false, null);
         }
 
-        QuickCaptureItem item = await _quickCaptureService.AddDetailedItemAsync(
+        QuickCaptureWriteResult result = await _quickCaptureService.AddDetailedItemWithResultAsync(
             title,
             body,
             appearancePreset,
@@ -110,7 +127,7 @@ public sealed partial class QuickCaptureWidgetViewModel
             RefreshVisibleItemsImmediately();
         }
 
-        return item;
+        return result;
     }
 
     public async Task<QuickCaptureItemViewModel?> AddImageFileAsync(string imagePath)
@@ -339,6 +356,13 @@ public sealed partial class QuickCaptureWidgetViewModel
         await _quickCaptureService.UpdateItemAsync(item.Id, body);
     }
 
+    public Task<QuickCaptureWriteResult> EditItemWithResultAsync(
+        QuickCaptureItemViewModel item,
+        string body)
+    {
+        return _quickCaptureService.UpdateItemWithResultAsync(item.Id, body);
+    }
+
     public Task<bool> EditItemDetailsAsync(
         QuickCaptureItemViewModel item,
         string? title,
@@ -347,6 +371,21 @@ public sealed partial class QuickCaptureWidgetViewModel
         TextContentFormat? contentFormat = null)
     {
         return _quickCaptureService.UpdateItemDetailsAsync(
+            item.Id,
+            title,
+            body,
+            appearancePreset,
+            contentFormat);
+    }
+
+    public Task<QuickCaptureWriteResult> EditItemDetailsWithResultAsync(
+        QuickCaptureItemViewModel item,
+        string? title,
+        string body,
+        QuickCaptureAppearancePreset appearancePreset,
+        TextContentFormat? contentFormat = null)
+    {
+        return _quickCaptureService.UpdateItemDetailsWithResultAsync(
             item.Id,
             title,
             body,
@@ -457,9 +496,9 @@ public sealed partial class QuickCaptureWidgetViewModel
         return _quickCaptureService.SetAppearanceAsync(itemIds, appearancePreset);
     }
 
-    public async Task TogglePinnedAsync(QuickCaptureItemViewModel item)
+    public Task<bool> TogglePinnedAsync(QuickCaptureItemViewModel item)
     {
-        await _quickCaptureService.SetPinnedAsync(item.Id, !item.IsPinned);
+        return _quickCaptureService.SetPinnedAsync(item.Id, !item.IsPinned);
     }
 
     public async Task MovePinnedItemAsync(QuickCaptureItemViewModel item, int direction)
@@ -528,14 +567,14 @@ public sealed partial class QuickCaptureWidgetViewModel
         await _quickCaptureService.SaveRecentItemToRecordsAsync(item.Id, pin: false);
     }
 
-    public async Task PinRecentItemAsync(QuickCaptureItemViewModel item)
+    public async Task<bool> PinRecentItemAsync(QuickCaptureItemViewModel item)
     {
         if (!item.IsRecent)
         {
-            return;
+            return false;
         }
 
-        await _quickCaptureService.SaveRecentItemToRecordsAsync(item.Id, pin: true);
+        return await _quickCaptureService.SaveRecentItemToRecordsAsync(item.Id, pin: true) is not null;
     }
 
     public async Task ClearAsync()

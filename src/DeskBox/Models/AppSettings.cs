@@ -136,9 +136,6 @@ public class AppSettings
     /// <summary>Whether the Todo footer clear-completed command is visible.</summary>
     public bool TodoShowClearCompletedButton { get; set; } = true;
 
-    /// <summary>Whether Todo delete and clear-completed commands ask for confirmation first.</summary>
-    public bool TodoConfirmBeforeDelete { get; set; }
-
     /// <summary>Whether Todo due-date reminders are shown while DeskBox is running.</summary>
     public bool TodoReminderEnabled { get; set; } = true;
 

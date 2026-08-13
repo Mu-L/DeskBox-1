@@ -29,17 +29,36 @@ public sealed class MarkdownAndSplitterContractTests
         string code = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/MarkdownSourceEditor.xaml.cs"));
 
-        Assert.Contains("IsDynamicOverflowEnabled=\"True\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Height=\"40\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"FormattingToolbar\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("<CommandBar", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("<AppBarButton", xaml, StringComparison.Ordinal);
+        Assert.Contains("Height=\"30\"", xaml, StringComparison.Ordinal);
         Assert.Contains("HorizontalAlignment=\"Left\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Margin\" Value=\"0,-2,0,2\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("MarkdownFormattingSymbolIconStyle", xaml, StringComparison.Ordinal);
-        Assert.Contains("AllowFocusOnInteraction\" Value=\"False", xaml, StringComparison.Ordinal);
-        Assert.Contains("<TranslateTransform Y=\"-7\" />", xaml, StringComparison.Ordinal);
-        Assert.Contains("Padding=\"0,0,0,4\"", xaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("<CommandBar.SecondaryCommands>", xaml, StringComparison.Ordinal);
+        Assert.Contains("Spacing=\"1\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SizeChanged=\"EditorLayoutRoot_SizeChanged\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"FormattingMoreButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"FormattingMoreFlyout\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MarkdownFormattingMenuButtonStyle", xaml, StringComparison.Ordinal);
+        Assert.Contains("Width\" Value=\"132\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Height\" Value=\"30\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<ColumnDefinition Width=\"18\" />", xaml, StringComparison.Ordinal);
+        Assert.Contains("ColumnSpacing=\"7\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"StrikeButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TableButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Glyph=\"S&#x0336;\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Symbol=\"Clear\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Glyph=\"“\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Symbol=\"Comment\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("FontFamily=\"Cambria\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConfigureFormattingButtonIcons", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("AppBarButton.IsInOverflowProperty", code, StringComparison.Ordinal);
+        Assert.Contains("FormattingMoreFlyout.Hide()", code, StringComparison.Ordinal);
+        Assert.Contains("FormattingMenuPanel.AddHandler", code, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"ListMenuButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TableMenuButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("CalculateVisibleToolbarCommandCount", code, StringComparison.Ordinal);
+        Assert.Contains("menuButtons[index].Visibility", code, StringComparison.Ordinal);
+        Assert.Contains("SetButtonText(ListMenuButton, ListMenuButtonText", code, StringComparison.Ordinal);
         Assert.Contains("PrepareEditorCommandViewport", code, StringComparison.Ordinal);
         Assert.Contains("RestoreEditorViewport", code, StringComparison.Ordinal);
         Assert.Contains("previous with", code, StringComparison.Ordinal);
@@ -55,7 +74,33 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("DispatcherQueuePriority.Low", code, StringComparison.Ordinal);
         Assert.Contains("TryContinueMarkdownList", code, StringComparison.Ordinal);
         Assert.Contains("MarkdownEditCommandEngine.TryCreateEdit", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "LargeDocumentThreshold = MarkdownDocumentService.MaxCharacters",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains("UpdateLargeDocumentBehavior", code, StringComparison.Ordinal);
+        Assert.Contains("BeforeTextChanging=\"EditorTextBox_BeforeTextChanging\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ContainsInlineDataImage(args.NewText)", code, StringComparison.Ordinal);
+        Assert.Contains("TextTruncated?.Invoke", code, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(28, 0)]
+    [InlineData(57, 1)]
+    [InlineData(144, 4)]
+    [InlineData(260, 8)]
+    [InlineData(288, 8)]
+    [InlineData(289, 10)]
+    [InlineData(800, 10)]
+    public void Editor_ResponsiveToolbarUsesAllAvailableWidth(
+        double availableWidth,
+        int expectedVisibleCommands) =>
+        Assert.Equal(
+            expectedVisibleCommands,
+            DeskBox.Controls.MarkdownSourceEditor.CalculateVisibleToolbarCommandCount(
+                availableWidth,
+                commandCount: 10));
 
     [Fact]
     public void Reader_DisablesHtmlAndBlocksRemoteImagesByDefault()
@@ -73,6 +118,40 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("private readonly RichTextBlock _documentText", reader, StringComparison.Ordinal);
         Assert.Contains("_documentText.Blocks.Add", reader, StringComparison.Ordinal);
         Assert.DoesNotContain("private readonly StackPanel _documentPanel", reader, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Reader_RendersTablesCodeBlocksAndLinksAsDistinctVisualElements()
+    {
+        string reader = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/MarkdownDocumentView.cs"));
+
+        Assert.Contains("TableColumnMinimumWidth", reader, StringComparison.Ordinal);
+        Assert.Contains("Content = tableGrid", reader, StringComparison.Ordinal);
+        Assert.Contains("Child = codeText", reader, StringComparison.Ordinal);
+        Assert.Contains("ControlFillColorSecondaryBrush", reader, StringComparison.Ordinal);
+        Assert.Contains("CardStrokeColorDefaultBrush", reader, StringComparison.Ordinal);
+        Assert.Contains("CreateHyperlink()", reader, StringComparison.Ordinal);
+        Assert.Contains("TextDecorations.Underline", reader, StringComparison.Ordinal);
+        Assert.DoesNotContain("new Run { Text = \"| \" }", reader, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void QuickCapture_OnlyLoadsTheFullBodyIntoTheEditorWhenEditing()
+    {
+        string surface = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+
+        Assert.Contains(
+            "SetDetailEditorText(_isDetailEditing ? item.Body : string.Empty)",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains("GetDetailPresentationBody()", surface, StringComparison.Ordinal);
+        Assert.Contains(
+            "SetDetailEditorText(_detailItem?.Body ?? string.Empty)",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains("_deferDetailReaderUntilTransitionCompletes", surface, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -113,8 +192,21 @@ public sealed class MarkdownAndSplitterContractTests
 
         Assert.Contains("InternalScrollBarContentClearance = 12", reader, StringComparison.Ordinal);
         Assert.Contains("_documentText.Margin = UseInternalScrollViewer", reader, StringComparison.Ordinal);
-        Assert.Contains("Margin=\"8,10,0,6\"", surface, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"8,4,0,6\"", surface, StringComparison.Ordinal);
         Assert.Contains("Margin=\"8,6,0,6\"", standalone, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Reader_ReservesLayoutHeightForAsynchronouslyDecodedImages()
+    {
+        string reader = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/MarkdownDocumentView.cs"));
+
+        Assert.Contains("UseInlineContentLineHeightWhenNeeded", reader, StringComparison.Ordinal);
+        Assert.Contains("LineStackingStrategy.MaxHeight", reader, StringComparison.Ordinal);
+        Assert.Contains("image.ImageOpened += InlineImage_ImageOpened", reader, StringComparison.Ordinal);
+        Assert.Contains("_documentText.InvalidateMeasure()", reader, StringComparison.Ordinal);
+        Assert.Contains("DecodePixelWidth = 960", reader, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -337,9 +429,10 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("handledEventsToo: true", quickCaptureCode, StringComparison.Ordinal);
         Assert.Contains("Padding=\"4,0,0,0\"", quickCaptureXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"DetailHeaderActions\"", quickCaptureXaml, StringComparison.Ordinal);
-        Assert.Contains("SizeChanged=\"DetailHeader_SizeChanged\"", quickCaptureXaml, StringComparison.Ordinal);
-        Assert.Contains("CompactDetailHeaderWidth = 300", quickCaptureCode, StringComparison.Ordinal);
-        Assert.Contains("Grid.SetRow(DetailHeaderActions, useTwoRows ? 1 : 0)", quickCaptureCode, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"32\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"2,2,2,2\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("DetailHeader_SizeChanged", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("CompactDetailHeaderWidth", quickCaptureCode, StringComparison.Ordinal);
         Assert.Contains("_detailItem?.IsRecent == true", quickCaptureCode, StringComparison.Ordinal);
         Assert.Contains("BeginDetailEditing()", quickCaptureCode, StringComparison.Ordinal);
     }

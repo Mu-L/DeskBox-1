@@ -1,14 +1,11 @@
 using System.ComponentModel;
-using System.Numerics;
 using DeskBox.Services;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.ViewModels;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -355,51 +352,27 @@ public sealed partial class TodoWidgetContent
             : "TodoColorFilterButtonStyle"];
     }
 
-    private async void ItemCompletionButton_Click(object sender, RoutedEventArgs e)
+    private async void ItemCompletionCheckBox_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel is null ||
-            sender is not FrameworkElement element ||
-            element.DataContext is not TodoItemViewModel item)
+            sender is not CheckBox checkBox ||
+            checkBox.DataContext is not TodoItemViewModel item)
         {
             return;
         }
 
-        PlayCompletionToggleAnimation(element);
-        await ViewModel.SetCompletedAsync(item.Id, !item.IsCompleted);
+        bool updated = await SetCompletedWithFeedbackAsync(item, checkBox.IsChecked == true);
+        if (updated)
+        {
+            SynchronizeTodoCompletionCheckBox(item);
+            DispatcherQueue.TryEnqueue(() => SynchronizeTodoCompletionCheckBox(item));
+        }
+        else if (ReferenceEquals(checkBox.DataContext, item))
+        {
+            checkBox.IsChecked = item.IsCompleted;
+        }
+
         ApplyDetailCompletionVisualState();
-    }
-
-    private static void PlayCompletionToggleAnimation(FrameworkElement element)
-    {
-        var visual = ElementCompositionPreview.GetElementVisual(element);
-        if (visual is null)
-        {
-            return;
-        }
-
-        var compositor = visual.Compositor;
-        if (compositor is null)
-        {
-            return;
-        }
-
-        visual.StopAnimation("Scale");
-        visual.CenterPoint = new Vector3(
-            (float)(element.ActualSize.X * 0.5),
-            (float)(element.ActualSize.Y * 0.5),
-            0f);
-
-        var easing = compositor.CreateCubicBezierEasingFunction(
-            new Vector2(0.16f, 1.0f),
-            new Vector2(0.3f, 1.0f));
-
-        var scaleAnimation = compositor.CreateVector3KeyFrameAnimation();
-        scaleAnimation.Duration = TimeSpan.FromMilliseconds(300);
-        scaleAnimation.InsertKeyFrame(0.0f, new Vector3(1.0f, 1.0f, 1.0f));
-        scaleAnimation.InsertKeyFrame(0.4f, new Vector3(1.3f, 1.3f, 1.0f), easing);
-        scaleAnimation.InsertKeyFrame(1.0f, new Vector3(1.0f, 1.0f, 1.0f), easing);
-
-        visual.StartAnimation("Scale", scaleAnimation);
     }
 
     private async void ImportantItemButton_Click(object sender, RoutedEventArgs e)
@@ -411,7 +384,7 @@ public sealed partial class TodoWidgetContent
             return;
         }
 
-        await ViewModel.SetImportantAsync(item.Id, !item.IsImportant);
+        await SetImportantWithFeedbackAsync(item, !item.IsImportant);
     }
 
     private async void DeleteItemButton_Click(object sender, RoutedEventArgs e)
@@ -423,7 +396,7 @@ public sealed partial class TodoWidgetContent
             return;
         }
 
-        await DeleteItemAsync(item, element);
+        await DeleteItemAsync(item);
     }
 
     private void RecurringHistoryToggleButton_Click(object sender, RoutedEventArgs e)
@@ -576,6 +549,10 @@ public sealed partial class TodoWidgetContent
         item.PropertyChanged += TodoItem_PropertyChanged;
         ApplyTodoItemTooltips(sender, item);
         SetTodoItemHoverState(sender, false);
+        if (FindVisualChild<CheckBox>(sender, "TodoCompletionCheckBox") is { } checkBox)
+        {
+            checkBox.IsChecked = item.IsCompleted;
+        }
     }
 
     private async void TodoListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)

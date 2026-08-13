@@ -199,6 +199,59 @@ public sealed class TodoWidgetViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task SetCompletedAsync_MovesOnlyTheChangedVisibleItemWithoutResettingTheList()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        await viewModel.AddItemAsync("first");
+        await viewModel.AddItemAsync("second");
+        await viewModel.AddItemAsync("third");
+        TodoItemViewModel clickedItem = viewModel.VisibleItems[0];
+        TodoItemViewModel[] unaffectedItems = viewModel.VisibleItems.Skip(1).ToArray();
+        string[] customOrder = viewModel.Items.Select(item => item.Id).ToArray();
+        var collectionActions = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+        viewModel.VisibleItems.CollectionChanged += (_, args) => collectionActions.Add(args.Action);
+
+        Assert.True(await viewModel.SetCompletedAsync(clickedItem.Id, true));
+
+        Assert.Equal(
+            [System.Collections.Specialized.NotifyCollectionChangedAction.Move],
+            collectionActions);
+        Assert.Same(clickedItem, viewModel.VisibleItems[^1]);
+        Assert.True(clickedItem.IsCompleted);
+        Assert.All(unaffectedItems, item => Assert.False(item.IsCompleted));
+        Assert.Equal(customOrder, viewModel.Items.Select(item => item.Id));
+        Assert.Equal(Enumerable.Range(0, customOrder.Length), viewModel.Items.Select(item => item.SortOrder));
+    }
+
+    [Fact]
+    public async Task SetCompletedAsync_UncheckingInCompletedViewRemovesOnlyThatItem()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        TodoItemViewModel first = (await viewModel.AddItemAsync("first"))!;
+        TodoItemViewModel second = (await viewModel.AddItemAsync("second"))!;
+        TodoItemViewModel third = (await viewModel.AddItemAsync("third"))!;
+        await viewModel.SetCompletedAsync(first.Id, true);
+        await viewModel.SetCompletedAsync(second.Id, true);
+        await viewModel.SetCompletedAsync(third.Id, true);
+        viewModel.SelectedFilter = TodoFilter.Completed;
+        TodoItemViewModel clickedItem = viewModel.VisibleItems[0];
+        TodoItemViewModel[] remainingItems = viewModel.VisibleItems.Skip(1).ToArray();
+        var collectionActions = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+        viewModel.VisibleItems.CollectionChanged += (_, args) => collectionActions.Add(args.Action);
+
+        Assert.True(await viewModel.SetCompletedAsync(clickedItem.Id, false));
+
+        Assert.Equal(
+            [System.Collections.Specialized.NotifyCollectionChangedAction.Remove],
+            collectionActions);
+        Assert.DoesNotContain(clickedItem, viewModel.VisibleItems);
+        Assert.False(clickedItem.IsCompleted);
+        Assert.All(remainingItems, item => Assert.True(item.IsCompleted));
+    }
+
+    [Fact]
     public async Task SetImportantAsync_UpdatesFilterAndPersistence()
     {
         var viewModel = CreateViewModel("todo-widget");
@@ -362,8 +415,12 @@ public sealed class TodoWidgetViewModelTests : IDisposable
         viewModel.BeginEdit(item.Id);
         Assert.True(item.IsEditing);
         Assert.Equal("old", item.EditText);
+        Assert.True(item.CanSaveEdit);
 
+        item.EditText = "   ";
+        Assert.False(item.CanSaveEdit);
         item.EditText = " new ";
+        Assert.True(item.CanSaveEdit);
         bool committed = await viewModel.CommitEditAsync(item.Id);
 
         Assert.True(committed);
@@ -1035,6 +1092,25 @@ public sealed class TodoWidgetViewModelTests : IDisposable
 
         Assert.False(viewModel.IsDetailPageOpen);
         Assert.Null(viewModel.SelectedDetailItem);
+    }
+
+    [Fact]
+    public async Task FinalizeEmptyDetail_CannotLeaveUnpersistedGhostSelectionOpen()
+    {
+        var viewModel = CreateViewModel("todo-widget");
+        await viewModel.InitializeAsync();
+        viewModel.OpenNewDetail();
+
+        TodoItemViewModel? finalized = await viewModel.FinalizeDetailAsync(
+            "   ",
+            closeDetail: false);
+
+        Assert.Null(finalized);
+        Assert.False(viewModel.IsCreatingDetailItem);
+        Assert.Null(viewModel.SelectedDetailItem);
+        Assert.False(viewModel.IsDetailPageOpen);
+        Assert.Empty(viewModel.Items);
+        Assert.Empty((await CreateStore("todo-widget").LoadAsync()).Items);
     }
 
     [Fact]

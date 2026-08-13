@@ -162,7 +162,6 @@ public partial class SettingsViewModel
                 settings.TodoUseWideDetailPane);
             TodoUseWideDetailPane = SelectedTodoLayoutMode != SettingsService.TodoLayoutModeSinglePane;
             TodoAutoSelectFirstInWideLayout = settings.TodoAutoSelectFirstInWideLayout;
-            TodoConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
             TodoReminderEnabled = settings.TodoReminderEnabled;
             SelectedTodoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
             SelectedTodoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);

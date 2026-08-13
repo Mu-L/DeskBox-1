@@ -98,11 +98,12 @@ public abstract partial class WidgetWindowBase
     private bool _isPointerOverWidget;
     private bool _isPointerOverCompactExpansionZone;
     private bool _isCollapseAnimationRendering;
-    // When > 0, counts down rendering frames before applying the native
-    // backdrop on first expand. Defers the expensive Acrylic/Mica controller
-    // attach to the 3rd frame so the initial frame budget is freed for XAML
-    // layout and animation setup (eliminates first-expand stutter).
-    private int _deferredExpandBackdropFrames;
+    // Adaptive frame-skip: caps the per-frame HWND resize at ~60fps while
+    // keeping the effective rate a clean sub-multiple of the display refresh
+    // rate (avoids judder on 120/144/240Hz panels). Frame index increments on
+    // every compositor tick; only ticks where (index % skip) == 0 perform work.
+    private int _collapseAnimationFrameSkip = 1;
+    private int _collapseAnimationFrameIndex;
     private bool _isShellTransitionActive;
     private bool _isBoundsInteractionActive;
     private bool _isRaisedForExpandedState;
@@ -1185,7 +1186,11 @@ public abstract partial class WidgetWindowBase
         // pointer state from the real cursor instead of trusting routed state
         // left over from the previous visible lifetime.
         ResetCompactPointerStateAfterHide();
-        QueueCompactExpansionWarmup();
+        // The host is now visible and its content is present, so the expansion
+        // layout warm-up can finally run. Promote it to urgent once so the first
+        // user-triggered expand does not have to wait on the background warm-up
+        // (which would otherwise race the first hover and cause first-expand jank).
+        QueueCompactExpansionWarmup(urgent: true);
         StartCompactHoverRecoveryProbe();
         SynchronizeCompactHoverFromCurrentCursor();
     }
@@ -2473,14 +2478,6 @@ public abstract partial class WidgetWindowBase
             expansionAnchor ?? WidgetCompactExpansionAnchor.LeftTop,
             frozenWindowWidth: (collapsed ? from.Width : to.Width) / Math.Max(0.01, dpiScale),
             frozenWindowHeight: (collapsed ? from.Height : to.Height) / Math.Max(0.01, dpiScale));
-        if (!collapsed)
-        {
-            // Defer backdrop application by 2 rendering frames so the first
-            // frame budget is freed for XAML layout and animation setup.
-            // The frosted plate / existing backdrop keeps the widget visually
-            // opaque during the delay.
-            _deferredExpandBackdropFrames = 2;
-        }
         long generation = ++_collapseAnimationGeneration;
 
         if (durationMs <= 0 ||
@@ -2489,7 +2486,6 @@ public abstract partial class WidgetWindowBase
         {
             // Instant transition: no rendering frames will fire, so apply
             // the backdrop synchronously (no animation to stutter).
-            _deferredExpandBackdropFrames = 0;
             if (!collapsed)
             {
                 ApplyBackdropPreference();
@@ -2504,6 +2500,10 @@ public abstract partial class WidgetWindowBase
         _collapseAnimationDurationMs = durationMs;
         _collapseAnimationStarted = Stopwatch.GetTimestamp();
         int refreshRateHz = Win32Helper.GetDisplayRefreshRateForWindow(HWnd);
+        _collapseAnimationFrameSkip = Math.Max(
+            1,
+            (int)Math.Round(Math.Max(1, refreshRateHz) / 60.0));
+        _collapseAnimationFrameIndex = 0;
         _compactAnimationFrameTracker = new WidgetCompactAnimationFrameTracker(
             _collapseAnimationStarted,
             refreshRateHz);
@@ -2551,22 +2551,16 @@ public abstract partial class WidgetWindowBase
     {
         long frameTimestamp = Stopwatch.GetTimestamp();
         _compactAnimationFrameTracker?.RecordFrame(frameTimestamp);
-        // Apply deferred backdrop after the initial frames have committed
-        // the animation surface (avoids first-expand stutter).
-        if (_deferredExpandBackdropFrames > 0)
+
+        // Adaptive frame-skip: advance the HWND resize only every N-th compositor
+        // tick so the per-frame SetWindowPos + DWM material re-sample cost stays
+        // at ~60fps regardless of the display refresh rate. Progress is time-based,
+        // so duration and easing are unchanged; the boundary updates on a coarser,
+        // judder-free cadence (N is a clean divisor of the refresh rate).
+        _collapseAnimationFrameIndex++;
+        if (_collapseAnimationFrameIndex % _collapseAnimationFrameSkip != 0)
         {
-            _deferredExpandBackdropFrames--;
-            if (_deferredExpandBackdropFrames == 0)
-            {
-                try
-                {
-                    ApplyBackdropPreference();
-                }
-                catch (Exception ex)
-                {
-                    App.Log($"[Compact] Deferred backdrop apply failed: {ex.Message}");
-                }
-            }
+            return;
         }
 
         double elapsedMs = Stopwatch.GetElapsedTime(_collapseAnimationStarted, frameTimestamp).TotalMilliseconds;
@@ -2580,7 +2574,7 @@ public abstract partial class WidgetWindowBase
                 expansionAnchor,
                 eased)
             : InterpolateBounds(_collapseAnimationFrom, _collapseAnimationTo, eased);
-        MoveWindowWithoutPersisting(bounds);
+        MoveWindowWithoutPersisting(bounds, suppressRedraw: true);
         WidgetShellControl.SetCompactTransitionProgress(_targetCollapsed, eased);
 
         if (progress < 1)
@@ -3082,11 +3076,20 @@ public abstract partial class WidgetWindowBase
         return GetActualWindowBounds();
     }
 
-    private void MoveWindowWithoutPersisting(RectInt32 bounds)
+    private void MoveWindowWithoutPersisting(RectInt32 bounds, bool suppressRedraw = false)
     {
         IsApplyingBounds = true;
         try
         {
+            uint flags = Win32Helper.SWP_NOZORDER | Win32Helper.SWP_NOACTIVATE;
+            if (suppressRedraw)
+            {
+                // During the per-frame morph the swapchain already holds the
+                // pre-laid-out content, so skip the internal BitBlt and the
+                // WM_PAINT invalidation that SetWindowPos would otherwise emit.
+                flags |= Win32Helper.SWP_NOREDRAW | Win32Helper.SWP_NOCOPYBITS;
+            }
+
             bool moved = Win32Helper.SetWindowPos(
                 HWnd,
                 IntPtr.Zero,
@@ -3094,7 +3097,7 @@ public abstract partial class WidgetWindowBase
                 bounds.Y,
                 bounds.Width,
                 bounds.Height,
-                Win32Helper.SWP_NOZORDER | Win32Helper.SWP_NOACTIVATE);
+                flags);
             if (!moved)
             {
                 AppWindow.MoveAndResize(bounds);
@@ -3117,7 +3120,7 @@ public abstract partial class WidgetWindowBase
         }
 
         _isCollapseAnimationRendering = false;
-        _deferredExpandBackdropFrames = 0;
+        _collapseAnimationFrameIndex = 0;
         _collapseAnimationFrameRegistration?.Dispose();
         _collapseAnimationFrameRegistration = null;
         if (_isShellTransitionActive)

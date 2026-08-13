@@ -270,10 +270,9 @@ public sealed partial class QuickCaptureWidgetWindow
             if (selectedItems.Count > 1)
             {
                 e.Handled = true;
-                ShowQuickCaptureDeleteSelectedConfirmFlyout(
+                await DeleteSelectedQuickCaptureItemsAsync(
                     selectedItems.Select(item => item.Id).ToArray(),
-                    selectedItems.All(item => item.IsRecent),
-                    ItemsListView);
+                    selectedItems.All(item => item.IsRecent));
                 return;
             }
 
@@ -282,7 +281,7 @@ public sealed partial class QuickCaptureWidgetWindow
             if (deleteItem is not null)
             {
                 e.Handled = true;
-                ShowQuickCaptureDeleteConfirmFlyout(deleteItem, ItemsListView);
+                await DeleteItemWithUndoAsync(deleteItem);
                 return;
             }
         }
@@ -345,8 +344,8 @@ public sealed partial class QuickCaptureWidgetWindow
         var anchor = (FrameworkElement)sender;
         var selectedItems = GetSelectedQuickCaptureItemsInVisibleOrder();
         var flyout = selectedItems.Count > 1 && item.IsCopySelected
-            ? CreateMultiItemFlyout(selectedItems, anchor)
-            : CreateItemFlyout(item, anchor);
+            ? CreateMultiItemFlyout(selectedItems)
+            : CreateItemFlyout(item);
         ShowFlyoutWithElevation(flyout, anchor, e.GetPosition(anchor));
         e.Handled = true;
     }

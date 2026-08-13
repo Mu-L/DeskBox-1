@@ -36,7 +36,6 @@ public sealed partial class TodoWidgetContent : UserControl
     private TodoItemViewModel? _editingItem;
     private TodoItemViewModel? _customDueDateItem;
     private IReadOnlyList<string>? _customDueDateItemIds;
-    private MenuFlyout? _pendingConfirmFlyout;
     private TimeSpan _customDueTime = new(23, 59, 0);
     private string? _copySelectionAnchorId;
     private long _undoToastGeneration;
@@ -45,10 +44,13 @@ public sealed partial class TodoWidgetContent : UserControl
     private bool _selectionPointerPressed;
     private bool _isBoxSelecting;
     private bool _isClosingDetail;
+    private bool _isSavingDetailDraft;
+    private bool _isChangingTodoFilter;
     private Button? _pressedColorFilterButton;
     private bool _isStartingColorFilterDrag;
     private bool _colorFilterHandledEventsRegistered;
     private bool _isResponsiveLayoutTransitionActive;
+    private bool _isInteractiveResizeActive;
     private bool _segmentedLayoutRefreshPending;
     private bool _todoSegmentedRestoreQueued;
     private EventHandler<object>? _todoSegmentedRenderingHandler;
@@ -270,6 +272,23 @@ public sealed partial class TodoWidgetContent : UserControl
         }
     }
 
+    internal void BeginInteractiveResize()
+    {
+        _isInteractiveResizeActive = true;
+        CancelTodoSegmentedRestore();
+    }
+
+    internal void CompleteInteractiveResize(double finalContentWidth)
+    {
+        _isInteractiveResizeActive = false;
+        ApplyMasterDetailLayout(
+            double.IsFinite(finalContentWidth) && finalContentWidth > 0
+                ? finalContentWidth
+                : ActualWidth);
+        QueueDetailTitleHeightUpdate();
+        QueueTodoSegmentedRestore();
+    }
+
     private void PrepareTodoSegmentedForExpansion(double targetContentWidth)
     {
         if (TodoFilterSegmented is null ||
@@ -443,8 +462,14 @@ public sealed partial class TodoWidgetContent : UserControl
             }
         }
 
+        if (e.PropertyName == nameof(TodoWidgetViewModel.IsCreatingDetailItem))
+        {
+            ApplyDetailSaveButtonVisibility();
+        }
+
         if (e.PropertyName == nameof(TodoWidgetViewModel.SelectedDetailItem))
         {
+            ApplyDetailSaveButtonVisibility();
             QueueDetailTitleHeightUpdate();
         }
 
@@ -495,7 +520,6 @@ public sealed partial class TodoWidgetContent : UserControl
 
         var localization = App.Current.LocalizationService;
         DetailNotesEditor.TextResolver = localization.T;
-        DetailDeleteMenuItem.Text = localization.T("Common.Delete");
         TodoInlineEditor.Title = localization.T("Todo.Menu.Edit");
         TodoInlineEditor.CancelText = localization.T("Common.Cancel");
         TodoInlineEditor.SaveText = localization.T("Common.Save");
@@ -541,9 +565,55 @@ public sealed partial class TodoWidgetContent : UserControl
         OpenAddEditor();
     }
 
-    private void TodoFilterSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void TodoFilterSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        SelectFilter(GetSelectedSegmentFilter());
+        if (_isChangingTodoFilter || ViewModel is null)
+        {
+            return;
+        }
+
+        TodoFilter filter = GetSelectedSegmentFilter();
+        if (ViewModel.SelectedFilter == filter)
+        {
+            RefreshFilterButtons();
+            return;
+        }
+
+        _isChangingTodoFilter = true;
+        try
+        {
+            if (ViewModel.IsCreatingDetailItem)
+            {
+                if (!await SaveActiveNotesAsync(keepEditing: false))
+                {
+                    RefreshFilterButtons();
+                    return;
+                }
+
+                bool hasTitle = !string.IsNullOrWhiteSpace(DetailTitleTextBox.Text);
+                TodoItemViewModel? finalized = await ViewModel.FinalizeDetailAsync(
+                    DetailTitleTextBox.Text,
+                    closeDetail: true);
+                if (hasTitle && finalized is null)
+                {
+                    RefreshFilterButtons();
+                    return;
+                }
+
+                if (finalized is not null)
+                {
+                    ShowTodoStatus("Todo.Status.Saved");
+                }
+            }
+
+            SelectFilter(filter);
+        }
+        finally
+        {
+            _isChangingTodoFilter = false;
+        }
+
+        EnsureWideDetailSelection();
     }
 
     private void DraftImportantButton_Click(object sender, RoutedEventArgs e)
@@ -621,7 +691,7 @@ public sealed partial class TodoWidgetContent : UserControl
             return;
         }
 
-        _ = ViewModel.SetImportantAsync(item.Id, !item.IsImportant);
+        _ = SetImportantWithFeedbackAsync(item, !item.IsImportant);
     }
 
     private void MetadataDueDate_Click(object sender, RoutedEventArgs e)
@@ -867,15 +937,70 @@ public sealed partial class TodoWidgetContent : UserControl
         return await ViewModel.UpdateItemTextAsync(item.Id, DetailTitleTextBox.Text);
     }
 
-    private async void DetailCompletionButton_Click(object sender, RoutedEventArgs e)
+    private async void DetailSaveButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel?.SelectedDetailItem is not { } item || sender is not FrameworkElement element)
+        if (_isSavingDetailDraft ||
+            ViewModel?.SelectedDetailItem is not { } item)
         {
             return;
         }
 
-        PlayCompletionToggleAnimation(element);
-        await ViewModel.SetCompletedAsync(item.Id, !item.IsCompleted);
+        if (string.IsNullOrWhiteSpace(DetailTitleTextBox.Text))
+        {
+            DetailTitleTextBox.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        _isSavingDetailDraft = true;
+        try
+        {
+            if (!await SaveActiveNotesAsync(keepEditing: false))
+            {
+                return;
+            }
+
+            TodoItemViewModel? savedItem;
+            if (ViewModel.IsCreatingDetailItem)
+            {
+                savedItem = await ViewModel.FinalizeDetailAsync(
+                    DetailTitleTextBox.Text,
+                    closeDetail: false);
+                if (savedItem is null)
+                {
+                    DetailTitleTextBox.Focus(FocusState.Programmatic);
+                    return;
+                }
+            }
+            else
+            {
+                if (!await ViewModel.UpdateItemTextAsync(item.Id, DetailTitleTextBox.Text))
+                {
+                    DetailTitleTextBox.Focus(FocusState.Programmatic);
+                    return;
+                }
+
+                savedItem = item;
+            }
+
+            ApplyMasterDetailVisibility();
+            TodoListView.ScrollIntoView(savedItem);
+            ShowTodoStatus("Todo.Status.Saved");
+        }
+        finally
+        {
+            _isSavingDetailDraft = false;
+        }
+    }
+
+    private async void DetailCompletionCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel?.SelectedDetailItem is not { } item || sender is not CheckBox checkBox)
+        {
+            return;
+        }
+
+        await SetCompletedWithFeedbackAsync(item, checkBox.IsChecked == true);
+        checkBox.IsChecked = item.IsCompleted;
         ApplyDetailCompletionVisualState();
     }
 
@@ -886,12 +1011,12 @@ public sealed partial class TodoWidgetContent : UserControl
             return;
         }
 
-        await ViewModel.SetImportantAsync(item.Id, !item.IsImportant);
+        await SetImportantWithFeedbackAsync(item, !item.IsImportant);
     }
 
     private async void DetailTitleTextBox_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (ViewModel?.SelectedDetailItem is { } item)
+        if (ViewModel is { IsCreatingDetailItem: false, SelectedDetailItem: { } item })
         {
             await ViewModel.UpdateItemTextAsync(item.Id, DetailTitleTextBox.Text);
         }
@@ -945,17 +1070,7 @@ public sealed partial class TodoWidgetContent : UserControl
             return;
         }
 
-        await DeleteItemAsync(item, anchor);
+        await DeleteItemAsync(item);
     }
 
-    private async void DetailDeleteMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel?.SelectedDetailItem is not { } item ||
-            !await SaveDetailEditorsAsync(item))
-        {
-            return;
-        }
-
-        await DeleteItemAsync(item, DetailMoreButton);
-    }
 }

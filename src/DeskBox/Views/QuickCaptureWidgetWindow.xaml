@@ -627,7 +627,7 @@
                                             Style="{StaticResource QuickCaptureItemActionButtonStyle}"
                                             Tag="{Binding}"
                                             ToolTipService.ToolTip="{Binding PinTooltip}">
-                                            <FontIcon FontSize="11" Glyph="{Binding PinGlyph}" />
+                                            <controls:PinStateIcon Width="13" Height="13" IsPinned="{Binding IsPinned}" />
                                         </Button>
                                         <Button
                                             x:Name="DeleteItemButton"
@@ -794,23 +794,7 @@
                             Click="DetailPinButton_Click"
                             Style="{StaticResource QuickCaptureDetailIconButtonStyle}"
                             VerticalAlignment="Center">
-                            <Grid Width="18" Height="18">
-                                <FontIcon x:Name="DetailPinIcon" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{Binding ActionIconSize}" Glyph="&#xE718;" />
-                                <Border
-                                    x:Name="DetailUnpinSlash"
-                                    Width="15"
-                                    Height="1.4"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Background="{ThemeResource TextFillColorPrimaryBrush}"
-                                    CornerRadius="1"
-                                    RenderTransformOrigin="0.5,0.5"
-                                    Visibility="Collapsed">
-                                    <Border.RenderTransform>
-                                        <RotateTransform Angle="-45" />
-                                    </Border.RenderTransform>
-                                </Border>
-                            </Grid>
+                            <controls:PinStateIcon x:Name="DetailPinIcon" Width="15" Height="15" />
                         </Button>
                         <Button
                             Grid.Column="5"

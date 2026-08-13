@@ -19,6 +19,14 @@ namespace DeskBox.Controls.WidgetContents;
 
 public sealed partial class TodoWidgetContent
 {
+    private void CopyTodoItemButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: TodoItemViewModel item })
+        {
+            CopyTodoItemText(item);
+        }
+    }
+
     private void CopyTodoItemText(TodoItemViewModel item)
     {
         string text = TodoClipboardFormatter.FormatSingle(item, App.Current.LocalizationService);
@@ -95,8 +103,21 @@ public sealed partial class TodoWidgetContent
             RequestedOperation = DataPackageOperation.Copy
         };
         dataPackage.SetText(text);
+        DeskBoxClipboardWriteScope.MarkWrite(text: text);
         Clipboard.SetContent(dataPackage);
-        Clipboard.Flush();
+        try
+        {
+            // SetContent is the actual copy operation. Flush only transfers
+            // ownership to the system so the content can outlive this process;
+            // clipboard contention may make it throw even though the copy has
+            // already succeeded, so it must not turn success feedback into a
+            // false failure.
+            Clipboard.Flush();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Todo] Clipboard content was set but flush failed: {ex.Message}");
+        }
     }
 
     private void ToggleTodoSelection(TodoItemViewModel item)
@@ -347,7 +368,6 @@ public sealed partial class TodoWidgetContent
         }
 
         CloseTodoEdit();
-        _pendingConfirmFlyout?.Hide();
         _customDueDateItem = item;
         _customDueDateItemIds = null;
         DateTimeOffset dueDate = item?.DueDate ?? ViewModel.DraftDueDate ?? GetDefaultCustomDueDate();

@@ -95,7 +95,8 @@ public sealed partial class QuickCaptureWidgetWindow
         if (_isExpandingInput)
         {
             InputTextBox.Text = body;
-            await ViewModel.AddInputAsync();
+            QuickCaptureWriteResult result = await ViewModel.AddInputAsync();
+            ReportBodyTruncation(result);
             CloseInlineEdit();
             return;
         }
@@ -106,7 +107,8 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
-        await ViewModel.EditItemAsync(item, body);
+        QuickCaptureWriteResult updateResult = await ViewModel.EditItemWithResultAsync(item, body);
+        ReportBodyTruncation(updateResult);
         CloseInlineEdit();
     }
 

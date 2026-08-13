@@ -24,9 +24,12 @@ public sealed class SearchIndexService : IDisposable
 
     /// <summary>Fallback depth for fixed-drive scans when the USN journal is unavailable.</summary>
     private const int DriveRootMaxDepth = 6;
+    internal const int MaxPendingIndexChanges = 8192;
 
     private const long MaxPersistedFileBytes = 128L * 1024 * 1024;
     private static readonly TimeSpan PersistedIndexFreshness = TimeSpan.FromMinutes(15);
+    internal static readonly TimeSpan FreshIndexReconciliationDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DeferredReconciliationIdleRetryDelay = TimeSpan.FromSeconds(5);
     private const int CompactIndexMagic = 0x58494244; // "DBIX"
     private const int CompactIndexVersion = 1;
     private const int WatcherBufferSizeBytes = 64 * 1024;
@@ -42,10 +45,11 @@ public sealed class SearchIndexService : IDisposable
     private readonly object _watcherRecoveryLock = new();
     private readonly object _scanStateLock = new();
     private readonly object _sessionStateLock = new();
+    private readonly Func<CancellationToken, Task<bool>>? _canRunDeferredReconciliation;
     private Dictionary<string, IndexedFileEntry> _index = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, string> _directoryPool = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, PendingIndexChange> _pendingChanges =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly BoundedPathChangeBuffer<PendingIndexChange> _pendingChanges =
+        new(MaxPendingIndexChanges, StringComparer.OrdinalIgnoreCase);
     private readonly List<FileSystemWatcher> _watchers = [];
     private readonly Dictionary<string, WatcherFailureState> _watcherCreationFailures =
         new(StringComparer.OrdinalIgnoreCase);
@@ -60,6 +64,7 @@ public sealed class SearchIndexService : IDisposable
     private bool _isDisposed;
     private int _isScanning;
     private int _isLoading;
+    private int _isReconciliationPending;
     private int _isPaused;
     private int _indexingEnabled;
     private int _scannedCount;
@@ -82,23 +87,48 @@ public sealed class SearchIndexService : IDisposable
     public SearchIndexService(SettingsService settingsService)
         : this(
             settingsService,
-            Path.Combine(
-                DeskBoxDataPathService.Current.RootPath,
-                "cache",
-                "search-index.json"))
+            GetDefaultStorePath(),
+            canRunDeferredReconciliation: null)
     {
     }
 
     internal SearchIndexService(SettingsService settingsService, string storePath)
+        : this(settingsService, storePath, canRunDeferredReconciliation: null)
+    {
+    }
+
+    internal SearchIndexService(
+        SettingsService settingsService,
+        Func<CancellationToken, Task<bool>> canRunDeferredReconciliation)
+        : this(
+            settingsService,
+            GetDefaultStorePath(),
+            canRunDeferredReconciliation)
+    {
+    }
+
+    private SearchIndexService(
+        SettingsService settingsService,
+        string storePath,
+        Func<CancellationToken, Task<bool>>? canRunDeferredReconciliation)
     {
         _settingsService = settingsService;
         _storePath = storePath;
         _dirtyMarkerPath = storePath + ".dirty";
         _rootsManifestPath = storePath + ".roots";
+        _canRunDeferredReconciliation = canRunDeferredReconciliation;
     }
+
+    private static string GetDefaultStorePath() =>
+        Path.Combine(
+            DeskBoxDataPathService.Current.RootPath,
+            "cache",
+            "search-index.json");
 
     public bool IsScanning => Volatile.Read(ref _isScanning) == 1;
     public bool IsLoading => Volatile.Read(ref _isLoading) == 1;
+    public bool IsReconciliationPending =>
+        Volatile.Read(ref _isReconciliationPending) == 1;
 
     public bool IsPaused => Volatile.Read(ref _isPaused) == 1;
 
@@ -261,6 +291,7 @@ public sealed class SearchIndexService : IDisposable
             LoadRootManifest();
 
             bool hadPendingChanges;
+            bool pendingChangesOverflowed;
             _indexLock.EnterWriteLock();
             try
             {
@@ -270,24 +301,28 @@ public sealed class SearchIndexService : IDisposable
                     return false;
                 }
 
-                foreach (var (path, change) in _pendingChanges)
+                pendingChangesOverflowed = _pendingChanges.IsOverflowed;
+                if (!pendingChangesOverflowed)
                 {
-                    if (change.IsDeleted)
+                    foreach (var (path, change) in _pendingChanges.Entries)
                     {
-                        loaded.Index.Remove(path);
-                        continue;
-                    }
+                        if (change.IsDeleted)
+                        {
+                            loaded.Index.Remove(path);
+                            continue;
+                        }
 
-                    loaded.Index[path] = CreateIndexedEntry(
-                        path,
-                        change.IsDirectory,
-                        change.LastModified,
-                        change.ScanGeneration,
-                        loaded.DirectoryPool);
+                        loaded.Index[path] = CreateIndexedEntry(
+                            path,
+                            change.IsDirectory,
+                            change.LastModified,
+                            change.ScanGeneration,
+                            loaded.DirectoryPool);
+                    }
                 }
 
                 hadPendingChanges = _pendingChanges.Count > 0;
-                _pendingChanges.Clear();
+                _pendingChanges.Reset();
                 _index = loaded.Index;
                 _directoryPool = loaded.DirectoryPool;
                 _persistedEntryCount = _index.Count;
@@ -302,7 +337,14 @@ public sealed class SearchIndexService : IDisposable
                 $"[SearchIndex] Loaded {EntryCount} persisted entries " +
                 $"from {(loaded.WasLegacyJson ? "legacy JSON" : "compact cache")}.");
 
-            if (loaded.WasLegacyJson || hadPendingChanges)
+            if (pendingChangesOverflowed)
+            {
+                App.Log(
+                    "[SearchIndex] Idle delta buffer overflowed; scheduling a full " +
+                    "non-destructive reconciliation after restoring the persisted index.");
+                ScheduleWatcherRecovery("idle-delta-overflow");
+            }
+            else if (loaded.WasLegacyJson || hadPendingChanges)
             {
                 _ = Task.Run(SaveIndex);
             }
@@ -325,6 +367,7 @@ public sealed class SearchIndexService : IDisposable
     {
         if (!IsIndexResident ||
             IsScanning ||
+            IsReconciliationPending ||
             _isDisposed ||
             !_settingsService.Settings.SearchCustomIndexerEnabled)
         {
@@ -334,7 +377,10 @@ public sealed class SearchIndexService : IDisposable
         await _residencyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!IsIndexResident || IsScanning || _isDisposed)
+            if (!IsIndexResident ||
+                IsScanning ||
+                IsReconciliationPending ||
+                _isDisposed)
             {
                 return false;
             }
@@ -358,6 +404,7 @@ public sealed class SearchIndexService : IDisposable
             {
                 if (!IsIndexResident ||
                     IsScanning ||
+                    IsReconciliationPending ||
                     _index.Count == 0)
                 {
                     return false;
@@ -726,6 +773,7 @@ public sealed class SearchIndexService : IDisposable
         EnsureEmptyResidentIndex();
         int residentCount = GetResidentEntryCount();
         bool watchersAlreadyArmed = false;
+        bool deferFreshReconciliation = false;
         if (!_forceFullScan &&
             residentCount > 0 &&
             TryGetFreshPersistedIndexTime(out DateTime persistedAt))
@@ -740,15 +788,97 @@ public sealed class SearchIndexService : IDisposable
             watchersAlreadyArmed = true;
             _lastScanTime = persistedAt;
             IndexUpdated?.Invoke();
+            deferFreshReconciliation = true;
             App.Log(
                 $"[SearchIndex] Reusing fresh persisted index with {residentCount} entries; " +
-                "watchers armed and background reconciliation scheduled.");
+                $"watchers armed and reconciliation deferred for " +
+                $"{FreshIndexReconciliationDelay.TotalSeconds:0}s " +
+                $"(dynamicFixedDrives={driveRoots.Count}).");
         }
 
         _forceFullScan = false;
-        _scanTask = Task.Run(
-            () => ScanDirectoriesAsync(epoch, token, watchersAlreadyArmed),
-            token);
+        if (deferFreshReconciliation)
+        {
+            Interlocked.Exchange(ref _isReconciliationPending, 1);
+            _scanTask = Task.Run(
+                () => RunDeferredFreshIndexReconciliationAsync(
+                    epoch,
+                    token,
+                    watchersAlreadyArmed),
+                token);
+        }
+        else
+        {
+            _scanTask = Task.Run(
+                () => ScanDirectoriesAsync(epoch, token, watchersAlreadyArmed),
+                token);
+        }
+    }
+
+    private async Task RunDeferredFreshIndexReconciliationAsync(
+        long epoch,
+        CancellationToken token,
+        bool watchersAlreadyArmed)
+    {
+        try
+        {
+            await Task.Delay(FreshIndexReconciliationDelay, token);
+            bool waitingForIdleLogged = false;
+            while (IsCurrentSession(epoch, token) &&
+                   !await CanRunDeferredReconciliationAsync(token))
+            {
+                if (!waitingForIdleLogged)
+                {
+                    waitingForIdleLogged = true;
+                    App.Log(
+                        "[SearchIndex] Deferred reconciliation is waiting for DeskBox interaction to become idle.");
+                }
+
+                await Task.Delay(DeferredReconciliationIdleRetryDelay, token);
+            }
+
+            if (!IsCurrentSession(epoch, token))
+            {
+                return;
+            }
+
+            App.Log(
+                "[SearchIndex] Starting deferred reconciliation across the current machine's dynamic fixed-drive set.");
+            await ScanDirectoriesAsync(epoch, token, watchersAlreadyArmed);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (Interlocked.Read(ref _sessionEpoch) == epoch)
+            {
+                Interlocked.Exchange(ref _isReconciliationPending, 0);
+            }
+        }
+    }
+
+    private async Task<bool> CanRunDeferredReconciliationAsync(CancellationToken token)
+    {
+        if (_canRunDeferredReconciliation is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            return await _canRunDeferredReconciliation(token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[SearchIndex] Idle-state check failed; continuing deferred reconciliation: {ex.Message}");
+            return true;
+        }
     }
 
     private bool TryGetFreshPersistedIndexTime(out DateTime persistedAt)
@@ -783,6 +913,7 @@ public sealed class SearchIndexService : IDisposable
             _scanCts?.Cancel();
             Volatile.Write(ref _watcherRetryScheduled, 0);
             Interlocked.Exchange(ref _isScanning, 0);
+            Interlocked.Exchange(ref _isReconciliationPending, 0);
             Volatile.Write(ref _isPaused, 0);
             _pauseGate.Set();
         }
@@ -1530,11 +1661,11 @@ public sealed class SearchIndexService : IDisposable
                 }
                 else
                 {
-                    _pendingChanges[path] = new PendingIndexChange(
+                    QueuePendingChange(path, new PendingIndexChange(
                         IsDeleted: false,
                         isDirectory,
                         lastModified,
-                        generation);
+                        generation));
                 }
             }
             finally
@@ -1604,11 +1735,11 @@ public sealed class SearchIndexService : IDisposable
             }
             else
             {
-                _pendingChanges[path] = new PendingIndexChange(
+                QueuePendingChange(path, new PendingIndexChange(
                     IsDeleted: true,
                     IsDirectory: false,
                     LastModified: DateTime.MinValue,
-                    ScanGeneration: Volatile.Read(ref _scanGeneration));
+                    ScanGeneration: Volatile.Read(ref _scanGeneration)));
             }
         }
         finally
@@ -1643,6 +1774,17 @@ public sealed class SearchIndexService : IDisposable
         catch
         {
             // The in-memory delta still preserves this session's correctness.
+        }
+    }
+
+    private void QueuePendingChange(string path, PendingIndexChange change)
+    {
+        if (_pendingChanges.Set(path, change) ==
+            BoundedPathChangeWriteResult.Overflowed)
+        {
+            App.Log(
+                $"[SearchIndex] Idle delta buffer reached its {MaxPendingIndexChanges}-path limit; " +
+                "individual deltas were discarded and a full reconciliation is required on reload.");
         }
     }
 
@@ -2286,20 +2428,20 @@ public sealed class SearchIndexService : IDisposable
             {
                 foreach (string matchingPath in matchingPaths)
                 {
-                    _pendingChanges[matchingPath] = new PendingIndexChange(
+                    QueuePendingChange(matchingPath, new PendingIndexChange(
                         IsDeleted: true,
                         IsDirectory: false,
                         LastModified: DateTime.MinValue,
-                        ScanGeneration: Volatile.Read(ref _scanGeneration));
+                        ScanGeneration: Volatile.Read(ref _scanGeneration)));
                 }
 
                 if (matchingPaths.Count == 0)
                 {
-                    _pendingChanges[normalizedPath] = new PendingIndexChange(
+                    QueuePendingChange(normalizedPath, new PendingIndexChange(
                         IsDeleted: true,
                         IsDirectory: true,
                         LastModified: DateTime.MinValue,
-                        ScanGeneration: Volatile.Read(ref _scanGeneration));
+                        ScanGeneration: Volatile.Read(ref _scanGeneration)));
                 }
             }
 
@@ -2445,7 +2587,7 @@ public sealed class SearchIndexService : IDisposable
                 StringComparer.OrdinalIgnoreCase);
             _directoryPool = new Dictionary<string, string>(
                 StringComparer.OrdinalIgnoreCase);
-            _pendingChanges.Clear();
+            _pendingChanges.Reset();
             _persistedEntryCount = 0;
             Volatile.Write(ref _isIndexResident, true);
         }
@@ -2471,7 +2613,7 @@ public sealed class SearchIndexService : IDisposable
                     StringComparer.OrdinalIgnoreCase);
                 _directoryPool = new Dictionary<string, string>(
                     StringComparer.OrdinalIgnoreCase);
-                _pendingChanges.Clear();
+                _pendingChanges.Reset();
                 _persistedEntryCount = 0;
                 Volatile.Write(ref _isIndexResident, true);
             }
@@ -2491,7 +2633,7 @@ public sealed class SearchIndexService : IDisposable
                 StringComparer.OrdinalIgnoreCase);
             _directoryPool = new Dictionary<string, string>(
                 StringComparer.OrdinalIgnoreCase);
-            _pendingChanges.Clear();
+            _pendingChanges.Reset();
             _persistedEntryCount = 0;
             Volatile.Write(ref _isIndexResident, false);
         }

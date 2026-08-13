@@ -30,7 +30,6 @@ public sealed partial class TodoWidgetContent
         }
 
         CloseTodoEdit();
-        _pendingConfirmFlyout?.Hide();
         _customDueDateItem = null;
         _customDueDateItemIds = itemIds.ToArray();
         DateTimeOffset dueDate = initialDueDate ?? GetDefaultCustomDueDate();
@@ -143,25 +142,8 @@ public sealed partial class TodoWidgetContent
         return new DateTimeOffset(new DateTime(today.Year, today.Month, today.Day, 23, 59, 0, DateTimeKind.Local));
     }
 
-    private async Task DeleteItemAsync(TodoItemViewModel item, FrameworkElement anchor)
-    {
-        if (ViewModel is null)
-        {
-            return;
-        }
-
-        if (ViewModel.ConfirmBeforeDelete)
-        {
-            ShowTodoConfirmMenu(
-                anchor,
-                App.Current.LocalizationService.T("Todo.DeleteConfirm.Title"),
-                App.Current.LocalizationService.T("Common.Delete"),
-                async () => await DeleteTodoItemWithTransitionAsync(item));
-            return;
-        }
-
-        await DeleteTodoItemWithTransitionAsync(item);
-    }
+    private Task DeleteItemAsync(TodoItemViewModel item) =>
+        DeleteTodoItemWithTransitionAsync(item);
 
     private async Task DeleteTodoItemWithTransitionAsync(TodoItemViewModel item)
     {
@@ -200,50 +182,15 @@ public sealed partial class TodoWidgetContent
         }
     }
 
-    private void ShowDeleteItemConfirmation(TodoItemViewModel item, FrameworkElement anchor)
-    {
-        if (ViewModel is null)
-        {
-            return;
-        }
-
-        if (!ViewModel.ConfirmBeforeDelete)
-        {
-            _ = ViewModel.DeleteItemAsync(item.Id);
-            return;
-        }
-
-        ShowTodoConfirmMenu(
-            anchor,
-            App.Current.LocalizationService.T("Todo.DeleteConfirm.Title"),
-            App.Current.LocalizationService.T("Common.Delete"),
-            async () => await ViewModel.DeleteItemAsync(item.Id));
-    }
-
-    private void ShowDeleteSelectedConfirmation(IReadOnlyList<string> selectedIds, FrameworkElement anchor)
+    private async Task DeleteSelectedItemsAsync(IReadOnlyList<string> selectedIds)
     {
         if (ViewModel is null || selectedIds.Count == 0)
         {
             return;
         }
 
-        async Task DeleteSelectedAsync()
-        {
-            ClearCopySelection();
-            await ViewModel.DeleteItemsAsync(selectedIds);
-        }
-
-        if (!ViewModel.ConfirmBeforeDelete)
-        {
-            _ = DeleteSelectedAsync();
-            return;
-        }
-
-        ShowTodoConfirmMenu(
-            anchor,
-            App.Current.LocalizationService.Format("Todo.DeleteSelectedConfirm.Title", selectedIds.Count),
-            App.Current.LocalizationService.T("Common.Delete"),
-            DeleteSelectedAsync);
+        ClearCopySelection();
+        await ViewModel.DeleteItemsAsync(selectedIds);
     }
 
         private void BeginItemEdit(TodoItemViewModel item)
@@ -316,6 +263,7 @@ public sealed partial class TodoWidgetContent
         }
 
         CloseTodoEdit();
+        ShowTodoStatus("Todo.Status.Saved");
     }
 
     private void CloseTodoEdit()
@@ -355,46 +303,12 @@ public sealed partial class TodoWidgetContent
             hoverBackgroundBorder.Opacity = isHovered ? 1 : 0;
         }
 
-        if (FindVisualChild<Button>(itemRoot, "TodoImportantItemButton") is { } importantButton)
-        {
-            importantButton.Opacity = isHovered ? 1 : 0;
-            importantButton.IsHitTestVisible = isHovered;
-        }
-
         if (FindVisualChild<Border>(itemRoot, "TodoItemActionHost") is { } actions)
         {
             actions.Opacity = isHovered ? 1 : 0;
             actions.IsHitTestVisible = isHovered;
-            actions.Background = new SolidColorBrush(WithAlpha(
-                BuildAccentSurfaceColor(
-                    isDark,
-                    accentColor,
-                    isDark ? ColorHelper.FromArgb(0xFF, 0x1E, 0x23, 0x29) : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
-                    accentMix: isDark ? 0.18 : 0.08,
-                    overlayMix: isDark ? 0.03 : 0.02),
-                0xFF));
-            actions.BorderBrush = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x4A : (byte)0x30));
-            actions.BorderThickness = new Thickness(1);
-            foreach (var button in FindVisualChildren<Button>(actions))
-            {
-                ApplyActionButtonTheme(button, isDark, accentColor);
-            }
         }
 
-        bool isCompleted = itemRoot is FrameworkElement { DataContext: TodoItemViewModel { IsCompleted: true } };
-        if (FindVisualChild<Border>(itemRoot, "TodoCompletionBox") is { } completionBox)
-        {
-            Brush completionAccentBrush = new SolidColorBrush(accentColor);
-            completionBox.Background = isCompleted
-                ? completionAccentBrush
-                : new SolidColorBrush(Colors.Transparent);
-            completionBox.BorderBrush = completionAccentBrush;
-            completionBox.Opacity = isCompleted
-                ? 1
-                : isHovered
-                    ? 0.58
-                    : 0.38;
-        }
     }
 
     private void ApplyEditorVisualStyle()
@@ -422,19 +336,12 @@ public sealed partial class TodoWidgetContent
 
     private void ApplyDetailCompletionVisualState()
     {
-        if (DetailCompletionBox is null || ViewModel?.SelectedDetailItem is not { } item)
+        if (DetailCompletionCheckBox is null || ViewModel?.SelectedDetailItem is not { } item)
         {
             return;
         }
 
-        bool isDark = ActualTheme == ElementTheme.Dark;
-        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor() ?? AccentColorHelper.DefaultAccentColor;
-        Brush completionAccentBrush = new SolidColorBrush(accentColor);
-        DetailCompletionBox.Background = item.IsCompleted
-            ? completionAccentBrush
-            : new SolidColorBrush(Colors.Transparent);
-        DetailCompletionBox.BorderBrush = completionAccentBrush;
-        DetailCompletionBox.Opacity = item.IsCompleted ? 1 : 0.38;
+        DetailCompletionCheckBox.IsChecked = item.IsCompleted;
     }
 
     private void ApplySelectionRectangleStyle()
@@ -469,29 +376,6 @@ public sealed partial class TodoWidgetContent
         return GetBrushResourceOrFallback(
             "CardStrokeColorDefaultBrush",
             isDark ? ColorHelper.FromArgb(0x52, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x24, 0x00, 0x00, 0x00));
-    }
-
-    private static void ApplyActionButtonTheme(Button button, bool isDark, Windows.UI.Color accentColor)
-    {
-        var transparent = new SolidColorBrush(Colors.Transparent);
-        var hoverBackground = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x24 : (byte)0x18));
-        var pressedBackground = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0x36 : (byte)0x24));
-        var foreground = new SolidColorBrush(WithAlpha(accentColor, isDark ? (byte)0xF2 : (byte)0xE2));
-
-        button.Background = transparent;
-        button.BorderBrush = transparent;
-        button.Foreground = foreground;
-        button.Resources["ButtonBackground"] = transparent;
-        button.Resources["ButtonBackgroundPointerOver"] = hoverBackground;
-        button.Resources["ButtonBackgroundPressed"] = pressedBackground;
-        button.Resources["ButtonBackgroundDisabled"] = transparent;
-        button.Resources["ButtonBorderBrush"] = transparent;
-        button.Resources["ButtonBorderBrushPointerOver"] = transparent;
-        button.Resources["ButtonBorderBrushPressed"] = transparent;
-        button.Resources["ButtonBorderBrushDisabled"] = transparent;
-        button.Resources["ButtonForeground"] = foreground;
-        button.Resources["ButtonForegroundPointerOver"] = foreground;
-        button.Resources["ButtonForegroundPressed"] = foreground;
     }
 
     private static Brush GetBrushResourceOrFallback(string resourceKey, Windows.UI.Color fallbackColor)
@@ -579,25 +463,6 @@ public sealed partial class TodoWidgetContent
         return null;
     }
 
-    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent)
-        where T : FrameworkElement
-    {
-        int count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
-        for (int index = 0; index < count; index++)
-        {
-            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, index);
-            if (child is T typed)
-            {
-                yield return typed;
-            }
-
-            foreach (var nested in FindVisualChildren<T>(child))
-            {
-                yield return nested;
-            }
-        }
-    }
-
     private static FrameworkElement? FindTodoItemContainer(DependencyObject source)
     {
         DependencyObject? current = source;
@@ -633,19 +498,8 @@ public sealed partial class TodoWidgetContent
 
     private async void ClearCompletedButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel is null ||
-            sender is not FrameworkElement anchor)
+        if (ViewModel is null)
         {
-            return;
-        }
-
-        if (ViewModel.ConfirmBeforeDelete)
-        {
-            ShowTodoConfirmMenu(
-                anchor,
-                App.Current.LocalizationService.T("Todo.ClearCompletedConfirm.Title"),
-                App.Current.LocalizationService.T("Todo.ClearCompleted"),
-                async () => await ViewModel.ClearCompletedAsync());
             return;
         }
 
@@ -700,6 +554,42 @@ public sealed partial class TodoWidgetContent
             clearUndoOnHide);
     }
 
+    private void ShowTodoStatus(string resourceKey) =>
+        ShowUndoToast(
+            App.Current.LocalizationService.T(resourceKey),
+            durationMs: CopyToastMs,
+            clearUndoOnHide: false);
+
+    private async Task<bool> SetCompletedWithFeedbackAsync(
+        TodoItemViewModel item,
+        bool isCompleted)
+    {
+        if (ViewModel is null || !await ViewModel.SetCompletedAsync(item.Id, isCompleted))
+        {
+            return false;
+        }
+
+        ShowTodoStatus(isCompleted
+            ? "Todo.Status.MarkedCompleted"
+            : "Todo.Status.MarkedActive");
+        return true;
+    }
+
+    private async Task<bool> SetImportantWithFeedbackAsync(
+        TodoItemViewModel item,
+        bool isImportant)
+    {
+        if (ViewModel is null || !await ViewModel.SetImportantAsync(item.Id, isImportant))
+        {
+            return false;
+        }
+
+        ShowTodoStatus(isImportant
+            ? "Todo.Status.MarkedImportant"
+            : "Todo.Status.UnmarkedImportant");
+        return true;
+    }
+
     private async Task HideUndoToastAfterDelayAsync(long generation, int durationMs, bool clearUndo)
     {
         await Task.Delay(durationMs);
@@ -724,60 +614,13 @@ public sealed partial class TodoWidgetContent
         }
     }
 
-    public void ShowClearAllConfirmation(FrameworkElement anchor)
+    public void ClearAllTodos()
     {
         if (ViewModel is null)
         {
             return;
         }
 
-        if (ViewModel.ConfirmBeforeDelete)
-        {
-            ShowTodoConfirmMenu(
-                anchor,
-                App.Current.LocalizationService.T("Todo.ClearAllConfirm.Title"),
-                App.Current.LocalizationService.T("Todo.ClearAll"),
-                async () => await ViewModel.ClearAllAsync());
-            return;
-        }
-
         _ = ViewModel.ClearAllAsync();
-    }
-
-    private void ShowTodoConfirmMenu(
-        FrameworkElement anchor,
-        string title,
-        string actionText,
-        Func<Task> confirmedAction)
-    {
-        _pendingConfirmFlyout?.Hide();
-
-        var flyout = WidgetCompactConfirmationMenuBuilder.CreateDeleteConfirmation(
-            title,
-            actionText,
-            confirmedAction);
-        _pendingConfirmFlyout = flyout;
-        flyout.Closed += (_, _) =>
-        {
-            if (ReferenceEquals(_pendingConfirmFlyout, flyout))
-            {
-                _pendingConfirmFlyout = null;
-            }
-        };
-        flyout.ShowAt(anchor);
-    }
-
-    private static string GetDeleteConfirmPreviewText(string text)
-    {
-        string normalized = string.Join(
-            " ",
-            (text ?? string.Empty).Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries))
-            .Trim();
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            normalized = "Task";
-        }
-
-        return normalized.Length <= 34 ? normalized : $"{normalized[..34].Trim()}...";
     }
 }

@@ -667,7 +667,6 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     TodoEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
                     TodoShowFooterStats = false;
                     TodoShowClearCompletedButton = true;
-                    TodoConfirmBeforeDelete = false;
                     TodoReminderEnabled = true;
                     SelectedTodoLayoutMode = SettingsService.TodoLayoutModeAuto;
                     TodoUseWideDetailPane = true;
@@ -689,7 +688,6 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     _settingsService.Settings.TodoEditorEnterBehavior = SettingsService.EditorEnterBehaviorCtrlEnterSaves;
                     _settingsService.Settings.TodoShowFooterStats = false;
                     _settingsService.Settings.TodoShowClearCompletedButton = true;
-                    _settingsService.Settings.TodoConfirmBeforeDelete = false;
                     _settingsService.Settings.TodoReminderEnabled = true;
                     _settingsService.Settings.TodoLayoutMode = SettingsService.TodoLayoutModeAuto;
                     _settingsService.Settings.TodoUseWideDetailPane = true;

@@ -28,6 +28,8 @@ public sealed class MarkdownDocumentView : UserControl
     private const double ParagraphSpacing = 5;
     private const double ListItemSpacing = 3;
     private const double InternalScrollBarContentClearance = 12;
+    private const double EmbeddedBlockMinimumWidth = 160;
+    private const double TableColumnMinimumWidth = 96;
 
     private readonly RichTextBlock _documentText = new()
     {
@@ -40,6 +42,7 @@ public sealed class MarkdownDocumentView : UserControl
     private int _taskListIndex;
     private bool _isLoaded;
     private bool _renderQueued;
+    private double _lastRenderedWidth = double.NaN;
 
     public MarkdownDocumentView()
         : this(new MarkdownDocumentService())
@@ -54,6 +57,15 @@ public sealed class MarkdownDocumentView : UserControl
         ApplyContentHost();
         RegisterPropertyChangedCallback(FontSizeProperty, (_, _) => QueueRender());
         RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => QueueRender());
+        ActualThemeChanged += (_, _) => QueueRender();
+        SizeChanged += (_, args) =>
+        {
+            if (!double.IsFinite(_lastRenderedWidth) ||
+                Math.Abs(args.NewSize.Width - _lastRenderedWidth) > 4)
+            {
+                QueueRender();
+            }
+        };
         Loaded += (_, _) =>
         {
             _isLoaded = true;
@@ -202,6 +214,7 @@ public sealed class MarkdownDocumentView : UserControl
     private void Render()
     {
         double verticalOffset = _scrollViewer.VerticalOffset;
+        _lastRenderedWidth = ActualWidth;
         string source = Markdown ?? string.Empty;
         _documentText.Blocks.Clear();
         _taskListIndex = 0;
@@ -337,6 +350,7 @@ public sealed class MarkdownDocumentView : UserControl
         AppendQuoteMarker(paragraph, quoteDepth);
         if (leaf.Inline is { } container)
         {
+            UseInlineContentLineHeightWhenNeeded(paragraph, container);
             AppendContainer(paragraph.Inlines, container);
         }
         else if (leaf is CodeBlock code)
@@ -381,10 +395,12 @@ public sealed class MarkdownDocumentView : UserControl
 
             if (firstContent is LeafBlock leaf && leaf.Inline is { } inline)
             {
+                UseInlineContentLineHeightWhenNeeded(paragraph, inline);
                 AppendContainer(paragraph.Inlines, inline);
             }
             else if (firstContent is ContainerBlock container)
             {
+                UseInlineContentLineHeightWhenNeeded(paragraph, container);
                 AppendBlockText(paragraph.Inlines, container);
             }
             _documentText.Blocks.Add(paragraph);
@@ -404,35 +420,141 @@ public sealed class MarkdownDocumentView : UserControl
     private void AppendCode(CodeBlock code, int quoteDepth, int listDepth)
     {
         var paragraph = CreateParagraph(Math.Max(11, BaseFontSize - 1), FontWeights.Normal);
-        paragraph.FontFamily = new FontFamily("Cascadia Mono, Consolas");
-        paragraph.LineHeight = Math.Ceiling(paragraph.FontSize * CodeLineHeightRatio);
+        paragraph.LineStackingStrategy = LineStackingStrategy.MaxHeight;
         paragraph.Margin = new Thickness(Indent(quoteDepth, listDepth), 8, 0, 8);
         AppendQuoteMarker(paragraph, quoteDepth);
-        AppendText(paragraph.Inlines, code.Lines.ToString());
+        double surfaceWidth = GetEmbeddedBlockWidth(quoteDepth, listDepth);
+        var codeText = new TextBlock
+        {
+            Text = code.Lines.ToString().TrimEnd('\r', '\n'),
+            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontSize = Math.Max(11, BaseFontSize - 1),
+            IsTextSelectionEnabled = true,
+            TextWrapping = TextWrapping.Wrap
+        };
+        var codeSurface = new Border
+        {
+            Width = surfaceWidth,
+            MaxWidth = surfaceWidth,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(9, 7, 9, 7),
+            Background = BrushResource("ControlFillColorSecondaryBrush"),
+            BorderBrush = BrushResource("CardStrokeColorDefaultBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            Child = codeText
+        };
+        paragraph.Inlines.Add(new InlineUIContainer { Child = codeSurface });
         _documentText.Blocks.Add(paragraph);
     }
 
     private void AppendTable(Table table, int quoteDepth, int listDepth)
     {
-        foreach (TableRow row in table.OfType<TableRow>())
+        TableRow[] rows = table.OfType<TableRow>().ToArray();
+        int columnCount = rows.Length == 0
+            ? 0
+            : rows.Max(row => row.OfType<TableCell>().Count());
+        if (columnCount == 0)
         {
-            var paragraph = CreateParagraph(
-                Math.Max(11, BaseFontSize - 0.5),
-                row.IsHeader ? FontWeights.SemiBold : FontWeights.Normal);
-            paragraph.FontFamily = new FontFamily("Cascadia Mono, Consolas");
-            ApplyParagraphIndent(paragraph, quoteDepth, listDepth);
-            paragraph.LineHeight = Math.Ceiling(paragraph.FontSize * CodeLineHeightRatio);
-            paragraph.Margin = new Thickness(paragraph.Margin.Left, 2, 0, 2);
-            AppendQuoteMarker(paragraph, quoteDepth);
-            foreach (TableCell cell in row.OfType<TableCell>())
-            {
-                paragraph.Inlines.Add(new Run { Text = "| " });
-                AppendBlockText(paragraph.Inlines, cell);
-                paragraph.Inlines.Add(new Run { Text = " " });
-            }
-            paragraph.Inlines.Add(new Run { Text = "|" });
-            _documentText.Blocks.Add(paragraph);
+            return;
         }
+
+        double surfaceWidth = GetEmbeddedBlockWidth(quoteDepth, listDepth);
+        double tableWidth = Math.Max(surfaceWidth, columnCount * TableColumnMinimumWidth);
+        var tableGrid = new Grid
+        {
+            Width = tableWidth,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        for (int columnIndex = 0; columnIndex < columnCount; columnIndex++)
+        {
+            tableGrid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(1, GridUnitType.Star)
+            });
+        }
+
+        for (int rowIndex = 0; rowIndex < rows.Length; rowIndex++)
+        {
+            TableRow row = rows[rowIndex];
+            tableGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            TableCell[] cells = row.OfType<TableCell>().ToArray();
+            for (int columnIndex = 0; columnIndex < columnCount; columnIndex++)
+            {
+                var cellText = new RichTextBlock
+                {
+                    FontSize = Math.Max(11, BaseFontSize - 0.5),
+                    IsTextSelectionEnabled = true,
+                    TextWrapping = TextWrapping.Wrap
+                };
+                var cellParagraph = new Paragraph
+                {
+                    FontWeight = row.IsHeader ? FontWeights.SemiBold : FontWeights.Normal,
+                    LineHeight = Math.Ceiling(Math.Max(11, BaseFontSize - 0.5) * 1.45),
+                    LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+                    Margin = new Thickness(0)
+                };
+                if (columnIndex < cells.Length)
+                {
+                    AppendBlockText(cellParagraph.Inlines, cells[columnIndex]);
+                }
+                cellText.Blocks.Add(cellParagraph);
+
+                var cellBorder = new Border
+                {
+                    MinHeight = 28,
+                    Padding = new Thickness(6, 4, 6, 4),
+                    Background = row.IsHeader
+                        ? BrushResource("SubtleFillColorSecondaryBrush")
+                        : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                    BorderBrush = BrushResource("CardStrokeColorDefaultBrush"),
+                    BorderThickness = new Thickness(
+                        columnIndex == 0 ? 0 : 1,
+                        rowIndex == 0 ? 0 : 1,
+                        0,
+                        0),
+                    Child = cellText
+                };
+                Grid.SetColumn(cellBorder, columnIndex);
+                Grid.SetRow(cellBorder, rowIndex);
+                tableGrid.Children.Add(cellBorder);
+            }
+        }
+
+        var horizontalScroller = new ScrollViewer
+        {
+            Width = surfaceWidth,
+            MaxWidth = surfaceWidth,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = tableGrid
+        };
+        var tableSurface = new Border
+        {
+            Width = surfaceWidth,
+            MaxWidth = surfaceWidth,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            BorderBrush = BrushResource("CardStrokeColorDefaultBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            Child = horizontalScroller
+        };
+        var paragraph = CreateParagraph(BaseFontSize, FontWeights.Normal);
+        paragraph.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+        paragraph.Margin = new Thickness(Indent(quoteDepth, listDepth), 7, 0, 7);
+        AppendQuoteMarker(paragraph, quoteDepth);
+        paragraph.Inlines.Add(new InlineUIContainer { Child = tableSurface });
+        _documentText.Blocks.Add(paragraph);
+    }
+
+    private double GetEmbeddedBlockWidth(int quoteDepth, int listDepth)
+    {
+        double availableWidth = double.IsFinite(ActualWidth) && ActualWidth > 0
+            ? ActualWidth
+            : 320;
+        availableWidth -= InternalScrollBarContentClearance;
+        availableWidth -= Indent(quoteDepth, listDepth);
+        return Math.Max(EmbeddedBlockMinimumWidth, availableWidth);
     }
 
     private static Paragraph CreateParagraph(
@@ -455,6 +577,55 @@ public sealed class MarkdownDocumentView : UserControl
             paragraph.Margin.Top,
             0,
             paragraph.Margin.Bottom);
+
+    private static void UseInlineContentLineHeightWhenNeeded(
+        Paragraph paragraph,
+        ContainerInline container)
+    {
+        if (ContainsImage(container))
+        {
+            // BlockLineHeight deliberately keeps ordinary prose on a stable
+            // baseline, but it also caps a line containing InlineUIContainer
+            // to one text row. A decoded image then paints outside that row and
+            // covers every paragraph below it. MaxHeight makes the line reserve
+            // the actual image height while preserving the normal paragraph
+            // settings for text-only content.
+            paragraph.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+        }
+    }
+
+    private static void UseInlineContentLineHeightWhenNeeded(
+        Paragraph paragraph,
+        ContainerBlock container)
+    {
+        if (container
+            .Descendants<LeafBlock>()
+            .Any(leaf => leaf.Inline is { } inline &&
+                         ContainsImage(inline)))
+        {
+            paragraph.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+        }
+    }
+
+    private static bool ContainsImage(ContainerInline container)
+    {
+        for (MdInline? current = container.FirstChild;
+             current is not null;
+             current = current.NextSibling)
+        {
+            if (current is LinkInline { IsImage: true })
+            {
+                return true;
+            }
+
+            if (current is ContainerInline nested && ContainsImage(nested))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static void AppendQuoteMarker(Paragraph paragraph, int quoteDepth)
     {
@@ -562,7 +733,8 @@ public sealed class MarkdownDocumentView : UserControl
                 {
                     Text = code.Content,
                     FontFamily = new FontFamily("Cascadia Mono, Consolas"),
-                    Foreground = BrushResource("SystemFillColorCriticalBrush")
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = BrushResource("AccentTextFillColorPrimaryBrush")
                 });
                 break;
             case LineBreakInline:
@@ -618,18 +790,58 @@ public sealed class MarkdownDocumentView : UserControl
             return;
         }
 
+        var bitmap = new BitmapImage
+        {
+            // Inline screenshots can be very large. Decode at twice the maximum
+            // display width for crisp high-DPI rendering without retaining the
+            // full source bitmap in the XAML image surface.
+            DecodePixelWidth = 960
+        };
+        bitmap.UriSource = uri;
         var image = new Image
         {
-            Source = new BitmapImage(uri),
+            Source = bitmap,
             MaxWidth = 480,
             MaxHeight = 320,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
             Stretch = Stretch.Uniform,
             Margin = new Thickness(0, 4, 0, 4)
         };
+        image.ImageOpened += InlineImage_ImageOpened;
+        image.ImageFailed += InlineImage_ImageFailed;
         AutomationProperties.SetName(
             image,
             string.IsNullOrWhiteSpace(link.Title) ? "Markdown image" : link.Title);
         destination.Add(new InlineUIContainer { Child = image });
+    }
+
+    private void InlineImage_ImageOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is Image image)
+        {
+            image.ImageOpened -= InlineImage_ImageOpened;
+            image.ImageFailed -= InlineImage_ImageFailed;
+        }
+
+        // BitmapImage resolves its dimensions asynchronously. Explicitly
+        // invalidate the document once those dimensions are known so the
+        // MaxHeight line is recomputed before the next frame is presented.
+        _documentText.InvalidateMeasure();
+        _documentText.InvalidateArrange();
+    }
+
+    private void InlineImage_ImageFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        if (sender is Image image)
+        {
+            image.ImageOpened -= InlineImage_ImageOpened;
+            image.ImageFailed -= InlineImage_ImageFailed;
+            image.Visibility = Visibility.Collapsed;
+        }
+
+        _documentText.InvalidateMeasure();
+        _documentText.InvalidateArrange();
     }
 
     private static void AppendBlockedImageLabel(InlineCollection destination, LinkInline link) =>
@@ -642,13 +854,15 @@ public sealed class MarkdownDocumentView : UserControl
     {
         if (!MarkdownDocumentService.IsAllowedLink(link.Url))
         {
-            AppendContainer(destination, link);
+            var unavailableLink = CreateLinkSpan();
+            AppendContainer(unavailableLink.Inlines, link);
+            destination.Add(unavailableLink);
             return;
         }
 
         if (MarkdownDocumentService.TryGetAttachmentId(link.Url, out string? attachmentId))
         {
-            var attachmentLink = new Hyperlink();
+            var attachmentLink = CreateHyperlink();
             AppendContainer(attachmentLink.Inlines, link);
             attachmentLink.Click += (_, _) => AttachmentOpenRequested?.Invoke(
                 this,
@@ -657,10 +871,25 @@ public sealed class MarkdownDocumentView : UserControl
             return;
         }
 
-        var hyperlink = new Hyperlink { NavigateUri = new Uri(link.Url!) };
+        var hyperlink = CreateHyperlink();
+        hyperlink.NavigateUri = new Uri(link.Url!);
         AppendContainer(hyperlink.Inlines, link);
         destination.Add(hyperlink);
     }
+
+    private static Hyperlink CreateHyperlink() => new()
+    {
+        FontWeight = FontWeights.SemiBold,
+        Foreground = BrushResource("AccentTextFillColorPrimaryBrush"),
+        TextDecorations = Windows.UI.Text.TextDecorations.Underline
+    };
+
+    private static Span CreateLinkSpan() => new()
+    {
+        FontWeight = FontWeights.SemiBold,
+        Foreground = BrushResource("TextFillColorSecondaryBrush"),
+        TextDecorations = Windows.UI.Text.TextDecorations.Underline
+    };
 
     private static bool? FindTaskState(ListItemBlock item)
     {

@@ -7,6 +7,8 @@ namespace DeskBox.ViewModels;
 
 public sealed partial class QuickCaptureItemViewModel : ObservableObject
 {
+    public const int MaxDisplaySourceCharacters = 4 * 1024;
+
     private readonly LocalizationService _localizationService;
     private QuickCaptureItem _model;
     private bool _showPinnedSortControls;
@@ -17,6 +19,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
     private double _textSize;
     private double _iconSize;
     private string _searchText;
+    private string? _displayText;
     private static readonly MarkdownDocumentService s_markdownService = new();
 
     public QuickCaptureItemViewModel(
@@ -62,11 +65,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
                                    !(Type == QuickCaptureItemType.Image &&
                                      string.Equals(CopyText, "Image", StringComparison.Ordinal));
 
-    public string DisplayText => Type == QuickCaptureItemType.Image && !HasDisplayBody
-        ? _localizationService.T("QuickCapture.ImageItem")
-        : ContentFormat == TextContentFormat.Markdown
-            ? s_markdownService.ToPlainText(CopyText)
-            : CopyText;
+    public string DisplayText => _displayText ??= CreateDisplayText();
 
     public int HighlightStartIndex => GetHighlightStartIndex();
 
@@ -127,8 +126,6 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         Type != QuickCaptureItemType.Image || HasDisplayBody
             ? Visibility.Visible
             : Visibility.Collapsed;
-
-    public string PinGlyph => IsPinned ? "\uE840" : "\uE718";
 
     public string PinTooltip => IsPinned
         ? _localizationService.T("QuickCapture.Unpin")
@@ -231,6 +228,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
         if (old.Body != model.Body || old.Type != model.Type || old.ContentFormat != model.ContentFormat)
         {
+            _displayText = null;
             OnPropertyChanged(nameof(Body));
             OnPropertyChanged(nameof(CopyText));
             OnPropertyChanged(nameof(DisplayText));
@@ -256,7 +254,6 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         if (old.IsPinned != model.IsPinned)
         {
             OnPropertyChanged(nameof(IsPinned));
-            OnPropertyChanged(nameof(PinGlyph));
             OnPropertyChanged(nameof(PinTooltip));
         }
 
@@ -273,6 +270,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
         if (old.Title != model.Title)
         {
+            _displayText = null;
             OnPropertyChanged(nameof(Title));
             OnPropertyChanged(nameof(TitleVisibility));
             OnPropertyChanged(nameof(CopyText));
@@ -381,6 +379,32 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
         }
 
         return DisplayText.IndexOf(_searchText, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private string CreateDisplayText()
+    {
+        if (Type == QuickCaptureItemType.Image && !HasDisplayBody)
+        {
+            return _localizationService.T("QuickCapture.ImageItem");
+        }
+
+        string source = CopyText;
+        bool isTruncated = source.Length > MaxDisplaySourceCharacters;
+        if (isTruncated)
+        {
+            int previewLength = MaxDisplaySourceCharacters;
+            if (previewLength > 0 && char.IsHighSurrogate(source[previewLength - 1]))
+            {
+                previewLength--;
+            }
+
+            source = source[..previewLength];
+        }
+
+        string displayText = ContentFormat == TextContentFormat.Markdown
+            ? s_markdownService.ToPlainText(source)
+            : source;
+        return isTruncated ? $"{displayText}…" : displayText;
     }
 
     private void RefreshAttachments()

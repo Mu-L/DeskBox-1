@@ -112,6 +112,17 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     protected override bool IsCompactExpansionWarmupContentReady =>
         _contentHost.CurrentContent is not null;
 
+    protected override void OnResizeStart()
+    {
+        if (CurrentContent is IWidgetInteractiveResizeContent resizeContent)
+        {
+            double titleHeight = Math.Max(0, ContentWidgetShell.ActualTitleBarHeight);
+            resizeContent.BeginInteractiveResize(
+                Math.Max(1, RootGrid.ActualWidth),
+                Math.Max(1, RootGrid.ActualHeight - titleHeight));
+        }
+    }
+
     protected override WidgetCompactPresentation CreateCompactPresentation()
     {
         var localization = App.Current.LocalizationService;

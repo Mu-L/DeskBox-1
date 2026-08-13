@@ -500,7 +500,6 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.False(service.Settings.TodoShowCompletedTasks);
         Assert.False(service.Settings.TodoShowFooterStats);
         Assert.False(service.Settings.TodoShowClearCompletedButton);
-        Assert.True(service.Settings.TodoConfirmBeforeDelete);
         Assert.False(service.Settings.TodoReminderEnabled);
         Assert.Equal(SettingsService.DefaultTodoReminderOffsetMinutes, service.Settings.TodoDefaultReminderOffsetMinutes);
         Assert.Equal(SettingsService.MinItemPreviewLineCount, service.Settings.TodoItemPreviewLineCount);

@@ -48,7 +48,7 @@ public sealed class QuickCaptureSettingsRuntimeContractTests
             shared,
             StringComparison.Ordinal);
         Assert.Contains(
-            "_detailContentFormat = ViewModel.EditorContentFormat;\n        _isDetailEditing = true;",
+            "_detailContentFormat = ViewModel.EditorContentFormat;\n        SetDetailEditorText(_detailItem?.Body ?? string.Empty);\n        _isDetailEditing = true;",
             shared,
             StringComparison.Ordinal);
         Assert.Contains(

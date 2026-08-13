@@ -40,6 +40,8 @@ public sealed class ResizeGuideOverlayService
     private SnapEdge? _currentResizeEdge;
     private SnapEdge? _currentTargetEdge;
     private string? _lastDragSnapSignature;
+    private readonly List<(RectInt32 Bounds, IntPtr Hwnd)> _resizeSnapTargets = [];
+    private readonly List<(RectInt32 Bounds, IntPtr Hwnd)> _dragSnapTargets = [];
 
     /// <summary>
     /// Whether a resize session is currently active.
@@ -69,6 +71,8 @@ public sealed class ResizeGuideOverlayService
         _currentTargetRoot = null;
         _currentResizeEdge = null;
         _currentTargetEdge = null;
+        _resizeSnapTargets.Clear();
+        _resizeSnapTargets.AddRange(GetOtherWidgetBounds(resizingWidgetHwnd));
         IsActive = true;
 
         App.LogVerbose($"[ResizeGuide] BeginResize hwnd=0x{resizingWidgetHwnd.ToInt64():X}");
@@ -92,7 +96,7 @@ public sealed class ResizeGuideOverlayService
             return proposedBounds;
         }
 
-        var otherBounds = GetOtherWidgetBounds();
+        var otherBounds = _resizeSnapTargets;
         var snapped = proposedBounds;
         SnapEdge? snapEdge = null;
         int snapCoordinate = 0;
@@ -257,6 +261,7 @@ public sealed class ResizeGuideOverlayService
         _currentTargetRoot = null;
         _currentResizeEdge = null;
         _currentTargetEdge = null;
+        _resizeSnapTargets.Clear();
 
         App.LogVerbose("[ResizeGuide] EndResize");
     }
@@ -265,7 +270,8 @@ public sealed class ResizeGuideOverlayService
     //  Snap detection
     // ─────────────────────────────────────────────────────────────────────
 
-    private List<(RectInt32 Bounds, IntPtr Hwnd)> GetOtherWidgetBounds()
+    private List<(RectInt32 Bounds, IntPtr Hwnd)> GetOtherWidgetBounds(
+        IntPtr excludedHwnd)
     {
         var bounds = new List<(RectInt32, IntPtr)>();
         var manager = App.Current?.WidgetManager;
@@ -276,7 +282,7 @@ public sealed class ResizeGuideOverlayService
 
         foreach (var hwnd in manager.GetAllWidgetWindowHandles())
         {
-            if (hwnd == _resizingWidgetHwnd)
+            if (hwnd == excludedHwnd)
             {
                 continue;
             }
@@ -692,6 +698,8 @@ public sealed class ResizeGuideOverlayService
         _currentResizeEdge = null;
         _currentTargetEdge = null;
         _lastDragSnapSignature = null;
+        _dragSnapTargets.Clear();
+        _dragSnapTargets.AddRange(GetOtherWidgetBounds(draggingWidgetHwnd));
         IsDragActive = true;
 
         App.LogVerbose($"[ResizeGuide] BeginDrag hwnd=0x{draggingWidgetHwnd.ToInt64():X}");
@@ -715,7 +723,7 @@ public sealed class ResizeGuideOverlayService
         _resizingWidgetRoot = _draggingWidgetRoot;
         IsActive = true;
 
-        var otherBounds = GetOtherWidgetBounds();
+        var otherBounds = _dragSnapTargets;
         var snapped = proposedBounds;
         var snapInfos = new List<(SnapEdge Edge, int Coordinate, IntPtr? TargetHwnd)>();
 
@@ -848,6 +856,7 @@ public sealed class ResizeGuideOverlayService
         _currentResizeEdge = null;
         _currentTargetEdge = null;
         _lastDragSnapSignature = null;
+        _dragSnapTargets.Clear();
 
         App.LogVerbose("[ResizeGuide] EndDrag");
     }

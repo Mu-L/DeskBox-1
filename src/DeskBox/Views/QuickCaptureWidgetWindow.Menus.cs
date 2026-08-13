@@ -163,7 +163,7 @@ public sealed partial class QuickCaptureWidgetWindow
         ApplyLockActionIconState();
     }
 
-    private MenuFlyout CreateItemFlyout(QuickCaptureItemViewModel item, FrameworkElement anchor)
+    private MenuFlyout CreateItemFlyout(QuickCaptureItemViewModel item)
     {
         var flyout = new MenuFlyout();
         var copyItem = CreateQuickCaptureContextCommand("Common.Copy", "\uE8C8");
@@ -188,15 +188,15 @@ public sealed partial class QuickCaptureWidgetWindow
             pinRecentItem.Click += async (_, _) =>
             {
                 flyout.Hide();
-                await ViewModel.PinRecentItemAsync(item);
+                await TogglePinnedWithFeedbackAsync(item);
             };
             flyout.Items.Add(pinRecentItem);
 
             var deleteRecentItem = CreateQuickCaptureContextCommand("Common.Delete", "\uE74D");
-            deleteRecentItem.Click += (_, _) =>
+            deleteRecentItem.Click += async (_, _) =>
             {
                 flyout.Hide();
-                DispatcherQueue.TryEnqueue(() => ShowQuickCaptureDeleteConfirmFlyout(item, anchor));
+                await DeleteItemWithUndoAsync(item);
             };
             flyout.Items.Add(new MenuFlyoutSeparator());
             flyout.Items.Add(deleteRecentItem);
@@ -214,20 +214,20 @@ public sealed partial class QuickCaptureWidgetWindow
         var pinItem = new MenuFlyoutItem
         {
             Text = item.IsPinned ? _localizationService.T("QuickCapture.Unpin") : _localizationService.T("QuickCapture.Pin"),
-            Icon = new FontIcon { Glyph = item.IsPinned ? "\uE840" : "\uE718" }
+            Icon = new FontIcon { Glyph = "\uE718" }
         };
         pinItem.Click += async (_, _) =>
         {
             flyout.Hide();
-            await ViewModel.TogglePinnedAsync(item);
+            await TogglePinnedWithFeedbackAsync(item);
         };
         flyout.Items.Add(pinItem);
 
         var deleteItem = CreateQuickCaptureContextCommand("Common.Delete", "\uE74D");
-        deleteItem.Click += (_, _) =>
+        deleteItem.Click += async (_, _) =>
         {
             flyout.Hide();
-            DispatcherQueue.TryEnqueue(() => ShowQuickCaptureDeleteConfirmFlyout(item, anchor));
+            await DeleteItemWithUndoAsync(item);
         };
         flyout.Items.Add(new MenuFlyoutSeparator());
 
@@ -249,8 +249,7 @@ public sealed partial class QuickCaptureWidgetWindow
     }
 
     private MenuFlyout CreateMultiItemFlyout(
-        IReadOnlyList<QuickCaptureItemViewModel> selectedItems,
-        FrameworkElement anchor)
+        IReadOnlyList<QuickCaptureItemViewModel> selectedItems)
     {
         var flyout = new MenuFlyout();
         string[] selectedIds = selectedItems.Select(item => item.Id).ToArray();
@@ -274,29 +273,28 @@ public sealed partial class QuickCaptureWidgetWindow
             var pinItem = new MenuFlyoutItem
             {
                 Text = _localizationService.T(shouldPin ? "QuickCapture.Pin" : "QuickCapture.Unpin"),
-                Icon = new FontIcon { Glyph = shouldPin ? "\uE718" : "\uE840" }
+                Icon = new FontIcon { Glyph = "\uE718" }
             };
             pinItem.Click += async (_, _) =>
             {
                 flyout.Hide();
                 ClearQuickCaptureCopySelection();
-                await ViewModel.SetPinnedAsync(selectedIds, shouldPin);
-                if (shouldPin)
+                int changedCount = await ViewModel.SetPinnedAsync(selectedIds, shouldPin);
+                if (changedCount > 0)
                 {
-                    ShowStatusToast(_localizationService.T("QuickCapture.PinnedSuccess"));
+                    ShowStatusToast(_localizationService.T(shouldPin
+                        ? "QuickCapture.PinnedSuccess"
+                        : "QuickCapture.UnpinnedSuccess"));
                 }
             };
             flyout.Items.Add(pinItem);
         }
 
         var deleteItem = CreateQuickCaptureContextCommand("Common.Delete", "\uE74D");
-        deleteItem.Click += (_, _) =>
+        deleteItem.Click += async (_, _) =>
         {
             flyout.Hide();
-            DispatcherQueue.TryEnqueue(() => ShowQuickCaptureDeleteSelectedConfirmFlyout(
-                selectedIds,
-                isRecent,
-                anchor));
+            await DeleteSelectedQuickCaptureItemsAsync(selectedIds, isRecent);
         };
         if (!isRecent)
         {

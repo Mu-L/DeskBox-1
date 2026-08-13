@@ -68,7 +68,6 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     private bool _showCompletedTasks = true;
     private bool _showFooterStats = true;
     private bool _showClearCompletedButton = true;
-    private bool _confirmBeforeDelete;
     private bool _draftImportant;
     private DateTimeOffset? _draftDueDate;
     private TodoItemViewModel? _selectedDetailItem;
@@ -353,6 +352,10 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public string DetailBackText => _localizationService.T("Todo.Detail.Back");
 
+    public string DetailSaveText => _localizationService.T("Common.Save");
+
+    public string CopyText => _localizationService.T("Common.Copy");
+
     public string DetailAddFileText => _localizationService.T("Todo.Detail.AddFile");
 
     public string DetailRemoveAttachmentText => _localizationService.T("Todo.Detail.RemoveAttachment");
@@ -582,12 +585,6 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(FooterVisibility));
             }
         }
-    }
-
-    public bool ConfirmBeforeDelete
-    {
-        get => _confirmBeforeDelete;
-        private set => SetProperty(ref _confirmBeforeDelete, value);
     }
 
     public bool CanUndoLastAction => _undoSnapshot is not null;

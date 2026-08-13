@@ -102,6 +102,29 @@ public sealed class QuickCaptureClipboardFormatterTests
         Assert.Contains(@"路径：C:\资料\会议.pdf", formatted, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(TextContentFormat.Markdown)]
+    [InlineData(TextContentFormat.PlainText)]
+    public void DisplayText_TruncatesOversizedPreviewWithoutChangingStoredContent(
+        TextContentFormat contentFormat)
+    {
+        var localization = TestServices.CreateLocalizationService();
+        string body = new('a', QuickCaptureItemViewModel.MaxDisplaySourceCharacters + 1_000_000);
+        var item = CreateViewModel(new QuickCaptureItem
+        {
+            Body = body,
+            ContentFormat = contentFormat
+        }, localization);
+
+        Assert.Equal(body, item.Body);
+        Assert.Equal(body, item.CopyText);
+        Assert.EndsWith("…", item.DisplayText, StringComparison.Ordinal);
+        Assert.InRange(
+            item.DisplayText.Length,
+            1,
+            QuickCaptureItemViewModel.MaxDisplaySourceCharacters + 1);
+    }
+
     private static QuickCaptureItemViewModel CreateViewModel(
         QuickCaptureItem item,
         LocalizationService localization)

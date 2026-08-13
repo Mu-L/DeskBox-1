@@ -97,10 +97,10 @@ public sealed partial class TodoWidgetContent
         flyout.Items.Add(copyItem);
 
         var deleteItem = CreateTodoContextCommand("Common.Delete", "\uE74D");
-        deleteItem.Click += (_, _) =>
+        deleteItem.Click += async (_, _) =>
         {
             flyout.Hide();
-            DispatcherQueue.TryEnqueue(() => ShowDeleteItemConfirmation(item, anchor));
+            await DeleteItemAsync(item);
         };
         flyout.Items.Add(new MenuFlyoutSeparator());
 
@@ -216,10 +216,10 @@ public sealed partial class TodoWidgetContent
         flyout.Items.Add(copyItem);
 
         var deleteItem = CreateTodoContextCommand("Common.Delete", "\uE74D");
-        deleteItem.Click += (_, _) =>
+        deleteItem.Click += async (_, _) =>
         {
             flyout.Hide();
-            DispatcherQueue.TryEnqueue(() => ShowDeleteSelectedConfirmation(selectedIds, anchor));
+            await DeleteSelectedItemsAsync(selectedIds);
         };
         flyout.Items.Add(new MenuFlyoutSeparator());
 

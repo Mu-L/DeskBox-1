@@ -29,10 +29,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private const double WideResponsiveHeight = 240.0;
     private const double WideAlbumArtSize = 82.0;
     private const double MinimumAlbumArtSize = 60.0;
-    private const double WideSecondaryButtonSize = 28.0;
-    private const double CompactSecondaryButtonSize = 26.0;
-    private const double WidePlayButtonSize = 44.0;
-    private const double CompactPlayButtonSize = 34.0;
+    private const double WideTransportButtonSize = 32.0;
+    private const double CompactTransportButtonSize = 28.0;
     private bool _isProgressDragging;
     private bool _isProgressHovering;
     private bool _isInlineVolumeRefreshing;
@@ -481,14 +479,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         double densityRatio = Math.Min(widthRatio, heightRatio);
 
         double albumSize = Math.Round(Lerp(MinimumAlbumArtSize, WideAlbumArtSize, densityRatio));
-        double secondaryButtonSize = Math.Round(Lerp(
-            CompactSecondaryButtonSize,
-            WideSecondaryButtonSize,
-            widthRatio));
-        double playButtonSize = Math.Round(Lerp(
-            CompactPlayButtonSize,
-            WidePlayButtonSize,
-            widthRatio));
+        double transportButtonSize = ResolveTransportButtonSize(width);
         double contentPadding = Math.Round(Lerp(8, 12, densityRatio));
         double columnSpacing = Math.Round(Lerp(8, 12, widthRatio));
         double rowSpacing = Math.Round(Lerp(4, 8, heightRatio));
@@ -510,16 +501,11 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         TrackInfoGrid.RowSpacing = Math.Round(Lerp(2, 4, heightRatio));
         ControlsPanel.Margin = new Thickness(0, controlsTopMargin, 0, 0);
         ControlsPanel.Spacing = controlsSpacing;
-        SetButtonSize(PlaybackModeButton, secondaryButtonSize);
-        SetButtonSize(PreviousButton, secondaryButtonSize);
-        SetButtonSize(NextButton, secondaryButtonSize);
-        SetButtonSize(VolumeButton, secondaryButtonSize);
-        SetButtonSize(PlayPauseButton, playButtonSize);
-        PlaybackModeButton.CornerRadius = new CornerRadius(5);
-        PreviousButton.CornerRadius = new CornerRadius(5);
-        NextButton.CornerRadius = new CornerRadius(5);
-        VolumeButton.CornerRadius = new CornerRadius(5);
-        PlayPauseButton.CornerRadius = new CornerRadius(5);
+        SetButtonSize(PlaybackModeButton, transportButtonSize);
+        SetButtonSize(PreviousButton, transportButtonSize);
+        SetButtonSize(PlayPauseButton, transportButtonSize);
+        SetButtonSize(NextButton, transportButtonSize);
+        SetButtonSize(VolumeButton, transportButtonSize);
         InlineVolumePanel.Width = Math.Clamp(width - 12, 156, 238);
         PositionInlineVolumePanel();
         QueueTitleMarqueeUpdate();
@@ -540,33 +526,42 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         };
     }
 
+    internal static double ResolveTransportButtonSize(double width)
+    {
+        double widthRatio = Math.Clamp(
+            (width - MinimumResponsiveWidth) / (WideResponsiveWidth - MinimumResponsiveWidth),
+            0.0,
+            1.0);
+        return Math.Round(Lerp(
+            CompactTransportButtonSize,
+            WideTransportButtonSize,
+            widthRatio));
+    }
+
+    internal static bool ShouldShowHorizontalVolumeControl(double width) => width >= 220;
+
+    internal static bool ShouldShowHorizontalPlaybackModeControl(double width) => width >= 292;
+
     private void ApplyRecordLayoutSizing(double width, double height)
     {
         double widthRatio = Math.Clamp(
             (width - MinimumResponsiveWidth) / (WideResponsiveWidth - MinimumResponsiveWidth),
             0.0,
             1.0);
-        double secondaryButtonSize = Math.Round(Lerp(
-            CompactSecondaryButtonSize,
-            WideSecondaryButtonSize,
-            widthRatio));
-        double playButtonSize = Math.Round(Lerp(
-            CompactPlayButtonSize,
-            WidePlayButtonSize,
-            widthRatio));
+        double transportButtonSize = ResolveTransportButtonSize(width);
 
-        SetButtonSize(RecordPlaybackModeButton, secondaryButtonSize);
-        SetButtonSize(RecordPreviousButton, secondaryButtonSize);
-        SetButtonSize(RecordPlayPauseButton, playButtonSize);
-        SetButtonSize(RecordNextButton, secondaryButtonSize);
-        SetButtonSize(RecordVolumeButton, secondaryButtonSize);
+        SetButtonSize(RecordPlaybackModeButton, transportButtonSize);
+        SetButtonSize(RecordPreviousButton, transportButtonSize);
+        SetButtonSize(RecordPlayPauseButton, transportButtonSize);
+        SetButtonSize(RecordNextButton, transportButtonSize);
+        SetButtonSize(RecordVolumeButton, transportButtonSize);
         RecordControlsPanel.Spacing = Math.Round(Lerp(4, 10, widthRatio));
 
         // On narrow grids drop the playback-mode button first; volume stays.
         RecordPlaybackModeButton.Visibility = width < 190 ? Visibility.Collapsed : Visibility.Visible;
 
         // Reserve room for the title/artist/progress/controls rows below the disc.
-        double reserved = 108 + playButtonSize;
+        double reserved = 108 + transportButtonSize;
         double vinylSize = Math.Clamp(Math.Min(width - 24, height - reserved), 64, 230);
         RecordVinylHost.Width = vinylSize;
         RecordVinylHost.Height = vinylSize;
@@ -670,27 +665,23 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             (width - MinimumResponsiveWidth) / (WideResponsiveWidth - MinimumResponsiveWidth),
             0.0,
             1.0);
-        double secondaryButtonSize = Math.Round(Lerp(
-            CompactSecondaryButtonSize,
-            WideSecondaryButtonSize,
-            widthRatio));
-        double playButtonSize = Math.Round(Lerp(
-            CompactPlayButtonSize,
-            WidePlayButtonSize,
-            widthRatio));
+        double transportButtonSize = ResolveTransportButtonSize(width);
 
-        SetButtonSize(RecordHorizontalPlaybackModeButton, secondaryButtonSize);
-        SetButtonSize(RecordHorizontalPreviousButton, secondaryButtonSize);
-        SetButtonSize(RecordHorizontalPlayPauseButton, playButtonSize);
-        SetButtonSize(RecordHorizontalNextButton, secondaryButtonSize);
-        SetButtonSize(RecordHorizontalVolumeButton, secondaryButtonSize);
+        SetButtonSize(RecordHorizontalPlaybackModeButton, transportButtonSize);
+        SetButtonSize(RecordHorizontalPreviousButton, transportButtonSize);
+        SetButtonSize(RecordHorizontalPlayPauseButton, transportButtonSize);
+        SetButtonSize(RecordHorizontalNextButton, transportButtonSize);
+        SetButtonSize(RecordHorizontalVolumeButton, transportButtonSize);
         double controlsSpacing = Math.Round(Lerp(3, 8, widthRatio));
         RecordHorizontalControlsPanel.Spacing = controlsSpacing;
 
-        // On narrow grids drop the playback-mode button first; volume stays.
-        bool small = width < 250;
-        bool showPlaybackMode = !small;
+        // Preserve the three native transport controls at every width. Auxiliary
+        // controls return only when the horizontal layout has room for them.
+        bool small = width < 280;
+        bool showVolume = ShouldShowHorizontalVolumeControl(width);
+        bool showPlaybackMode = ShouldShowHorizontalPlaybackModeControl(width);
         RecordHorizontalPlaybackModeButton.Visibility = showPlaybackMode ? Visibility.Visible : Visibility.Collapsed;
+        RecordHorizontalVolumeButton.Visibility = showVolume ? Visibility.Visible : Visibility.Collapsed;
 
         double padding = small ? 8 : 12;
         double columnSpacing = small ? 8 : 12;
@@ -700,8 +691,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         RecordHorizontalArtistText.FontSize = small ? 11 : 12;
 
         // Never let the vinyl squeeze the controls: budget the buttons' width first.
-        int buttonCount = showPlaybackMode ? 5 : 4;
-        double buttonsWidth = playButtonSize + (buttonCount - 1) * secondaryButtonSize +
+        int buttonCount = 3 + (showVolume ? 1 : 0) + (showPlaybackMode ? 1 : 0);
+        double buttonsWidth = buttonCount * transportButtonSize +
             (buttonCount - 1) * controlsSpacing;
         double vinylBudget = width - buttonsWidth - padding * 2 - columnSpacing;
         double vinylSize = Math.Clamp(

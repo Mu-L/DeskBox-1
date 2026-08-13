@@ -15,7 +15,6 @@ internal static class MemoryCleanupPolicy
     internal const long VisibleIdleWorkingSetThresholdBytes = 300L * 1024 * 1024;
     internal const long VisibleIdlePrivateBytesThreshold = 320L * 1024 * 1024;
     internal const long VisibleIdleMinimumAllocationBytes = 32L * 1024 * 1024;
-    internal const long VisibleIdleWorkingSetTrimThresholdBytes = 220L * 1024 * 1024;
     internal const long HiddenIdleWorkingSetTrimThresholdBytes = 220L * 1024 * 1024;
 
     public static bool IsVisibleIdleCandidate(MemoryCleanupActivitySnapshot snapshot)
@@ -40,22 +39,15 @@ internal static class MemoryCleanupPolicy
             !snapshot.IsPointerOverDeskBox;
     }
 
-    public static bool ShouldTrimVisibleIdleWorkingSet(
-        MemoryCleanupActivitySnapshot snapshot,
-        bool isSearchIndexing,
-        bool isSearchIndexResident,
-        long workingSetBytes)
+    public static bool CanRunSearchIndexReconciliation(
+        MemoryCleanupActivitySnapshot snapshot)
     {
-        return snapshot.HasVisibleWidgets &&
-            !snapshot.IsWidgetInteractionActive &&
+        return !snapshot.IsWidgetInteractionActive &&
             !snapshot.IsSettingsOpen &&
             !snapshot.IsOnboardingOpen &&
             !snapshot.IsSearchPopupVisible &&
             !snapshot.IsDeskBoxForeground &&
-            !snapshot.IsPointerOverDeskBox &&
-            !isSearchIndexing &&
-            !isSearchIndexResident &&
-            workingSetBytes >= VisibleIdleWorkingSetTrimThresholdBytes;
+            !snapshot.IsPointerOverDeskBox;
     }
 
     public static bool ShouldTrimHiddenIdleWorkingSet(

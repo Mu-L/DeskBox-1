@@ -281,17 +281,6 @@ public partial class SettingsViewModel
         _settingsService.SaveDebounced();
     }
 
-    partial void OnTodoConfirmBeforeDeleteChanged(bool value)
-    {
-        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
-        {
-            return;
-        }
-
-        _settingsService.Settings.TodoConfirmBeforeDelete = value;
-        _settingsService.SaveDebounced();
-    }
-
     partial void OnTodoReminderEnabledChanged(bool value)
     {
         OnPropertyChanged(nameof(TodoReminderSummaryText));

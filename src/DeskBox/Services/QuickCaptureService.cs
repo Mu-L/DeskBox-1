@@ -20,11 +20,17 @@ public sealed record QuickCaptureDeletedItemSnapshot(
     QuickCaptureItem Item,
     bool IsRecent);
 
+public sealed record QuickCaptureWriteResult(
+    bool Saved,
+    bool WasTruncated,
+    QuickCaptureItem? Item);
+
 public sealed class QuickCaptureService
 {
     public const int DefaultRecentLimit = 30;
     public const int MinRecentLimit = 10;
     public const int MaxRecentLimit = 100;
+    public const int MaxItemBodyCharacters = MarkdownDocumentService.MaxCharacters;
     private const uint ThumbnailMaxPixelSize = 180;
     private static readonly TimeSpan ExportCleanupAge = TimeSpan.FromDays(1);
 
@@ -58,6 +64,20 @@ public sealed class QuickCaptureService
         QuickCaptureAppearancePreset appearancePreset,
         TextContentFormat contentFormat = TextContentFormat.PlainText)
     {
+        QuickCaptureWriteResult result = await AddDetailedItemWithResultAsync(
+            title,
+            body,
+            appearancePreset,
+            contentFormat);
+        return result.Item!;
+    }
+
+    public async Task<QuickCaptureWriteResult> AddDetailedItemWithResultAsync(
+        string? title,
+        string body,
+        QuickCaptureAppearancePreset appearancePreset,
+        TextContentFormat contentFormat = TextContentFormat.PlainText)
+    {
         contentFormat = NormalizeContentFormat(contentFormat);
         string normalizedBody = NormalizeBody(body, contentFormat);
         string? normalizedTitle = NormalizeOptionalText(title);
@@ -66,6 +86,15 @@ public sealed class QuickCaptureService
             throw new ArgumentException("Quick Capture title and body cannot both be empty.", nameof(body));
         }
 
+        string itemId = Guid.NewGuid().ToString("N");
+        var attachments = new List<TodoAttachment>();
+        normalizedBody = await ExtractInlineMarkdownImagesAsync(
+            itemId,
+            normalizedBody,
+            contentFormat,
+            attachments);
+        normalizedBody = TruncateBody(normalizedBody, out bool wasTruncated);
+
         await _gate.WaitAsync();
         try
         {
@@ -73,11 +102,13 @@ public sealed class QuickCaptureService
             var now = DateTimeOffset.UtcNow;
             var item = new QuickCaptureItem
             {
+                Id = itemId,
                 Body = normalizedBody,
                 ContentFormat = contentFormat,
                 Title = normalizedTitle,
                 Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text,
                 Url = url,
+                Attachments = attachments,
                 AppearancePreset = NormalizeAppearancePreset(appearancePreset),
                 SourceKind = QuickCaptureSourceKind.Manual,
                 IsRecent = false,
@@ -93,7 +124,7 @@ public sealed class QuickCaptureService
 
             _data.Items.Insert(0, item);
             await SaveCoreAsync();
-            return Clone(item);
+            return new QuickCaptureWriteResult(true, wasTruncated, Clone(item));
         }
         finally
         {
@@ -103,9 +134,15 @@ public sealed class QuickCaptureService
 
     public async Task<bool> UpdateItemAsync(string itemId, string body)
     {
+        QuickCaptureWriteResult result = await UpdateItemWithResultAsync(itemId, body);
+        return result.Saved;
+    }
+
+    public async Task<QuickCaptureWriteResult> UpdateItemWithResultAsync(string itemId, string body)
+    {
         if (string.IsNullOrWhiteSpace(itemId))
         {
-            return false;
+            return new QuickCaptureWriteResult(false, false, null);
         }
 
         await _gate.WaitAsync();
@@ -115,21 +152,27 @@ public sealed class QuickCaptureService
             var item = _data!.Items.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.Ordinal));
             if (item is null || item.IsDeleted)
             {
-                return false;
+                return new QuickCaptureWriteResult(false, false, null);
             }
 
             string normalizedBody = NormalizeBody(body, item.ContentFormat);
             if (string.IsNullOrWhiteSpace(normalizedBody))
             {
-                return false;
+                return new QuickCaptureWriteResult(false, false, null);
             }
 
+            normalizedBody = await ExtractInlineMarkdownImagesAsync(
+                item.Id,
+                normalizedBody,
+                item.ContentFormat,
+                item.Attachments);
+            normalizedBody = TruncateBody(normalizedBody, out bool wasTruncated);
             item.Body = normalizedBody;
             item.Type = TryDetectUrl(normalizedBody, out string? url) ? QuickCaptureItemType.Link : QuickCaptureItemType.Text;
             item.Url = url;
             item.UpdatedAt = DateTimeOffset.UtcNow;
             await SaveCoreAsync();
-            return true;
+            return new QuickCaptureWriteResult(true, wasTruncated, Clone(item));
         }
         finally
         {
@@ -1135,9 +1178,25 @@ public sealed class QuickCaptureService
         QuickCaptureAppearancePreset appearancePreset,
         TextContentFormat? contentFormat = null)
     {
+        QuickCaptureWriteResult result = await UpdateItemDetailsWithResultAsync(
+            itemId,
+            title,
+            body,
+            appearancePreset,
+            contentFormat);
+        return result.Saved;
+    }
+
+    public async Task<QuickCaptureWriteResult> UpdateItemDetailsWithResultAsync(
+        string itemId,
+        string? title,
+        string body,
+        QuickCaptureAppearancePreset appearancePreset,
+        TextContentFormat? contentFormat = null)
+    {
         if (string.IsNullOrWhiteSpace(itemId))
         {
-            return false;
+            return new QuickCaptureWriteResult(false, false, null);
         }
 
         await _gate.WaitAsync();
@@ -1148,7 +1207,7 @@ public sealed class QuickCaptureService
                 string.Equals(entry.Id, itemId, StringComparison.Ordinal) && !entry.IsDeleted);
             if (item is null)
             {
-                return false;
+                return new QuickCaptureWriteResult(false, false, null);
             }
 
             TextContentFormat effectiveFormat = NormalizeContentFormat(contentFormat ?? item.ContentFormat);
@@ -1159,9 +1218,15 @@ public sealed class QuickCaptureService
                 string.IsNullOrWhiteSpace(normalizedTitle) &&
                 string.IsNullOrWhiteSpace(normalizedBody))
             {
-                return false;
+                return new QuickCaptureWriteResult(false, false, null);
             }
 
+            normalizedBody = await ExtractInlineMarkdownImagesAsync(
+                item.Id,
+                normalizedBody,
+                effectiveFormat,
+                item.Attachments);
+            normalizedBody = TruncateBody(normalizedBody, out bool wasTruncated);
             item.Title = normalizedTitle;
             item.Body = normalizedBody;
             item.ContentFormat = effectiveFormat;
@@ -1176,7 +1241,7 @@ public sealed class QuickCaptureService
             item.AppearancePreset = NormalizeAppearancePreset(appearancePreset);
             item.UpdatedAt = DateTimeOffset.UtcNow;
             await SaveCoreAsync();
-            return true;
+            return new QuickCaptureWriteResult(true, wasTruncated, Clone(item));
         }
         finally
         {
@@ -1257,7 +1322,58 @@ public sealed class QuickCaptureService
 
     private async Task EnsureLoadedCoreAsync()
     {
-        _data ??= await _store.LoadAsync();
+        if (_data is not null)
+        {
+            return;
+        }
+
+        _data = await _store.LoadAsync();
+        bool migrated = false;
+        foreach (QuickCaptureItem item in _data.Items.Where(item => !item.IsDeleted))
+        {
+            string body = await ExtractInlineMarkdownImagesAsync(
+                item.Id,
+                item.Body,
+                item.ContentFormat,
+                item.Attachments);
+            body = TruncateBody(body, out _);
+            if (!string.Equals(body, item.Body, StringComparison.Ordinal))
+            {
+                item.Body = body;
+                migrated = true;
+            }
+        }
+
+        if (migrated)
+        {
+            await SaveCoreAsync(notify: false);
+        }
+    }
+
+    private async Task<string> ExtractInlineMarkdownImagesAsync(
+        string itemId,
+        string body,
+        TextContentFormat contentFormat,
+        List<TodoAttachment> attachments)
+    {
+        if (contentFormat != TextContentFormat.Markdown || string.IsNullOrEmpty(body))
+        {
+            return body;
+        }
+
+        MarkdownInlineImageExtractionResult result = await MarkdownInlineImageExtractor.ExtractAsync(
+            body,
+            Path.Combine(_store.AttachmentDirectory, itemId));
+        foreach (TodoAttachment attachment in result.Attachments)
+        {
+            if (!attachments.Any(existing =>
+                    string.Equals(existing.Id, attachment.Id, StringComparison.Ordinal)))
+            {
+                attachments.Add(attachment);
+            }
+        }
+
+        return result.Body;
     }
 
     private async Task SaveCoreAsync(bool notify = true)
@@ -1290,6 +1406,23 @@ public sealed class QuickCaptureService
 
         string value = body.Replace("\0", string.Empty, StringComparison.Ordinal);
         return contentFormat == TextContentFormat.Markdown ? value : value.Trim();
+    }
+
+    private static string TruncateBody(string body, out bool wasTruncated)
+    {
+        wasTruncated = body.Length > MaxItemBodyCharacters;
+        if (!wasTruncated)
+        {
+            return body;
+        }
+
+        int length = MaxItemBodyCharacters;
+        if (char.IsHighSurrogate(body[length - 1]) && char.IsLowSurrogate(body[length]))
+        {
+            length--;
+        }
+
+        return body[..length];
     }
 
     private static string? NormalizeOptionalText(string? value)

@@ -442,7 +442,6 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.TodoEditorEnterBehavior = EditorEnterBehaviorCtrlEnterSaves;
         settings.TodoShowFooterStats = false;
         settings.TodoShowClearCompletedButton = true;
-        settings.TodoConfirmBeforeDelete = false;
         settings.TodoReminderEnabled = true;
         settings.TodoDefaultReminderOffsetMinutes = DefaultTodoReminderOffsetMinutes;
         settings.TodoUseWideDetailPane = true;

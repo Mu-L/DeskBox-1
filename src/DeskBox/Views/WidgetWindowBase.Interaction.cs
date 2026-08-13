@@ -391,12 +391,7 @@ public abstract partial class WidgetWindowBase
                 ResizeDirection,
                 limits.MinWidth,
                 limits.MaxWidth);
-            ApplyWindowBounds(
-                compactSnapped.X,
-                compactSnapped.Y,
-                compactSnapped.Width,
-                compactSnapped.Height,
-                persist: false);
+            QueueInteractiveResizeBounds(compactSnapped);
             e.Handled = true;
             return;
         }
@@ -432,7 +427,7 @@ public abstract partial class WidgetWindowBase
         var proposed = new RectInt32(newX, newY, newWidth, newHeight);
         var snapped = App.Current.ResizeGuideOverlay.UpdateGuidesAndSnap(proposed, ResizeDirection);
         snapped = AnchorExpandedResizeBounds(snapped);
-        ApplyWindowBounds(snapped.X, snapped.Y, snapped.Width, snapped.Height, persist: false);
+        QueueInteractiveResizeBounds(snapped);
         e.Handled = true;
     }
 
@@ -444,6 +439,7 @@ public abstract partial class WidgetWindowBase
         }
 
         IsResizing = false;
+        FlushPendingInteractiveResizeBounds();
         element.ReleasePointerCapture(e.Pointer);
         App.Current.ResizeGuideOverlay.EndResize();
         PersistCompletedWidgetResize(GetActualWindowBounds());
@@ -469,6 +465,7 @@ public abstract partial class WidgetWindowBase
         }
 
         IsResizing = false;
+        FlushPendingInteractiveResizeBounds();
         DragCaptureElement = null;
         App.Current?.ResizeGuideOverlay.EndResize();
         PersistCompletedWidgetResize(GetActualWindowBounds());

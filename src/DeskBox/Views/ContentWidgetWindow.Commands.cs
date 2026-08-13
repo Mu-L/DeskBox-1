@@ -575,7 +575,7 @@ public sealed partial class ContentWidgetWindow
     {
         if (_contentHost.CurrentContent?.View is TodoWidgetContent todoContent)
         {
-            todoContent.ShowClearAllConfirmation(ContentWidgetShell.MoreActionButton);
+            todoContent.ClearAllTodos();
         }
     }
 

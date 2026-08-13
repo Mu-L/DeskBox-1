@@ -36,6 +36,10 @@ build_*.txt
 # Internal planning
 .mimocode/
 .claude/
+.workbuddy/
+
+# Local one-off analysis reports
+/内存性能分析报告.md
 
 # CI test results
 .github-test-results-*/

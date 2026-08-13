@@ -23,6 +23,25 @@ public static partial class Win32Helper
     private static extern int DCompositionBoostCompositorClock(
         [MarshalAs(UnmanagedType.Bool)] bool enable);
 
+    [LibraryImport("gdi32.dll", SetLastError = true)]
+    public static partial IntPtr CreateRoundRectRgn(
+        int left,
+        int top,
+        int right,
+        int bottom,
+        int ellipseWidth,
+        int ellipseHeight);
+
+    [LibraryImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DeleteObject(IntPtr objectHandle);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    public static partial int SetWindowRgn(
+        IntPtr hWnd,
+        IntPtr region,
+        [MarshalAs(UnmanagedType.Bool)] bool redraw);
+
     /// <summary>
     /// Requests the DirectComposition compositor clock to run at its active
     /// cadence while a short interactive animation is in progress. This is a
@@ -158,8 +177,10 @@ public static partial class Win32Helper
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOREDRAW = 0x0008;
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
+    public const uint SWP_NOCOPYBITS = 0x0100;
     public const uint SWP_FRAMECHANGED = 0x0020;
     public const uint SWP_NOOWNERZORDER = 0x0200;
     public const int SW_HIDE = 0;

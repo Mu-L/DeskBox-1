@@ -46,7 +46,6 @@ public sealed partial class QuickCaptureWidgetWindow :
     private const double QuickCaptureDialogMaxWidth = 360.0;
     private const double QuickCaptureDialogMinButtonWidth = 76.0;
     private const double QuickCaptureDialogMaxButtonWidth = 112.0;
-    private const double DeleteConfirmFlyoutWidth = 232.0;
     private const int CopyToastMs = 900;
     private const int StatusToastDefaultMs = 1400;
     private const int StatusToastUndoMs = 4200;
@@ -147,7 +146,6 @@ public sealed partial class QuickCaptureWidgetWindow :
     private long _visibleContentResumeGeneration;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;
-    private MenuFlyout? _pendingDeleteConfirmFlyout;
     private string? _copySelectionAnchorId;
     private string? _draggedQuickCaptureItemId;
     private readonly List<string> _draggedQuickCaptureItemIds = [];

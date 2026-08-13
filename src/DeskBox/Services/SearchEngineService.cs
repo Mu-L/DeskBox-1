@@ -46,6 +46,7 @@ public sealed class SearchEngineService : IDisposable
 
     public bool IsCustomIndexing => _indexService.IsScanning ||
                                     _indexService.IsLoading ||
+                                    _indexService.IsReconciliationPending ||
                                     _usnIndexService is { IsScanning: true };
 
     public bool IsIndexPaused => _indexService.IsPaused ||

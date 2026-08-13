@@ -3,7 +3,7 @@
 > 文档性质：技术实现手册 + 故障复盘指南。
 > 适用场景：F7 / 托盘唤起格子后出现的层级类问题（压屏、不回落、闪烁、不收起等）。
 > 关联文档：`docs/architecture/widget_layer_workspace_plan.md`（产品规则口径）、`docs/architecture/current_architecture.md`（整体架构）。
-> 最后更新：2026-07-24（随「F7 唤起压屏」A+B+D 修复同步撰写）。
+> 最后更新：2026-08-12（按现行代码校正回落策略、组恢复与空闲排序规则）。
 
 ---
 
@@ -13,7 +13,7 @@
 
 | 状态 | 含义 | Z-order 位置 |
 |---|---|---|
-| 桌面静置（DesktopResting） | 常态，贴在桌面层 | 桌面图标附近 / 普通层级带底部 |
+| 桌面静置（DesktopResting） | 常态逻辑状态；物理位置由本次回落目标决定 | 外部前台窗口之后，或桌面图标附近 / 普通层级带底部 |
 | 唤起（RaisedSession） | F7/托盘唤起，临时浮到最前 | **普通层级带顶部（非持久 TopMost）** |
 | 交互中（InteractionActive） | 用户正在拖拽/重命名/开菜单 | 同唤起，且阻止自动回落 |
 | 隐藏（Hidden） | 不可见 | — |
@@ -22,6 +22,15 @@
 
 1. **动态层级（默认）**：本文档主要描述的模式。F7 唤起时浮起，交互结束/点击外部后回落。
 2. **桌面固定层（DesktopPinned，实验）**：格子 attach 到 WorkerW 桌面容器，所有"置顶/回落"操作都改为桌面图标层内的兄弟排序。**注意：几乎所有 Z-order 入口函数都有 `UsesDesktopPinnedMode()` 分支，修改任何一条路径时必须两种模式都过一遍。**
+
+现行代码还把“逻辑状态”和“物理落点”分开处理。`DesktopResting` 只表示格子已经退出临时唤起/交互状态，不再等同于“绝对底层”。动态模式回落时由 `RelativeLayerRestorePolicy` 选择物理落点：
+
+| 回落判定 | 物理落点 |
+|---|---|
+| 外部应用获得前台 | 整组格子紧随该前台窗口之后，保留格子内部顺序 |
+| 前台是 DeskBox 自身 | 保持当前全局层级，只整理格子内部顺序 |
+| 前台缺失或为桌面壳 | 回到桌面层 / 普通层级带底部 |
+| DesktopPinned 模式 | 回到 Explorer 桌面 Owner 内，仅做桌面兄弟排序 |
 
 格子窗口有两种宿主类型，**每条唤起/回落路径都有两份平行实现**，改动时必须同步：
 
@@ -125,13 +134,15 @@ SetWindowPos(hwnd, HWND_NOTOPMOST, ..., SWP_NOACTIVATE | SWP_SHOWWINDOW);
 
 > **历史教训（坑 #1）**：旧实现用 `GetAsyncKeyState & 0x0001` 低位（"自上次查询以来是否按下"）。低位只对**派发到本线程消息队列**的输入可靠，点击其他进程窗口时经常不置位——这就是"点同一窗口 1 次不回落"的根因。代码注释里早就写了 *"GetAsyncKeyState (which only sees presses posted to our own thread)"*，但仍被用作唯一兜底信号。**检测跨进程点击，只能用高位轮询 + 自己记边沿，或 WH_MOUSE_LL 钩子。**
 
-### 4.4 回落执行
+### 4.4 回落执行（现行代码）
 
-`WidgetManager.RestoreRaisedWidgetsToDesktopLayer`（`WidgetManager.cs:1141`）→ 每个格子 `ForceRestoreDesktopLayerFromManager()` → `RestoreDesktopLayer(force: true)` → `ClearTopMostOnly()` → `WidgetLayerService.ClearTopMostPreservingForeground()`。
+`WidgetManager.RestoreRaisedWidgetsToDesktopLayer` 先让各宿主执行 `ForceRestoreDesktopLayerFromManager()`，清理临时置顶、交互计时器及逻辑状态；随后调用 `WidgetLayerService.RestoreGroupPreservingForeground()`，把所有可见格子作为一个连续 Z-order 组恢复。
 
-关键点（方案 A，2026-07-24 修复）：`ClearTopMostPreservingForeground` **无条件** `BringWindowToFront(foreground)`（`WidgetLayerService.cs:30`）。此前有 `wasTopMost` 门控——格子本就不是持久置顶，门控恒为 false → **状态回落了但画面不变**（静默回落），下一次 F7 命中 `visible-widgets-behind→raise` 变成"闪烁不收起"。
+组恢复只读取一次当前前台根窗口，并按 `RelativeLayerRestorePolicy` 选择落点：外部页面对应 `BehindForeground`，DeskBox 前台对应 `PreservePeerOrder`，桌面壳或无有效前台对应 `DesktopBottom`。外部页面分支以该页面为固定边界，使用 `BeginDeferWindowPos` / `DeferWindowPos` 一次排列整个格子组；失败时再以相同边界逐格子 `SetWindowPos` 兜底。
 
-> **坑 #2**：Windows 对"点击**已激活**窗口内部"**不做任何 Z-order 变更**。所以只要激活失败（§3.3 第 8 步）且用户点回原窗口，除了监视器主动 `BringWindowToFront(foreground)` 外，没有任何力量能把格子压下去。回落必须自带视觉效果，不能指望系统。
+`NormalizeIdleWidgetZOrder()` 只能整理格子之间的顺序。它以当前最高格子的上一窗口作为全局边界，不得调用 `MoveToDesktopBottom()`、`SetWindowToBottom()` 或重新绑定 Owner。否则前面刚建立的“前台页面 > 格子组 > 更早页面”会在恢复末尾或 120ms 延迟回调中被覆盖成“所有页面 > 格子组”。
+
+> **关键约束**：回落必须同时完成“退出临时唤起状态”和“建立新的全局 Z-order 边界”。单窗口可以负责清理自身状态；多个格子的全局位置只能由管理器按组确定。
 
 ---
 
@@ -144,7 +155,7 @@ SetWindowPos(hwnd, HWND_NOTOPMOST, ..., SWP_NOACTIVATE | SWP_SHOWWINDOW);
 | `src/DeskBox/Services/WidgetManager.cs` | `ShouldHideWidgetsForTrayToggle`（231）、`RestoreRaisedWidgetsToDesktopLayer`（1141）、`IsWidgetInteractionActive`（112） |
 | `src/DeskBox/Services/WidgetManager.TrayAnimation.cs` | `RaiseWidgetsFromTrayAsync` 唤起序列、`_foregroundAtRaiseTime`、抑制窗、`ActivateLastRaisedWindow` |
 | `src/DeskBox/Services/WidgetManager.ZOrder.cs` | **恢复监视器（200ms）+ 鼠标采样器（50ms）+ 交互泄漏看门狗**，前台/任务栏/桌面壳判定 |
-| `src/DeskBox/Services/WidgetLayerService.cs` | Z-order 原语：`BringWindowTemporarilyToFront`、`BringGroupTemporarilyToFront`、`ClearTopMostPreservingForeground`、DesktopPinned attach/detach |
+| `src/DeskBox/Services/WidgetLayerService.cs` | Z-order 原语：`BringWindowTemporarilyToFront`、`BringGroupTemporarilyToFront`、`RestoreGroupPreservingForeground`、相对前台组排序、DesktopPinned attach/detach |
 | `src/DeskBox/Services/WidgetSessionManager.cs` | 会话状态机 + 交互深度计数（`BeginInteraction`/`EndInteraction`/`ForceResetInteractions`） |
 | `src/DeskBox/Helpers/Win32Helper.cs` | `BringWindowTemporarilyToFront`（556）、`SetWindowTopMost`（575）、`ClearWindowTopMost`（590）、`IsAnyMouseButtonDown`（约 344）、`GetAsyncKeyState` 封装 |
 | `src/DeskBox/Views/WidgetWindowBase.Interaction.cs` | 基类版本同上 + `ShouldDeferDesktopLayerRestore`（94） |
@@ -162,10 +173,10 @@ SetWindowPos(hwnd, HWND_NOTOPMOST, ..., SWP_NOACTIVATE | SWP_SHOWWINDOW);
 - **正确做法**：高位（`& 0x8000`）全局物理状态 + 50ms 轮询 + 自记 up→down 边沿（已实现，见 §4.3）；或 `WH_MOUSE_LL` 全局钩子（兜底升级路径，暂未启用）。
 - 采样间隔必须小于典型点击按下时长（50-150ms），200ms 轮询会漏快速点击。
 
-### 坑 #2：以为"点击其他窗口"一定会产生 Z-order 变化 —— 不会
-- Windows 只在**激活**窗口时把它抬到本层级带顶部。点击**已经激活**的窗口内部，什么都不发生。
-- 因此"格子浮起（激活失败）→ 用户点回原窗口"这个最高频操作，系统层面**没有任何自动恢复机制**，必须靠自己的监视器检测到点击后 `BringWindowToFront(foreground)`。
-- 回落函数里的任何 `wasTopMost` 之类门控都可能让回落"状态变了、画面没变"（静默回落），排查时先确认视觉链路。
+### 坑 #2：把状态回落等同于 `HWND_BOTTOM` —— 会破坏页面相对层级
+- 点击外部页面后，Windows 会把该页面提升到普通层级带顶部；格子此时自然应成为紧随其后的连续组。
+- 如果恢复末尾或延迟空闲排序再调用 `MoveToDesktopBottom()`，格子会从“新前台页面之后”直接掉到所有普通页面之后。
+- `HWND_BOTTOM` 只允许用于桌面壳/无有效前台等明确的桌面回落场景。外部页面场景必须使用该前台根窗口作为 `hWndInsertAfter` 边界。
 
 ### 坑 #3：`SetForegroundWindow` 静默失败 —— 必须检查返回值
 - Windows 前台锁（foreground lock）规则：只有"收到最后一次输入事件"的进程等少数情况能抢前台。热键 → 异步队列 → 窗口准备/动画耗时后，输入归属可能已丢失；前台是提权进程时 UIPI 直接拒绝。
@@ -205,7 +216,7 @@ SetWindowPos(hwnd, HWND_NOTOPMOST, ..., SWP_NOACTIVATE | SWP_SHOWWINDOW);
 |---|---|---|
 | 唤起后点外部窗口，格子**从不**回落 | 回落信号全失效（坑 #1/#4）或监视器没启动 | 日志搜 `[TrayBatch] RaisedStateMonitor started` 是否出现 |
 | 点**不同**窗口能回落，点**同一**窗口不回落 | 激活失败 + 鼠标检测失效（坑 #1/#3） | 搜 `SetForegroundWindow FAILED` |
-| 回落了但画面没变，下次 F7 "闪烁不收起" | 静默回落（坑 #2） | `ClearTopMostPreservingForeground` 是否真的 `BringWindowToFront` |
+| 点击外部页面后格子直接掉到所有页面后面 | 回落后又被空闲排序绝对置底（坑 #2） | 搜 `Group restore ... disposition=BehindForeground` 后是否又出现 `SetWindowToBottom` |
 | 交互过一次格子后永远压屏 | 交互深度泄漏（坑 #4） | 搜 `Interaction watchdog` |
 | 只有前台是提权应用时出问题 | UIPI：热键走钩子兜底、激活必失败 | 同第 2 行 |
 | F7 时灵时不灵 | 同上（钩子路径在干活，主路径被 UIPI 拦） | `GlobalHotkeyService` 日志 `source=hook/registered` |
@@ -222,6 +233,8 @@ SetWindowPos(hwnd, HWND_NOTOPMOST, ..., SWP_NOACTIVATE | SWP_SHOWWINDOW);
         -deskbox-leave           DeskBox 曾有前台后离开（可靠）
 [TrayBatch] ToggleDecision=hide|raise reason=...    F7 决策依据
 [ZOrder] ... SetForegroundWindow FAILED             激活失败（坑 #3）
+[ZOrder] Group restore ... disposition=...          整组回落使用的前台锚点和策略
+[ZOrder] Window order applied reason=...             组排序边界和执行结果
 [TrayBatch] Interaction watchdog ...                交互泄漏看门狗（坑 #4）
 [WidgetSession] changed/kept ...                    会话状态机迁移
 ```
@@ -234,10 +247,14 @@ SetWindowPos(hwnd, HWND_NOTOPMOST, ..., SWP_NOACTIVATE | SWP_SHOWWINDOW);
 4. 点击**同一个**已激活窗口 1 次 → 格子应被盖住（鼠标边沿路径；修复前这里会卡住）。
 5. 再按 F7 → 格子正常收起。
 6. 提权应用（如管理员终端）在前台时重复 1-5，行为应一致（高位采样对提权进程同样有效）。
+7. 依次打开页面 A、B、C；在 C 上按 F7，再点击 C：预期顺序为 `C > 格子组 > B > A`，格子不得落到 A 之后。
+8. 重复第 7 步并点击 B：预期顺序为 `B > 格子组 > C > A`；再等待超过 120ms，顺序不得被空闲整理改变。
 
 ---
 
 ## 8. 本次修复（2026-07-24）变更清单
+
+> 本节保留历史记录。2026-08-12 的现行实现已用 `RelativeLayerRestorePolicy` 与 `RestoreGroupPreservingForeground` 替代旧的“无条件 `BringWindowToFront(foreground)`”回落方式，实际排查应以 §1、§4.4 和当前代码为准。
 
 | 方案 | 文件 | 变更 |
 |---|---|---|
@@ -249,3 +266,16 @@ SetWindowPos(hwnd, HWND_NOTOPMOST, ..., SWP_NOACTIVATE | SWP_SHOWWINDOW);
 | D 看门狗 | `Services/WidgetSessionManager.cs` | 新增 `ForceResetInteractions` |
 | D 看门狗 | `Services/WidgetManager.ZOrder.cs` | `RunInteractionLeakWatchdog`：泄漏 >10s 且无 DeskBox 前台 → 强制清零 |
 | C toggle 语义 | — | **不改**：`visible-widgets-behind → raise` 特性经用户确认保留 |
+
+---
+
+## 9. 2026-08-12 相对页面层级修复
+
+| 文件 | 变更 |
+|---|---|
+| `Services/WidgetLayerService.cs` | 新增 `RestoreGroupPreservingForeground`；用同一个前台根窗口作为整组边界，并复用批量 peer 排序原语 |
+| `Services/WidgetManager.cs` | F7 回落先统一清理宿主状态，再以单次组操作确定全局 Z-order；取消宿主排队的过期空闲整理 |
+| `Services/WidgetManager.ZOrder.cs` | `NormalizeIdleWidgetZOrder` 改为 peer-only，不再对每个格子调用 `MoveToDesktopBottom` |
+| `tests/DeskBox.Tests/WidgetZOrderRestoreContractTests.cs` | 锁定“外部页面用组恢复”和“空闲整理不得绝对置底”两项契约 |
+
+预期层级示例：初始页面为 `C > B > A`，F7 后为 `格子组 > C > B > A`；用户点击 B 后必须变为 `B > 格子组 > C > A`，后续空闲排序只能改变格子组内部顺序。

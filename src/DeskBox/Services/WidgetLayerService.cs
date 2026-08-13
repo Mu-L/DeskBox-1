@@ -82,6 +82,97 @@ public static class WidgetLayerService
         return foreground;
     }
 
+    /// <summary>
+    /// Restores a raised widget group as one Z-order unit. When another
+    /// application owns the foreground, the whole group is inserted directly
+    /// behind that application instead of being flattened to HWND_BOTTOM.
+    /// </summary>
+    internal static bool RestoreGroupPreservingForeground(
+        IReadOnlyList<IntPtr> windowHandles,
+        string reason)
+    {
+        List<IntPtr> handles = windowHandles
+            .Where(handle => handle != IntPtr.Zero && Win32Helper.IsWindow(handle))
+            .Distinct()
+            .ToList();
+        if (handles.Count == 0)
+        {
+            return true;
+        }
+
+        if (UsesDesktopPinnedMode())
+        {
+            foreach (IntPtr handle in handles)
+            {
+                MoveToDesktopBottom(handle);
+            }
+
+            bool pinnedApplied = ApplyPeerOrderHighestToLowest(handles);
+            App.LogVerbose(
+                $"[ZOrder] Group restore reason={reason} mode=DesktopPinned " +
+                $"count={handles.Count} applied={pinnedApplied}");
+            return pinnedApplied;
+        }
+
+        IntPtr foreground = Win32Helper.GetForegroundWindow();
+        IntPtr foregroundRoot = GetForegroundRoot(foreground);
+        bool hasForeground =
+            foregroundRoot != IntPtr.Zero &&
+            Win32Helper.IsWindow(foregroundRoot);
+        RelativeLayerRestoreDisposition disposition = RelativeLayerRestorePolicy.Decide(
+            hasForeground,
+            hasForeground && IsDesktopShellWindow(foregroundRoot),
+            handles.Contains(foregroundRoot),
+            hasForeground && App.Current.IsDeskBoxWindow(foregroundRoot));
+
+        bool applied;
+        switch (disposition)
+        {
+            case RelativeLayerRestoreDisposition.DesktopBottom:
+                foreach (IntPtr handle in handles)
+                {
+                    MoveToDesktopBottom(handle);
+                }
+
+                applied = ApplyPeerOrderHighestToLowest(handles);
+                break;
+
+            case RelativeLayerRestoreDisposition.PreservePeerOrder:
+                foreach (IntPtr handle in handles)
+                {
+                    PrepareRestingWindowForRelativePlacement(handle);
+                }
+
+                applied = ApplyPeerOrderHighestToLowest(handles);
+                break;
+
+            case RelativeLayerRestoreDisposition.BehindForeground:
+                foreach (IntPtr handle in handles)
+                {
+                    PrepareRestingWindowForRelativePlacement(handle);
+                }
+
+                IntPtr boundary = Win32Helper.IsWindowTopMost(foregroundRoot)
+                    ? Win32Helper.HWND_TOP
+                    : foregroundRoot;
+                applied = ApplyWindowOrderHighestToLowest(
+                    handles,
+                    boundary,
+                    $"group-restore-{reason}");
+                break;
+
+            default:
+                applied = false;
+                break;
+        }
+
+        App.LogVerbose(
+            $"[ZOrder] Group restore reason={reason} count={handles.Count} " +
+            $"foreground=0x{foregroundRoot.ToInt64():X} " +
+            $"disposition={disposition} applied={applied}");
+        return applied;
+    }
+
     public static void ClearTopMost(IntPtr windowHandle)
     {
         if (UsesDesktopPinnedMode())
@@ -298,17 +389,7 @@ public static class WidgetLayerService
         IntPtr foregroundRoot,
         string reason)
     {
-        bool attachedToDesktop =
-            TryAttachRestingWindowWithoutChangingLevel(windowHandle);
-        if (!attachedToDesktop)
-        {
-            DetachFromDesktopIconLayerIfNeeded(windowHandle);
-        }
-
-        if (Win32Helper.IsWindowTopMost(windowHandle))
-        {
-            Win32Helper.ClearWindowTopMost(windowHandle);
-        }
+        bool attachedToDesktop = PrepareRestingWindowForRelativePlacement(windowHandle);
 
         // A topmost foreground window already owns the higher Z-order band, so
         // HWND_TOP safely places this non-topmost widget at the head of the
@@ -335,6 +416,23 @@ public static class WidgetLayerService
             $"foreground=0x{foregroundRoot.ToInt64():X} " +
             $"desktopAttached={attachedToDesktop} moved={moved}");
         return moved;
+    }
+
+    private static bool PrepareRestingWindowForRelativePlacement(IntPtr windowHandle)
+    {
+        bool attachedToDesktop =
+            TryAttachRestingWindowWithoutChangingLevel(windowHandle);
+        if (!attachedToDesktop)
+        {
+            DetachFromDesktopIconLayerIfNeeded(windowHandle);
+        }
+
+        if (Win32Helper.IsWindowTopMost(windowHandle))
+        {
+            Win32Helper.ClearWindowTopMost(windowHandle);
+        }
+
+        return attachedToDesktop;
     }
 
     private static IntPtr GetForegroundRoot(IntPtr foreground)
@@ -402,15 +500,29 @@ public static class WidgetLayerService
             return true;
         }
 
+        IntPtr currentHighest = FindHighestPeer(handles);
+        IntPtr boundary = currentHighest == IntPtr.Zero
+            ? IntPtr.Zero
+            : Win32Helper.GetWindow(currentHighest, Win32Helper.GW_HWNDPREV);
+        return ApplyWindowOrderHighestToLowest(
+            handles,
+            boundary == IntPtr.Zero ? Win32Helper.HWND_TOP : boundary,
+            "idle-peer-order");
+    }
+
+    private static bool ApplyWindowOrderHighestToLowest(
+        IReadOnlyList<IntPtr> handles,
+        IntPtr boundary,
+        string reason)
+    {
+        if (handles.Count == 0)
+        {
+            return true;
+        }
+
         lock (s_desktopLayerLock)
         {
-            IntPtr currentHighest = FindHighestPeer(handles);
-            IntPtr boundary = currentHighest == IntPtr.Zero
-                ? IntPtr.Zero
-                : Win32Helper.GetWindow(currentHighest, Win32Helper.GW_HWNDPREV);
-            IntPtr insertAfter = boundary == IntPtr.Zero
-                ? Win32Helper.HWND_TOP
-                : boundary;
+            IntPtr insertAfter = boundary;
             const uint flags =
                 Win32Helper.SWP_NOMOVE |
                 Win32Helper.SWP_NOSIZE |
@@ -442,15 +554,14 @@ public static class WidgetLayerService
                 if (deferred != IntPtr.Zero && Win32Helper.EndDeferWindowPos(deferred))
                 {
                     App.LogVerbose(
-                        $"[ZOrder] Idle peer order applied count={handles.Count} " +
+                        $"[ZOrder] Window order applied reason={reason} " +
+                        $"count={handles.Count} boundary=0x{boundary.ToInt64():X} " +
                         $"highest=0x{handles[0].ToInt64():X}");
                     return true;
                 }
             }
 
-            insertAfter = boundary == IntPtr.Zero
-                ? Win32Helper.HWND_TOP
-                : boundary;
+            insertAfter = boundary;
             bool succeeded = true;
             foreach (IntPtr handle in handles)
             {
@@ -466,7 +577,8 @@ public static class WidgetLayerService
             }
 
             App.LogVerbose(
-                $"[ZOrder] Idle peer order fallback count={handles.Count} " +
+                $"[ZOrder] Window order fallback reason={reason} " +
+                $"count={handles.Count} boundary=0x{boundary.ToInt64():X} " +
                 $"highest=0x{handles[0].ToInt64():X} succeeded={succeeded}");
             return succeeded;
         }

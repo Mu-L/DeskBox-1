@@ -138,21 +138,9 @@ public sealed class RuntimeActivityPolicyTests
             IsDeskBoxForeground: false,
             IsPointerOverDeskBox: false);
 
-        Assert.True(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-            snapshot,
-            isSearchIndexing: false,
-            isSearchIndexResident: false,
-            workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetTrimThresholdBytes));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-            snapshot with { IsDeskBoxForeground = true },
-            isSearchIndexing: false,
-            isSearchIndexResident: false,
-            workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetTrimThresholdBytes));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-            snapshot,
-            isSearchIndexing: false,
-            isSearchIndexResident: true,
-            workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetTrimThresholdBytes));
+        Assert.False(MemoryCleanupPolicy.CanTrimWorkingSet(snapshot));
+        Assert.False(MemoryCleanupPolicy.CanTrimWorkingSet(
+            snapshot with { IsDeskBoxForeground = true }));
 
         Assert.False(MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
             snapshot,

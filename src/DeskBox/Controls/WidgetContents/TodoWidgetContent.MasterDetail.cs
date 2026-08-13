@@ -19,6 +19,11 @@ public sealed partial class TodoWidgetContent
 
     private void TodoWidgetContent_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        if (_isInteractiveResizeActive)
+        {
+            return;
+        }
+
         ApplyMasterDetailLayout(e.NewSize.Width);
         QueueDetailTitleHeightUpdate();
         QueueTodoSegmentedRestore();
@@ -106,7 +111,20 @@ public sealed partial class TodoWidgetContent
             }
         }
 
+        ApplyDetailSaveButtonVisibility();
         ApplyMasterDetailVisibility();
+    }
+
+    private void ApplyDetailSaveButtonVisibility()
+    {
+        bool showSave = ViewModel?.SelectedDetailItem is not null;
+        DetailSaveButton.Visibility = showSave
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (_isDualPane)
+        {
+            DetailBackColumn.Width = new GridLength(0);
+        }
     }
 
     private void ApplyMasterDetailVisibility()
@@ -138,7 +156,10 @@ public sealed partial class TodoWidgetContent
 
     private async Task EnsureWideDetailSelectionAsync()
     {
-        if (_isEnsuringWideDetailSelection || !_isDualPane || ViewModel is null)
+        if (_isEnsuringWideDetailSelection ||
+            _isChangingTodoFilter ||
+            !_isDualPane ||
+            ViewModel is null)
         {
             return;
         }

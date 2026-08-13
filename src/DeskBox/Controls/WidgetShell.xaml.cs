@@ -381,6 +381,7 @@ public sealed partial class WidgetShell : UserControl
 
     public Grid TitleBar => TitleBarGrid;
     public Border BackgroundSurface => BackgroundPlate;
+    public double ActualTitleBarHeight => Math.Max(0, TitleBarGrid.ActualHeight);
     public Border Divider => HeaderDivider;
     public WidgetTitleIcon TitleIconElement => TitleIcon;
     public TextBlock TitleTextElement => TitleText;
@@ -1813,7 +1814,9 @@ public sealed partial class WidgetShell : UserControl
         CompactPrimaryActionIcon.Glyph = presentation.PrimaryActionGlyph;
         CompactPreviousButton.IsEnabled = presentation.CanGoPrevious;
         CompactNextButton.IsEnabled = presentation.CanGoNext;
-        CompactPlayPauseIcon.Glyph = presentation.IsPlaying ? "\uE769" : "\uE102";
+        CompactPlayPauseIcon.Kind = presentation.IsPlaying
+            ? MusicTransportIconKind.Pause
+            : MusicTransportIconKind.Play;
         ApplyCompactActionLabels(presentation.IsPlaying);
         UpdateCompactVinylRotation(showVinyl && presentation.IsPlaying);
         ApplyCompactForegroundTheme(presentation);

@@ -472,15 +472,25 @@ public sealed partial class QuickCaptureWidgetWindow
     {
         if ((sender as FrameworkElement)?.Tag is QuickCaptureItemViewModel item)
         {
-            if (item.IsRecent)
-            {
-                await ViewModel.PinRecentItemAsync(item);
-            }
-            else
-            {
-                await ViewModel.TogglePinnedAsync(item);
-            }
+            await TogglePinnedWithFeedbackAsync(item);
         }
+    }
+
+    private async Task<bool> TogglePinnedWithFeedbackAsync(
+        QuickCaptureItemViewModel item)
+    {
+        bool willPin = item.IsRecent || !item.IsPinned;
+        bool changed = item.IsRecent
+            ? await ViewModel.PinRecentItemAsync(item)
+            : await ViewModel.TogglePinnedAsync(item);
+        if (changed)
+        {
+            ShowStatusToast(_localizationService.T(willPin
+                ? "QuickCapture.PinnedSuccess"
+                : "QuickCapture.UnpinnedSuccess"));
+        }
+
+        return changed;
     }
 
     private async void SaveRecentItemButton_Click(object sender, RoutedEventArgs e)
@@ -507,12 +517,11 @@ public sealed partial class QuickCaptureWidgetWindow
         }
     }
 
-    private void DeleteItemButton_Click(object sender, RoutedEventArgs e)
+    private async void DeleteItemButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement element &&
-            element.Tag is QuickCaptureItemViewModel item)
+        if (sender is FrameworkElement { Tag: QuickCaptureItemViewModel item })
         {
-            ShowQuickCaptureDeleteConfirmFlyout(item, element);
+            await DeleteItemWithUndoAsync(item);
         }
     }
 
@@ -531,52 +540,21 @@ public sealed partial class QuickCaptureWidgetWindow
             StatusToastUndoMs);
     }
 
-    private void ShowQuickCaptureDeleteConfirmFlyout(QuickCaptureItemViewModel item, FrameworkElement anchor)
-    {
-        ShowConfirmMenu(
-            anchor,
-            _localizationService.T("QuickCapture.DeleteConfirm.Title"),
-            _localizationService.T("Common.Delete"),
-            async () => await DeleteItemWithUndoAsync(item));
-    }
-
-    private void ShowQuickCaptureDeleteSelectedConfirmFlyout(
+    private async Task DeleteSelectedQuickCaptureItemsAsync(
         IReadOnlyList<string> selectedIds,
-        bool isRecent,
-        FrameworkElement anchor)
+        bool isRecent)
     {
         if (selectedIds.Count == 0)
         {
             return;
         }
 
-        ShowConfirmMenu(
-            anchor,
-            _localizationService.Format("QuickCapture.DeleteSelectedConfirm.Title", selectedIds.Count),
-            _localizationService.T("Common.Delete"),
-            async () =>
-            {
-                ClearQuickCaptureCopySelection();
-                var deletedItems = await ViewModel.DeleteItemsAsync(selectedIds, isRecent);
-                if (deletedItems.Count > 0)
-                {
-                    ShowStatusToast(_localizationService.Format("QuickCapture.DeletedCount", deletedItems.Count));
-                }
-            });
-    }
-
-    private string GetDeleteConfirmPreviewText(QuickCaptureItemViewModel item)
-    {
-        string text = item.Type == QuickCaptureItemType.Image
-            ? _localizationService.T("QuickCapture.ImageItem")
-            : item.DisplayText;
-        text = string.Join(" ", text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries)).Trim();
-        if (string.IsNullOrWhiteSpace(text))
+        ClearQuickCaptureCopySelection();
+        var deletedItems = await ViewModel.DeleteItemsAsync(selectedIds, isRecent);
+        if (deletedItems.Count > 0)
         {
-            text = _localizationService.T("QuickCapture.Name");
+            ShowStatusToast(_localizationService.Format("QuickCapture.DeletedCount", deletedItems.Count));
         }
-
-        return text.Length <= 34 ? text : $"{text[..34].Trim()}...";
     }
 
 }

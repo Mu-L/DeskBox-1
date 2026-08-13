@@ -19,7 +19,7 @@ namespace DeskBox.Controls.WidgetContents;
 
 public sealed partial class TodoWidgetContent
 {
-    private void TodoListView_KeyDown(object sender, KeyRoutedEventArgs e)
+    private async void TodoListView_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         bool isCtrlPressed = Win32Helper.IsKeyPressed(VirtualKey.Control);
         if (isCtrlPressed && e.Key == VirtualKey.A)
@@ -45,13 +45,12 @@ public sealed partial class TodoWidgetContent
                 e.Handled = true;
                 if (selectedItems.Count == 1)
                 {
-                    ShowDeleteItemConfirmation(selectedItems[0], TodoListView);
+                    await DeleteItemAsync(selectedItems[0]);
                 }
                 else
                 {
-                    ShowDeleteSelectedConfirmation(
-                        selectedItems.Select(item => item.Id).ToArray(),
-                        TodoListView);
+                    await DeleteSelectedItemsAsync(
+                        selectedItems.Select(item => item.Id).ToArray());
                 }
                 return;
             }
@@ -247,10 +246,25 @@ public sealed partial class TodoWidgetContent
             if (ReferenceEquals(visibleItem, item) &&
                 TodoListView.ContainerFromItem(visibleItem) is FrameworkElement container)
             {
+                if (e.PropertyName == nameof(TodoItemViewModel.IsCompleted) &&
+                    FindVisualChild<CheckBox>(container, "TodoCompletionCheckBox") is { } checkBox)
+                {
+                    checkBox.IsChecked = item.IsCompleted;
+                }
+
                 ApplyTodoItemTooltips(container, item);
                 SetTodoItemHoverState(container, false);
                 break;
             }
+        }
+    }
+
+    private void SynchronizeTodoCompletionCheckBox(TodoItemViewModel item)
+    {
+        if (TodoListView.ContainerFromItem(item) is DependencyObject container &&
+            FindVisualChild<CheckBox>(container, "TodoCompletionCheckBox") is { } checkBox)
+        {
+            checkBox.IsChecked = item.IsCompleted;
         }
     }
 

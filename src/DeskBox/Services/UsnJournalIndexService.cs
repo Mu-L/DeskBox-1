@@ -171,8 +171,10 @@ public sealed partial class UsnJournalIndexService : IDisposable
     private readonly ConcurrentDictionary<string, byte> _sessionUnavailableVolumes = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _indexMutationLock = new();
     private readonly ManualResetEventSlim _pauseGate = new(true);
+    private readonly bool _allowFullVolumeIndexing;
     private CancellationTokenSource? _scanCts;
     private Task? _scanTask;
+    private int _safetyPolicyLogWritten;
     private int _isScanning;
     private int _isPaused;
     private volatile bool _isAvailable;
@@ -241,10 +243,28 @@ public sealed partial class UsnJournalIndexService : IDisposable
 
     public int CapacityLimitedVolumeCount => _capacityLimitedVolumes.Count;
 
+    internal bool IsFullVolumeIndexingAllowed => _allowFullVolumeIndexing;
+
     public event Action? IndexUpdated;
 
     /// <summary>Raised periodically during indexing with the current entry count.</summary>
     public event Action<int>? ProgressChanged;
+
+    /// <summary>
+    /// Full-volume USN enumeration is disabled by default because the current
+    /// reducer materializes per-file link dictionaries before the capped search
+    /// index is produced. On large multi-volume systems that graph can consume
+    /// gigabytes even though <see cref="MaxIndexEntries"/> is bounded.
+    /// </summary>
+    public UsnJournalIndexService()
+        : this(allowFullVolumeIndexing: false)
+    {
+    }
+
+    internal UsnJournalIndexService(bool allowFullVolumeIndexing)
+    {
+        _allowFullVolumeIndexing = allowFullVolumeIndexing;
+    }
 
     /// <summary>Pauses an in-progress scan.</summary>
     public void PauseIndexing()
@@ -269,6 +289,18 @@ public sealed partial class UsnJournalIndexService : IDisposable
     /// <summary>Starts background enumeration of every fixed NTFS volume.</summary>
     public void StartIndexing()
     {
+        if (!_allowFullVolumeIndexing)
+        {
+            if (Interlocked.Exchange(ref _safetyPolicyLogWritten, 1) == 0)
+            {
+                App.Log(
+                    "[UsnIndex] Full-volume indexing disabled by memory-safety policy; " +
+                    "using the directory index for this session.");
+            }
+
+            return;
+        }
+
         if (_isDisposed || Interlocked.CompareExchange(ref _indexingEnabled, 1, 0) != 0)
         {
             return;

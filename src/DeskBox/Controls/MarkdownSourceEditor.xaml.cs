@@ -19,7 +19,13 @@ namespace DeskBox.Controls;
 /// </summary>
 public sealed partial class MarkdownSourceEditor : UserControl
 {
+    private const int LargeDocumentThreshold = MarkdownDocumentService.MaxCharacters;
+    private const double FormattingButtonWidth = 28;
+    private const double FormattingButtonSpacing = 1;
+
     private bool _isSynchronizingText;
+    private bool _isApplyingTextLimit;
+    private bool _isTextLimitUpdateQueued;
     private EditorViewportSnapshot? _lastEditorViewport;
     private EditorViewportSnapshot? _pendingCommandViewport;
     private Func<string, string>? _textResolver;
@@ -30,9 +36,13 @@ public sealed partial class MarkdownSourceEditor : UserControl
     public MarkdownSourceEditor()
     {
         InitializeComponent();
-        FormattingCommandBar.AddHandler(
+        FormattingToolbar.AddHandler(
             PointerPressedEvent,
-            new PointerEventHandler(FormattingCommandBar_PointerPressed),
+            new PointerEventHandler(FormattingToolbar_PointerPressed),
+            handledEventsToo: true);
+        FormattingMenuPanel.AddHandler(
+            PointerPressedEvent,
+            new PointerEventHandler(FormattingToolbar_PointerPressed),
             handledEventsToo: true);
         EditorTextBox.AddHandler(
             PreviewKeyDownEvent,
@@ -150,6 +160,8 @@ public sealed partial class MarkdownSourceEditor : UserControl
 
     public event EventHandler? EditorTextChanged;
 
+    public event EventHandler? TextTruncated;
+
     public event EventHandler? CommitRequested;
 
     public event EventHandler? CancelRequested;
@@ -249,6 +261,7 @@ public sealed partial class MarkdownSourceEditor : UserControl
     {
         var editor = (MarkdownSourceEditor)sender;
         string value = args.NewValue as string ?? string.Empty;
+        editor.UpdateLargeDocumentBehavior(value.Length);
         if (editor.EditorTextBox.Text == value)
         {
             return;
@@ -274,20 +287,114 @@ public sealed partial class MarkdownSourceEditor : UserControl
         ((MarkdownSourceEditor)sender).ApplyToolbarVisibility();
 
     private void ApplyToolbarVisibility() =>
-        FormattingCommandBar.Visibility = ShowFormattingToolbar
+        SetToolbarVisibility();
+
+    private void SetToolbarVisibility()
+    {
+        FormattingToolbar.Visibility = ShowFormattingToolbar
             ? Visibility.Visible
             : Visibility.Collapsed;
+        if (ShowFormattingToolbar)
+        {
+            UpdateFormattingToolbar(EditorLayoutRoot.ActualWidth);
+        }
+    }
+
+    private void EditorLayoutRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (ShowFormattingToolbar)
+        {
+            UpdateFormattingToolbar(e.NewSize.Width);
+        }
+    }
+
+    private void UpdateFormattingToolbar(double availableWidth)
+    {
+        Button[] toolbarButtons =
+        [
+            BoldButton,
+            ItalicButton,
+            StrikeButton,
+            HeadingButton,
+            ListButton,
+            TaskButton,
+            LinkButton,
+            QuoteButton,
+            CodeButton,
+            TableButton
+        ];
+        Button[] menuButtons =
+        [
+            BoldMenuButton,
+            ItalicMenuButton,
+            StrikeMenuButton,
+            HeadingMenuButton,
+            ListMenuButton,
+            TaskMenuButton,
+            LinkMenuButton,
+            QuoteMenuButton,
+            CodeMenuButton,
+            TableMenuButton
+        ];
+
+        int visibleCount = CalculateVisibleToolbarCommandCount(
+            availableWidth,
+            toolbarButtons.Length);
+        for (int index = 0; index < toolbarButtons.Length; index++)
+        {
+            bool isInline = index < visibleCount;
+            toolbarButtons[index].Visibility = isInline
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            menuButtons[index].Visibility = isInline
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }
+
+        bool hasOverflow = visibleCount < toolbarButtons.Length;
+        FormattingMoreButton.Visibility = hasOverflow
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (!hasOverflow)
+        {
+            FormattingMoreFlyout.Hide();
+        }
+    }
+
+    internal static int CalculateVisibleToolbarCommandCount(
+        double availableWidth,
+        int commandCount)
+    {
+        if (availableWidth <= 0 || commandCount <= 0)
+        {
+            return 0;
+        }
+
+        double fullWidth = commandCount * FormattingButtonWidth +
+                           (commandCount - 1) * FormattingButtonSpacing;
+        if (availableWidth >= fullWidth)
+        {
+            return commandCount;
+        }
+
+        double inlineWidth = availableWidth - FormattingButtonWidth;
+        int visibleCount = (int)Math.Floor(
+            inlineWidth / (FormattingButtonWidth + FormattingButtonSpacing));
+        return Math.Clamp(visibleCount, 0, commandCount - 1);
+    }
 
     private void FormatButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string action })
         {
+            FormattingMoreFlyout.Hide();
             ApplyFormat(action);
         }
     }
 
     private void EditorTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        UpdateLargeDocumentBehavior(EditorTextBox.Text.Length);
         if (_isSynchronizingText)
         {
             return;
@@ -298,6 +405,59 @@ public sealed partial class MarkdownSourceEditor : UserControl
         EditorTextChanged?.Invoke(this, EventArgs.Empty);
         QueueEditorViewportCapture();
     }
+
+    private void EditorTextBox_BeforeTextChanging(
+        TextBox sender,
+        TextBoxBeforeTextChangingEventArgs args)
+    {
+        if (_isApplyingTextLimit ||
+            args.NewText.Length <= MarkdownDocumentService.MaxCharacters ||
+            ContainsInlineDataImage(args.NewText))
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        if (_isTextLimitUpdateQueued)
+        {
+            return;
+        }
+
+        _isTextLimitUpdateQueued = true;
+        string truncated = TruncateText(args.NewText);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _isTextLimitUpdateQueued = false;
+            _isApplyingTextLimit = true;
+            try
+            {
+                EditorTextBox.Text = truncated;
+                EditorTextBox.Select(truncated.Length, 0);
+            }
+            finally
+            {
+                _isApplyingTextLimit = false;
+            }
+
+            TextTruncated?.Invoke(this, EventArgs.Empty);
+        });
+    }
+
+    private static string TruncateText(string text)
+    {
+        int length = MarkdownDocumentService.MaxCharacters;
+        if (char.IsHighSurrogate(text[length - 1]) && char.IsLowSurrogate(text[length]))
+        {
+            length--;
+        }
+
+        return text[..length];
+    }
+
+    private static bool ContainsInlineDataImage(string text) =>
+        text.Contains(
+            "data:image/",
+            StringComparison.OrdinalIgnoreCase);
 
     private void EditorTextBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
@@ -330,6 +490,11 @@ public sealed partial class MarkdownSourceEditor : UserControl
 
     private void QueueEditorViewportCapture()
     {
+        if (EditorTextBox.Text.Length > LargeDocumentThreshold)
+        {
+            return;
+        }
+
         int revision = _textRevision;
         DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
@@ -345,10 +510,26 @@ public sealed partial class MarkdownSourceEditor : UserControl
 
     private void RememberEditorViewport()
     {
+        if (EditorTextBox.Text.Length > LargeDocumentThreshold)
+        {
+            return;
+        }
+
         _lastEditorViewport = CaptureEditorViewport();
     }
 
-    private void FormattingCommandBar_PointerPressed(object sender, PointerRoutedEventArgs e)
+    private void UpdateLargeDocumentBehavior(int textLength)
+    {
+        bool isLargeDocument = textLength > LargeDocumentThreshold;
+        EditorTextBox.IsSpellCheckEnabled = !isLargeDocument;
+        if (isLargeDocument)
+        {
+            _lastEditorViewport = null;
+            _pendingCommandViewport = null;
+        }
+    }
+
+    private void FormattingToolbar_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (IsReadOnly)
         {
@@ -584,27 +765,48 @@ public sealed partial class MarkdownSourceEditor : UserControl
         SetButtonText(BoldButton, "Markdown.Editor.Bold", "Bold");
         SetButtonText(ItalicButton, "Markdown.Editor.Italic", "Italic");
         SetButtonText(HeadingButton, "Markdown.Editor.Heading", "Heading");
+        SetButtonText(StrikeButton, "Markdown.Editor.Strikethrough", "Strikethrough");
         SetButtonText(ListButton, "Markdown.Editor.List", "List");
         SetButtonText(TaskButton, "Markdown.Editor.Task", "Task list");
         SetButtonText(LinkButton, "Markdown.Editor.Link", "Link");
-        SetButtonText(StrikeButton, "Markdown.Editor.Strikethrough", "Strikethrough");
         SetButtonText(QuoteButton, "Markdown.Editor.Quote", "Quote");
         SetButtonText(CodeButton, "Markdown.Editor.Code", "Code");
         SetButtonText(TableButton, "Markdown.Editor.Table", "Table");
+        SetButtonText(FormattingMoreButton, "Common.More", "More");
+        SetButtonText(BoldMenuButton, BoldMenuButtonText, "Markdown.Editor.Bold", "Bold");
+        SetButtonText(ItalicMenuButton, ItalicMenuButtonText, "Markdown.Editor.Italic", "Italic");
+        SetButtonText(StrikeMenuButton, StrikeMenuButtonText, "Markdown.Editor.Strikethrough", "Strikethrough");
+        SetButtonText(HeadingMenuButton, HeadingMenuButtonText, "Markdown.Editor.Heading", "Heading");
+        SetButtonText(ListMenuButton, ListMenuButtonText, "Markdown.Editor.List", "List");
+        SetButtonText(TaskMenuButton, TaskMenuButtonText, "Markdown.Editor.Task", "Task list");
+        SetButtonText(LinkMenuButton, LinkMenuButtonText, "Markdown.Editor.Link", "Link");
+        SetButtonText(QuoteMenuButton, QuoteMenuButtonText, "Markdown.Editor.Quote", "Quote");
+        SetButtonText(CodeMenuButton, CodeMenuButtonText, "Markdown.Editor.Code", "Code");
+        SetButtonText(TableMenuButton, TableMenuButtonText, "Markdown.Editor.Table", "Table");
 
         AutomationProperties.SetName(
-            FormattingCommandBar,
+            FormattingToolbar,
             T("Markdown.Editor.Toolbar", "Formatting"));
         AutomationProperties.SetName(
             EditorTextBox,
             T("Markdown.Editor.Source", "Markdown source editor"));
     }
 
-    private void SetButtonText(AppBarButton button, string key, string fallback)
+    private void SetButtonText(Button button, string key, string fallback)
     {
         string text = T(key, fallback);
-        button.Label = text;
         ToolTipService.SetToolTip(button, text);
+        AutomationProperties.SetName(button, text);
+    }
+
+    private void SetButtonText(
+        Button button,
+        TextBlock label,
+        string key,
+        string fallback)
+    {
+        string text = T(key, fallback);
+        label.Text = text;
         AutomationProperties.SetName(button, text);
     }
 

@@ -22,6 +22,7 @@ public sealed partial class QuickCaptureWidgetWindow
 
         DetailMarkdownEditor.TextResolver = _localizationService.T;
         DetailMarkdownEditor.EditorTextChanged += DetailMarkdownEditor_EditorTextChanged;
+        DetailMarkdownEditor.TextTruncated += DetailMarkdownEditor_TextTruncated;
         DetailMarkdownView.AttachmentResolver = ResolveDetailAttachmentPath;
         DetailMarkdownView.AttachmentOpenRequested += DetailMarkdownView_AttachmentOpenRequested;
 
@@ -41,8 +42,14 @@ public sealed partial class QuickCaptureWidgetWindow
         _detailAutoSaveTimer.Stop();
         _detailAutoSaveTimer.Tick -= DetailAutoSaveTimer_Tick;
         DetailMarkdownEditor.EditorTextChanged -= DetailMarkdownEditor_EditorTextChanged;
+        DetailMarkdownEditor.TextTruncated -= DetailMarkdownEditor_TextTruncated;
         DetailMarkdownView.AttachmentOpenRequested -= DetailMarkdownView_AttachmentOpenRequested;
         _detailAutoSaveTimer = null;
+    }
+
+    private void DetailMarkdownEditor_TextTruncated(object? sender, EventArgs e)
+    {
+        ShowStatusToast(_localizationService.T("QuickCapture.BodyTruncated"));
     }
 
     private void ResponsiveContentGrid_SizeChanged(object sender, SizeChangedEventArgs e) =>
@@ -340,6 +347,8 @@ public sealed partial class QuickCaptureWidgetWindow
         {
             return;
         }
+
+        ShowStatusToast(_localizationService.T("QuickCapture.Saved"));
 
         if (_isDualPane)
         {

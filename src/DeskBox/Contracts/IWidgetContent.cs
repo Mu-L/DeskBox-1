@@ -82,3 +82,14 @@ public interface IWidgetHostViewportContent
 {
     void OnHostViewportSizeChanged(double width, double height);
 }
+
+/// <summary>
+/// Optional lifecycle for a live user resize. Expensive readers and adaptive
+/// measurements can stay frozen while the HWND follows the pointer, then run
+/// once against the committed size.
+/// </summary>
+public interface IWidgetInteractiveResizeContent
+{
+    void BeginInteractiveResize(double contentWidth, double contentHeight);
+    void CompleteInteractiveResize(double contentWidth, double contentHeight);
+}

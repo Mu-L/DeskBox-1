@@ -2408,31 +2408,13 @@ public partial class App : Application
             }
 
             process.Refresh();
-            bool workingSetTrimmed = false;
-            if (MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-                    CaptureMemoryCleanupActivity(),
-                    _searchEngineService?.IsCustomIndexing == true,
-                    _searchEngineService?.IsCustomIndexResident == true,
-                    process.WorkingSet64))
-            {
-                PerformanceLogger.Mark(
-                    "VisibleIdleWorkingSetTrimTriggered",
-                    $"workingSetMB={process.WorkingSet64 / (1024.0 * 1024):F1}");
-                PerformanceLogger.SampleMemory("visible-idle-trim-before");
-                await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet);
-                PerformanceLogger.SampleMemory("visible-idle-trim-after");
-                workingSetTrimmed = true;
-                AdvanceMemoryCleanupEpoch("visible-idle-working-set-trim");
-            }
-
-            process.Refresh();
             Log(
                 $"[Memory] Visible idle cleanup completed idleSeconds={VisibleIdleMemoryRequiredSeconds} " +
                 $"workingSetBeforeMB={workingSetBefore / (1024.0 * 1024):F1} " +
                 $"workingSetAfterMB={process.WorkingSet64 / (1024.0 * 1024):F1} " +
                 $"privateBeforeMB={privateBytesBefore / (1024.0 * 1024):F1} " +
                 $"privateAfterMB={process.PrivateMemorySize64 / (1024.0 * 1024):F1} " +
-                $"collected={shouldCollectManagedMemory} trimmed={workingSetTrimmed} " +
+                $"collected={shouldCollectManagedMemory} trimmed=false " +
                 $"releasedThumbs={cacheRelease.ReleasedThumbnails} " +
                 $"releasedBitmaps={cacheRelease.ReleasedDecodedBitmaps} " +
                 $"releasedIconBytes={cacheRelease.ReleasedIconByteEntries}");
@@ -2486,6 +2468,29 @@ public partial class App : Application
             IsSearchPopupVisible: _searchPopupWindow?.IsPopupVisible == true,
             IsDeskBoxForeground: isDeskBoxForeground,
             IsPointerOverDeskBox: isPointerOverDeskBox);
+    }
+
+    private Task<bool> CanRunDeferredSearchIndexReconciliationAsync(
+        CancellationToken cancellationToken)
+    {
+        if (UiDispatcherQueue.HasThreadAccess)
+        {
+            return Task.FromResult(
+                MemoryCleanupPolicy.CanRunSearchIndexReconciliation(
+                    CaptureMemoryCleanupActivity()));
+        }
+
+        var completion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!UiDispatcherQueue.TryEnqueue(() =>
+            completion.TrySetResult(
+                MemoryCleanupPolicy.CanRunSearchIndexReconciliation(
+                    CaptureMemoryCleanupActivity()))))
+        {
+            completion.TrySetResult(true);
+        }
+
+        return completion.Task.WaitAsync(cancellationToken);
     }
 
     internal static void CancelBackgroundMemoryCleanup()
@@ -2758,13 +2763,12 @@ public partial class App : Application
                     // the user is currently operating.
                     process.Refresh();
                     var activity = Current.CaptureMemoryCleanupActivity();
+                    // EmptyWorkingSet is deliberately restricted to the fully
+                    // hidden lifetime. Trimming a visible-but-idle WinUI tree
+                    // evicts the exact XAML/Composition pages needed by the next
+                    // capsule hover and turns every idle period into a cold start.
                     bool canTrimWorkingSet =
-                        MemoryCleanupPolicy.CanTrimWorkingSet(activity) ||
-                        MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-                            activity,
-                            Current._searchEngineService?.IsCustomIndexing == true,
-                            Current._searchEngineService?.IsCustomIndexResident == true,
-                            process.WorkingSet64);
+                        MemoryCleanupPolicy.CanTrimWorkingSet(activity);
                     if (canTrimWorkingSet)
                     {
                         await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet);
@@ -2936,7 +2940,9 @@ public partial class App : Application
 
         try
         {
-            _searchIndexService = new SearchIndexService(SettingsService);
+            _searchIndexService = new SearchIndexService(
+                SettingsService,
+                CanRunDeferredSearchIndexReconciliationAsync);
             var windowsIndexService = new WindowsIndexSearchService(SettingsService);
             _usnIndexService = new UsnJournalIndexService();
             _searchEngineService = new SearchEngineService(SettingsService, LocalizationService, _searchIndexService, windowsIndexService, _usnIndexService);
@@ -3046,6 +3052,10 @@ public partial class App : Application
         else
         {
             StopSearchIndexIdleUnloadTimer();
+            // Disabling the custom index releases its resident graph. Keep this
+            // on the normal delayed path; routine index content notifications
+            // must never promote themselves into compacting Gen2 collections.
+            ScheduleLightMemoryCleanup();
         }
     }
 
@@ -3096,7 +3106,9 @@ public partial class App : Application
         UiDispatcherQueue.TryEnqueue(() =>
         {
             PerformanceLogger.SampleMemory("search-index-updated");
-            ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+            PerformanceLogger.Mark(
+                "SearchIndexUpdated",
+                "cleanup=none reason=content-update");
         });
     }
 
@@ -3293,7 +3305,10 @@ public partial class App : Application
             PerformanceLogger.SampleMemory("search-popup-closed");
             if (!closedForIdleCleanup)
             {
-                ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+                // Closing a transient popup already detaches its visual tree. Do
+                // not promote that normal release into a compacting GC while
+                // visible widgets are still warm.
+                ScheduleLightMemoryCleanup();
                 ScheduleBackgroundMemoryCleanup();
             }
         };
@@ -3475,7 +3490,10 @@ public partial class App : Application
             if (unloaded)
             {
                 PerformanceLogger.SampleMemory("search-index-idle-unload-after");
-                ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+                // Index unload has already dropped the resident graph. A normal
+                // delayed collection is enough; a visible heavy cleanup would
+                // compete with or cold-start the next capsule interaction.
+                ScheduleLightMemoryCleanup();
             }
             else if (engine.IsCustomIndexResident)
             {

@@ -154,7 +154,7 @@ public sealed partial class TodoWidgetViewModel
         }
 
         item.UpdatedAt = now;
-        RefreshVisibleItems();
+        RefreshVisibleItems(item);
         RefreshCountProperties();
         await SaveAsync();
         return true;

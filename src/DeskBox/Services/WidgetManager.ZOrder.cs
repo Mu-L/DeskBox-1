@@ -308,17 +308,13 @@ public sealed partial class WidgetManager
             GetWindowsInIdleHighestFirstOrder(
                 GetLoadedDesktopWindows().Where(window =>
                     window.Visible && !window.IsRaisedAboveDesktopLayer));
-        foreach (IDesktopWidgetWindow window in ordered)
-        {
-            // A peer batch can leave the logical state at DesktopResting while
-            // the native owner was detached. Reassert the owner before sorting.
-            WidgetLayerService.MoveToDesktopBottom(window.WindowHandle);
-        }
-
+        // Normalization is deliberately peer-only. The current highest widget
+        // supplies the global boundary, so a group restored directly behind an
+        // activated application is not subsequently flattened to HWND_BOTTOM.
         bool applied = WidgetLayerService.ApplyPeerOrderHighestToLowest(
             ordered.Select(window => window.WindowHandle).ToList());
         App.LogVerbose(
-            $"[ZOrder] Idle normalize reason={reason} count={ordered.Count} " +
+            $"[ZOrder] Idle peer normalize reason={reason} count={ordered.Count} " +
             $"applied={applied} order={FormatIdlePeerOrder(ordered)}");
         return applied;
     }

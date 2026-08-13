@@ -6,6 +6,7 @@
     xmlns:controls="using:DeskBox.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:widgetContents="using:DeskBox.Controls.WidgetContents"
     mc:Ignorable="d">
 
     <Grid
@@ -651,21 +652,28 @@
                     Click="CompactPreviousButton_Click"
                     Style="{StaticResource WidgetTitleActionButtonStyle}"
                     Visibility="Collapsed">
-                    <FontIcon FontSize="12" Glyph="&#xE100;" />
+                    <widgetContents:MusicTransportIcon
+                        Foreground="{Binding Foreground, ElementName=CompactPreviousButton}"
+                        Kind="Previous" />
                 </Button>
                 <Button
                     x:Name="CompactPlayPauseButton"
                     Click="CompactPlayPauseButton_Click"
                     Style="{StaticResource WidgetTitleActionButtonStyle}"
                     Visibility="Collapsed">
-                    <FontIcon x:Name="CompactPlayPauseIcon" FontSize="12" Glyph="&#xE102;" />
+                    <widgetContents:MusicTransportIcon
+                        x:Name="CompactPlayPauseIcon"
+                        Foreground="{Binding Foreground, ElementName=CompactPlayPauseButton}"
+                        Kind="Play" />
                 </Button>
                 <Button
                     x:Name="CompactNextButton"
                     Click="CompactNextButton_Click"
                     Style="{StaticResource WidgetTitleActionButtonStyle}"
                     Visibility="Collapsed">
-                    <FontIcon FontSize="12" Glyph="&#xE101;" />
+                    <widgetContents:MusicTransportIcon
+                        Foreground="{Binding Foreground, ElementName=CompactNextButton}"
+                        Kind="Next" />
                 </Button>
                 <Button
                     x:Name="CompactExpandButton"

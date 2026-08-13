@@ -71,7 +71,8 @@ public sealed partial class QuickCaptureWidgetWindow
     {
         if (ViewModel.CanAddInput)
         {
-            await ViewModel.AddInputAsync();
+            QuickCaptureWriteResult result = await ViewModel.AddInputAsync();
+            ReportBodyTruncation(result);
             InputTextBox.Focus(FocusState.Programmatic);
             return;
         }
@@ -114,7 +115,8 @@ public sealed partial class QuickCaptureWidgetWindow
                 _settingsService.Settings.QuickCaptureEditorEnterBehavior,
                 controlPressed))
         {
-            await ViewModel.AddInputAsync();
+            QuickCaptureWriteResult result = await ViewModel.AddInputAsync();
+            ReportBodyTruncation(result);
             return;
         }
 
@@ -318,13 +320,20 @@ public sealed partial class QuickCaptureWidgetWindow
                     return false;
                 }
 
-                await ViewModel.EditItemDetailsAsync(
+                QuickCaptureWriteResult attachmentUpdateResult =
+                    await ViewModel.EditItemDetailsWithResultAsync(
                     created,
                     null,
                     body,
                     _detailAppearance,
                     _detailContentFormat);
-                createdModel = created.ToModel();
+                if (!attachmentUpdateResult.Saved)
+                {
+                    return false;
+                }
+
+                ReportBodyTruncation(attachmentUpdateResult);
+                createdModel = attachmentUpdateResult.Item ?? created.ToModel();
                 if (_detailIsPinned)
                 {
                     await ViewModel.SetPinnedAsync(created.Id, true);
@@ -334,11 +343,14 @@ public sealed partial class QuickCaptureWidgetWindow
             }
             else if (!string.IsNullOrWhiteSpace(body))
             {
-                createdModel = await ViewModel.AddDetailedItemAsync(
+                QuickCaptureWriteResult addResult =
+                    await ViewModel.AddDetailedItemWithResultAsync(
                     null,
                     body,
                     _detailAppearance,
                     _detailContentFormat);
+                ReportBodyTruncation(addResult);
+                createdModel = addResult.Item;
                 if (createdModel is not null && _detailIsPinned)
                 {
                     await ViewModel.SetPinnedAsync(createdModel.Id, true);
@@ -395,16 +407,19 @@ public sealed partial class QuickCaptureWidgetWindow
             return false;
         }
 
-        bool saved = await ViewModel.EditItemDetailsAsync(
+        QuickCaptureWriteResult detailUpdateResult =
+            await ViewModel.EditItemDetailsWithResultAsync(
             item,
             null,
             body,
             _detailAppearance,
             _detailContentFormat);
-        if (!saved)
+        if (!detailUpdateResult.Saved)
         {
             return false;
         }
+
+        ReportBodyTruncation(detailUpdateResult);
 
         if (_detailIsPinned != item.IsPinned)
         {
@@ -428,6 +443,14 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         return true;
+    }
+
+    private void ReportBodyTruncation(QuickCaptureWriteResult result)
+    {
+        if (result.WasTruncated)
+        {
+            ShowStatusToast(_localizationService.T("QuickCapture.BodyTruncated"));
+        }
     }
 
     private async Task CloseDetailPageAsync(bool saveBeforeClose = true)
@@ -522,16 +545,14 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
-        if (isPinned)
-        {
-            ShowStatusToast(_localizationService.T("QuickCapture.PinnedSuccess"));
-        }
+        ShowStatusToast(_localizationService.T(isPinned
+            ? "QuickCapture.PinnedSuccess"
+            : "QuickCapture.UnpinnedSuccess"));
     }
 
     private void UpdateDetailPinVisual()
     {
-        DetailPinIcon.Glyph = _detailIsPinned ? "\uE840" : "\uE718";
-        DetailUnpinSlash.Visibility = _detailIsPinned ? Visibility.Visible : Visibility.Collapsed;
+        DetailPinIcon.IsPinned = _detailIsPinned;
         DetailPinButton.Background = _detailIsPinned
             ? GetBrushResourceOrFallback(
                 "SubtleFillColorSecondaryBrush",
@@ -591,21 +612,14 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private async void DetailDeleteButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isCreatingDetail || _detailItem is not { } item || sender is not FrameworkElement anchor)
+        if (_isCreatingDetail || _detailItem is not { } item)
         {
             await CloseDetailPageAsync();
             return;
         }
 
-        ShowConfirmMenu(
-            anchor,
-            _localizationService.T("QuickCapture.DeleteConfirm.Title"),
-            _localizationService.T("Common.Delete"),
-            async () =>
-            {
-                await DeleteItemWithUndoAsync(item);
-                await CloseDetailPageAsync();
-            });
+        await DeleteItemWithUndoAsync(item);
+        await CloseDetailPageAsync();
     }
 
     private string BuildDetailTimestampText(QuickCaptureItemViewModel item)

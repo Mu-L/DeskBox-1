@@ -112,10 +112,10 @@ public sealed partial class TodoWidgetViewModel
         {
             item.CancelEdit();
             IsCreatingDetailItem = false;
-            if (closeDetail)
-            {
-                SelectedDetailItem = null;
-            }
+            // A blank draft is never a valid detail selection. In dual-pane mode
+            // callers normally keep saved details open, but retaining an empty
+            // transient item here would leave a ghost detail that is not in Items.
+            SelectedDetailItem = null;
 
             return null;
         }

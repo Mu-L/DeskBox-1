@@ -13,7 +13,7 @@ public sealed class MultiSelectionKeyboardContractTests
             source,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ShowQuickCaptureDeleteSelectedConfirmFlyout(",
+            "DeleteSelectedQuickCaptureItemsAsync(",
             source,
             StringComparison.Ordinal);
     }
@@ -30,7 +30,7 @@ public sealed class MultiSelectionKeyboardContractTests
             source,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ShowDeleteSelectedConfirmation(",
+            "DeleteSelectedItemsAsync(",
             source,
             StringComparison.Ordinal);
     }

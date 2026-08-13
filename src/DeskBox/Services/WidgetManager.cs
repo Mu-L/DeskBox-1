@@ -1438,7 +1438,13 @@ public sealed partial class WidgetManager
         App.Log(
             $"[TrayBatch] RestoreDesktopLayer force={force} file={_fileWidgets.Count} content={_contentWidgets.Count}");
         ClearTemporaryRaiseLease("raised-session-restored");
-        foreach (var window in GetLoadedDesktopWindows())
+        SetWidgetsRaisedFromTray(false);
+        _trayRaiseBatchGeneration++;
+        StopTrayLayerRestoreMonitor();
+        IReadOnlyList<IDesktopWidgetWindow> windows =
+            GetWindowsInIdleHighestFirstOrder(
+                GetLoadedDesktopWindows().Where(window => window.Visible));
+        foreach (IDesktopWidgetWindow window in windows)
         {
             try
             {
@@ -1450,10 +1456,15 @@ public sealed partial class WidgetManager
             }
         }
 
-        SetWidgetsRaisedFromTray(false);
-        _trayRaiseBatchGeneration++;
-        StopTrayLayerRestoreMonitor();
-        NormalizeIdleWidgetZOrder("raised-session-restored");
+        // Invalidate the defensive delayed normalizations queued by individual
+        // hosts, then establish one shared external boundary for the group.
+        _idlePeerOrderGeneration++;
+        bool applied = WidgetLayerService.RestoreGroupPreservingForeground(
+            windows.Select(window => window.WindowHandle).ToList(),
+            "raised-session-restored");
+        App.LogVerbose(
+            $"[TrayBatch] RestoreDesktopLayer group-applied={applied} " +
+            $"count={windows.Count} order={FormatIdlePeerOrder(windows)}");
     }
 
     /// <summary>

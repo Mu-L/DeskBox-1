@@ -74,9 +74,8 @@ public sealed partial class TodoWidgetViewModel
         });
     }
 
-    private void RefreshVisibleItems()
+    private void RefreshVisibleItems(TodoItemViewModel? preferredMovedItem = null)
     {
-        VisibleItems.Clear();
         ResetRecurringHistoryState();
 
         var filteredItems = Items.Where(ShouldShowItem).ToList();
@@ -89,17 +88,73 @@ public sealed partial class TodoWidgetViewModel
             .Where(item => item.IsCompleted)
             .ToList();
 
-        foreach (var item in activeItems)
-        {
-            VisibleItems.Add(item);
-        }
+        var desiredItems = new List<TodoItemViewModel>(filteredItems.Count);
+        desiredItems.AddRange(activeItems);
+        desiredItems.AddRange(BuildCompletedVisibleItems(completedItems));
 
-        foreach (var item in BuildCompletedVisibleItems(completedItems))
-        {
-            VisibleItems.Add(item);
-        }
-
+        SynchronizeVisibleItems(desiredItems, preferredMovedItem);
         RefreshVisibleStateProperties();
+    }
+
+    private void SynchronizeVisibleItems(
+        IReadOnlyList<TodoItemViewModel> desiredItems,
+        TodoItemViewModel? preferredMovedItem)
+    {
+        var desiredSet = desiredItems.ToHashSet(ReferenceEqualityComparer.Instance);
+        for (int index = VisibleItems.Count - 1; index >= 0; index--)
+        {
+            if (!desiredSet.Contains(VisibleItems[index]))
+            {
+                VisibleItems.RemoveAt(index);
+            }
+        }
+
+        if (preferredMovedItem is not null)
+        {
+            int currentIndex = VisibleItems.IndexOf(preferredMovedItem);
+            int desiredIndex = IndexOfReference(desiredItems, preferredMovedItem);
+            if (currentIndex >= 0 && desiredIndex >= 0 && currentIndex != desiredIndex)
+            {
+                VisibleItems.Move(
+                    currentIndex,
+                    Math.Min(desiredIndex, VisibleItems.Count - 1));
+            }
+        }
+
+        for (int desiredIndex = 0; desiredIndex < desiredItems.Count; desiredIndex++)
+        {
+            TodoItemViewModel desiredItem = desiredItems[desiredIndex];
+            if (desiredIndex < VisibleItems.Count &&
+                ReferenceEquals(VisibleItems[desiredIndex], desiredItem))
+            {
+                continue;
+            }
+
+            int currentIndex = VisibleItems.IndexOf(desiredItem);
+            if (currentIndex >= 0)
+            {
+                VisibleItems.Move(currentIndex, desiredIndex);
+            }
+            else
+            {
+                VisibleItems.Insert(desiredIndex, desiredItem);
+            }
+        }
+    }
+
+    private static int IndexOfReference(
+        IReadOnlyList<TodoItemViewModel> items,
+        TodoItemViewModel target)
+    {
+        for (int index = 0; index < items.Count; index++)
+        {
+            if (ReferenceEquals(items[index], target))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     private void ResetRecurringHistoryState()
@@ -275,6 +330,8 @@ public sealed partial class TodoWidgetViewModel
         OnPropertyChanged(nameof(UndoActionText));
         OnPropertyChanged(nameof(ListHeaderText));
         OnPropertyChanged(nameof(DetailBackText));
+        OnPropertyChanged(nameof(DetailSaveText));
+        OnPropertyChanged(nameof(CopyText));
         OnPropertyChanged(nameof(DetailAddFileText));
         OnPropertyChanged(nameof(DetailRemoveAttachmentText));
         OnPropertyChanged(nameof(DetailFileMissingText));
@@ -321,7 +378,6 @@ public sealed partial class TodoWidgetViewModel
         ShowCompletedTasks = settings.TodoShowCompletedTasks;
         ShowFooterStats = settings.TodoShowFooterStats;
         ShowClearCompletedButton = settings.TodoShowClearCompletedButton;
-        ConfirmBeforeDelete = settings.TodoConfirmBeforeDelete;
         OnPropertyChanged(nameof(LayoutPreference));
         OnPropertyChanged(nameof(UseWideDetailPane));
         OnPropertyChanged(nameof(AutoSelectFirstInWideLayout));

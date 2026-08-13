@@ -17,6 +17,7 @@ public sealed class TodoWidgetContentAdapter :
     IWidgetFeedbackSource,
     IWidgetTransientStateContent,
     IWidgetResponsiveLayoutContent,
+    IWidgetInteractiveResizeContent,
     IDisposable
 {
     private readonly Func<TodoWidgetViewModel, FrameworkElement> _viewFactory;
@@ -140,6 +141,22 @@ public sealed class TodoWidgetContentAdapter :
         if (_view is TodoWidgetContent todoContent)
         {
             todoContent.CancelResponsiveLayoutTransition();
+        }
+    }
+
+    public void BeginInteractiveResize(double contentWidth, double contentHeight)
+    {
+        if (_view is TodoWidgetContent todoContent)
+        {
+            todoContent.BeginInteractiveResize();
+        }
+    }
+
+    public void CompleteInteractiveResize(double contentWidth, double contentHeight)
+    {
+        if (_view is TodoWidgetContent todoContent)
+        {
+            todoContent.CompleteInteractiveResize(contentWidth);
         }
     }
 

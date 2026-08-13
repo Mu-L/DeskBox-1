@@ -82,6 +82,8 @@ public abstract partial class WidgetWindowBase : Window
     protected PointInt32 InitialWindowPos;
     protected SizeInt32 InitialWindowSize;
     protected FrameworkElement? DragCaptureElement;
+    private RectInt32? _pendingInteractiveResizeBounds;
+    private IDisposable? _interactiveResizeFrameRegistration;
 
     // ── Protected state: layer / Z-order ───────────────────────
     protected bool IsAtDesktopLayer;
@@ -267,6 +269,7 @@ public abstract partial class WidgetWindowBase : Window
 
     protected void CleanupBase()
     {
+        CancelPendingInteractiveResizeFrame();
         WidgetShellControl.HostedContentChanged -= WidgetShellControl_HostedContentChanged;
         CleanupWidgetGrouping();
         CleanupWidgetCollapse();
@@ -279,6 +282,55 @@ public abstract partial class WidgetWindowBase : Window
         DisposeMicaController();
         WidgetLayerService.ReleaseWindow(HWnd);
         TrackWindowClosedForDiagnostics();
+    }
+
+    private void QueueInteractiveResizeBounds(RectInt32 bounds)
+    {
+        _pendingInteractiveResizeBounds = bounds;
+        _interactiveResizeFrameRegistration ??=
+            WidgetCompactAnimationCoordinator.Register(ApplyPendingInteractiveResizeBounds);
+    }
+
+    private void ApplyPendingInteractiveResizeBounds()
+    {
+        if (!IsResizing || _pendingInteractiveResizeBounds is not { } bounds)
+        {
+            CancelPendingInteractiveResizeFrame();
+            return;
+        }
+
+        _pendingInteractiveResizeBounds = null;
+        ApplyWindowBounds(
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            persist: false,
+            updateConfig: false);
+    }
+
+    private void FlushPendingInteractiveResizeBounds()
+    {
+        if (_pendingInteractiveResizeBounds is { } bounds)
+        {
+            _pendingInteractiveResizeBounds = null;
+            ApplyWindowBounds(
+                bounds.X,
+                bounds.Y,
+                bounds.Width,
+                bounds.Height,
+                persist: false,
+                updateConfig: false);
+        }
+
+        CancelPendingInteractiveResizeFrame();
+    }
+
+    private void CancelPendingInteractiveResizeFrame()
+    {
+        _pendingInteractiveResizeBounds = null;
+        _interactiveResizeFrameRegistration?.Dispose();
+        _interactiveResizeFrameRegistration = null;
     }
 
     protected void TrackWindowClosedForDiagnostics()

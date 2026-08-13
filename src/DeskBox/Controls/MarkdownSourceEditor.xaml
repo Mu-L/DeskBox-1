@@ -9,111 +9,200 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
-        <Style x:Key="MarkdownFormattingButtonStyle" TargetType="AppBarButton">
-            <Setter Property="Width" Value="34" />
-            <Setter Property="Height" Value="36" />
-            <Setter Property="MinWidth" Value="34" />
-            <Setter Property="MinHeight" Value="36" />
+        <Style x:Key="MarkdownFormattingButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinHeight" Value="28" />
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,-2,0,2" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="5" />
-            <Setter Property="AllowFocusOnInteraction" Value="False" />
-            <Setter Property="UseSystemFocusVisuals" Value="True" />
+        </Style>
+        <Style x:Key="MarkdownFormattingMenuButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Width" Value="132" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinWidth" Value="132" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style x:Key="MarkdownFormattingFlyoutPresenterStyle" TargetType="FlyoutPresenter">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="CornerRadius" Value="6" />
         </Style>
         <Style x:Key="MarkdownFormattingIconStyle" TargetType="FontIcon">
+            <Setter Property="FontSize" Value="14" />
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="IsTextScaleFactorEnabled" Value="False" />
             <Setter Property="Margin" Value="0" />
-            <Setter Property="RenderTransform">
-                <Setter.Value>
-                    <TranslateTransform Y="-7" />
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="MarkdownFormattingSymbolIconStyle" TargetType="SymbolIcon">
-            <Setter Property="RenderTransform">
-                <Setter.Value>
-                    <TranslateTransform Y="-7" />
-                </Setter.Value>
-            </Setter>
         </Style>
     </UserControl.Resources>
 
-    <Grid RowSpacing="4">
+    <Grid
+        x:Name="EditorLayoutRoot"
+        RowSpacing="4"
+        SizeChanged="EditorLayoutRoot_SizeChanged">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <CommandBar
-            x:Name="FormattingCommandBar"
+        <StackPanel
+            x:Name="FormattingToolbar"
             Grid.Row="0"
-            Height="40"
-            MinHeight="40"
+            Height="30"
+            MinHeight="30"
             HorizontalAlignment="Left"
-            Padding="0,0,0,4"
-            Background="Transparent"
-            ClosedDisplayMode="Compact"
-            DefaultLabelPosition="Collapsed"
-            IsDynamicOverflowEnabled="True">
-            <CommandBar.Resources>
-                <Style TargetType="AppBarButton" BasedOn="{StaticResource MarkdownFormattingButtonStyle}" />
-            </CommandBar.Resources>
-
-            <AppBarButton x:Name="BoldButton" Click="FormatButton_Click" Label="Bold" Tag="Bold">
+            Orientation="Horizontal"
+            Spacing="1">
+            <Button x:Name="BoldButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Bold">
                 <FontIcon
                     FontFamily="Segoe UI Variable Text"
-                    FontSize="16"
+                    FontSize="13"
                     FontWeight="Bold"
                     Glyph="B"
                     Style="{StaticResource MarkdownFormattingIconStyle}" />
-            </AppBarButton>
-            <AppBarButton x:Name="ItalicButton" Click="FormatButton_Click" Label="Italic" Tag="Italic">
+            </Button>
+            <Button x:Name="ItalicButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Italic">
                 <FontIcon
-                    FontFamily="Segoe UI Variable Text"
-                    FontSize="16"
+                    FontFamily="Cambria"
+                    FontSize="14"
                     FontStyle="Italic"
+                    FontWeight="SemiBold"
                     Glyph="I"
                     Style="{StaticResource MarkdownFormattingIconStyle}" />
-            </AppBarButton>
-            <AppBarButton x:Name="StrikeButton" Click="FormatButton_Click" Label="Strikethrough" Tag="Strike">
-                <AppBarButton.Icon>
-                    <SymbolIcon Symbol="Clear" Style="{StaticResource MarkdownFormattingSymbolIconStyle}" />
-                </AppBarButton.Icon>
-            </AppBarButton>
-            <AppBarButton x:Name="HeadingButton" Click="FormatButton_Click" Label="Heading" Tag="Heading">
-                <FontIcon Glyph="&#xE8D2;" Style="{StaticResource MarkdownFormattingIconStyle}" />
-            </AppBarButton>
-            <AppBarButton x:Name="ListButton" Click="FormatButton_Click" Label="List" Tag="List">
-                <FontIcon Glyph="&#xEA37;" Style="{StaticResource MarkdownFormattingIconStyle}" />
-            </AppBarButton>
-            <AppBarButton x:Name="TaskButton" Click="FormatButton_Click" Label="Task" Tag="Task">
-                <FontIcon Glyph="&#xE73A;" Style="{StaticResource MarkdownFormattingIconStyle}" />
-            </AppBarButton>
-            <AppBarButton x:Name="LinkButton" Click="FormatButton_Click" Label="Link" Tag="Link">
-                <FontIcon Glyph="&#xE71B;" Style="{StaticResource MarkdownFormattingIconStyle}" />
-            </AppBarButton>
-            <AppBarButton x:Name="QuoteButton" Click="FormatButton_Click" Label="Quote" Tag="Quote">
-                <AppBarButton.Icon>
-                    <SymbolIcon Symbol="Comment" Style="{StaticResource MarkdownFormattingSymbolIconStyle}" />
-                </AppBarButton.Icon>
-            </AppBarButton>
-            <AppBarButton x:Name="CodeButton" Click="FormatButton_Click" Label="Code" Tag="Code">
-                <AppBarButton.Icon>
-                    <FontIcon Glyph="&#xE943;" Style="{StaticResource MarkdownFormattingIconStyle}" />
-                </AppBarButton.Icon>
-            </AppBarButton>
-            <AppBarButton x:Name="TableButton" Click="FormatButton_Click" Label="Table" Tag="Table">
-                <AppBarButton.Icon>
-                    <SymbolIcon Symbol="ViewAll" Style="{StaticResource MarkdownFormattingSymbolIconStyle}" />
-                </AppBarButton.Icon>
-            </AppBarButton>
-        </CommandBar>
+            </Button>
+            <Button x:Name="StrikeButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Strike">
+                <FontIcon
+                    FontFamily="Segoe UI Variable Text"
+                    FontSize="12"
+                    Glyph="S&#x0336;"
+                    Style="{StaticResource MarkdownFormattingIconStyle}" />
+            </Button>
+            <Button x:Name="HeadingButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Heading">
+                <FontIcon FontSize="12" Glyph="&#xE8D2;" Style="{StaticResource MarkdownFormattingIconStyle}" />
+            </Button>
+            <Button x:Name="ListButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="List" Visibility="Collapsed">
+                <FontIcon FontSize="12" Glyph="&#xE8FD;" Style="{StaticResource MarkdownFormattingIconStyle}" />
+            </Button>
+            <Button x:Name="TaskButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Task" Visibility="Collapsed">
+                <FontIcon FontSize="12" Glyph="&#xE73A;" Style="{StaticResource MarkdownFormattingIconStyle}" />
+            </Button>
+            <Button x:Name="LinkButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Link" Visibility="Collapsed">
+                <FontIcon FontSize="12" Glyph="&#xE71B;" Style="{StaticResource MarkdownFormattingIconStyle}" />
+            </Button>
+            <Button x:Name="QuoteButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Quote" Visibility="Collapsed">
+                <FontIcon
+                    FontFamily="Segoe UI Variable Text"
+                    FontSize="15"
+                    FontWeight="SemiBold"
+                    Glyph="“"
+                    Style="{StaticResource MarkdownFormattingIconStyle}" />
+            </Button>
+            <Button x:Name="CodeButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Code" Visibility="Collapsed">
+                <FontIcon FontSize="12" Glyph="&#xE943;" Style="{StaticResource MarkdownFormattingIconStyle}" />
+            </Button>
+            <Button x:Name="TableButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingButtonStyle}" Tag="Table" Visibility="Collapsed">
+                <FontIcon FontSize="12" Glyph="&#xE8A9;" Style="{StaticResource MarkdownFormattingIconStyle}" />
+            </Button>
+            <Button x:Name="FormattingMoreButton" Style="{StaticResource MarkdownFormattingButtonStyle}">
+                <FontIcon FontSize="13" Glyph="&#xE712;" Style="{StaticResource MarkdownFormattingIconStyle}" />
+                <Button.Flyout>
+                    <Flyout
+                        x:Name="FormattingMoreFlyout"
+                        FlyoutPresenterStyle="{StaticResource MarkdownFormattingFlyoutPresenterStyle}"
+                        Placement="BottomEdgeAlignedRight">
+                        <StackPanel x:Name="FormattingMenuPanel" Spacing="0">
+                            <Button x:Name="BoldMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Bold" Visibility="Collapsed">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon FontFamily="Segoe UI Variable Text" FontSize="12" FontWeight="Bold" Glyph="B" />
+                                    <TextBlock x:Name="BoldMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="ItalicMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Italic" Visibility="Collapsed">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon FontFamily="Cambria" FontSize="13" FontStyle="Italic" FontWeight="SemiBold" Glyph="I" />
+                                    <TextBlock x:Name="ItalicMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="StrikeMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Strike" Visibility="Collapsed">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon FontFamily="Segoe UI Variable Text" FontSize="12" Glyph="S&#x0336;" />
+                                    <TextBlock x:Name="StrikeMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="HeadingMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Heading" Visibility="Collapsed">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon FontSize="12" Glyph="&#xE8D2;" />
+                                    <TextBlock x:Name="HeadingMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="ListMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="List">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon HorizontalAlignment="Center" FontSize="12" Glyph="&#xE8FD;" />
+                                    <TextBlock x:Name="ListMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="TaskMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Task">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon HorizontalAlignment="Center" FontSize="12" Glyph="&#xE73A;" />
+                                    <TextBlock x:Name="TaskMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="LinkMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Link">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon HorizontalAlignment="Center" FontSize="12" Glyph="&#xE71B;" />
+                                    <TextBlock x:Name="LinkMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="QuoteMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Quote">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon
+                                        HorizontalAlignment="Center"
+                                        FontFamily="Segoe UI Variable Text"
+                                        FontSize="15"
+                                        FontWeight="SemiBold"
+                                        Glyph="“" />
+                                    <TextBlock x:Name="QuoteMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="CodeMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Code">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon HorizontalAlignment="Center" FontSize="12" Glyph="&#xE943;" />
+                                    <TextBlock x:Name="CodeMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="TableMenuButton" Click="FormatButton_Click" Style="{StaticResource MarkdownFormattingMenuButtonStyle}" Tag="Table">
+                                <Grid ColumnSpacing="7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon HorizontalAlignment="Center" FontSize="12" Glyph="&#xE8A9;" />
+                                    <TextBlock x:Name="TableMenuButtonText" Grid.Column="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+        </StackPanel>
 
         <TextBox
             x:Name="EditorTextBox"
@@ -132,6 +221,7 @@
             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
             ScrollViewer.VerticalScrollBarVisibility="Auto"
             SelectionChanged="EditorTextBox_SelectionChanged"
+            BeforeTextChanging="EditorTextBox_BeforeTextChanging"
             TextChanged="EditorTextBox_TextChanged"
             TextWrapping="Wrap" />
     </Grid>

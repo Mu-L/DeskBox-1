@@ -304,8 +304,16 @@ public sealed partial class TodoItemViewModel : ObservableObject
     public string EditText
     {
         get => _editText;
-        set => SetProperty(ref _editText, value);
+        set
+        {
+            if (SetProperty(ref _editText, value))
+            {
+                OnPropertyChanged(nameof(CanSaveEdit));
+            }
+        }
     }
+
+    public bool CanSaveEdit => !string.IsNullOrWhiteSpace(EditText);
 
     public bool IsCopySelected
     {

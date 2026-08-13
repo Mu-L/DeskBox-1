@@ -58,10 +58,35 @@ public sealed class QuickCaptureMultiDragTests
             "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
 
         Assert.Contains("SelectionMode=\"Extended\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AllowDrop=\"True\"", xaml, StringComparison.Ordinal);
         Assert.Contains("CanDragItems=\"True\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("CanReorderItems=\"False\"", xaml, StringComparison.Ordinal);
         Assert.Contains("DragItemsStarting=\"ItemsList_DragItemsStarting\"", xaml, StringComparison.Ordinal);
         Assert.Contains("QuickCaptureDragPackage.ResolveDraggedItems", source, StringComparison.Ordinal);
         Assert.Contains("ApplyTabDropAsync", source, StringComparison.Ordinal);
+        Assert.Contains("ItemsList.CanReorderItems = canReorder", source, StringComparison.Ordinal);
+        Assert.Contains("MovePinnedItemToIndexAsync(item, targetIndex)", source, StringComparison.Ordinal);
+        Assert.Contains("MoveItemAsync(item, targetIndex)", source, StringComparison.Ordinal);
+        Assert.Contains("_quickCaptureTabDropHandled = true", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TodoCopy_OnlyReportsFailureWhenSetContentFails()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.ClipboardSelection.cs"))
+            .ReplaceLineEndings("\n");
+
+        int setContent = source.IndexOf("Clipboard.SetContent(dataPackage);", StringComparison.Ordinal);
+        int flushTry = source.IndexOf("try\n        {\n            // SetContent", StringComparison.Ordinal);
+        int flush = source.IndexOf("Clipboard.Flush();", StringComparison.Ordinal);
+        int flushCatch = source.IndexOf("Clipboard content was set but flush failed", StringComparison.Ordinal);
+
+        Assert.True(setContent >= 0 && setContent < flushTry);
+        Assert.True(flushTry < flush && flush < flushCatch);
+        Assert.Contains("DeskBoxClipboardWriteScope.MarkWrite(text: text)", source, StringComparison.Ordinal);
     }
 
     private static QuickCaptureItemViewModel CreateItem(string id, string body)

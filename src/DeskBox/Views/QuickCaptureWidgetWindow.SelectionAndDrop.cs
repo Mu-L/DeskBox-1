@@ -517,7 +517,8 @@ public sealed partial class QuickCaptureWidgetWindow
                     string? fallbackText = await TryReadDroppedTextAsync(e.DataView);
                     if (!string.IsNullOrWhiteSpace(fallbackText))
                     {
-                        await ViewModel.AddTextAsync(fallbackText);
+                        QuickCaptureWriteResult fallbackWriteResult = await ViewModel.AddTextAsync(fallbackText);
+                        ReportBodyTruncation(fallbackWriteResult);
                         e.AcceptedOperation = DataPackageOperation.Copy;
                         ShowStatusToast(_localizationService.T("QuickCapture.Dropped"));
                         return;
@@ -586,7 +587,8 @@ public sealed partial class QuickCaptureWidgetWindow
                 return;
             }
 
-            await ViewModel.AddTextAsync(text);
+            QuickCaptureWriteResult textWriteResult = await ViewModel.AddTextAsync(text);
+            ReportBodyTruncation(textWriteResult);
             ViewModel.RefreshAfterViewReady();
             e.AcceptedOperation = DataPackageOperation.Copy;
             ShowStatusToast(_localizationService.T("QuickCapture.Dropped"));

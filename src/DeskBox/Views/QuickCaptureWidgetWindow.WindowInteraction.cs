@@ -213,23 +213,4 @@ public sealed partial class QuickCaptureWidgetWindow
         });
     }
 
-    private void ShowConfirmMenu(FrameworkElement anchor, string title, string actionText, Func<Task> confirmedAction)
-    {
-        _pendingDeleteConfirmFlyout?.Hide();
-
-        var flyout = WidgetCompactConfirmationMenuBuilder.CreateDeleteConfirmation(
-            title,
-            actionText,
-            confirmedAction);
-        flyout.Closed += (_, _) =>
-        {
-            if (ReferenceEquals(_pendingDeleteConfirmFlyout, flyout))
-            {
-                _pendingDeleteConfirmFlyout = null;
-            }
-        };
-
-        _pendingDeleteConfirmFlyout = flyout;
-        ShowFlyoutWithElevation(flyout, anchor);
-    }
 }

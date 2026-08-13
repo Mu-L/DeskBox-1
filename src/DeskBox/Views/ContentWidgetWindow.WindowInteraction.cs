@@ -264,6 +264,14 @@ public sealed partial class ContentWidgetWindow
 
     protected override void OnResizeEnd()
     {
+        if (CurrentContent is IWidgetInteractiveResizeContent resizeContent)
+        {
+            double titleHeight = Math.Max(0, ContentWidgetShell.ActualTitleBarHeight);
+            resizeContent.CompleteInteractiveResize(
+                Math.Max(1, RootGrid.ActualWidth),
+                Math.Max(1, RootGrid.ActualHeight - titleHeight));
+        }
+
         if (RestoreDesktopLayerWhenIdle)
         {
             RestoreDesktopLayer();

@@ -54,6 +54,124 @@ public sealed class QuickCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AddDetailedItemAsync_ExtractsInlineDataImagesIntoManagedAttachments()
+    {
+        var service = CreateService();
+        string encoded = Convert.ToBase64String([1, 2, 3, 4, 5]);
+        string markdown = $"before ![diagram](data:image/png;base64,{encoded}) after";
+
+        QuickCaptureItem item = await service.AddDetailedItemAsync(
+            null,
+            markdown,
+            QuickCaptureAppearancePreset.Default,
+            TextContentFormat.Markdown);
+
+        TodoAttachment attachment = Assert.Single(item.Attachments);
+        Assert.DoesNotContain("data:image/", item.Body, StringComparison.Ordinal);
+        Assert.Contains($"attachment:{attachment.Id}", item.Body, StringComparison.Ordinal);
+        Assert.Equal(TodoAttachment.ManagedStorageMode, attachment.StorageMode);
+        Assert.Equal("image", attachment.Type);
+        Assert.True(File.Exists(attachment.FilePath));
+        Assert.Equal([1, 2, 3, 4, 5], await File.ReadAllBytesAsync(attachment.FilePath));
+    }
+
+    [Fact]
+    public async Task AddDetailedItemWithResultAsync_TruncatesOversizedBodyAndReportsIt()
+    {
+        var service = CreateService();
+        string body = new string('a', QuickCaptureService.MaxItemBodyCharacters - 1) +
+            "😀trailing";
+
+        QuickCaptureWriteResult result = await service.AddDetailedItemWithResultAsync(
+            null,
+            body,
+            QuickCaptureAppearancePreset.Default);
+
+        Assert.True(result.Saved);
+        Assert.True(result.WasTruncated);
+        Assert.NotNull(result.Item);
+        Assert.Equal(QuickCaptureService.MaxItemBodyCharacters - 1, result.Item.Body.Length);
+        Assert.False(char.IsHighSurrogate(result.Item.Body[^1]));
+        Assert.Equal(result.Item.Body, Assert.Single((await service.GetDataAsync()).Items).Body);
+    }
+
+    [Fact]
+    public async Task AddDetailedItemWithResultAsync_ExtractsInlineImageBeforeApplyingTextLimit()
+    {
+        var service = CreateService();
+        byte[] imageBytes = new byte[200_000];
+        string markdown = $"before ![diagram](data:image/png;base64,{Convert.ToBase64String(imageBytes)}) after";
+        Assert.True(markdown.Length > QuickCaptureService.MaxItemBodyCharacters);
+
+        QuickCaptureWriteResult result = await service.AddDetailedItemWithResultAsync(
+            null,
+            markdown,
+            QuickCaptureAppearancePreset.Default,
+            TextContentFormat.Markdown);
+
+        Assert.True(result.Saved);
+        Assert.False(result.WasTruncated);
+        Assert.NotNull(result.Item);
+        Assert.Single(result.Item.Attachments);
+        Assert.Contains("before ![diagram](attachment:", result.Item.Body, StringComparison.Ordinal);
+        Assert.EndsWith(") after", result.Item.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetDataAsync_MigratesLegacyInlineDataImagesOnlyOnce()
+    {
+        string encoded = Convert.ToBase64String([9, 8, 7]);
+        var store = new QuickCaptureStore(_storeRoot);
+        await store.SaveAsync(new QuickCaptureStoreData
+        {
+            Items =
+            [
+                new QuickCaptureItem
+                {
+                    Id = "legacy-inline-image",
+                    Body = $"![one](data:image/png;base64,{encoded}) ![two](data:image/png;base64,{encoded})",
+                    ContentFormat = TextContentFormat.Markdown
+                }
+            ]
+        });
+
+        QuickCaptureItem migrated = Assert.Single((await CreateService().GetDataAsync()).Items);
+        TodoAttachment attachment = Assert.Single(migrated.Attachments);
+        Assert.Equal(
+            2,
+            migrated.Body.Split($"attachment:{attachment.Id}", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("data:image/", migrated.Body, StringComparison.Ordinal);
+
+        QuickCaptureItem reloaded = Assert.Single((await CreateService().GetDataAsync()).Items);
+        Assert.Single(reloaded.Attachments);
+        Assert.Equal(migrated.Body, reloaded.Body);
+    }
+
+    [Fact]
+    public async Task GetDataAsync_TruncatesOversizedLegacyBody()
+    {
+        var store = new QuickCaptureStore(_storeRoot);
+        await store.SaveAsync(new QuickCaptureStoreData
+        {
+            Items =
+            [
+                new QuickCaptureItem
+                {
+                    Id = "legacy-oversized-body",
+                    Body = new string('x', QuickCaptureService.MaxItemBodyCharacters + 100),
+                    ContentFormat = TextContentFormat.PlainText
+                }
+            ]
+        });
+
+        QuickCaptureItem migrated = Assert.Single((await CreateService().GetDataAsync()).Items);
+        Assert.Equal(QuickCaptureService.MaxItemBodyCharacters, migrated.Body.Length);
+
+        QuickCaptureItem reloaded = Assert.Single((await CreateService().GetDataAsync()).Items);
+        Assert.Equal(migrated.Body, reloaded.Body);
+    }
+
+    [Fact]
     public async Task UpdateItemAsync_RefreshesBodyAndType()
     {
         var service = CreateService();
