@@ -139,35 +139,16 @@ public sealed partial class SettingsWindow
         App.Current.ShowOnboarding();
     }
 
-    private async void ShowProductReasonButton_Click(object sender, RoutedEventArgs e)
+    private async void ShowAboutMeButton_Click(object sender, RoutedEventArgs e)
     {
         if (SettingsRoot.XamlRoot is null)
         {
             return;
         }
 
-        var content = new StackPanel
-        {
-            MaxWidth = 560,
-            Spacing = 16
-        };
-
-        for (int index = 1; index <= 5; index++)
-        {
-            content.Children.Add(CreateDialogParagraph(
-                _localizationService.T($"Settings.Dialog.ProductReasonP{index}")));
-        }
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = SettingsRoot.XamlRoot,
-            Title = _localizationService.T("Settings.About.ReasonTitle"),
-            CloseButtonText = _localizationService.T("Settings.Dialog.ProductReasonClose"),
-            DefaultButton = ContentDialogButton.Close,
-            Content = content
-        };
-
-        await dialog.ShowAsync();
+        AboutMeDialog.XamlRoot = SettingsRoot.XamlRoot;
+        AboutMeDialog.CloseButtonText = _localizationService.T("Settings.Dialog.AboutMeClose");
+        await AboutMeDialog.ShowAsync();
     }
 
     private void CleanupManagedStorageButton_Click(object sender, RoutedEventArgs e)

@@ -780,20 +780,15 @@
                     Margin="0,2,0,0"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top"
-                    Opacity="1">
-                    <Ellipse
-                        Width="3"
-                        Height="3"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Fill="{ThemeResource WidgetDragHandleBrush}" />
+                    Opacity="1"
+                    UseLayoutRounding="True">
                     <Border
                         Width="17"
                         Height="3"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
                         Background="{ThemeResource WidgetDragHandleBrush}"
-                        CornerRadius="1.5"
+                        CornerRadius="1.5,0,0,1.5"
                         RenderTransformOrigin="1,0.5">
                         <Border.RenderTransform>
                             <RotateTransform x:Name="OverlayDragGripLeftRotation" />
@@ -805,12 +800,19 @@
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center"
                         Background="{ThemeResource WidgetDragHandleBrush}"
-                        CornerRadius="1.5"
+                        CornerRadius="0,1.5,1.5,0"
                         RenderTransformOrigin="0,0.5">
                         <Border.RenderTransform>
                             <RotateTransform x:Name="OverlayDragGripRightRotation" />
                         </Border.RenderTransform>
                     </Border>
+                    <Ellipse
+                        Width="3"
+                        Height="3"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Canvas.ZIndex="1"
+                        Fill="{ThemeResource WidgetDragHandleBrush}" />
                 </Grid>
             </Border>
         </Grid>

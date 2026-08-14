@@ -15,6 +15,8 @@ public static class WidgetGroupNavigationInteractionPolicy
     public const double GestureCommitDistance = 56;
     public const double GestureCommitVelocity = 520;
     public const double WheelStep = 120;
+    public static readonly TimeSpan WheelRepeatCoalescingInterval =
+        TimeSpan.FromMilliseconds(120);
 
     public static string ResolveEffectiveStyle(
         string? requestedStyle,
@@ -118,6 +120,38 @@ public static class WidgetGroupNavigationInteractionPolicy
 
         direction = accumulator < 0 ? 1 : -1;
         accumulator = 0;
+        return true;
+    }
+
+    /// <summary>
+    /// Coalesces duplicate wheel impulses reported by some mouse wheels for a
+    /// single detent. Rejected impulses deliberately do not refresh the
+    /// accepted timestamp, so a sustained scroll remains responsive instead
+    /// of extending a sliding cooldown indefinitely.
+    /// </summary>
+    public static bool TryAcceptCoalescedWheelStep(
+        ref DateTimeOffset lastAcceptedAt,
+        ref int lastAcceptedDirection,
+        DateTimeOffset observedAt,
+        int direction)
+    {
+        if (direction is not (-1 or 1))
+        {
+            return false;
+        }
+
+        TimeSpan sinceAccepted = observedAt - lastAcceptedAt;
+        bool accept = lastAcceptedAt == default ||
+                      direction != lastAcceptedDirection ||
+                      sinceAccepted < TimeSpan.Zero ||
+                      sinceAccepted >= WheelRepeatCoalescingInterval;
+        if (!accept)
+        {
+            return false;
+        }
+
+        lastAcceptedAt = observedAt;
+        lastAcceptedDirection = direction;
         return true;
     }
 

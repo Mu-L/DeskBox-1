@@ -34,6 +34,8 @@ public sealed class SettingsSynchronizationTests
         settingsService.SettingsChanged += () => settingsChanged = true;
 
         settingsService.Settings.WidgetCapsuleModeEnabled = true;
+        settingsService.Settings.WidgetCollapseBehavior =
+            SettingsService.WidgetCollapseBehaviorSmart;
         settingsService.Settings.WidgetCompactWidthMode =
             SettingsService.WidgetCompactWidthModeIndependent;
         settingsService.Settings.WidgetCapsuleArrangementMode =
@@ -62,6 +64,9 @@ public sealed class SettingsSynchronizationTests
         await reloadedService.LoadAsync();
 
         Assert.True(reloadedService.Settings.WidgetCapsuleModeEnabled);
+        Assert.Equal(
+            SettingsService.WidgetCollapseBehaviorSmart,
+            reloadedService.Settings.WidgetCollapseBehavior);
         Assert.Equal(
             SettingsService.WidgetCompactWidthModeIndependent,
             reloadedService.Settings.WidgetCompactWidthMode);

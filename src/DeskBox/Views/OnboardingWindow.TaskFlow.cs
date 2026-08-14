@@ -1,10 +1,7 @@
 using DeskBox.Models;
 using DeskBox.Services;
-using Microsoft.UI;
-using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using Windows.Graphics;
-using WinRT.Interop;
+using Microsoft.UI.Xaml.Controls;
 
 namespace DeskBox.Views;
 
@@ -15,7 +12,7 @@ public sealed partial class OnboardingWindow
     private const string StatusHiddenGlyph = "\uE890";
     private const string StatusVisibleGlyph = "\uE8A7";
 
-    private bool _isPracticePlacementActive;
+    private bool _isFilePracticeWidgetRaised;
     private bool _hasCompletedFilePractice;
     private bool _hasHiddenWidgetsDuringPractice;
     private bool _hasCompletedVisibilityPractice;
@@ -26,54 +23,6 @@ public sealed partial class OnboardingWindow
 
     private void SetupTaskStep2()
     {
-        string storagePath = SettingsService.NormalizeManagedStorageRootPath(
-            _settingsService.Settings.DefaultManagedStorageRootPath);
-
-        TaskStep2StoragePathText.Text = storagePath;
-
-        ManagedStoragePathAssessment assessment = ManagedStoragePathService.AssessPath(storagePath);
-        string freeSpace = assessment.AvailableFreeSpace is long availableFreeSpace
-            ? FileMetaService.FormatSize(availableFreeSpace)
-            : _localizationService.T("Onboarding.Task.Step2.SpaceUnknown");
-        string metaKey = assessment.DriveType switch
-        {
-            DriveType.Network => "Onboarding.Task.Step2.PathMeta.Network",
-            DriveType.Removable => "Onboarding.Task.Step2.PathMeta.Removable",
-            _ when assessment.IsSystemDrive => "Onboarding.Task.Step2.PathMeta.System",
-            DriveType.Fixed => "Onboarding.Task.Step2.PathMeta.NonSystem",
-            _ => "Onboarding.Task.Step2.PathMeta.Unknown"
-        };
-        TaskStep2PathMetaText.Text = metaKey is
-            "Onboarding.Task.Step2.PathMeta.Network" or
-            "Onboarding.Task.Step2.PathMeta.Unknown"
-            ? _localizationService.T(metaKey)
-            : _localizationService.Format(metaKey, freeSpace);
-
-        var warnings = new List<string>();
-        if (assessment.IsSystemDrive)
-        {
-            warnings.Add(_localizationService.T(assessment.HasSuitableNonSystemDrive
-                ? "Onboarding.Task.Step2.Warning.SystemDrive"
-                : "Onboarding.Task.Step2.Warning.SystemDriveOnly"));
-        }
-        if (assessment.IsCloudSynced)
-        {
-            warnings.Add(_localizationService.T("Onboarding.Task.Step2.Warning.CloudSync"));
-        }
-        if (assessment.DriveType == DriveType.Removable)
-        {
-            warnings.Add(_localizationService.T("Onboarding.Task.Step2.Warning.Removable"));
-        }
-        else if (assessment.DriveType == DriveType.Network)
-        {
-            warnings.Add(_localizationService.T("Onboarding.Task.Step2.Warning.Network"));
-        }
-
-        TaskStep2PathWarningText.Text = string.Join(Environment.NewLine, warnings);
-        TaskStep2PathWarningBorder.Visibility = warnings.Count > 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
     }
 
     private void SetupTaskStep3()
@@ -83,6 +32,11 @@ public sealed partial class OnboardingWindow
                 ? "Onboarding.Task.Step3.StatusCompleted"
                 : "Onboarding.Task.Step3.StatusReady",
             _hasCompletedFilePractice ? StatusCompleteGlyph : StatusInfoGlyph);
+
+        if (!_hasCompletedFilePractice && !_isFilePracticeWidgetRaised)
+        {
+            _ = ShowFilePracticeWidgetAsync();
+        }
     }
 
     private void SetupTaskStep4()
@@ -95,6 +49,7 @@ public sealed partial class OnboardingWindow
         TaskStep4HotkeyText.Text = _localizationService.Format(
             "Onboarding.Task.Step4.ToggleBody",
             hotkeyText);
+        TaskStep4ShortcutText.Text = hotkeyText;
         if (!_hasCompletedVisibilityPractice &&
             global::DeskBox.App.Current.HasVisibleWidgetsForOnboarding == false)
         {
@@ -112,30 +67,124 @@ public sealed partial class OnboardingWindow
                 : _hasHiddenWidgetsDuringPractice
                     ? StatusHiddenGlyph
                     : StatusInfoGlyph);
+        TaskStep4ToggleButton.Content = _localizationService.T(
+            _hasHiddenWidgetsDuringPractice && !_hasCompletedVisibilityPractice
+                ? "Tray.ShowAll"
+                : "Onboarding.Task.Step4.ToggleButton");
+        TaskStep4ToggleButton.Visibility = _hasCompletedVisibilityPractice
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        UpdateVisibilityPreview(global::DeskBox.App.Current.HasVisibleWidgetsForOnboarding);
     }
 
     private void SetupTaskStep5()
     {
+        if (_hasInitializedFeatureToggles)
+        {
+            return;
+        }
+
+        SynchronizeFeatureTogglesFromSettings();
     }
 
-    private async void TaskStep2ChangePath_Click(object sender, RoutedEventArgs e)
+    private void TaskStep5FeatureToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        TaskStep2ChangePathButton.IsEnabled = false;
-        bool changed = await ChangeStoragePathAsync();
-        TaskStep2ChangePathButton.IsEnabled = true;
-        if (changed)
+        if (!_hasInitializedFeatureToggles ||
+            _isSynchronizingFeatureToggles ||
+            sender is not ToggleSwitch { Tag: string kindName } toggle ||
+            !Enum.TryParse(kindName, ignoreCase: false, out WidgetKind kind) ||
+            !FeatureWidgetSettings.IsFeatureWidget(kind))
         {
-            SetupTaskStep2();
+            return;
+        }
+
+        _featureWidgetSelectionUpdateTask = PersistFeatureWidgetSelectionAfterAsync(
+            _featureWidgetSelectionUpdateTask,
+            kind,
+            toggle.IsOn);
+    }
+
+    private async Task PersistFeatureWidgetSelectionAfterAsync(
+        Task previousUpdate,
+        WidgetKind kind,
+        bool enabled)
+    {
+        try
+        {
+            await previousUpdate;
+
+            if (global::DeskBox.App.Current.WidgetManager is { } widgetManager)
+            {
+                await widgetManager.SetFeatureWidgetEnabledAsync(
+                    kind,
+                    enabled,
+                    reveal: enabled);
+                return;
+            }
+
+            FeatureWidgetSettings.SetEnabled(_settingsService.Settings, kind, enabled);
+            await _settingsService.SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Onboarding] Failed to persist feature selection kind={kind} enabled={enabled}: {ex}");
+            FeatureWidgetSettings.SetEnabled(_settingsService.Settings, kind, enabled);
+            await _settingsService.SaveAsync();
         }
     }
 
-    private async void TaskStep3TryWidget_Click(object sender, RoutedEventArgs e)
+    private void OnFeatureWidgetSettingsChanged()
     {
-        TaskStep3TryButton.IsEnabled = false;
-        PlaceWindowForWidgetPractice();
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(OnFeatureWidgetSettingsChanged);
+            return;
+        }
+
+        if (_hasInitializedFeatureToggles)
+        {
+            SynchronizeFeatureTogglesFromSettings();
+        }
+    }
+
+    private void SynchronizeFeatureTogglesFromSettings()
+    {
+        _isSynchronizingFeatureToggles = true;
+        try
+        {
+            TaskStep5TodoToggle.IsOn = FeatureWidgetSettings.IsEnabled(
+                _settingsService.Settings,
+                WidgetKind.Todo);
+            TaskStep5QuickCaptureToggle.IsOn = FeatureWidgetSettings.IsEnabled(
+                _settingsService.Settings,
+                WidgetKind.QuickCapture);
+            TaskStep5SearchToggle.IsOn = FeatureWidgetSettings.IsEnabled(
+                _settingsService.Settings,
+                WidgetKind.Search);
+            TaskStep5WeatherToggle.IsOn = FeatureWidgetSettings.IsEnabled(
+                _settingsService.Settings,
+                WidgetKind.Weather);
+            TaskStep5MusicToggle.IsOn = FeatureWidgetSettings.IsEnabled(
+                _settingsService.Settings,
+                WidgetKind.Music);
+            _hasInitializedFeatureToggles = true;
+        }
+        finally
+        {
+            _isSynchronizingFeatureToggles = false;
+        }
+    }
+
+    private async Task ShowFilePracticeWidgetAsync()
+    {
+        _isFilePracticeWidgetRaised = true;
         bool shown = await global::DeskBox.App.Current.ShowFirstFileWidgetForOnboardingAsync();
-        TaskStep3TryButton.IsEnabled = true;
-        if (!_hasCompletedFilePractice)
+        if (!shown)
+        {
+            _isFilePracticeWidgetRaised = false;
+        }
+
+        if (_stepIndex == 0 && !_hasCompletedFilePractice)
         {
             SetTaskStep3Status(
                 shown
@@ -143,6 +192,17 @@ public sealed partial class OnboardingWindow
                     : "Onboarding.Task.Step2.StatusUnavailable",
                 shown ? StatusVisibleGlyph : StatusInfoGlyph);
         }
+    }
+
+    private void ReleaseFilePracticeWidget()
+    {
+        if (!_isFilePracticeWidgetRaised)
+        {
+            return;
+        }
+
+        _isFilePracticeWidgetRaised = false;
+        global::DeskBox.App.Current.ReleaseOnboardingFileWidgetRaise();
     }
 
     private async void TaskStep4ToggleWidgets_Click(object sender, RoutedEventArgs e)
@@ -155,30 +215,11 @@ public sealed partial class OnboardingWindow
     private void TaskStep4OpenTrayMenu_Click(object sender, RoutedEventArgs e)
     {
         global::DeskBox.App.Current.ShowTrayContextMenuForOnboarding();
-        SetTaskStep4Status("Onboarding.Task.Step4.StatusTrayOpened", StatusVisibleGlyph);
-    }
-
-    private async void TaskStep5OrganizeDesktop_Click(object sender, RoutedEventArgs e)
-    {
-        await CompleteOnboardingAsync();
-        global::DeskBox.App.Current.ShowDesktopOrganizationWindow();
-    }
-
-    private async void TaskStep5OpenAppearance_Click(object sender, RoutedEventArgs e)
-    {
-        await CompleteOnboardingAsync();
-        global::DeskBox.App.Current.ShowSettings("Appearance");
-    }
-
-    private async void TaskStep5OpenSettings_Click(object sender, RoutedEventArgs e)
-    {
-        await CompleteOnboardingAsync();
-        global::DeskBox.App.Current.ShowSettings();
     }
 
     private void OnOnboardingFileImportCompleted(int importedItemCount)
     {
-        if (_stepIndex != 1 || importedItemCount <= 0)
+        if (_stepIndex != 0 || importedItemCount <= 0)
         {
             return;
         }
@@ -193,7 +234,7 @@ public sealed partial class OnboardingWindow
 
     private void OnOnboardingWidgetsVisibilityChanged(bool hasVisibleWidgets)
     {
-        if (_stepIndex != 2)
+        if (_stepIndex != 1)
         {
             return;
         }
@@ -221,6 +262,14 @@ public sealed partial class OnboardingWindow
                     : hasVisibleWidgets
                         ? StatusVisibleGlyph
                         : StatusHiddenGlyph);
+            TaskStep4ToggleButton.Content = _localizationService.T(
+                _hasHiddenWidgetsDuringPractice && !_hasCompletedVisibilityPractice
+                    ? "Tray.ShowAll"
+                    : "Onboarding.Task.Step4.ToggleButton");
+            TaskStep4ToggleButton.Visibility = _hasCompletedVisibilityPractice
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+            UpdateVisibilityPreview(hasVisibleWidgets);
             UpdateFooterState();
         });
     }
@@ -229,50 +278,27 @@ public sealed partial class OnboardingWindow
     {
         TaskStep3StatusIcon.Glyph = glyph;
         TaskStep3StatusText.Text = _localizationService.T(localizationKey);
+        AnimateStatusFeedback(TaskStep3StatusBadge);
     }
 
     private void SetTaskStep4Status(string localizationKey, string glyph)
     {
         TaskStep4StatusIcon.Glyph = glyph;
         TaskStep4StatusText.Text = _localizationService.T(localizationKey);
+        AnimateStatusFeedback(TaskStep4StatusBadge);
     }
 
-    private void PlaceWindowForWidgetPractice()
+    private void UpdateVisibilityPreview(bool hasVisibleWidgets)
     {
-        if (_isPracticePlacementActive)
+        _stepAmbientStoryboard?.Stop();
+        var transform = GetElementTransform(TaskStep4PreviewWidgets);
+        transform.TranslateY = hasVisibleWidgets ? 0 : 14;
+        TaskStep4PreviewWidgets.Opacity = hasVisibleWidgets ? 1 : 0.22;
+        TaskStep4HotkeyHalo.Opacity = hasVisibleWidgets ? 0.18 : 0.34;
+        if (hasVisibleWidgets && _stepIndex == 1)
         {
-            return;
+            StartStepAmbientAnimation(1);
         }
-
-        Microsoft.UI.WindowId windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
-        RectInt32 workArea = DisplayArea.GetFromWindowId(
-            windowId,
-            DisplayAreaFallback.Primary).WorkArea;
-        double scale = GetCurrentDpiScale();
-        int margin = ToPhysicalPixels(24, scale);
-        int reservedWidgetWidth = ToPhysicalPixels(360, scale);
-        int minWidth = ToPhysicalPixels(MinWindowWidth, scale);
-        int availableWidth = Math.Max(
-            minWidth,
-            workArea.Width - reservedWidgetWidth - (margin * 2));
-        int width = Math.Min(_appWindow.Size.Width, availableWidth);
-        int height = Math.Min(_appWindow.Size.Height, workArea.Height - (margin * 2));
-
-        _appWindow.Resize(new SizeInt32(width, height));
-        _appWindow.Move(new PointInt32(
-            workArea.X + margin,
-            workArea.Y + Math.Max(margin, (workArea.Height - height) / 2)));
-        _isPracticePlacementActive = true;
     }
 
-    private void RestoreWindowAfterWidgetPractice()
-    {
-        if (!_isPracticePlacementActive)
-        {
-            return;
-        }
-
-        _isPracticePlacementActive = false;
-        ResizeAndCenterForDisplay(Win32Interop.GetWindowIdFromWindow(_hWnd));
-    }
 }

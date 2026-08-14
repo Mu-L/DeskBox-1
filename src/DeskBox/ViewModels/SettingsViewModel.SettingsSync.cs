@@ -77,7 +77,6 @@ public partial class SettingsViewModel
                 ? settings.WidgetBorderStyle
                 : BorderThin;
 
-            WidgetCapsuleModeEnabled = settings.WidgetCapsuleModeEnabled;
             SelectedWidgetCompactWidthMode = SettingsService.NormalizeWidgetCompactWidthMode(
                 settings.WidgetCompactWidthMode);
             SelectedWidgetCapsuleArrangementMode = SettingsService.NormalizeWidgetCapsuleArrangementMode(
@@ -89,9 +88,8 @@ public partial class SettingsViewModel
             SelectedWidgetCapsuleBarDirection = SettingsService.NormalizeWidgetCapsuleBarDirection(
                 settings.WidgetCapsuleBarDirection);
             WidgetCompactHideSensitiveContent = settings.WidgetCompactHideSensitiveContent;
-            SelectedWidgetCollapseBehavior = SettingsService.NormalizeWidgetCollapseBehavior(settings.WidgetCollapseBehavior) == SettingsService.WidgetCollapseBehaviorSmart
-                ? SettingsService.WidgetCollapseBehaviorSmart
-                : SettingsService.WidgetCollapseBehaviorClick;
+            SelectedWidgetCollapseBehavior = SettingsService.NormalizeWidgetCollapseBehavior(
+                settings.WidgetCollapseBehavior);
             SelectedWidgetCompactContentMode = SettingsService.NormalizeWidgetCompactContentMode(settings.WidgetCompactContentMode);
             SelectedWidgetCompactAnimationEffect = SettingsService.NormalizeWidgetCompactAnimationEffect(settings.WidgetCompactAnimationEffect);
             WidgetCompactAnimationDurationMs = SettingsService.NormalizeWidgetCompactAnimationDurationMs(settings.WidgetCompactAnimationDurationMs);
@@ -230,15 +228,11 @@ public partial class SettingsViewModel
     {
         RefreshSelectionProperties(refreshLocalizedOptions: true);
         OnPropertyChanged(nameof(AccentColorDescription));
-        OnPropertyChanged(nameof(AboutVersionText));
         OnPropertyChanged(nameof(DistributionChannelText));
-        OnPropertyChanged(nameof(AboutDeveloperText));
         OnPropertyChanged(nameof(OfficialWebsiteDisplayText));
         OnPropertyChanged(nameof(OpenSourceRepositoryDisplayText));
         OnPropertyChanged(nameof(UpdateDownloadActionText));
-        OnPropertyChanged(nameof(DonationCardVisibility));
-        OnPropertyChanged(nameof(DonationWechatImageSource));
-        OnPropertyChanged(nameof(DonationAlipayImageSource));
+        OnPropertyChanged(nameof(StoreSupportCardVisibility));
         if (!IsCheckingForUpdates && !IsDownloadingUpdate)
         {
             if (_appUpdateService.LastCheckResult is not null)

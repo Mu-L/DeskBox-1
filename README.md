@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.4.1-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1)
+[![Latest release](https://img.shields.io/badge/release-1.4.2-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ The six newer language packs prioritize the main file-widget and onboarding flow
 
 ## Download
 
-DeskBox 1.4.2 installers are undergoing local validation and are not being uploaded to GitHub yet. The current public stable release remains available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1):
+DeskBox 1.4.2 is available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2):
 
-- [DeskBox 1.4.1 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_x64.exe) — most Intel and AMD PCs.
-- [DeskBox 1.4.1 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.4.2 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_x64.exe) — most Intel and AMD PCs.
+- [DeskBox 1.4.2 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
@@ -108,6 +108,7 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - **Quick Capture images and attachments are easier to recognize:** clipboard images render as thumbnails in both panes and copy back as bitmap data. Todo and Quick Capture share a horizontally scrollable attachment tile strip with image thumbnails, file icons, and hover removal.
 - **Music controls look and size like native Windows transport buttons:** play, pause, previous, and next use filled shapes at one responsive size, alongside a refined cover-mode control bar and song layout.
 - **Widget-group wheel switching remains responsive under rapid input:** the two time-based input blockers are gone, while precision-delta accumulation, latest-target cancellation, and circular first/last navigation remain intact.
+- **Onboarding gets to the first useful action sooner:** the shorter guided flow demonstrates creating a file widget, tray controls, and global show/hide before offering optional feature widgets. Feature switches apply immediately and stay synchronized with Settings.
 - **Interface and runtime polish continues:** Records and Pinned keep consistent empty states, Pinned can create pinned content directly, the floating drag handle has solid light/dark colors, Markdown rendering is more robust, and search indexing and desktop-layer restoration use tighter memory and lifecycle safeguards.
 
 Read the full [changelog](CHANGELOG.md) or the [1.4.2 release notes](docs/releases/v1.4.2.md).

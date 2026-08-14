@@ -108,6 +108,10 @@ public partial class SettingsViewModel
                 return;
             }
 
+            OnPropertyChanged(nameof(CanEditCustomAccent));
+            OnPropertyChanged(nameof(AccentColorDescription));
+            OnPropertyChanged(nameof(SelectedAccentColorSource));
+
             if (_isRestoringDefaults)
             {
                 return;
@@ -115,12 +119,27 @@ public partial class SettingsViewModel
 
             _themeService.SetAccentMode(value ? ThemeService.AccentModeSystem : ThemeService.AccentModeCustom);
             RefreshAccentPreview();
-            OnPropertyChanged(nameof(CanEditCustomAccent));
-            OnPropertyChanged(nameof(AccentColorDescription));
         }
     }
 
     public bool CanEditCustomAccent => !UseSystemAccentColor;
+
+    public string SelectedAccentColorSource
+    {
+        get => UseSystemAccentColor
+            ? ThemeService.AccentModeSystem
+            : ThemeService.AccentModeCustom;
+        set => UseSystemAccentColor = !string.Equals(
+            value,
+            ThemeService.AccentModeCustom,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    public IReadOnlyList<SettingsOption> AvailableAccentColorSourceOptions =>
+    [
+        new(ThemeService.AccentModeSystem, _localizationService.T("Settings.Accent.Source.System")),
+        new(ThemeService.AccentModeCustom, _localizationService.T("Settings.Accent.Source.Custom"))
+    ];
 
     public string SelectedWidgetCornerPreference
     {
@@ -264,10 +283,6 @@ public partial class SettingsViewModel
         set
         {
             string normalized = SettingsService.NormalizeWidgetCollapseBehavior(value);
-            if (normalized == SettingsService.WidgetCollapseBehaviorExpanded)
-            {
-                normalized = SettingsService.WidgetCollapseBehaviorClick;
-            }
             if (!SetProperty(ref _selectedWidgetCollapseBehavior, normalized))
             {
                 return;
@@ -277,6 +292,8 @@ public partial class SettingsViewModel
             OnPropertyChanged(nameof(IsSmartWidgetCollapseBehavior));
             OnPropertyChanged(nameof(IsSmartWidgetCollapseBehaviorSelected));
             OnPropertyChanged(nameof(CapsuleHoverResponseEntryVisibility));
+            OnPropertyChanged(nameof(IsWidgetCapsuleBarEnabled));
+            OnPropertyChanged(nameof(IsWidgetCapsuleBarSpacingEnabled));
 
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
@@ -284,6 +301,8 @@ public partial class SettingsViewModel
             }
 
             _settingsService.Settings.WidgetCollapseBehavior = normalized;
+            _settingsService.Settings.WidgetCapsuleModeEnabled =
+                normalized != SettingsService.WidgetCollapseBehaviorExpanded;
             _settingsService.SaveDebounced();
         }
     }
@@ -582,11 +601,13 @@ public partial class SettingsViewModel
     public bool CanToggleHoverActionAdd => CanToggleHoverButtonAction(ShowHoverActionAdd);
     public bool CanToggleHoverActionMore => CanToggleHoverButtonAction(ShowHoverActionMore);
     public bool CanToggleHoverActionDelete => CanToggleHoverButtonAction(ShowHoverActionDelete);
-    public string HoverButtonActionsSummaryText => string.Join(
-        _localizationService.ApiLanguageCode == "zh" ? "、" : ", ",
-        AvailableWidgetHoverButtonActions
-            .Where(IsHoverButtonActionSelected)
-            .Select(GetHoverButtonActionDisplayName));
+    public string HoverButtonActionsSummaryText => !ShowHoverButtons
+        ? _localizationService.T("Settings.HoverButtonActions.None")
+        : string.Join(
+            _localizationService.ApiLanguageCode == "zh" ? "、" : ", ",
+            AvailableWidgetHoverButtonActions
+                .Where(IsHoverButtonActionSelected)
+                .Select(GetHoverButtonActionDisplayName));
 
     public string[] AvailableWidgetHoverButtonActions { get; } =
     [

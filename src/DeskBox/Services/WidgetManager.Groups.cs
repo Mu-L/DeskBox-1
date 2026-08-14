@@ -32,21 +32,17 @@ public sealed partial class WidgetManager
         WidgetGroupNavigationStyles.Auto;
     private string _lastWidgetGroupDefaultTitleDisplayMode =
         WidgetGroupTitleDisplayModes.IconAndText;
-    private bool _lastWidgetGroupingEnabled;
     private bool _lastWidgetGroupWheelSwitchEnabled = true;
     private bool _lastWidgetGroupHoverSwitchEnabled;
 
     public event Action? WidgetGroupsChanged;
 
-    public bool IsWidgetGroupingEnabled =>
-        _settingsService.Settings.WidgetGroupsEnabled;
+    public bool IsWidgetGroupingEnabled => true;
 
     public void NotifyWidgetGroupingAvailabilityChanged()
     {
-        if (!IsWidgetGroupingEnabled)
-        {
-            ClearGroupDragPreview();
-        }
+        // Retained for compatibility with older callers. Grouping is always
+        // available now, so there is no runtime capability to refresh.
     }
 
     public async Task<bool> DissolveAllWidgetGroupsAsync()
@@ -95,8 +91,6 @@ public sealed partial class WidgetManager
 
     private void InitializeWidgetGroupPresentationDefaults()
     {
-        _lastWidgetGroupingEnabled =
-            _settingsService.Settings.WidgetGroupsEnabled;
         _lastWidgetGroupDefaultNavigationStyle =
             WidgetGroupNavigationStyles.Normalize(
                 _settingsService.Settings.WidgetGroupDefaultNavigationStyle,
@@ -123,10 +117,7 @@ public sealed partial class WidgetManager
             _settingsService.Settings.WidgetGroupWheelSwitchEnabled;
         bool hoverEnabled =
             _settingsService.Settings.WidgetGroupHoverSwitchEnabled;
-        bool groupingEnabled =
-            _settingsService.Settings.WidgetGroupsEnabled;
-        if (groupingEnabled == _lastWidgetGroupingEnabled &&
-            string.Equals(
+        if (string.Equals(
                 navigationStyle,
                 _lastWidgetGroupDefaultNavigationStyle,
                 StringComparison.Ordinal) &&
@@ -140,11 +131,6 @@ public sealed partial class WidgetManager
             return;
         }
 
-        _lastWidgetGroupingEnabled = groupingEnabled;
-        if (!groupingEnabled)
-        {
-            ClearGroupDragPreview();
-        }
         _lastWidgetGroupDefaultNavigationStyle = navigationStyle;
         _lastWidgetGroupDefaultTitleDisplayMode = titleMode;
         _lastWidgetGroupWheelSwitchEnabled = wheelEnabled;
@@ -270,6 +256,11 @@ public sealed partial class WidgetManager
             widgetId)?.NavigationStyle;
     }
 
+    public string GetWidgetGroupDefaultNavigationStyle() =>
+        WidgetGroupNavigationStyles.Normalize(
+            _settingsService.Settings.WidgetGroupDefaultNavigationStyle,
+            allowFollowDefault: false);
+
     public async Task<bool> SetWidgetGroupTitleDisplayModeAsync(
         string widgetId,
         string displayMode)
@@ -313,6 +304,11 @@ public sealed partial class WidgetManager
             widgetId)?.TitleDisplayMode;
     }
 
+    public string GetWidgetGroupDefaultTitleDisplayMode() =>
+        WidgetGroupTitleDisplayModes.Normalize(
+            _settingsService.Settings.WidgetGroupDefaultTitleDisplayMode,
+            allowFollowDefault: false);
+
     public async Task<bool> SetWidgetGroupWheelSwitchEnabledAsync(
         string widgetId,
         bool? enabled)
@@ -350,6 +346,9 @@ public sealed partial class WidgetManager
             widgetId)?.WheelSwitchEnabled;
     }
 
+    public bool GetWidgetGroupDefaultWheelSwitchEnabled() =>
+        _settingsService.Settings.WidgetGroupWheelSwitchEnabled;
+
     public async Task<bool> SetWidgetGroupHoverSwitchEnabledAsync(
         string widgetId,
         bool? enabled)
@@ -386,6 +385,9 @@ public sealed partial class WidgetManager
             _settingsService.Settings,
             widgetId)?.HoverSwitchEnabled;
     }
+
+    public bool GetWidgetGroupDefaultHoverSwitchEnabled() =>
+        _settingsService.Settings.WidgetGroupHoverSwitchEnabled;
 
     public WidgetChromeMode? GetWidgetGroupChromeMode(string widgetId)
     {
@@ -1730,7 +1732,7 @@ public sealed partial class WidgetManager
             ChromeMode = WidgetChromeModeNames.ToSettingValue(
                 groupMode),
             CollapseBehavior = WidgetCollapseBehaviorNames.ToSettingValue(
-                WidgetCollapseBehaviorNames.GetOverride(target))
+                WidgetCollapseBehavior.System)
         };
         CaptureGroupLayout(group, target);
         return group;

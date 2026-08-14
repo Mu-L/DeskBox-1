@@ -3,6 +3,7 @@
     x:Class="DeskBox.Views.SettingsSections.FileWidgetSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DeskBox.Controls"
     xmlns:svc="using:DeskBox.Services">
 
     <UserControl.Resources>
@@ -17,7 +18,7 @@
         <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Appearance.DetailTitle" />
         <StackPanel Margin="0,8,0,0" Spacing="4">
             <Border Style="{StaticResource SettingsGroupStyle}">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="DesktopOrganizationSettings">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE74C;" IsHitTestVisible="False" VerticalAlignment="Center" />
@@ -27,7 +28,16 @@
                             </StackPanel>
                         </Grid>
                     </Button>
-                    <FontIcon Grid.Column="1" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                    <Button
+                        Grid.Column="1"
+                        Click="OrganizeDesktopButton_Click"
+                        Style="{StaticResource AccentButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontSize="13" Glyph="&#xE74C;" />
+                            <TextBlock svc:Localized.Key="DesktopOrganization.Settings.StartAction" />
+                        </StackPanel>
+                    </Button>
+                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                 </Grid>
             </Border>
 
@@ -63,13 +73,12 @@
                             </StackPanel>
                         </Grid>
                     </Button>
-                    <ToggleSwitch
+                    <ComboBox
                         Grid.Column="1"
-                        MinWidth="0"
-                        OffContent=""
-                        OnContent=""
+                        MinWidth="176"
                         VerticalAlignment="Center"
-                        IsOn="{Binding FileStacksEnabled, Mode=TwoWay}" />
+                        ItemsSource="{Binding AvailableFileStackModeOptions}"
+                        controls:SettingsComboBox.Value="{Binding SelectedFileStackMode, Mode=TwoWay}" />
                     <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                 </Grid>
             </Border>

@@ -103,10 +103,58 @@ public sealed partial class ContentWidgetWindow
 
     private async void AddButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_config.WidgetKind == WidgetKind.File)
+        {
+            ShowFileWidgetCreateFlyout();
+            return;
+        }
+
         if (_contentHost.CurrentContent is IWidgetAddActionContent addActionContent)
         {
             await addActionContent.AddFromTitleButtonAsync();
         }
+    }
+
+    private void ShowFileWidgetCreateFlyout()
+    {
+        var localization = App.Current.LocalizationService;
+        var flyout = new MenuFlyout();
+
+        var createWidgetItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Common.NewWidget"),
+            Icon = new SymbolIcon(Symbol.Add)
+        };
+        createWidgetItem.Click += async (_, _) =>
+        {
+            if (App.Current.WidgetManager is { } widgetManager)
+            {
+                await widgetManager.CreateWidgetOfKindAsync(WidgetKind.File);
+            }
+        };
+        flyout.Items.Add(createWidgetItem);
+
+        var mapFolderItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Common.NewFolderMapping"),
+            Icon = new SymbolIcon(Symbol.OpenFile)
+        };
+        mapFolderItem.Click += async (_, _) =>
+            await App.Current.CreateFolderWidgetFromPickerAsync();
+        flyout.Items.Add(mapFolderItem);
+
+        var addFeatureWidgetItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Common.AddFeatureWidget"),
+            Icon = new FontIcon { Glyph = "\uE710" }
+        };
+        addFeatureWidgetItem.Click += (_, _) =>
+            App.Current.ShowSettings("FeatureWidgets");
+        flyout.Items.Add(addFeatureWidgetItem);
+
+        ShowFlyoutWithInteraction(
+            flyout,
+            ContentWidgetShell.AddActionButton);
     }
 
     /// <summary>
@@ -252,6 +300,7 @@ public sealed partial class ContentWidgetWindow
             SetChromeModeOverride));
         flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
             _config,
+            SettingsService.Settings.WidgetCollapseBehavior,
             App.Current.LocalizationService,
             SetCollapseBehaviorOverride,
             ResetCompactWidthOverride));

@@ -82,12 +82,6 @@
     <Content Include="Assets\wechat-qrcode.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\donation-wechat.png" Condition="'$(DeskBoxDistribution)' != 'Store'">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Assets\donation-alipay.png" Condition="'$(DeskBoxDistribution)' != 'Store'">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
     <Content Include="Assets\SettingsNavIcons\*.svg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
@@ -145,27 +139,6 @@
       Projects="..\DeskBox.Updater\DeskBox.Updater.csproj"
       Targets="Publish"
       Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishSingleFile=false;PublishDir=$(PublishDir)" />
-  </Target>
-
-  <Target Name="RemoveStoreRestrictedAssetsFromPri"
-          BeforeTargets="_GenerateProjectPriConfigurationFiles;_GenerateProjectPriFileCore"
-          Condition="'$(DeskBoxDistribution)' == 'Store'">
-    <ItemGroup>
-      <Image Remove="Assets\donation-wechat.png;Assets\donation-alipay.png" />
-      <Content Remove="Assets\donation-wechat.png;Assets\donation-alipay.png" />
-      <None Remove="Assets\donation-wechat.png;Assets\donation-alipay.png" />
-      <PRIResource Remove="Assets\donation-wechat.png;Assets\donation-alipay.png" />
-    </ItemGroup>
-  </Target>
-
-  <Target Name="RemoveStoreRestrictedAssetsFromAppxPayload"
-          AfterTargets="_ComputeAppxPackagePayload"
-          BeforeTargets="_GenerateAppxPackageRecipe;_GenerateAppxPackageFile"
-          Condition="'$(DeskBoxDistribution)' == 'Store'">
-    <ItemGroup>
-      <AppxPackagePayload Remove="@(AppxPackagePayload)"
-                          Condition="'%(AppxPackagePayload.TargetPath)' == 'Assets\donation-wechat.png' Or '%(AppxPackagePayload.TargetPath)' == 'Assets\donation-alipay.png'" />
-    </ItemGroup>
   </Target>
 
 </Project>

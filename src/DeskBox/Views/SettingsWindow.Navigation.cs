@@ -59,7 +59,6 @@ public sealed partial class SettingsWindow
             ["SearchSettings"] = SearchSettingsSection,
             ["Interaction"] = InteractionSection,
             ["InteractionHotkeySettings"] = InteractionHotkeySettingsSection,
-            ["InteractionHoverSettings"] = InteractionHoverSettingsSection,
             ["InteractionWindowSettings"] = InteractionWindowSettingsSection,
             ["ManagedStorage"] = ManagedStorageSection,
             ["Maintenance"] = MaintenanceSection,
@@ -622,11 +621,181 @@ public sealed partial class SettingsWindow
     {
         if (sender is Button { Tag: string groupId })
         {
-            if (ViewModel.ResetWidgetGroupOverrides(groupId))
+            ViewModel.ResetWidgetGroupOverrides(groupId);
+        }
+    }
+
+    private void WidgetGroupNameTextBox_LostFocus(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is TextBox { Tag: string groupId } textBox)
+        {
+            ViewModel.RenameWidgetGroup(groupId, textBox.Text);
+        }
+    }
+
+    private void WidgetGroupNavigationComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyWidgetGroupOption(
+            sender,
+            ViewModel.SetWidgetGroupNavigationStyle);
+
+    private void WidgetGroupTitleComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyWidgetGroupOption(
+            sender,
+            ViewModel.SetWidgetGroupTitleDisplayMode);
+
+    private void WidgetGroupChromeComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyWidgetGroupOption(
+            sender,
+            ViewModel.SetWidgetGroupChromeMode);
+
+    private void WidgetGroupCollapseComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyWidgetGroupOption(
+            sender,
+            ViewModel.SetWidgetGroupCollapseBehavior);
+
+    private void WidgetGroupWheelComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyWidgetGroupOption(
+            sender,
+            ViewModel.SetWidgetGroupWheelSetting);
+
+    private void WidgetGroupHoverComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyWidgetGroupOption(
+            sender,
+            ViewModel.SetWidgetGroupHoverSetting);
+
+    private static void ApplyWidgetGroupOption(
+        object sender,
+        Func<string, string?, bool> apply)
+    {
+        if (sender is ComboBox
             {
-                App.Current.WidgetManager?
-                    .NotifyWidgetGroupPresentationSettingsChanged();
+                Tag: string groupId,
+                SelectedItem: SettingsOption option
+            })
+        {
+            apply(groupId, option.Value?.ToString());
+        }
+    }
+
+    private async void MoveWidgetGroupMemberUpButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not Button
+            {
+                Tag: WidgetGroupMemberSettingsItem
+                {
+                    MoveUpTargetWidgetId: string targetId
+                } member
+            } ||
+            App.Current.WidgetManager is not { } manager)
+        {
+            return;
+        }
+
+        if (await manager.ReorderWidgetGroupMemberAsync(
+                member.WidgetId,
+                targetId))
+        {
+            ViewModel.RefreshWidgetGroupSettings();
+        }
+    }
+
+    private async void MoveWidgetGroupMemberDownButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not Button
+            {
+                Tag: WidgetGroupMemberSettingsItem
+                {
+                    MoveDownTargetWidgetId: string targetId
+                } member
+            } ||
+            App.Current.WidgetManager is not { } manager)
+        {
+            return;
+        }
+
+        if (await manager.ReorderWidgetGroupMemberAsync(
+                member.WidgetId,
+                targetId))
+        {
+            ViewModel.RefreshWidgetGroupSettings();
+        }
+    }
+
+    private async void RemoveWidgetGroupMemberButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not Button
+            {
+                Tag: WidgetGroupMemberSettingsItem member
+            } ||
+            App.Current.WidgetManager is not { } manager)
+        {
+            return;
+        }
+
+        if (await manager.RemoveWidgetFromGroupAsync(
+                member.WidgetId,
+                revealStandalone: true))
+        {
+            ViewModel.RefreshWidgetGroupSettings();
+        }
+    }
+
+    private async void DissolveWidgetGroupButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string memberId } ||
+            App.Current.WidgetManager is not { } manager ||
+            SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = _localizationService.T(
+                "Settings.WidgetGroups.DissolveDialog.Title"),
+            PrimaryButtonText = _localizationService.T(
+                "Settings.WidgetGroups.DissolveDialog.Confirm"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+            Content = new TextBlock
+            {
+                Text = _localizationService.T(
+                    "Settings.WidgetGroups.DissolveDialog.Description"),
+                TextWrapping = TextWrapping.Wrap
             }
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        if (await manager.DissolveWidgetGroupContainingAsync(memberId))
+        {
+            ViewModel.RefreshWidgetGroupSettings();
         }
     }
 
@@ -920,6 +1089,22 @@ public sealed partial class SettingsWindow
             ShouldConstrainToRootBounds = false
         };
 
+        const string noneAction = "__None";
+        var noneItem = new ToggleMenuFlyoutItem
+        {
+            Tag = noneAction,
+            Text = _localizationService.T("Settings.HoverButtonActions.None"),
+            IsChecked = !ViewModel.ShowHoverButtons,
+            MinWidth = flyoutWidth
+        };
+        noneItem.Click += (_, _) =>
+        {
+            ViewModel.ShowHoverButtons = false;
+            RefreshHoverButtonActionsMenu(flyout);
+        };
+        flyout.Items.Add(noneItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
         foreach (string action in ViewModel.AvailableWidgetHoverButtonActions)
         {
             var item = new ToggleMenuFlyoutItem
@@ -933,6 +1118,7 @@ public sealed partial class SettingsWindow
             item.Click += (_, _) =>
             {
                 ViewModel.ToggleHoverButtonAction(action);
+                ViewModel.ShowHoverButtons = true;
                 item.IsChecked = ViewModel.IsHoverButtonActionSelected(action);
                 RefreshHoverButtonActionsMenu(flyout);
             };
@@ -951,7 +1137,15 @@ public sealed partial class SettingsWindow
                 continue;
             }
 
-            item.IsChecked = ViewModel.IsHoverButtonActionSelected(action);
+            if (string.Equals(action, "__None", StringComparison.Ordinal))
+            {
+                item.IsChecked = !ViewModel.ShowHoverButtons;
+                item.IsEnabled = true;
+                continue;
+            }
+
+            item.IsChecked = ViewModel.ShowHoverButtons &&
+                ViewModel.IsHoverButtonActionSelected(action);
             item.IsEnabled = ViewModel.CanToggleHoverButtonAction(action);
         }
     }

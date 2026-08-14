@@ -7,7 +7,6 @@ namespace DeskBox.ViewModels;
 
 public partial class SettingsViewModel
 {
-    private bool _widgetCapsuleModeEnabled;
     private string _selectedWidgetCompactWidthMode = SettingsService.WidgetCompactWidthModeAligned;
     private string _selectedWidgetCapsuleArrangementMode = SettingsService.WidgetCapsuleArrangementFree;
     private double _widgetCapsuleBarSpacing = SettingsService.DefaultWidgetCapsuleBarSpacing;
@@ -29,40 +28,15 @@ public partial class SettingsViewModel
     private string[]? _cachedWidgetCapsuleBarPlacementDisplayNames;
     private string[]? _cachedWidgetCapsuleBarDirectionDisplayNames;
 
-    public bool WidgetCapsuleModeEnabled
-    {
-        get => _widgetCapsuleModeEnabled;
-        set
-        {
-            if (!SetProperty(ref _widgetCapsuleModeEnabled, value))
-            {
-                return;
-            }
-
-            OnPropertyChanged(nameof(IsSmartWidgetCollapseBehavior));
-            OnPropertyChanged(nameof(IsWidgetCapsuleBarEnabled));
-            OnPropertyChanged(nameof(IsWidgetCapsuleBarSpacingEnabled));
-            OnPropertyChanged(nameof(CanOpenWidgetCompactHoverResponseDetails));
-            OnPropertyChanged(nameof(CanOpenWidgetCompactAnimationDetails));
-            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
-            {
-                return;
-            }
-
-            _settingsService.Settings.WidgetCapsuleModeEnabled = value;
-            if (value &&
-                SettingsService.NormalizeWidgetCollapseBehavior(_settingsService.Settings.WidgetCollapseBehavior) ==
-                SettingsService.WidgetCollapseBehaviorExpanded)
-            {
-                _settingsService.Settings.WidgetCollapseBehavior = SelectedWidgetCollapseBehavior;
-            }
-            _settingsService.SaveDebounced();
-        }
-    }
-
     public bool IsSmartWidgetCollapseBehavior =>
-        WidgetCapsuleModeEnabled &&
-        SelectedWidgetCollapseBehavior == SettingsService.WidgetCollapseBehaviorSmart;
+        SelectedWidgetCollapseBehavior == SettingsService.WidgetCollapseBehaviorSmart ||
+        _settingsService.Settings.Widgets.Any(widget =>
+            WidgetCollapseBehaviorNames.GetOverride(widget) == WidgetCollapseBehavior.Smart) ||
+        _settingsService.Settings.WidgetGroups.Any(group =>
+            WidgetCollapseBehaviorNames.Normalize(
+                group.CollapseBehavior,
+                WidgetCollapseBehavior.System,
+                allowSystem: true) == WidgetCollapseBehavior.Smart);
 
     public bool IsSmartWidgetCollapseBehaviorSelected =>
         SelectedWidgetCollapseBehavior == SettingsService.WidgetCollapseBehaviorSmart;
@@ -105,7 +79,7 @@ public partial class SettingsViewModel
         GetWidgetCompactWidthModeDisplayName(SelectedWidgetCompactWidthMode);
 
     public Visibility CapsuleHoverResponseEntryVisibility =>
-        IsSmartWidgetCollapseBehaviorSelected ? Visibility.Visible : Visibility.Collapsed;
+        IsSmartWidgetCollapseBehavior ? Visibility.Visible : Visibility.Collapsed;
 
     public string[] AvailableWidgetCapsuleArrangementModes { get; } =
     [
@@ -152,7 +126,6 @@ public partial class SettingsViewModel
         SelectedWidgetCapsuleArrangementMode == SettingsService.WidgetCapsuleArrangementBar;
 
     public bool IsWidgetCapsuleBarEnabled =>
-        WidgetCapsuleModeEnabled &&
         IsWidgetCapsuleBarSelected;
 
     public bool IsWidgetCapsuleBarSpacingEnabled => IsWidgetCapsuleBarEnabled;
@@ -363,7 +336,7 @@ public partial class SettingsViewModel
         IsWidgetCompactAnimationCustom ? Visibility.Visible : Visibility.Collapsed;
 
     public bool CanOpenWidgetCompactAnimationDetails =>
-        WidgetCapsuleModeEnabled && IsWidgetCompactAnimationCustom;
+        IsWidgetCompactAnimationCustom;
 
     public double WidgetCompactAnimationDurationMs
     {
@@ -479,7 +452,7 @@ public partial class SettingsViewModel
         IsWidgetCompactHoverResponseCustom ? Visibility.Visible : Visibility.Collapsed;
 
     public bool CanOpenWidgetCompactHoverResponseDetails =>
-        WidgetCapsuleModeEnabled && IsWidgetCompactHoverResponseCustom;
+        IsWidgetCompactHoverResponseCustom;
 
     public double WidgetCompactExpandDelayMs
     {
@@ -894,6 +867,8 @@ public partial class SettingsViewModel
 
     private void NotifyCapsuleOverridePropertiesChanged()
     {
+        OnPropertyChanged(nameof(IsSmartWidgetCollapseBehavior));
+        OnPropertyChanged(nameof(CapsuleHoverResponseEntryVisibility));
         OnPropertyChanged(nameof(CapsuleCustomRuleCount));
         OnPropertyChanged(nameof(CapsuleCustomWidthCount));
         OnPropertyChanged(nameof(CapsuleSavedPlacementCount));

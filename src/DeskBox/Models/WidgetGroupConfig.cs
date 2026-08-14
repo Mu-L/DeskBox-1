@@ -64,7 +64,8 @@ public sealed class WidgetGroupConfig
     /// Title navigation layout. Stack/Auto use the compact combined selector;
     /// Tabs exposes every member as a flat title-bar tab.
     /// </summary>
-    public string NavigationStyle { get; set; } = WidgetGroupNavigationStyles.Auto;
+    public string NavigationStyle { get; set; } =
+        WidgetGroupNavigationStyles.FollowDefault;
 
     /// <summary>
     /// Group-level title identity layout. FollowDefault resolves through the

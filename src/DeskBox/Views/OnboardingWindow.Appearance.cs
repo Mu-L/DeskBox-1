@@ -27,7 +27,10 @@ public sealed partial class OnboardingWindow
 
         // Capsule mode toggle
         Step3CapsuleToggle.Toggled -= Step3CapsuleToggle_Toggled;
-        Step3CapsuleToggle.IsOn = _settingsService.Settings.WidgetCapsuleModeEnabled;
+        Step3CapsuleToggle.IsOn =
+            SettingsService.NormalizeWidgetCollapseBehavior(
+                _settingsService.Settings.WidgetCollapseBehavior) !=
+            SettingsService.WidgetCollapseBehaviorExpanded;
         Step3CapsuleToggle.Toggled += Step3CapsuleToggle_Toggled;
     }
 

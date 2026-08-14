@@ -38,6 +38,8 @@ public sealed partial class OnboardingWindow : Window
     private Storyboard? _brandLogoShineStoryboard;
     private Storyboard? _stepTransitionStoryboard;
     private Storyboard? _keycapPulseStoryboard;
+    private Storyboard? _stepAmbientStoryboard;
+    private Storyboard? _statusFeedbackStoryboard;
     private System.Threading.CancellationTokenSource? _hotkeyDemoCts;
     private int _introGeneration;
     private int _stepIndex;
@@ -45,6 +47,9 @@ public sealed partial class OnboardingWindow : Window
     private bool _isSubclassInstalled;
     private bool _isAnimating;
     private bool _isRecordingHotkey;
+    private bool _hasInitializedFeatureToggles;
+    private bool _isSynchronizingFeatureToggles;
+    private Task _featureWidgetSelectionUpdateTask = Task.CompletedTask;
     private readonly Win32Helper.SubclassProc _windowSubclassProc;
 
     // Accent color preset list
@@ -61,6 +66,7 @@ public sealed partial class OnboardingWindow : Window
         _windowSubclassProc = WindowSubclassProc;
         InitializeComponent();
         _localizationService.LanguageChanged += OnLanguageChanged;
+        _settingsService.SettingsChanged += OnFeatureWidgetSettingsChanged;
         App.Current.OnboardingFileImportCompleted += OnOnboardingFileImportCompleted;
         App.Current.OnboardingWidgetsVisibilityChanged += OnOnboardingWidgetsVisibilityChanged;
 
@@ -93,6 +99,7 @@ public sealed partial class OnboardingWindow : Window
             ApplyTitleBarButtonColors();
             BuildProgressDots();
             SetupStep(animate: false);
+            StartStepAmbientAnimation(_stepIndex);
             StartBrandLogoShine();
             PlayIntroSequence();
 
@@ -125,13 +132,17 @@ public sealed partial class OnboardingWindow : Window
             _brandLogoShineStoryboard?.Stop();
             _stepTransitionStoryboard?.Stop();
             _keycapPulseStoryboard?.Stop();
+            _stepAmbientStoryboard?.Stop();
+            _statusFeedbackStoryboard?.Stop();
             _hotkeyDemoCts?.Cancel();
             _hotkeyDemoCts?.Dispose();
             _hotkeyDemoCts = null;
+            ReleaseFilePracticeWidget();
             DetachDesktopOrganizationWindow();
             IntroMarkHost.Children.Clear();
             RemoveMinimumSizeHook();
             _localizationService.LanguageChanged -= OnLanguageChanged;
+            _settingsService.SettingsChanged -= OnFeatureWidgetSettingsChanged;
             App.Current.OnboardingFileImportCompleted -= OnOnboardingFileImportCompleted;
             App.Current.OnboardingWidgetsVisibilityChanged -= OnOnboardingWidgetsVisibilityChanged;
         };
@@ -213,7 +224,76 @@ public sealed partial class OnboardingWindow : Window
             }
         }
 
+        ApplyTaskFlowResponsiveLayout(compact, width);
+
         ProgressDots.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+    }
+
+    private void ApplyTaskFlowResponsiveLayout(bool compact, double availableWidth)
+    {
+        ApplyTwoColumnTaskLayout(TaskStep3Layout, TaskStep3VisualStage, compact);
+        ApplyTwoColumnTaskLayout(TaskStep4Layout, TaskStep4VisualStage, compact);
+        ApplyTwoColumnTaskLayout(TaskStep2Layout, TaskStep2VisualStage, compact);
+
+        TaskStep5FeatureGrid.ColumnDefinitions.Clear();
+        TaskStep5FeatureGrid.RowDefinitions.Clear();
+        TaskStep5FeatureGrid.Width = compact
+            ? Math.Min(720, Math.Max(520, availableWidth - 56))
+            : 720;
+        int columnCount = compact ? 2 : 3;
+        int rowCount = compact ? 3 : 2;
+        for (int index = 0; index < columnCount; index++)
+        {
+            TaskStep5FeatureGrid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(1, GridUnitType.Star)
+            });
+        }
+
+        for (int index = 0; index < rowCount; index++)
+        {
+            TaskStep5FeatureGrid.RowDefinitions.Add(new RowDefinition
+            {
+                Height = GridLength.Auto
+            });
+        }
+
+        Border[] cards =
+        [
+            TaskStep5TodoCard,
+            TaskStep5QuickCaptureCard,
+            TaskStep5SearchCard,
+            TaskStep5WeatherCard,
+            TaskStep5MusicCard,
+            TaskStep5OptionalCard
+        ];
+        for (int index = 0; index < cards.Length; index++)
+        {
+            Grid.SetRow(cards[index], index / columnCount);
+            Grid.SetColumn(cards[index], index % columnCount);
+        }
+    }
+
+    private static void ApplyTwoColumnTaskLayout(
+        Grid layout,
+        FrameworkElement visualStage,
+        bool compact)
+    {
+        if (layout.ColumnDefinitions.Count < 2)
+        {
+            return;
+        }
+
+        layout.ColumnDefinitions[0].Width = new GridLength(
+            compact ? 1 : 0.88,
+            GridUnitType.Star);
+        layout.ColumnDefinitions[1].Width = compact
+            ? new GridLength(0)
+            : new GridLength(1.12, GridUnitType.Star);
+        layout.ColumnSpacing = compact ? 0 : 36;
+        layout.RowSpacing = compact ? 22 : 0;
+        Grid.SetRow(visualStage, compact ? 1 : 0);
+        Grid.SetColumn(visualStage, compact ? 0 : 1);
     }
 
     // ════════════════════════════════════════════════════════════
@@ -224,11 +304,11 @@ public sealed partial class OnboardingWindow : Window
 
     private FrameworkElement GetStepPanel(int index) => index switch
     {
-        0 => TaskStep2Panel,
-        1 => TaskStep3Panel,
-        2 => TaskStep4Panel,
+        0 => TaskStep3Panel,
+        1 => TaskStep4Panel,
+        2 => TaskStep2Panel,
         3 => TaskStep5Panel,
-        _ => TaskStep2Panel
+        _ => TaskStep3Panel
     };
 
     private void BackButton_Click(object sender, RoutedEventArgs e)
@@ -264,10 +344,19 @@ public sealed partial class OnboardingWindow : Window
 
     private async Task CompleteOnboardingAsync()
     {
+        TaskStep5TodoToggle.IsEnabled = false;
+        TaskStep5QuickCaptureToggle.IsEnabled = false;
+        TaskStep5SearchToggle.IsEnabled = false;
+        TaskStep5WeatherToggle.IsEnabled = false;
+        TaskStep5MusicToggle.IsEnabled = false;
+        NextButton.IsEnabled = false;
+        BackButton.IsEnabled = false;
+        await _featureWidgetSelectionUpdateTask;
         _settingsService.Settings.HasCompletedOnboarding = true;
         _settingsService.Settings.CompletedOnboardingVersion = CurrentOnboardingVersion;
         _settingsService.Settings.OnboardingStepIndex = 0;
         await _settingsService.SaveAsync();
+        ReleaseFilePracticeWidget();
         Close();
     }
 
@@ -281,9 +370,9 @@ public sealed partial class OnboardingWindow : Window
             return;
         }
 
-        if (_stepIndex == 1 && newStep != 1)
+        if (_stepIndex == 0 && newStep != 0)
         {
-            RestoreWindowAfterWidgetPractice();
+            ReleaseFilePracticeWidget();
         }
 
         _isAnimating = true;
@@ -418,13 +507,13 @@ public sealed partial class OnboardingWindow : Window
         switch (_stepIndex)
         {
             case 0:
-                SetupTaskStep2();
-                break;
-            case 1:
                 SetupTaskStep3();
                 break;
-            case 2:
+            case 1:
                 SetupTaskStep4();
+                break;
+            case 2:
+                SetupTaskStep2();
                 break;
             case 3:
                 SetupTaskStep5();
@@ -436,6 +525,10 @@ public sealed partial class OnboardingWindow : Window
     {
         _keycapPulseStoryboard?.Stop();
         _keycapPulseStoryboard = null;
+        _stepAmbientStoryboard?.Stop();
+        _stepAmbientStoryboard = null;
+        _statusFeedbackStoryboard?.Stop();
+        _statusFeedbackStoryboard = null;
         _hotkeyDemoCts?.Cancel();
         _hotkeyDemoCts?.Dispose();
         _hotkeyDemoCts = null;
@@ -563,9 +656,221 @@ public sealed partial class OnboardingWindow : Window
     /// </summary>
     private void StartStepAmbientAnimation(int step)
     {
-        // The task flow keeps ambient motion quiet. Step transitions already
-        // communicate progress; the actual widget and tray actions provide
-        // their own feedback.
+        _stepAmbientStoryboard?.Stop();
+        _stepAmbientStoryboard = step switch
+        {
+            0 => CreateFilePracticeAmbientStoryboard(),
+            1 => CreateVisibilityPracticeAmbientStoryboard(),
+            2 => CreateTrayAmbientStoryboard(),
+            3 => CreateFeatureCardEntranceStoryboard(),
+            _ => null
+        };
+        _stepAmbientStoryboard?.Begin();
+    }
+
+    private Storyboard CreateFilePracticeAmbientStoryboard()
+    {
+        var storyboard = new Storyboard();
+        var fileTransform = GetElementTransform(TaskStep3FileToken);
+        var dropTransform = GetElementTransform(TaskStep3DropHalo);
+        AddStepAnimation(
+            storyboard,
+            fileTransform,
+            "TranslateY",
+            4,
+            -5,
+            durationMilliseconds: 1500,
+            autoReverse: true,
+            repeat: true);
+        AddStepAnimation(
+            storyboard,
+            TaskStep3DropHalo,
+            "Opacity",
+            0.10,
+            0.24,
+            durationMilliseconds: 1050,
+            autoReverse: true,
+            repeat: true);
+        AddStepAnimation(
+            storyboard,
+            dropTransform,
+            "ScaleX",
+            0.96,
+            1.03,
+            durationMilliseconds: 1050,
+            autoReverse: true,
+            repeat: true);
+        AddStepAnimation(
+            storyboard,
+            dropTransform,
+            "ScaleY",
+            0.96,
+            1.03,
+            durationMilliseconds: 1050,
+            autoReverse: true,
+            repeat: true);
+        return storyboard;
+    }
+
+    private Storyboard CreateVisibilityPracticeAmbientStoryboard()
+    {
+        var storyboard = new Storyboard();
+        var widgetsTransform = GetElementTransform(TaskStep4PreviewWidgets);
+        AddStepAnimation(
+            storyboard,
+            widgetsTransform,
+            "TranslateY",
+            5,
+            -2,
+            durationMilliseconds: 1800,
+            autoReverse: true,
+            repeat: true);
+        AddStepAnimation(
+            storyboard,
+            TaskStep4PreviewWidgets,
+            "Opacity",
+            0.82,
+            1,
+            durationMilliseconds: 1800,
+            autoReverse: true,
+            repeat: true);
+        AddStepAnimation(
+            storyboard,
+            TaskStep4HotkeyHalo,
+            "Opacity",
+            0.12,
+            0.34,
+            durationMilliseconds: 1100,
+            autoReverse: true,
+            repeat: true);
+        return storyboard;
+    }
+
+    private Storyboard CreateTrayAmbientStoryboard()
+    {
+        var storyboard = new Storyboard();
+        var haloTransform = GetElementTransform(TaskStep2TrayHalo);
+        AddStepAnimation(
+            storyboard,
+            TaskStep2TrayHalo,
+            "Opacity",
+            0.26,
+            0.08,
+            durationMilliseconds: 1150,
+            autoReverse: true,
+            repeat: true);
+        AddStepAnimation(
+            storyboard,
+            haloTransform,
+            "ScaleX",
+            0.88,
+            1.12,
+            durationMilliseconds: 1150,
+            autoReverse: true,
+            repeat: true);
+        AddStepAnimation(
+            storyboard,
+            haloTransform,
+            "ScaleY",
+            0.88,
+            1.12,
+            durationMilliseconds: 1150,
+            autoReverse: true,
+            repeat: true);
+        return storyboard;
+    }
+
+    private Storyboard CreateFeatureCardEntranceStoryboard()
+    {
+        var storyboard = new Storyboard();
+        FrameworkElement[] cards =
+        [
+            TaskStep5TodoCard,
+            TaskStep5QuickCaptureCard,
+            TaskStep5SearchCard,
+            TaskStep5WeatherCard,
+            TaskStep5MusicCard,
+            TaskStep5OptionalCard
+        ];
+        for (int index = 0; index < cards.Length; index++)
+        {
+            var card = cards[index];
+            var transform = GetElementTransform(card);
+            transform.TranslateY = 12;
+            card.Opacity = 0;
+            int delay = 70 + index * 55;
+            AddStepAnimation(
+                storyboard,
+                card,
+                "Opacity",
+                0,
+                1,
+                durationMilliseconds: 280,
+                beginMilliseconds: delay);
+            AddStepAnimation(
+                storyboard,
+                transform,
+                "TranslateY",
+                12,
+                0,
+                durationMilliseconds: 340,
+                beginMilliseconds: delay);
+        }
+
+        return storyboard;
+    }
+
+    private static void AddStepAnimation(
+        Storyboard storyboard,
+        DependencyObject target,
+        string property,
+        double from,
+        double to,
+        int durationMilliseconds,
+        int beginMilliseconds = 0,
+        bool autoReverse = false,
+        bool repeat = false)
+    {
+        var animation = new DoubleAnimation
+        {
+            From = from,
+            To = to,
+            Duration = new Duration(TimeSpan.FromMilliseconds(durationMilliseconds)),
+            BeginTime = TimeSpan.FromMilliseconds(beginMilliseconds),
+            AutoReverse = autoReverse,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+        if (repeat)
+        {
+            animation.RepeatBehavior = RepeatBehavior.Forever;
+        }
+
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+        storyboard.Children.Add(animation);
+    }
+
+    private void AnimateStatusFeedback(Border badge)
+    {
+        if (!_hasLoaded)
+        {
+            return;
+        }
+
+        _statusFeedbackStoryboard?.Stop();
+        var transform = GetElementTransform(badge);
+        transform.TranslateY = 4;
+        transform.ScaleX = 0.985;
+        transform.ScaleY = 0.985;
+        badge.Opacity = 0.58;
+
+        var storyboard = new Storyboard();
+        AddStepAnimation(storyboard, badge, "Opacity", 0.58, 1, 210);
+        AddStepAnimation(storyboard, transform, "TranslateY", 4, 0, 240);
+        AddStepAnimation(storyboard, transform, "ScaleX", 0.985, 1, 240);
+        AddStepAnimation(storyboard, transform, "ScaleY", 0.985, 1, 240);
+        _statusFeedbackStoryboard = storyboard;
+        storyboard.Begin();
     }
 
     // ════════════════════════════════════════════════════════════
@@ -580,11 +885,13 @@ public sealed partial class OnboardingWindow : Window
             ProgressDots.Children.Add(new Ellipse
             {
                 Width = 8,
-                Height = 8,
-                Opacity = 0.42,
+                Height = 6,
+                Opacity = 0.34,
                 Fill = SubtleDotBrush()
             });
         }
+
+        UpdateProgressDots();
     }
 
     private void UpdateProgressDots()
@@ -597,11 +904,13 @@ public sealed partial class OnboardingWindow : Window
             }
 
             bool active = index == _stepIndex;
-            dot.Width = 8;
-            dot.Height = 8;
-            dot.Opacity = active ? 1 : 0.42;
+            dot.Width = active ? 8 : 6;
+            dot.Height = active ? 8 : 6;
+            dot.Opacity = active ? 1 : 0.34;
             dot.Fill = active ? AccentBrush() : SubtleDotBrush();
         }
+
+        StepCounterText.Text = $"{_stepIndex + 1:00} / {StepCount:00}";
     }
 
     private void UpdateFooterState()
@@ -612,9 +921,9 @@ public sealed partial class OnboardingWindow : Window
         NextButton.Content = _stepIndex switch
         {
             _ when _stepIndex == StepCount - 1 => _localizationService.T("Onboarding.Start"),
-            1 when !_hasCompletedFilePractice => _localizationService.T("Onboarding.Task.SkipPractice"),
-            2 when !_hasCompletedVisibilityPractice => _localizationService.T("Onboarding.Task.SkipPractice"),
-            1 or 2 => _localizationService.T("Onboarding.Task.Continue"),
+            0 when !_hasCompletedFilePractice => _localizationService.T("Onboarding.Task.SkipPractice"),
+            1 when !_hasCompletedVisibilityPractice => _localizationService.T("Onboarding.Task.SkipPractice"),
+            0 or 1 => _localizationService.T("Onboarding.Task.Continue"),
             _ => _localizationService.T("Onboarding.Next")
         };
         NextButton.IsEnabled = true;

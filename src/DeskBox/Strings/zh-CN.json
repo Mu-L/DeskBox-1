@@ -1,4 +1,24 @@
 {
+    "Settings.Accent.Source.Title": "主题色来源",
+    "Settings.Accent.Source.Description": "选择跟随 Windows 或使用自定义颜色",
+    "Settings.Accent.Source.System": "跟随 Windows",
+    "Settings.Accent.Source.Custom": "自定义颜色",
+    "Settings.OpenMethod.Title": "打开方式",
+    "Settings.OpenMethod.Description": "选择单击或双击打开文件和文件夹",
+    "Settings.OpenMethod.SingleClick": "单击打开",
+    "Settings.OpenMethod.DoubleClick": "双击打开",
+    "Settings.ShowDesktopBehavior.Title": "显示桌面时",
+    "Settings.ShowDesktopBehavior.Description": "选择按 Win+D 后格子的显示方式",
+    "Settings.ShowDesktopBehavior.KeepVisible": "保持显示",
+    "Settings.ShowDesktopBehavior.HideWithWindows": "和窗口一起隐藏",
+    "Settings.Weather.LocationMode.Title": "位置来源",
+    "Settings.Weather.LocationMode.Description": "选择自动定位或手动选择城市",
+    "Settings.Weather.LocationMode.Auto": "自动定位",
+    "Settings.Weather.LocationMode.Manual": "手动选择城市",
+    "Settings.FileStacks.Mode.Title": "自动归组",
+    "Settings.FileStacks.Mode.Description": "选择关闭或按一种规则自动归组",
+    "Settings.FileStacks.Mode.Off": "关闭",
+    "Settings.HoverButtonActions.None": "不显示",
     "Settings.QuickCapture.Format.Title": "编辑格式",
     "Settings.QuickCapture.Format.Description": "选择随记编辑器使用 Markdown 或纯文本",
     "Todo.Detail.ResizeTitleEditor": "调整待办标题输入框高度，双击恢复自动高度",
@@ -83,7 +103,7 @@
     "Onboarding.Step3.Title": "选择你喜欢的外观",
     "Settings.FileStacks.Status.Off": "已关闭",
     "Settings.About.Channel.Store": "Microsoft Store",
-    "Settings.About.ReasonButton": "为什么做",
+    "Settings.About.AboutMeButton": "关于我",
     "QuickCapture.AddImage": "添加图片",
     "Settings.Update.Check": "检查更新",
     "Onboarding.Step3.Body": "格子会一直待在你的桌面上，选一个你喜欢的样子。以后可以随时在设置中调整。",
@@ -161,7 +181,7 @@
     "Widget.Compact.QuickCaptureCount": "{0} 条随记",
     "Widget.AddedFile": "已添加文件",
     "Onboarding.Storage.CurrentPath": "默认收纳路径",
-    "Settings.About.DonationTitle": "支持 DeskBox",
+    "Settings.About.StoreSupportTitle": "支持 DeskBox",
     "Settings.About.FeedbackTitle": "问题反馈",
     "Settings.About.FeedbackDescription": "遇到问题时，可随时通过邮箱与我联系",
     "Widget.Error.ManagedFolderNameExists": "已存在同名收纳格子，请换一个名称。",
@@ -239,6 +259,7 @@
     "Settings.ManagedPath.QuickAccessUpdating": "正在处理…",
     "Widget.DefaultDesktopName": "我的桌面",
     "Common.NewFolderMapping": "新建文件夹映射",
+    "Common.AddFeatureWidget": "添加功能格子",
     "Settings.Todo.Tabs.Completed": "已完成",
     "Settings.Capsule.Direction.Title": "高级排列方向",
     "Settings.Capsule.HoverResponse.PreventAccidental": "防误触",
@@ -282,7 +303,7 @@
     "Widget.Stack.SelectContents": "展开并全选其中项目",
     "Settings.Animation.Easing.None": "无",
     "Settings.QuickCapture.Dependency.Enabled": "随记已启用，相关记录和维护操作会立即生效。",
-    "Widget.CollapseBehavior.Smart": "智能展开",
+    "Widget.CollapseBehavior.Smart": "悬停自动展开",
     "Settings.ManagedPath.Title": "默认收纳路径",
     "Settings.Music.PageDescription": "调整音乐格子的布局、背景和封面交互。",
     "Settings.Capsule.Overrides.Description": "管理直接在格子上修改的设置；这些设置会优先于上方的全局选项",
@@ -328,11 +349,11 @@
     "Todo.DropTab.Completed": "松开以标记为已完成",
     "Widget.Compact.Expand": "展开格子",
     "Settings.Todo.ShowFooterStats.Title": "显示底部统计",
-    "Settings.About.ReasonTitle": "为什么做 DeskBox",
+    "Settings.About.AboutMeTitle": "关于我",
     "Settings.AttachmentHealth.CheckTooltip": "扫描待办和随记的附件引用",
   "Onboarding.Step2.Body": "右键任务栏通知区域中的 DeskBox 图标，就能随时新建格子。",
-  "Onboarding.Step2.TrayActionTitle": "右键 DeskBox 托盘图标",
-  "Onboarding.Step2.TrayActionBody": "如果图标被收起，先点击任务栏上的“显示隐藏的图标”",
+  "Onboarding.Step2.TrayActionTitle": "找到 DeskBox 图标",
+  "Onboarding.Step2.TrayActionBody": "看不到图标？选择任务栏中的 ∧，然后找到 DeskBox。",
   "Onboarding.Step2.RightClick": "右键",
   "Onboarding.Step2.NewWidgetTitle": "新建格子",
   "Onboarding.Step2.NewWidgetBody": "收纳从桌面拖入的文件",
@@ -540,11 +561,11 @@
     "WidgetTitleIcon.Label.QuickCapture": "随记",
     "Settings.ContentEditor.EnterBehavior.CtrlEnterSaves": "Enter 换行，Ctrl+Enter 保存",
     "Settings.HideShortcutExtension.Description": "显示后缀名时，快捷方式仍保持原来的名称",
-    "Settings.Dialog.ProductReasonP2": "　　DeskBox 的初衷，是用一种轻量、克制的方式，让桌面重新变得清爽、有序、好用。它不想替代 Windows 桌面，而是希望更自然地贴在原有使用习惯旁边，帮你把常用内容、临时内容和一些小工具收纳起来。",
+    "Settings.Dialog.AboutMeP2": "微软一直没有着重完善这类桌面小组件，于是我开始做 DeskBox。我希望它能自然地融入 Windows，也能真正解决桌面收纳和日常使用中的问题。",
     "Settings.Tabs.ShowBar": "显示 Tab 栏",
     "Settings.Tabs.VisibleCategories": "显示的分类",
     "Todo.Undo.DeletedSelected": "已删除 {0} 个待办任务",
-    "Widget.CollapseBehavior.Title": "展开方式",
+    "Widget.CollapseBehavior.Title": "显示方式",
     "Todo.Reminder.Off": "不提醒",
     "Common.Ok": "确定",
     "WidgetTitleIcon.Label.Default": "格子",
@@ -646,10 +667,9 @@
     "Settings.ManagedPath.QuickAccessStatusNotPinned": "当前状态：未固定到快速访问",
     "Todo.Color.Purple": "紫色",
     "Settings.DataBackup.RestoreApplyFailedTitle": "备份恢复失败",
-    "Settings.Dialog.ProductReasonP3": "　　我自己很喜欢 WinUI 的原生质感，也很在意一个工具是不是“像 Windows 自己长出来的”。所以 DeskBox 的设计、交互和视觉规范，都会尽量沿着原生化的方向继续打磨。",
     "Settings.Todo.Tabs.Important": "重要",
     "Onboarding.Intro.Body": "用桌面格子收纳文件。",
-    "Settings.CollapseBehavior.Title": "展开方式",
+    "Settings.CollapseBehavior.Title": "默认显示方式",
     "QuickCapture.SearchScope": "全局搜索",
     "Settings.DragDropPermission.Unknown": "无法读取",
     "Settings.HoverButtonActions.More": "更多操作",
@@ -707,7 +727,7 @@
     "Settings.Animation.Preset.Gentle": "轻柔",
     "Settings.DataBackup.FailedBody": "DeskBox 未能完成应用数据备份。\n\n{0}",
     "Settings.ManagedStorage.Manage": "查看留下的文件夹",
-    "Settings.CollapseBehavior.Expanded": "保持展开",
+    "Settings.CollapseBehavior.Expanded": "始终展开",
     "Settings.MaterialIntensity.Description": "调整原生材质的色调与层次强度，不改变窗口透明度",
     "Onboarding.Scene.MappedWidget": "文件夹映射",
     "Settings.SystemAccent.Description": "开启后使用 Windows 当前强调色",
@@ -780,7 +800,7 @@
     "Settings.ShowHoverButtons.Title": "显示右上角按钮",
     "Todo.Color.Green": "绿色",
     "Onboarding.Scene.AutoCapture": "自动捕获",
-    "Settings.CollapseBehavior.Description": "点击胶囊展开，或将鼠标停在标题区域自动展开",
+    "Settings.CollapseBehavior.Description": "设置格子的默认展开方式",
     "Settings.ContentEditor.EnterBehavior.Description": "选择保存和插入换行所使用的按键",
     "Settings.Todo.ReminderOffset.Title": "默认提醒时间",
     "Settings.ManagedStorage.OpenTooltip": "在文件资源管理器中打开",
@@ -792,10 +812,9 @@
     "Widget.Compact.FileCount": "{0} 项",
     "QuickCapture.DeleteSelectedConfirm.Title": "删除选中的 {0} 条随记？",
     "JumpList.NewFolderWidget": "新建文件夹格子",
-    "Settings.About.DonationAlipay": "支付宝",
     "Widget.Tooltip.DeleteWidget": "关闭格子",
     "Settings.Toggle.Off": "关",
-    "Settings.About.DonationDescription": "喜欢这个小工具的话，可以随手支持一下后续维护和更新",
+    "Settings.About.StoreSupportDescription": "如果 DeskBox 对你有帮助，愿意支持后续维护，可以选择商店版。",
     "Settings.QuickCapture.ImageCacheTitle": "图片缓存",
     "Settings.Capsule.Overrides.ResetGeometry": "清除宽度与位置",
     "Settings.Capsule.Overrides.ResetWidth": "让所有胶囊宽度恢复跟随全局",
@@ -834,7 +853,7 @@
     "Onboarding.Step3.Hint2": "材质效果需要 Windows 11 支持",
     "Todo.Snooze.30Minutes": "30 分钟后",
     "Common.Failed": "失败",
-    "Onboarding.Start": "开始使用",
+    "Onboarding.Start": "开始使用 DeskBox",
     "Widget.Error.ClipboardAllocate": "无法分配剪贴板数据。",
     "Settings.Update.StoreInstall": "商店更新",
     "Todo.Reminder.OneDayBefore": "1 天前",
@@ -911,6 +930,7 @@
     "Settings.Music.CoverHoverMotion.Title": "封面悬停动效",
     "Widget.ChangeMappedPathFailed": "更改映射的文件夹失败",
     "Settings.HoverButtonActions.Title": "右上角按钮内容",
+    "Widget.TitleButtons.Title": "展示按钮",
     "Onboarding.Intro.Title": "DeskBox",
     "Todo.Due.TodayAt": "今天 {0}",
     "Todo.Recurrence.Monthly": "每月",
@@ -925,7 +945,7 @@
     "Settings.Animation.Effect.SlideUp": "从上方滑入",
     "WidgetContent.Todo.StatusLabel": "已实现",
     "Onboarding.Step6.SummaryAppearance": "外观",
-    "Widget.CollapseBehavior.Click": "点击切换",
+    "Widget.CollapseBehavior.Click": "点击展开",
     "Settings.Update.Download": "下载",
     "WidgetContent.Tags.StatusLabel": "即将推出",
     "Settings.FileStacks.OrderBy.Widget": "跟随格子顺序",
@@ -980,7 +1000,6 @@
     "Onboarding.Scene.TodoItem1": "整理桌面",
     "Settings.Update.Detail.DownloadMissing": "安装包不存在，请重新下载。",
     "Todo.ClearAll": "清空待办",
-    "Settings.About.DeveloperName": "开发者：朱天雨",
     "Widget.Open": "打开",
     "Widget.OpenItemFailed": "无法打开此文件，可能未设置默认程序",
     "Language.English": "English",
@@ -1095,7 +1114,7 @@
     "Widget.Stack.Category.Today": "今天",
     "Settings.DragDropPermission.Detail.PermissionMismatch": "管理员权限可能导致拖拽失败。点击一键修复，然后重启 DeskBox。",
     "QuickCapture.SavedToFileWidget": "已保存到文件格子",
-    "Settings.Dialog.ProductReasonClose": "知道了",
+    "Settings.Dialog.AboutMeClose": "关闭",
     "Settings.Update.Detail.InvalidManifest": "更新信息暂不可用，可使用官网下载。",
     "Settings.Update.InstallStartFailedBody": "请重新下载更新，或前往 GitHub Releases 手动安装。",
     "Widget.AddFileFailed": "添加文件失败",
@@ -1213,7 +1232,7 @@
     "Widget.DeleteFailed": "删除失败",
     "QuickCapture.EnableRecentCapture": "开启记录",
     "Settings.DragDropPermission.RepairTooltip": "清理 DeskBox 自身的管理员运行、兼容模式和旧启动入口",
-    "Settings.Capsule.Overrides.FollowGlobal": "跟随全局",
+    "Settings.Capsule.Overrides.FollowGlobal": "恢复默认",
     "Widget.ShowInExplorer": "在文件资源管理器中显示",
     "Settings.Animation.Effect.Description": "选择 F7 或托盘显示、隐藏格子时的效果",
     "Widget.Stack.Category.Images": "图片",
@@ -1228,7 +1247,6 @@
     "Common.Undo": "撤销",
     "Settings.FileStacks.OrderBy.Name": "名称",
     "Settings.Density.Scale.Title": "整体密度",
-    "Settings.Dialog.ProductReasonP4": "　　能使用系统原生能力的地方，我会优先使用原生实现；能少引入第三方库的地方，也会尽量保持克制。这样做可能慢一点，但能让它更稳定、更轻、更贴近系统本身。",
     "Todo.DropTab.Active": "松开以标记为进行中",
     "Todo.Due.Tomorrow": "明天",
     "Onboarding.Step1.Body": "DeskBox 不会替代你的 Windows 桌面。它把文件、待办和常用工具放进几个轻量格子里，需要时唤起，不需要时安静待在旁边。",
@@ -1239,7 +1257,7 @@
     "QuickCapture.Detail.Created": "创建于 {0}",
     "Onboarding.Step6.SummaryStorage": "文件收纳",
     "Onboarding.Step6.SummaryPath": "路径",
-    "Widget.CollapseBehavior.Expanded": "保持展开",
+    "Widget.CollapseBehavior.Expanded": "始终展开",
     "Settings.Group.About.Description": "版本、下载地址、开源仓库和反馈入口",
     "Settings.ManagedStorage.DeleteCompleteBody": "“{0}”已移到回收站。",
     "Widget.DragCaption.Mapped": "{0}到映射的文件夹",
@@ -1312,8 +1330,9 @@
     "QuickCapture.DroppedWithSkipped": "已添加可用内容，过大内容已跳过",
     "Onboarding.Scene.OriginalFolder": "真实文件夹",
     "Settings.ManagedStorage.RestoreCompleteTitle": "已恢复收纳格子",
-    "Settings.About.WechatDescription": "扫码关注【大雨实验室】反馈问题或获取更新",
-    "Widget.CollapseBehavior.System": "跟随全局",
+    "Settings.About.WechatDescription": "关注 DeskBox 的开发进展和版本更新，也可以留言反馈使用中的问题",
+    "Widget.CollapseBehavior.System": "跟随默认",
+    "Widget.CollapseBehavior.SystemWithDefault": "跟随默认（{0}）",
     "Settings.Todo.DefaultFilter.ThisMonth": "本月",
     "Settings.Todo.Tabs.All": "全部",
     "Settings.DragDropPermission.Detail.AppCompatIssue": "兼容模式影响拖拽。点击一键修复清除。",
@@ -1334,7 +1353,6 @@
     "Onboarding.Step3.MaterialMica": "云母",
     "FileInfo.File": "文件",
     "Settings.QuickCapture.TabStyle.Description": "选择随记顶部标签的显示方式",
-    "Settings.Dialog.ProductReasonP5": "　　DeskBox 不会追求堆功能，而是更关注稳定、轻量、性能和长期使用时的舒服程度。当前安装包体积偏大，主要来自 WinUI 3、Windows App SDK 和 .NET 的基础体积，并不是因为塞进了很多无关功能。",
     "QuickCapture.Dropped": "已添加到随记",
     "Widget.DragCaption.Managed": "{0}到收纳格子",
     "Settings.CollapseBehavior.Click": "点击展开",
@@ -1348,7 +1366,6 @@
     "Settings.QuickCapture.ClipboardDiagnosticsRecording": "记录中，上次记录 {0}，最近状态：{1}",
     "Settings.TrayIcon.System": "跟随系统",
     "Settings.Update.Detail.StoreAvailable": "可以由 Microsoft Store 接管下载和安装。",
-    "Settings.About.DonationWechat": "微信支付",
     "Settings.ShowHoverButtons.Description": "在标准和紧凑标题模式下显示格子右上角操作按钮",
     "Widget.CopyImageText": "复制图片文字",
     "Widget.Compact.Move": "拖动格子",
@@ -1384,7 +1401,9 @@
     "QuickCapture.Empty.SearchTitle": "没有匹配内容",
     "Settings.Weather.ShowHumidity.Description": "显示当前空气湿度",
     "Widget.DeleteFolderNoteOne": "这是文件夹，里面的内容也会一起进入回收站",
-    "Settings.Dialog.ProductReasonP1": "　　Windows 桌面一直是很多人最常用的工作空间。它离我们最近，也最容易承载各种临时文件、快捷方式、截图和待处理事项。用着用着，桌面就会慢慢变成一个什么都有、但很难找到东西的地方。",
+    "Settings.Dialog.AboutMeName": "朱天雨",
+    "Settings.Dialog.AboutMeRole": "产品经理 · DeskBox 作者",
+    "Settings.Dialog.AboutMeP1": "我喜欢微软原生应用的质感，也喜欢小组件这种把常用内容和工具留在桌面上的方式。",
     "QuickCapture.CopiedCount": "已复制 {0} 项",
     "QuickCapture.DropTab.Records": "松开以保存到随记",
     "Settings.QuickCapture.ClipboardReason.Enabled": "等待复制内容",
@@ -1791,30 +1810,28 @@
     "Size.Unit.KB": "KB",
     "Size.Unit.MB": "MB",
     "Settings.WidgetGroupNavigation.Auto": "自动",
-    "Settings.WidgetGroupNavigation.Description": "用于新建格子组和选择“跟随默认”的格子组",
-    "Settings.WidgetGroupNavigation.Stack": "单项切换",
-    "Settings.WidgetGroupNavigation.Tabs": "平铺标签",
-    "Settings.WidgetGroupNavigation.Title": "组合默认导航样式",
-    "Settings.WidgetGroupTitle.Description": "用于跟随默认设置的格子组",
+    "Settings.WidgetGroupNavigation.Description": "空间充足时并排显示，不足时自动折叠",
+    "Settings.WidgetGroupNavigation.Stack": "折叠显示",
+    "Settings.WidgetGroupNavigation.Tabs": "并排显示",
+    "Settings.WidgetGroupNavigation.Title": "标题栏布局",
+    "Settings.WidgetGroupTitle.Description": "选择标题栏中显示图标、名称或两者",
     "Settings.WidgetGroupTitle.IconAndText": "图标和文字",
     "Settings.WidgetGroupTitle.IconOnly": "仅图标",
     "Settings.WidgetGroupTitle.TextOnly": "仅文字",
-    "Settings.WidgetGroupTitle.Title": "格子组默认标题样式",
-    "Settings.WidgetGroupWheel.Description": "仅当指针位于标题成员选择器时生效",
-    "Settings.WidgetGroupWheel.Title": "标题栏滚轮切换成员",
-    "Settings.WidgetGroupHover.Description": "仅用于平铺标签；停留片刻后切换，默认关闭",
+    "Settings.WidgetGroupTitle.Title": "名称显示",
+    "Settings.WidgetGroupWheel.Description": "指针位于格子组标题栏时，滚动一次切换一个格子",
+    "Settings.WidgetGroupWheel.Title": "滚轮切换",
+    "Settings.WidgetGroupHover.Description": "并排显示时，指针停留片刻后切换格子",
     "Settings.WidgetGroupHover.Title": "鼠标移入自动切换",
     "Settings.Nav.WidgetGroups": "格子组",
     "Settings.Section.WidgetGroups": "格子组",
-    "Settings.WidgetGroups.Enabled.Title": "启用格子组",
-    "Settings.WidgetGroups.Enabled.Description": "开启后才显示格子组菜单，并允许拖动格子进行合并",
-    "Settings.WidgetGroups.Default.Title": "默认行为",
-    "Settings.WidgetGroups.Default.Description": "影响新建组和选择“跟随默认”的组。",
+    "Settings.WidgetGroups.Default.Title": "默认设置",
+    "Settings.WidgetGroups.Default.Description": "用于新建格子组和选择“跟随默认”的格子组。",
     "Settings.WidgetGroups.Existing.Title": "现有格子组",
-    "Settings.WidgetGroups.Existing.Description": "查看每个组的成员数量与覆盖项，并可恢复为跟随默认。",
+    "Settings.WidgetGroups.Existing.Description": "展开格子组，可调整顺序或单独设置。",
     "Settings.WidgetGroups.Existing.Empty.Title": "暂无格子组",
-    "Settings.WidgetGroups.Existing.Empty.Description": "将两个格子合并后，会在这里显示。",
-    "Settings.WidgetGroups.Existing.MemberCount": "{0} 个成员",
+    "Settings.WidgetGroups.Existing.Empty.Description": "把一个格子拖到另一个格子的标题栏，即可组成格子组。",
+    "Settings.WidgetGroups.Existing.MemberCount": "{0} 个格子",
     "Settings.WidgetGroups.Existing.FollowsDefault": "全部跟随默认",
     "Settings.WidgetGroups.Existing.FollowDefaultAction": "恢复跟随默认",
     "Settings.WidgetGroups.Existing.Navigation": "导航：{0}",
@@ -1834,9 +1851,9 @@
     "Widget.Group.Navigation.Auto": "自动",
     "Widget.Group.Navigation.Combined": "组合标题",
     "Widget.Group.Navigation.FollowDefault": "跟随默认",
-    "Widget.Group.Navigation.Stack": "单项切换",
-    "Widget.Group.Navigation.Tabs": "平铺标签",
-    "Widget.Group.NavigationStyle": "格子组切换方式",
+    "Widget.Group.Navigation.Stack": "折叠显示",
+    "Widget.Group.Navigation.Tabs": "并排显示",
+    "Widget.Group.NavigationStyle": "标题栏布局",
     "Widget.Group.MemberPosition": "{0}，第 {1} 项，共 {2} 项",
     "Widget.Group.OpenMembers": "打开格子组成员列表",
     "Widget.Group.Position": "当前成员 {0}，第 {1} 项，共 {2} 项",
@@ -1844,10 +1861,10 @@
     "Widget.Group.DetachDragHint": "拖到格子外松开以分离",
     "Widget.Group.DetachDragCaption": "松开以独立格子",
     "Widget.Group.Dissolve": "解散格子组",
-    "Widget.Group.DropReady": "松开以合并格子",
-    "Widget.Group.DropWaiting": "停留片刻以合并",
-    "Widget.Group.Join": "合并到格子",
-    "Widget.Group.Control": "格子组控制",
+    "Widget.Group.DropReady": "松开后组成格子组",
+    "Widget.Group.DropWaiting": "停留片刻即可组合",
+    "Widget.Group.Join": "组合格子…",
+    "Widget.Group.Control": "格子组设置",
     "Widget.Group.RemoveCurrent": "移出格子组",
     "Widget.Group.RemoveMember": "移出此格子",
     "Widget.Group.ShowMember": "切换到此格子",
@@ -1884,6 +1901,7 @@
     "DesktopOrganization.OneClick.Title": "一键整理桌面",
     "DesktopOrganization.OneClick.Description": "扫描桌面并预览分类、目标格子和实际收纳位置；快速整理每次最多处理 200 个文件、累计 100 MB。",
     "DesktopOrganization.OneClick.Action": "扫描桌面",
+    "DesktopOrganization.Settings.StartAction": "开始整理",
     "DesktopOrganization.Path.Title": "文件收纳位置",
     "DesktopOrganization.Path.MoveNotice": "整理会把文件移动到此位置，而不是复制。",
     "DesktopOrganization.Path.SectionTitle": "文件存放位置",
@@ -2070,7 +2088,7 @@
     ,"Settings.Diagnostics.SuccessBody": "诊断包已保存到：\n{0}\n\n发送前仍建议快速检查压缩包内容。"
     ,"Settings.Diagnostics.FailedTitle": "无法导出诊断包"
     ,"Settings.Diagnostics.FailedBody": "请检查目标文件夹权限和磁盘空间后重试。\n\n{0}"
-    ,"Onboarding.SkipAll": "跳过全部"
+    ,"Onboarding.SkipAll": "直接开始"
     ,"Onboarding.Task.Step1.Title": "把文件拖进格子，桌面就整洁了"
     ,"Onboarding.Task.Step1.Body": "文件默认移动到 DeskBox 的本机文件夹，原位置不再保留。"
     ,"Onboarding.Task.Step1.LocationTitle": "格子在哪里"
@@ -2091,8 +2109,8 @@
     ,"Onboarding.Task.Step2.StatusReady": "点击“显示格子”，它会出现在屏幕右侧。"
     ,"Onboarding.Task.Step2.StatusShown": "文件格子已显示在屏幕右侧。"
     ,"Onboarding.Task.Step2.StatusUnavailable": "未找到可用的文件格子。之后可右键托盘图标新建。"
-    ,"Onboarding.Task.Step3.Title": "练习 1：移动一个文件"
-    ,"Onboarding.Task.Step3.Body": "拖入、按 Ctrl+V，或点“添加文件”。没有合适的测试文件可以跳过。"
+    ,"Onboarding.Task.Step3.Title": "把文件放进格子"
+    ,"Onboarding.Task.Step3.Body": "从桌面或文件资源管理器拖入文件，DeskBox 会将文件移动到这个格子的文件夹中。"
     ,"Onboarding.Task.Step3.DragTitle": "拖入文件"
     ,"Onboarding.Task.Step3.DragBody": "把文件从桌面或文件资源管理器拖进格子，原位置将不再保留。"
     ,"Onboarding.Task.Step3.PasteTitle": "粘贴文件"
@@ -2100,33 +2118,38 @@
     ,"Onboarding.Task.Step3.AddTitle": "添加文件"
     ,"Onboarding.Task.Step3.AddBody": "点击格子里的“添加文件”并选择文件，选中项会移动进来。"
     ,"Onboarding.Task.Step3.TryButton": "显示格子"
-    ,"Onboarding.Task.Step3.StatusReady": "先显示格子，再移入一个文件。"
-    ,"Onboarding.Task.Step3.StatusShown": "格子已显示，移动完成后会自动确认。"
-    ,"Onboarding.Task.Step3.SkipTip": "没有合适的测试文件也没关系，跳过不会影响后续使用。"
-    ,"Onboarding.Task.Step4.Title": "练习 2：隐藏，再叫回来"
-    ,"Onboarding.Task.Step4.Body": "切换两次即可完成，也可以跳过。"
-    ,"Onboarding.Task.Step4.ToggleTitle": "快捷键或托盘图标"
-    ,"Onboarding.Task.Step4.ToggleBody": "按 {0}，或单击托盘图标。"
-    ,"Onboarding.Task.Step4.ToggleButton": "切换显示状态"
-    ,"Onboarding.Task.Step4.TrayTitle": "新建格子"
-    ,"Onboarding.Task.Step4.TrayBody": "在任务栏右下角的托盘区找到 DeskBox 图标；如果没有看到，先展开隐藏图标。右键单击后选择要新建的格子。"
-    ,"Onboarding.Task.Step4.TrayButton": "打开托盘菜单"
-    ,"Onboarding.Task.Step4.ManagedEntry": "新建格子：创建独立的文件收纳区"
-    ,"Onboarding.Task.Step4.MappedEntry": "新建文件夹映射：把已有文件夹显示为格子"
+    ,"Onboarding.Task.Step3.StatusReady": "把一个文件拖进格子试试。"
+    ,"Onboarding.Task.Step3.StatusShown": "把一个文件拖进格子试试。"
+    ,"Onboarding.Task.Step3.SkipTip": "没有合适的文件，可以直接继续。"
+    ,"Onboarding.Task.Step4.Title": "随时显示，随时收起"
+    ,"Onboarding.Task.Step4.Body": "无论正在使用哪个窗口，都可以让格子显示在前面，快速使用其中的内容。"
+    ,"Onboarding.Task.Step4.ToggleTitle": "显示或收起所有格子"
+    ,"Onboarding.Task.Step4.ToggleBody": "按 {0}，或单击任务栏右下角的 DeskBox 图标。再次操作即可收起。"
+    ,"Onboarding.Task.Step4.ToggleButton": "试一下"
+    ,"Onboarding.Task.Step4.TrayTitle": "从这里管理 DeskBox"
+    ,"Onboarding.Task.Step4.TrayBody": "右键单击任务栏右下角的 DeskBox 图标，可以新建格子、将其他文件夹映射为格子，或打开设置。"
+    ,"Onboarding.Task.Step4.TrayButton": "打开 DeskBox 菜单"
+    ,"Onboarding.Task.Step4.ManagedEntry": "新建格子"
+    ,"Onboarding.Task.Step4.MappedEntry": "将文件夹映射为格子"
     ,"Onboarding.Task.Step4.FeatureEntry": "功能格子：添加待办、随记、天气或音乐"
-    ,"Onboarding.Task.Step4.StatusReady": "先隐藏一次，再恢复。"
+    ,"Onboarding.Task.Step4.StatusReady": "试着收起格子，然后重新显示。"
     ,"Onboarding.Task.Step4.StatusToggled": "格子已切换。再次点击可恢复刚才的状态。"
-    ,"Onboarding.Task.Step4.StatusHidden": "格子已隐藏。再操作一次把它叫回来。"
-    ,"Onboarding.Task.Step4.StatusShown": "格子已显示。下一次先把它隐藏。"
-    ,"Onboarding.Task.Step4.StatusTrayOpened": "托盘菜单已打开。以后可以从这里新建格子。"
-    ,"Onboarding.Task.Step5.Title": "接下来想做什么？"
-    ,"Onboarding.Task.Step5.Body": "DeskBox 已可直接使用；之后可在设置里重看引导。"
+    ,"Onboarding.Task.Step4.StatusHidden": "格子已收起。再次操作即可重新显示。"
+    ,"Onboarding.Task.Step4.StatusShown": "格子已显示。"
+    ,"Onboarding.Task.Step4.StatusTrayOpened": "DeskBox 菜单已打开。"
+    ,"Onboarding.Task.Step5.Title": "添加你需要的功能"
+    ,"Onboarding.Task.Step5.Body": "这些功能都是可选的。开启后，相应格子会出现在桌面上。"
+    ,"Onboarding.Task.Step5.TodoDescription": "记录并完成任务"
+    ,"Onboarding.Task.Step5.QuickCaptureDescription": "随手记下想法"
+    ,"Onboarding.Task.Step5.SearchDescription": "快速查找文件和应用"
+    ,"Onboarding.Task.Step5.WeatherDescription": "查看天气和预报"
+    ,"Onboarding.Task.Step5.MusicDescription": "控制音乐播放"
     ,"Onboarding.Task.Step5.Done1": "知道第一个文件格子在哪里"
     ,"Onboarding.Task.Step5.Done2": "会拖入、粘贴和添加文件"
     ,"Onboarding.Task.Step5.Done3": "会用快捷键或托盘图标显示、隐藏格子"
     ,"Onboarding.Task.Step5.Done4": "会从托盘菜单新建格子"
     ,"Onboarding.Task.Step5.OptionalTitle": "从这里继续"
-    ,"Onboarding.Task.Step5.OptionalBody": "先整理一批桌面文件，或按喜好调整；也可以直接点击“开始使用”。"
+    ,"Onboarding.Task.Step5.OptionalBody": "以后可以随时在“设置 > 功能格子”中更改。"
     ,"Onboarding.Task.Step5.Organize": "整理桌面"
     ,"Onboarding.Task.Step5.Appearance": "调整外观"
     ,"Onboarding.Task.Step5.Settings": "打开设置"
@@ -2146,8 +2169,27 @@
     ,"Onboarding.Task.Step2.Warning.CloudSync": "若这是同步目录，文件会由对应云服务同步。"
     ,"Onboarding.Task.Step2.Warning.Removable": "磁盘移除后，格子里的文件会暂时不可用。"
     ,"Onboarding.Task.Step2.Warning.Network": "网络断开后，格子里的文件会暂时不可用。"
-    ,"Onboarding.Task.SkipPractice": "跳过练习"
+    ,"Onboarding.Task.SkipPractice": "跳过这一步"
     ,"Onboarding.Task.Continue": "继续"
-    ,"Onboarding.Task.Step3.StatusCompleted": "完成：文件已移动到收纳格子。"
-    ,"Onboarding.Task.Step4.StatusCompleted": "完成：你已经隐藏并重新显示了格子。"
+    ,"Onboarding.Task.Step3.StatusCompleted": "文件已移动到格子。"
+    ,"Onboarding.Task.Step4.StatusCompleted": "格子已重新显示。"
+    ,"Settings.WidgetGroups.Overview.Description": "将多个格子放在同一位置，通过标题栏快速切换"
+    ,"Settings.WidgetGroups.Overview.Ready": "{0} · 可随时组合"
+    ,"Settings.WidgetGroups.Overview.Summary": "{0} 组 · {1}"
+    ,"Settings.WidgetGroups.PageDescription": "将多个格子放在同一位置，通过标题栏切换。每个格子的内容仍然相互独立。"
+    ,"Settings.WidgetGroups.FollowDefaultWithValue": "跟随默认（{0}）"
+    ,"Settings.WidgetGroups.Existing.SummaryDefault": "{0} · {1} · 跟随默认"
+    ,"Settings.WidgetGroups.Existing.SummaryCustom": "{0} · {1} · 已单独设置"
+    ,"Settings.WidgetGroups.Existing.Name.Title": "格子组名称"
+    ,"Settings.WidgetGroups.GroupChrome.Title": "标题栏高度"
+    ,"Settings.WidgetGroups.GroupChrome.Description": "格子组需要保留标题栏，以便切换其中的格子"
+    ,"Settings.WidgetGroups.GroupDisplay.Title": "显示方式"
+    ,"Settings.WidgetGroups.GroupDisplay.Description": "选择这个格子组保持展开、点击展开或悬停展开"
+    ,"Settings.WidgetGroups.Existing.Members.Title": "组内格子"
+    ,"Settings.WidgetGroups.Existing.Member.MoveUp": "向前移动"
+    ,"Settings.WidgetGroups.Existing.Member.MoveDown": "向后移动"
+    ,"Settings.WidgetGroups.Existing.Member.Remove": "移出格子组"
+    ,"Settings.WidgetGroups.DissolveDialog.Title": "解散这个格子组？"
+    ,"Settings.WidgetGroups.DissolveDialog.Confirm": "解散格子组"
+    ,"Settings.WidgetGroups.DissolveDialog.Description": "格子内容不会删除，组内格子会恢复为独立格子。"
 }

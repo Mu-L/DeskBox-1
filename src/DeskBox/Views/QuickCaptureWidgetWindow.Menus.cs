@@ -91,6 +91,7 @@ public sealed partial class QuickCaptureWidgetWindow
             SetChromeModeOverride));
         flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
             ViewModel.Config,
+            SettingsService.Settings.WidgetCollapseBehavior,
             _localizationService,
             SetCollapseBehaviorOverride,
             ResetCompactWidthOverride));

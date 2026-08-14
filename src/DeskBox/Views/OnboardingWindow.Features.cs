@@ -35,6 +35,9 @@ public sealed partial class OnboardingWindow
             return;
         }
 
+        _settingsService.Settings.WidgetCollapseBehavior = toggle.IsOn
+            ? SettingsService.WidgetCollapseBehaviorSmart
+            : SettingsService.WidgetCollapseBehaviorExpanded;
         _settingsService.Settings.WidgetCapsuleModeEnabled = toggle.IsOn;
         _settingsService.SaveDebounced();
     }

@@ -90,7 +90,6 @@ public sealed partial class SettingsWindow : Window
             ["FeatureWidgets"] = new("FeatureWidgets", "Settings.Section.FeatureWidgets", null, "FeatureWidgets"),
             ["Interaction"] = new("Interaction", "Settings.Section.Interaction", null, "Interaction"),
             ["InteractionHotkeySettings"] = new("InteractionHotkeySettings", "Settings.Interaction.Hotkeys.Title", "Interaction", "Interaction"),
-            ["InteractionHoverSettings"] = new("InteractionHoverSettings", "Settings.Interaction.Hover.Title", "Interaction", "Interaction"),
             ["Advanced"] = new("Advanced", "Settings.Section.Advanced", null, "Interaction"),
             ["Maintenance"] = new("Maintenance", "Settings.Section.Maintenance", null, "Maintenance"),
             ["About"] = new("About", "Settings.Nav.About", null, "About"),
@@ -284,16 +283,6 @@ public sealed partial class SettingsWindow : Window
         });
     }
 
-    private static TextBlock CreateDialogParagraph(string text)
-    {
-        return new TextBlock
-        {
-            Text = text,
-            TextWrapping = TextWrapping.WrapWholeWords,
-            LineHeight = 24
-        };
-    }
-
     private void OnAppearanceChanged()
     {
         void Apply()
@@ -425,13 +414,12 @@ public sealed partial class SettingsWindow : Window
         Grid.SetColumnSpan(AboutRightPanel, isNarrow ? 3 : 1);
         AboutRightPanel.Margin = isNarrow ? new Thickness(0, 10, 0, 0) : new Thickness(0);
         AboutRightPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
-        AboutVersionTextBlock.HorizontalAlignment = isNarrow ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-        AboutVersionTextBlock.TextAlignment = isNarrow ? TextAlignment.Left : TextAlignment.Right;
         AboutInfoActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         AboutInfoActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
-        AboutReasonButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        AboutMeButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         AboutWebsiteButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         FeedbackEmailButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        OpenMicrosoftStoreButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         UpdateActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         UpdateActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
         OneClickUpdateButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;

@@ -39,6 +39,11 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <Style x:Key="SettingValueTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SettingDescriptionTextStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
     <Style x:Key="SettingsSubsectionHeaderStyle" TargetType="StackPanel">
         <Setter Property="Margin" Value="4,14,4,4" />
         <Setter Property="Spacing" Value="2" />

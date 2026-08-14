@@ -46,16 +46,15 @@
 
             <toolkit:SettingsExpander
                 IsExpanded="False"
-                svc:Localized.DescriptionKey="Settings.SystemAccent.Description"
-                svc:Localized.HeaderKey="Settings.SystemAccent.Title">
+                svc:Localized.DescriptionKey="Settings.Accent.Source.Description"
+                svc:Localized.HeaderKey="Settings.Accent.Source.Title">
                 <toolkit:SettingsExpander.HeaderIcon>
                     <FontIcon Glyph="&#xE7E6;" />
                 </toolkit:SettingsExpander.HeaderIcon>
-                <ToggleSwitch
-                    MinWidth="0"
-                    OffContent=""
-                    OnContent=""
-                    IsOn="{Binding UseSystemAccentColor, Mode=TwoWay}" />
+                <ComboBox
+                    MinWidth="{StaticResource SettingsControlMinWidth}"
+                    ItemsSource="{Binding AvailableAccentColorSourceOptions}"
+                    controls:SettingsComboBox.Value="{Binding SelectedAccentColorSource, Mode=TwoWay}" />
                 <toolkit:SettingsExpander.Items>
                     <toolkit:SettingsCard
                         Description="{Binding AccentColorDescription}"
@@ -105,17 +104,16 @@
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE73F;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Section.CapsuleMode" />
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Capsule.Enabled.Description" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.CollapseBehavior.Description" />
                             </StackPanel>
                         </Grid>
                     </Button>
-                    <ToggleSwitch
+                    <ComboBox
                         Grid.Column="1"
-                        MinWidth="0"
-                        OffContent=""
-                        OnContent=""
+                        MinWidth="{StaticResource SettingsControlMinWidth}"
                         VerticalAlignment="Center"
-                        IsOn="{Binding WidgetCapsuleModeEnabled, Mode=TwoWay}" />
+                        ItemsSource="{Binding AvailableWidgetCollapseBehaviorOptions}"
+                        controls:SettingsComboBox.Value="{Binding SelectedWidgetCollapseBehavior, Mode=TwoWay}" />
                     <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                 </Grid>
             </Border>
@@ -127,17 +125,16 @@
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE713;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Section.WidgetGroups" />
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.WidgetGroups.Enabled.Description" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.WidgetGroups.Overview.Description" />
                             </StackPanel>
                         </Grid>
                     </Button>
-                    <ToggleSwitch
+                    <ComboBox
                         Grid.Column="1"
-                        MinWidth="0"
-                        OffContent=""
-                        OnContent=""
+                        MinWidth="176"
                         VerticalAlignment="Center"
-                        IsOn="{Binding IsWidgetGroupsEnabled, Mode=TwoWay}" />
+                        ItemsSource="{Binding AvailableWidgetGroupNavigationStyleOptions}"
+                        controls:SettingsComboBox.Value="{Binding SelectedWidgetGroupDefaultNavigationStyle, Mode=TwoWay}" />
                     <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                 </Grid>
             </Border>

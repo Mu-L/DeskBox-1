@@ -196,6 +196,66 @@ public sealed class WidgetGroupNavigationInteractionPolicyTests
     }
 
     [Fact]
+    public void Wheel_DuplicateImpulseIsCoalescedWithoutExtendingTheGuard()
+    {
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
+        DateTimeOffset lastAcceptedAt = default;
+        int lastAcceptedDirection = 0;
+
+        Assert.True(
+            WidgetGroupNavigationInteractionPolicy
+                .TryAcceptCoalescedWheelStep(
+                    ref lastAcceptedAt,
+                    ref lastAcceptedDirection,
+                    startedAt,
+                    direction: 1));
+        Assert.False(
+            WidgetGroupNavigationInteractionPolicy
+                .TryAcceptCoalescedWheelStep(
+                    ref lastAcceptedAt,
+                    ref lastAcceptedDirection,
+                    startedAt.AddMilliseconds(30),
+                    direction: 1));
+        Assert.Equal(startedAt, lastAcceptedAt);
+
+        Assert.True(
+            WidgetGroupNavigationInteractionPolicy
+                .TryAcceptCoalescedWheelStep(
+                    ref lastAcceptedAt,
+                    ref lastAcceptedDirection,
+                    startedAt.Add(
+                        WidgetGroupNavigationInteractionPolicy
+                            .WheelRepeatCoalescingInterval),
+                    direction: 1));
+    }
+
+    [Fact]
+    public void Wheel_CoalescingUsesOneStandardDetentWindow()
+    {
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(120),
+            WidgetGroupNavigationInteractionPolicy
+                .WheelRepeatCoalescingInterval);
+    }
+
+    [Fact]
+    public void Wheel_DirectionReversalBypassesRepeatCoalescing()
+    {
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
+        DateTimeOffset lastAcceptedAt = startedAt;
+        int lastAcceptedDirection = 1;
+
+        Assert.True(
+            WidgetGroupNavigationInteractionPolicy
+                .TryAcceptCoalescedWheelStep(
+                    ref lastAcceptedAt,
+                    ref lastAcceptedDirection,
+                    startedAt.AddMilliseconds(20),
+                    direction: -1));
+        Assert.Equal(-1, lastAcceptedDirection);
+    }
+
+    [Fact]
     public void PositionRail_MapsTwoAndThreeMembersOneToOne()
     {
         IReadOnlyList<WidgetGroupPositionRailSlot> two =

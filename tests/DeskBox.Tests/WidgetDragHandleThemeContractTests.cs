@@ -28,6 +28,10 @@ public sealed class WidgetDragHandleThemeContractTests
             3,
             CountOccurrences(widgetShellXaml, "{ThemeResource WidgetDragHandleBrush}"));
         Assert.Contains("x:Name=\"OverlayDragGrip\"", widgetShellXaml, StringComparison.Ordinal);
+        Assert.Contains("UseLayoutRounding=\"True\"", widgetShellXaml, StringComparison.Ordinal);
+        Assert.Contains("CornerRadius=\"1.5,0,0,1.5\"", widgetShellXaml, StringComparison.Ordinal);
+        Assert.Contains("CornerRadius=\"0,1.5,1.5,0\"", widgetShellXaml, StringComparison.Ordinal);
+        Assert.Contains("Canvas.ZIndex=\"1\"", widgetShellXaml, StringComparison.Ordinal);
         Assert.Contains("const double gripOpacity = 1", widgetShellCode, StringComparison.Ordinal);
         Assert.Contains(
             "Background=\"{ThemeResource WidgetDragHandleBrush}\"",

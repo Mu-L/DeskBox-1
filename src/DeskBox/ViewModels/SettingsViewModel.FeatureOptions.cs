@@ -843,6 +843,7 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
 
     public string[] AvailableWidgetCollapseBehaviors { get; } =
     [
+        SettingsService.WidgetCollapseBehaviorExpanded,
         SettingsService.WidgetCollapseBehaviorClick,
         SettingsService.WidgetCollapseBehaviorSmart
     ];

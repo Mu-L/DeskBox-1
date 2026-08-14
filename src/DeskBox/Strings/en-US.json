@@ -1,4 +1,24 @@
 {
+    "Settings.Accent.Source.Title": "Accent color source",
+    "Settings.Accent.Source.Description": "Follow Windows or use a custom color",
+    "Settings.Accent.Source.System": "Follow Windows",
+    "Settings.Accent.Source.Custom": "Custom color",
+    "Settings.OpenMethod.Title": "Open items with",
+    "Settings.OpenMethod.Description": "Choose single-click or double-click for files and folders",
+    "Settings.OpenMethod.SingleClick": "Single-click",
+    "Settings.OpenMethod.DoubleClick": "Double-click",
+    "Settings.ShowDesktopBehavior.Title": "When showing the desktop",
+    "Settings.ShowDesktopBehavior.Description": "Choose what widgets do after you press Win+D",
+    "Settings.ShowDesktopBehavior.KeepVisible": "Keep visible",
+    "Settings.ShowDesktopBehavior.HideWithWindows": "Hide with windows",
+    "Settings.Weather.LocationMode.Title": "Location source",
+    "Settings.Weather.LocationMode.Description": "Detect your location or choose a city manually",
+    "Settings.Weather.LocationMode.Auto": "Detect automatically",
+    "Settings.Weather.LocationMode.Manual": "Choose a city",
+    "Settings.FileStacks.Mode.Title": "Automatic grouping",
+    "Settings.FileStacks.Mode.Description": "Turn grouping off or choose how files are grouped",
+    "Settings.FileStacks.Mode.Off": "Off",
+    "Settings.HoverButtonActions.None": "Show none",
     "Settings.QuickCapture.Format.Title": "Editing format",
     "Settings.QuickCapture.Format.Description": "Choose whether the note editor uses Markdown or plain text",
     "Todo.Detail.ResizeTitleEditor": "Resize the task title editor; double-click to restore automatic height",
@@ -69,6 +89,7 @@
     "Common.NewFolder": "New Folder",
     "Common.NewWidget": "New Widget",
     "Common.NewFolderMapping": "New Folder Mapping",
+    "Common.AddFeatureWidget": "Add Feature Widget",
     "Todo.Title": "Todo",
     "Todo.NewWidget": "New Todo Widget",
     "Todo.AddPlaceholder": "Add a task",
@@ -333,9 +354,9 @@
     "Settings.Material.Title": "Window material and border",
     "Settings.Capsule.Enabled.Title": "Allow widgets to collapse",
     "Settings.Capsule.Enabled.Description": "When enabled, widgets can collapse into a compact state; when disabled, all widgets stay expanded",
-    "Settings.CollapseBehavior.Title": "Expand behavior",
-    "Settings.CollapseBehavior.Description": "Expand by clicking, or automatically when the pointer rests over the title area",
-    "Settings.CollapseBehavior.Expanded": "Keep expanded",
+    "Settings.CollapseBehavior.Title": "Default display mode",
+    "Settings.CollapseBehavior.Description": "Set how widgets expand by default",
+    "Settings.CollapseBehavior.Expanded": "Always expanded",
     "Settings.CollapseBehavior.Click": "Click to expand",
     "Settings.CollapseBehavior.Smart": "Expand on hover",
     "Settings.CollapseBehavior.Manual": "Click to expand",
@@ -415,7 +436,7 @@
     "Settings.Capsule.Overrides.Item.Behavior": "Expand behavior: {0}",
     "Settings.Capsule.Overrides.Item.Width": "Width: {0} px",
     "Settings.Capsule.Overrides.Item.Position": "Position: saved",
-    "Settings.Capsule.Overrides.FollowGlobal": "Follow global",
+    "Settings.Capsule.Overrides.FollowGlobal": "Restore default",
     "Settings.Capsule.Overrides.Empty.Title": "All widgets follow the global settings",
     "Settings.Capsule.Overrides.Empty.Description": "Widgets appear here after their expand behavior, capsule width, or position is changed directly",
     "Settings.Capsule.Overrides.ResetAll.Title": "Make every widget follow global settings",
@@ -668,6 +689,7 @@
     "Settings.ShowHoverButtons.Title": "Show top-right buttons",
     "Settings.ShowHoverButtons.Description": "Show action buttons in the top-right corner of standard and compact title bars",
     "Settings.HoverButtonActions.Title": "Top-right button actions",
+    "Widget.TitleButtons.Title": "Show buttons",
     "Settings.HoverButtonActions.Description": "Choose which buttons to show; multiple buttons can be enabled",
     "Settings.HoverButtonActions.LockPosition": "Lock position",
     "Settings.HoverButtonActions.LockSize": "Lock size",
@@ -1013,21 +1035,18 @@
     "Settings.DragDropPermission.RelaunchFailedBody": "Exit DeskBox completely, then open it again from the Start menu or install folder.",
     "Settings.Section.About": "About",
     "Settings.About.Description": "Desktop storage and organization tool",
-    "Settings.About.ReasonTitle": "Why DeskBox",
-    "Settings.About.ReasonButton": "Why",
+    "Settings.About.AboutMeTitle": "About me",
+    "Settings.About.AboutMeButton": "About me",
     "Settings.About.Website": "Official website",
     "Settings.About.WebsiteDescription": "View downloads, changelogs, and product notes",
     "Settings.About.FeedbackTitle": "Feedback",
     "Settings.About.FeedbackDescription": "If you encounter a problem, feel free to contact me by email",
     "Settings.About.Repository": "Open-source repository",
     "Settings.About.RepositoryDescription": "View code, report issues, or contribute improvements",
-    "Settings.About.DeveloperName": "Developer: Zhu Tianyu",
-    "Settings.About.DonationTitle": "Support DeskBox",
-    "Settings.About.DonationDescription": "If you like this small tool, you can support future maintenance and updates",
-    "Settings.About.DonationWechat": "WeChat Pay",
-    "Settings.About.DonationAlipay": "Alipay",
+    "Settings.About.StoreSupportTitle": "Support DeskBox",
+    "Settings.About.StoreSupportDescription": "If DeskBox helps you and you would like to support its continued maintenance, you can choose the Store edition.",
     "Settings.About.WechatTitle": "WeChat Official Account",
-    "Settings.About.WechatDescription": "Scan to follow 【大雨实验室】 for feedback or updates",
+    "Settings.About.WechatDescription": "Follow DeskBox development and releases, or leave feedback about your experience",
     "Settings.About.Version": "Version {0} · WinUI 3 / .NET 10",
     "Settings.About.VersionWithChannel": "Version {0} · {1} · WinUI 3 / .NET 10",
     "Settings.About.Channel.Direct": "Direct",
@@ -1049,17 +1068,16 @@
     "Settings.Dialog.UnpinQuickAccessFailedBody": "DeskBox could not remove the folder from Quick Access.\n\n{0}",
     "Settings.Dialog.RestoreTitle": "Restore Default Preferences",
     "Settings.Dialog.RestoreBody": "Appearance, display, interaction, hotkey, and feature widget preferences will be restored. Language, startup, feature widget switches, existing widgets and positions, storage paths, Quick Capture content, Todo tasks, and files will be preserved.",
-    "Settings.Dialog.ProductReasonP1": "Windows desktop has always been one of the most-used workspaces. It is close at hand, but it also tends to collect temporary files, shortcuts, screenshots, and things waiting to be handled. Over time, it becomes a place with everything on it, yet nothing is easy to find.",
-    "Settings.Dialog.ProductReasonP2": "DeskBox started as a lightweight and restrained way to make the desktop cleaner, more organized, and easier to use again. It does not try to replace the Windows desktop. It sits beside existing habits and helps collect frequent items, temporary content, and small tools more naturally.",
-    "Settings.Dialog.ProductReasonP3": "I genuinely like the native feel of WinUI, and I care about whether a tool feels like it belongs on Windows. DeskBox will keep following native design, interaction, and visual patterns as it evolves.",
-    "Settings.Dialog.ProductReasonP4": "When a system-native capability can solve a problem, DeskBox will prefer it. When a third-party dependency is not necessary, DeskBox will avoid adding it. This may take more care, but it helps keep the app stable, light, and close to the system.",
-    "Settings.Dialog.ProductReasonP5": "DeskBox is not trying to pile on features. It focuses on stability, performance, simplicity, and comfort in long-term use. The installer is relatively large mainly because of WinUI 3, Windows App SDK, and .NET baseline size, not because it includes many unrelated features.",
-    "Settings.Dialog.ProductReasonClose": "Got it",
+    "Settings.Dialog.AboutMeName": "Tianyu Zhu",
+    "Settings.Dialog.AboutMeRole": "Product manager · Creator of DeskBox",
+    "Settings.Dialog.AboutMeP1": "I like the native feel of Microsoft apps, and I like widgets that keep useful information and tools close on the desktop.",
+    "Settings.Dialog.AboutMeP2": "Microsoft has never made this kind of desktop widget a sustained focus, so I started building DeskBox. I want it to feel at home on Windows while solving practical desktop organization and everyday-use problems.",
+    "Settings.Dialog.AboutMeClose": "Close",
     "Onboarding.WindowTitle": "DeskBox Onboarding",
     "Onboarding.Skip": "Skip",
     "Onboarding.Back": "Back",
     "Onboarding.Next": "Next",
-    "Onboarding.Start": "Get Started",
+    "Onboarding.Start": "Start Using DeskBox",
     "Onboarding.Reconfigure": "Reconfigure",
     "Onboarding.Intro.Title": "DeskBox",
     "Onboarding.Intro.Body": "Organize files in desktop widgets.",
@@ -1071,8 +1089,8 @@
   "Onboarding.Step2.Eyebrow": "CREATE WIDGETS",
   "Onboarding.Step2.Title": "Create more widgets from the tray",
   "Onboarding.Step2.Body": "Right-click the DeskBox icon in the taskbar notification area whenever you want to create a widget.",
-  "Onboarding.Step2.TrayActionTitle": "Right-click the DeskBox tray icon",
-  "Onboarding.Step2.TrayActionBody": "If it is hidden, first open Show hidden icons on the taskbar",
+  "Onboarding.Step2.TrayActionTitle": "Find the DeskBox icon",
+  "Onboarding.Step2.TrayActionBody": "Can't see it? Select ∧ on the taskbar, then find DeskBox.",
   "Onboarding.Step2.RightClick": "Right-click",
   "Onboarding.Step2.NewWidgetTitle": "New widget",
   "Onboarding.Step2.NewWidgetBody": "Collect files dragged in from the desktop",
@@ -1258,11 +1276,12 @@
     "Widget.Compact.FileCount": "{0} items",
     "Widget.Compact.QuickCaptureCount": "{0} notes",
     "Widget.Compact.TodoSummary": "{0} today · {1} overdue",
-    "Widget.CollapseBehavior.Title": "Expansion behavior",
-    "Widget.CollapseBehavior.System": "Follow global",
-    "Widget.CollapseBehavior.Expanded": "Keep expanded",
-    "Widget.CollapseBehavior.Click": "Click to toggle",
-    "Widget.CollapseBehavior.Smart": "Smart expand",
+    "Widget.CollapseBehavior.Title": "Display mode",
+    "Widget.CollapseBehavior.System": "Follow default",
+    "Widget.CollapseBehavior.SystemWithDefault": "Follow default ({0})",
+    "Widget.CollapseBehavior.Expanded": "Always expanded",
+    "Widget.CollapseBehavior.Click": "Click to expand",
+    "Widget.CollapseBehavior.Smart": "Expand on hover",
     "Widget.Tooltip.More": "More options",
     "Widget.Tooltip.DeleteWidget": "Delete widget",
     "Widget.FeatureWidget.Disable": "Turn off widget",
@@ -1790,30 +1809,28 @@
     "Size.Unit.KB": "KB",
     "Size.Unit.MB": "MB",
     "Settings.WidgetGroupNavigation.Auto": "Auto",
-    "Settings.WidgetGroupNavigation.Description": "Used for new groups and groups set to follow the default",
-    "Settings.WidgetGroupNavigation.Stack": "Stack switcher",
-    "Settings.WidgetGroupNavigation.Tabs": "Tab strip",
-    "Settings.WidgetGroupNavigation.Title": "Default group navigation",
-    "Settings.WidgetGroupTitle.Description": "Used by widget groups that follow the default",
+    "Settings.WidgetGroupNavigation.Description": "Shows widgets side by side when space allows and collapses them when needed",
+    "Settings.WidgetGroupNavigation.Stack": "Collapsed",
+    "Settings.WidgetGroupNavigation.Tabs": "Side by side",
+    "Settings.WidgetGroupNavigation.Title": "Title bar layout",
+    "Settings.WidgetGroupTitle.Description": "Choose whether the title bar shows icons, names, or both",
     "Settings.WidgetGroupTitle.IconAndText": "Icon and text",
     "Settings.WidgetGroupTitle.IconOnly": "Icon only",
     "Settings.WidgetGroupTitle.TextOnly": "Text only",
-    "Settings.WidgetGroupTitle.Title": "Default group title style",
-    "Settings.WidgetGroupWheel.Description": "Works only while the pointer is over the title member selector",
-    "Settings.WidgetGroupWheel.Title": "Switch members with the title-bar wheel",
-    "Settings.WidgetGroupHover.Description": "Applies to tab strips only; switches after a short hover and is off by default",
+    "Settings.WidgetGroupTitle.Title": "Name display",
+    "Settings.WidgetGroupWheel.Description": "Scroll over a group title bar to switch one widget at a time",
+    "Settings.WidgetGroupWheel.Title": "Scroll to switch",
+    "Settings.WidgetGroupHover.Description": "When widgets are side by side, pause over a title to switch",
     "Settings.WidgetGroupHover.Title": "Switch tabs on pointer hover",
     "Settings.Nav.WidgetGroups": "Widget groups",
     "Settings.Section.WidgetGroups": "Widget groups",
-    "Settings.WidgetGroups.Enabled.Title": "Enable widget groups",
-    "Settings.WidgetGroups.Enabled.Description": "Show group commands and allow widgets to be merged by dragging",
-    "Settings.WidgetGroups.Default.Title": "Default behavior",
-    "Settings.WidgetGroups.Default.Description": "Affects new groups and groups set to follow the default.",
+    "Settings.WidgetGroups.Default.Title": "Default settings",
+    "Settings.WidgetGroups.Default.Description": "Used by new groups and groups set to follow the default.",
     "Settings.WidgetGroups.Existing.Title": "Existing widget groups",
-    "Settings.WidgetGroups.Existing.Description": "Review member counts and current overrides, or restore a group to the defaults.",
+    "Settings.WidgetGroups.Existing.Description": "Expand a group to reorder widgets or customize its behavior.",
     "Settings.WidgetGroups.Existing.Empty.Title": "No widget groups",
-    "Settings.WidgetGroups.Existing.Empty.Description": "Groups will appear here after two widgets are merged.",
-    "Settings.WidgetGroups.Existing.MemberCount": "{0} members",
+    "Settings.WidgetGroups.Existing.Empty.Description": "Drag one widget onto another widget's title bar to create a group.",
+    "Settings.WidgetGroups.Existing.MemberCount": "{0} widgets",
     "Settings.WidgetGroups.Existing.FollowsDefault": "Following all defaults",
     "Settings.WidgetGroups.Existing.FollowDefaultAction": "Follow defaults",
     "Settings.WidgetGroups.Existing.Navigation": "Navigation: {0}",
@@ -1833,9 +1850,9 @@
     "Widget.Group.Navigation.Auto": "Auto",
     "Widget.Group.Navigation.Combined": "Combined title",
     "Widget.Group.Navigation.FollowDefault": "Follow default",
-    "Widget.Group.Navigation.Stack": "Stack switcher",
-    "Widget.Group.Navigation.Tabs": "Tab strip",
-    "Widget.Group.NavigationStyle": "Group navigation style",
+    "Widget.Group.Navigation.Stack": "Collapsed",
+    "Widget.Group.Navigation.Tabs": "Side by side",
+    "Widget.Group.NavigationStyle": "Title bar layout",
     "Widget.Group.MemberPosition": "{0}, item {1} of {2}",
     "Widget.Group.OpenMembers": "Open widget group members",
     "Widget.Group.Position": "Current member {0}, item {1} of {2}",
@@ -1843,10 +1860,10 @@
     "Widget.Group.DetachDragHint": "Drag outside the widget and release to separate",
     "Widget.Group.DetachDragCaption": "Release to detach",
     "Widget.Group.Dissolve": "Dissolve widget group",
-    "Widget.Group.DropReady": "Release to merge widgets",
-    "Widget.Group.DropWaiting": "Hold briefly to merge",
-    "Widget.Group.Join": "Merge with widget",
-    "Widget.Group.Control": "Widget group controls",
+    "Widget.Group.DropReady": "Release to create a widget group",
+    "Widget.Group.DropWaiting": "Hold briefly to combine",
+    "Widget.Group.Join": "Combine with another widget…",
+    "Widget.Group.Control": "Widget group settings",
     "Widget.Group.RemoveCurrent": "Remove from widget group",
     "Widget.Group.RemoveMember": "Remove this widget",
     "Widget.Group.ShowMember": "Switch to this widget",
@@ -1884,6 +1901,7 @@
     "DesktopOrganization.OneClick.Title": "Organize desktop",
     "DesktopOrganization.OneClick.Description": "Scan and preview categories, target widgets, and the actual storage location. Each quick pass handles up to 200 files and 100 MB.",
     "DesktopOrganization.OneClick.Action": "Scan desktop",
+    "DesktopOrganization.Settings.StartAction": "Start organizing",
     "DesktopOrganization.Path.Title": "File storage location",
     "DesktopOrganization.Path.MoveNotice": "Organization moves files to this location; it does not copy them.",
     "DesktopOrganization.Path.SectionTitle": "File storage",
@@ -2070,7 +2088,7 @@
     ,"Settings.Diagnostics.SuccessBody": "The diagnostic package was saved to:\n{0}\n\nPlease review the archive before sharing it."
     ,"Settings.Diagnostics.FailedTitle": "Couldn't export diagnostics"
     ,"Settings.Diagnostics.FailedBody": "Check the destination folder permissions and available disk space, then try again.\n\n{0}"
-    ,"Onboarding.SkipAll": "Skip all"
+    ,"Onboarding.SkipAll": "Start now"
     ,"Onboarding.Task.Step1.Title": "Your first file widget is on the right"
     ,"Onboarding.Task.Step1.Body": "A file widget is a place to organize files on your desktop. Put frequently used files in it, then show or hide it anytime."
     ,"Onboarding.Task.Step1.LocationTitle": "Where it is"
@@ -2091,8 +2109,8 @@
     ,"Onboarding.Task.Step2.StatusReady": "Select “Show widget” to display it on the right."
     ,"Onboarding.Task.Step2.StatusShown": "The file widget is visible on the right."
     ,"Onboarding.Task.Step2.StatusUnavailable": "No file widget was found. You can create one later by right-clicking the tray icon."
-    ,"Onboarding.Task.Step3.Title": "Try adding one file"
-    ,"Onboarding.Task.Step3.Body": "Drag, paste, or select “Add file.”"
+    ,"Onboarding.Task.Step3.Title": "Put files in a widget"
+    ,"Onboarding.Task.Step3.Body": "Drag a file from the desktop or File Explorer. DeskBox moves it into this widget's folder."
     ,"Onboarding.Task.Step3.DragTitle": "Drag a file"
     ,"Onboarding.Task.Step3.DragBody": "Drag a file from the desktop or File Explorer into the widget."
     ,"Onboarding.Task.Step3.PasteTitle": "Paste a file"
@@ -2100,33 +2118,38 @@
     ,"Onboarding.Task.Step3.AddTitle": "Add a file"
     ,"Onboarding.Task.Step3.AddBody": "Select “Add file” in the widget, then choose a file."
     ,"Onboarding.Task.Step3.TryButton": "Show widget and try"
-    ,"Onboarding.Task.Step3.StatusReady": "Select the button to show the widget on the right, then drag or paste a file."
-    ,"Onboarding.Task.Step3.StatusShown": "The widget is visible on the right. Select “Next” when you are done."
-    ,"Onboarding.Task.Step3.SkipTip": "You can continue without adding a file now."
-    ,"Onboarding.Task.Step4.Title": "Show, hide, and create widgets"
-    ,"Onboarding.Task.Step4.Body": "Use the shortcut or the DeskBox icon at the right of the taskbar to show, hide, or create widgets."
-    ,"Onboarding.Task.Step4.ToggleTitle": "Show or hide widgets"
-    ,"Onboarding.Task.Step4.ToggleBody": "Press {0}, or left-click the DeskBox tray icon."
-    ,"Onboarding.Task.Step4.ToggleButton": "Hide or show"
-    ,"Onboarding.Task.Step4.TrayTitle": "Create a widget"
-    ,"Onboarding.Task.Step4.TrayBody": "Find the DeskBox icon at the right of the taskbar. If it is hidden, expand the hidden icons, then right-click it and choose a widget."
-    ,"Onboarding.Task.Step4.TrayButton": "Open tray menu"
-    ,"Onboarding.Task.Step4.ManagedEntry": "New widget: create a separate file collection"
-    ,"Onboarding.Task.Step4.MappedEntry": "New folder mapping: show an existing folder as a widget"
+    ,"Onboarding.Task.Step3.StatusReady": "Try dragging one file into the widget."
+    ,"Onboarding.Task.Step3.StatusShown": "Try dragging one file into the widget."
+    ,"Onboarding.Task.Step3.SkipTip": "You can continue without adding a file."
+    ,"Onboarding.Task.Step4.Title": "Show them anytime. Hide them when done."
+    ,"Onboarding.Task.Step4.Body": "Bring your widgets in front of any window and use their content without leaving what you are doing."
+    ,"Onboarding.Task.Step4.ToggleTitle": "Show or hide all widgets"
+    ,"Onboarding.Task.Step4.ToggleBody": "Press {0}, or select the DeskBox icon at the right of the taskbar. Repeat to hide them."
+    ,"Onboarding.Task.Step4.ToggleButton": "Try it"
+    ,"Onboarding.Task.Step4.TrayTitle": "Manage DeskBox here"
+    ,"Onboarding.Task.Step4.TrayBody": "Right-click the DeskBox icon at the right of the taskbar to create a widget, map another folder as a widget, or open Settings."
+    ,"Onboarding.Task.Step4.TrayButton": "Open the DeskBox menu"
+    ,"Onboarding.Task.Step4.ManagedEntry": "Create a widget"
+    ,"Onboarding.Task.Step4.MappedEntry": "Map a folder as a widget"
     ,"Onboarding.Task.Step4.FeatureEntry": "Feature widget: add To Do, Notes, Weather, or Music"
-    ,"Onboarding.Task.Step4.StatusReady": "Try either action now, or continue to the next step."
+    ,"Onboarding.Task.Step4.StatusReady": "Try hiding the widgets, then show them again."
     ,"Onboarding.Task.Step4.StatusToggled": "The widgets were toggled. Select again to restore the previous state."
     ,"Onboarding.Task.Step4.StatusHidden": "Widgets are hidden. Select again to show them."
     ,"Onboarding.Task.Step4.StatusShown": "Widgets are visible. Select again to hide them."
-    ,"Onboarding.Task.Step4.StatusTrayOpened": "The tray menu is open. You can create widgets here anytime."
-    ,"Onboarding.Task.Step5.Title": "You are ready to use DeskBox"
-    ,"Onboarding.Task.Step5.Body": "You now know the basic file widget actions."
+    ,"Onboarding.Task.Step4.StatusTrayOpened": "The DeskBox menu is open."
+    ,"Onboarding.Task.Step5.Title": "Add the features you need"
+    ,"Onboarding.Task.Step5.Body": "These features are optional. Turn one on to add its widget to the desktop."
+    ,"Onboarding.Task.Step5.TodoDescription": "Track and complete tasks"
+    ,"Onboarding.Task.Step5.QuickCaptureDescription": "Capture ideas quickly"
+    ,"Onboarding.Task.Step5.SearchDescription": "Find files and apps fast"
+    ,"Onboarding.Task.Step5.WeatherDescription": "Check weather and forecasts"
+    ,"Onboarding.Task.Step5.MusicDescription": "Control music playback"
     ,"Onboarding.Task.Step5.Done1": "Know where the first file widget is"
     ,"Onboarding.Task.Step5.Done2": "Drag, paste, and add files"
     ,"Onboarding.Task.Step5.Done3": "Show or hide widgets with the shortcut or tray icon"
     ,"Onboarding.Task.Step5.Done4": "Create widgets from the tray menu"
     ,"Onboarding.Task.Step5.OptionalTitle": "Continue setup (optional)"
-    ,"Onboarding.Task.Step5.OptionalBody": "You can open these later. There is no need to configure them now."
+    ,"Onboarding.Task.Step5.OptionalBody": "You can change these anytime in Settings > Feature widgets."
     ,"Onboarding.Task.Step5.Organize": "Organize desktop"
     ,"Onboarding.Task.Step5.Appearance": "Adjust appearance"
     ,"Onboarding.Task.Step5.Settings": "Open Settings"
@@ -2146,8 +2169,27 @@
     ,"Onboarding.Task.Step2.Warning.CloudSync": "DeskBox does not upload files itself. If this is a OneDrive or other synced folder, that service may sync the files."
     ,"Onboarding.Task.Step2.Warning.Removable": "Files in collection widgets will be unavailable while this drive is disconnected."
     ,"Onboarding.Task.Step2.Warning.Network": "Files in collection widgets will be unavailable while this network location is disconnected."
-    ,"Onboarding.Task.SkipPractice": "Skip practice"
+    ,"Onboarding.Task.SkipPractice": "Skip this step"
     ,"Onboarding.Task.Continue": "Continue"
-    ,"Onboarding.Task.Step3.StatusCompleted": "Done: the file was moved into the collection widget."
-    ,"Onboarding.Task.Step4.StatusCompleted": "Done: you hid the widgets and brought them back."
+    ,"Onboarding.Task.Step3.StatusCompleted": "The file was moved into the widget."
+    ,"Onboarding.Task.Step4.StatusCompleted": "The widgets are visible again."
+    ,"Settings.WidgetGroups.Overview.Description": "Keep multiple widgets in one place and switch from the title bar"
+    ,"Settings.WidgetGroups.Overview.Ready": "{0} · Ready to combine"
+    ,"Settings.WidgetGroups.Overview.Summary": "{0} groups · {1}"
+    ,"Settings.WidgetGroups.PageDescription": "Keep multiple widgets in one place and switch from the title bar. Each widget keeps its own content."
+    ,"Settings.WidgetGroups.FollowDefaultWithValue": "Follow default ({0})"
+    ,"Settings.WidgetGroups.Existing.SummaryDefault": "{0} · {1} · Following defaults"
+    ,"Settings.WidgetGroups.Existing.SummaryCustom": "{0} · {1} · Customized"
+    ,"Settings.WidgetGroups.Existing.Name.Title": "Group name"
+    ,"Settings.WidgetGroups.GroupChrome.Title": "Title bar height"
+    ,"Settings.WidgetGroups.GroupChrome.Description": "Groups keep a visible title bar so you can switch widgets"
+    ,"Settings.WidgetGroups.GroupDisplay.Title": "Display mode"
+    ,"Settings.WidgetGroups.GroupDisplay.Description": "Keep this group expanded, expand it on click, or expand it on hover"
+    ,"Settings.WidgetGroups.Existing.Members.Title": "Widgets in this group"
+    ,"Settings.WidgetGroups.Existing.Member.MoveUp": "Move earlier"
+    ,"Settings.WidgetGroups.Existing.Member.MoveDown": "Move later"
+    ,"Settings.WidgetGroups.Existing.Member.Remove": "Remove from group"
+    ,"Settings.WidgetGroups.DissolveDialog.Title": "Dissolve this widget group?"
+    ,"Settings.WidgetGroups.DissolveDialog.Confirm": "Dissolve group"
+    ,"Settings.WidgetGroups.DissolveDialog.Description": "No content will be deleted. The widgets in this group will become independent widgets again."
 }

@@ -369,6 +369,19 @@ public sealed class WidgetCompactBoundsCalculatorTests
     }
 
     [Fact]
+    public void CollapseBehaviorOverride_RemainsActiveWhenDefaultIsExpanded()
+    {
+        var config = new WidgetConfig();
+        WidgetCollapseBehaviorNames.SetOverride(config, WidgetCollapseBehavior.Smart);
+
+        WidgetCollapseBehavior resolved = WidgetCollapseBehaviorNames.Resolve(
+            config,
+            SettingsService.WidgetCollapseBehaviorExpanded);
+
+        Assert.Equal(WidgetCollapseBehavior.Smart, resolved);
+    }
+
+    [Fact]
     public void CompactPlacement_RoundTripsThroughJson()
     {
         var config = new WidgetConfig

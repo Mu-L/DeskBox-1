@@ -225,6 +225,24 @@ public sealed partial class SettingsWindow
         Win32Helper.OpenFile(ViewModel.OfficialWebsiteLink);
     }
 
+    private async void OpenMicrosoftStoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            bool launched = await Launcher.LaunchUriAsync(new Uri(ViewModel.MicrosoftStoreAppLink));
+            if (launched)
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SettingsWindow] Failed to launch Microsoft Store app: {ex}");
+        }
+
+        Win32Helper.OpenFile(ViewModel.MicrosoftStoreLink);
+    }
+
     private async void OpenFeedbackEmailButton_Click(object sender, RoutedEventArgs e)
     {
         try

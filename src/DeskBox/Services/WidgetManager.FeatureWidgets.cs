@@ -18,6 +18,10 @@ public sealed partial class WidgetManager
 {
 
     private readonly Dictionary<WidgetKind, bool> _lastFeatureWidgetEnabledStates = new();
+    private readonly Dictionary<WidgetKind, SemaphoreSlim> _featureWidgetUpdateLocks =
+        FeatureWidgetSettings.FeatureKinds.ToDictionary(
+            kind => kind,
+            _ => new SemaphoreSlim(1, 1));
     private readonly Dictionary<WidgetKind, FeatureWidgetHandler> _featureWidgetHandlers;
     private readonly Dictionary<WidgetKind, WidgetWindowProvider> _windowProviders;
     private bool _isApplyingAppearancePreview;
@@ -607,9 +611,19 @@ public sealed partial class WidgetManager
             return;
         }
 
-        if (_featureWidgetHandlers.TryGetValue(kind, out var handler))
+        if (_featureWidgetHandlers.TryGetValue(kind, out var handler) &&
+            _featureWidgetUpdateLocks.TryGetValue(kind, out var updateLock))
         {
-            await handler.SetEnabledAsync(enabled, reveal);
+            await updateLock.WaitAsync();
+            try
+            {
+                await handler.SetEnabledAsync(enabled, reveal);
+            }
+            finally
+            {
+                updateLock.Release();
+            }
+
             return;
         }
 

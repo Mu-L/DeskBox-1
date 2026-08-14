@@ -6,71 +6,26 @@ namespace DeskBox.ViewModels;
 
 public partial class SettingsViewModel
 {
-    private bool _isChangingWidgetGroupingAvailability;
+    private const string GroupBooleanFollowDefault = "FollowDefault";
+    private const string GroupBooleanOn = "On";
+    private const string GroupBooleanOff = "Off";
 
-    public bool IsWidgetGroupsEnabled
+    public string WidgetGroupOverviewSummaryText
     {
-        get => _settingsService.Settings.WidgetGroupsEnabled;
-        set
+        get
         {
-            if (_settingsService.Settings.WidgetGroupsEnabled == value)
-            {
-                return;
-            }
-
-            if (value)
-            {
-                _settingsService.Settings.WidgetGroupsEnabled = true;
-                _settingsService.SaveDebounced();
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(WidgetGroupOptionsVisibility));
-                App.Current?.WidgetManager?
-                    .NotifyWidgetGroupingAvailabilityChanged();
-                return;
-            }
-
-            if (!_isChangingWidgetGroupingAvailability)
-            {
-                _ = DisableWidgetGroupingAsync();
-            }
-        }
-    }
-
-    public Visibility WidgetGroupOptionsVisibility =>
-        IsWidgetGroupsEnabled
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
-    private async Task DisableWidgetGroupingAsync()
-    {
-        _isChangingWidgetGroupingAvailability = true;
-        bool dissolved = false;
-        try
-        {
-            WidgetManager? manager = App.Current?.WidgetManager;
-            dissolved = manager is null
-                ? _settingsService.Settings.WidgetGroups.Count == 0
-                : await manager.DissolveAllWidgetGroupsAsync();
-            if (!dissolved)
-            {
-                return;
-            }
-
-            _settingsService.Settings.WidgetGroupsEnabled = false;
-            await _settingsService.SaveAsync();
-            manager?.NotifyWidgetGroupingAvailabilityChanged();
-        }
-        catch (Exception ex)
-        {
-            App.Log(
-                $"[WidgetGroup] Failed to disable widget grouping: {ex}");
-        }
-        finally
-        {
-            _isChangingWidgetGroupingAvailability = false;
-            OnPropertyChanged(nameof(IsWidgetGroupsEnabled));
-            OnPropertyChanged(nameof(WidgetGroupOptionsVisibility));
-            NotifyExistingWidgetGroupPropertiesChanged();
+            int count = _settingsService.Settings.WidgetGroups.Count(group =>
+                group.MemberIds.Count >= 2);
+            string layout = GetWidgetGroupNavigationDisplayName(
+                SelectedWidgetGroupDefaultNavigationStyle);
+            return count == 0
+                ? _localizationService.Format(
+                    "Settings.WidgetGroups.Overview.Ready",
+                    layout)
+                : _localizationService.Format(
+                    "Settings.WidgetGroups.Overview.Summary",
+                    count,
+                    layout);
         }
     }
 
@@ -93,7 +48,7 @@ public partial class SettingsViewModel
             }
 
             _settingsService.Settings.WidgetGroupDefaultNavigationStyle = normalized;
-            _settingsService.SaveDebounced();
+            SaveWidgetGroupPresentationChange();
             OnPropertyChanged();
         }
     }
@@ -104,7 +59,6 @@ public partial class SettingsViewModel
         new(WidgetGroupNavigationStyles.Tabs, T("Settings.WidgetGroupNavigation.Tabs")),
         new(WidgetGroupNavigationStyles.Stack, T("Settings.WidgetGroupNavigation.Stack"))
     ];
-
 
     public string SelectedWidgetGroupDefaultTitleDisplayMode
     {
@@ -125,7 +79,7 @@ public partial class SettingsViewModel
             }
 
             _settingsService.Settings.WidgetGroupDefaultTitleDisplayMode = normalized;
-            _settingsService.SaveDebounced();
+            SaveWidgetGroupPresentationChange();
             OnPropertyChanged();
         }
     }
@@ -148,7 +102,7 @@ public partial class SettingsViewModel
             }
 
             _settingsService.Settings.WidgetGroupWheelSwitchEnabled = value;
-            _settingsService.SaveDebounced();
+            SaveWidgetGroupPresentationChange();
             OnPropertyChanged();
         }
     }
@@ -164,7 +118,7 @@ public partial class SettingsViewModel
             }
 
             _settingsService.Settings.WidgetGroupHoverSwitchEnabled = value;
-            _settingsService.SaveDebounced();
+            SaveWidgetGroupPresentationChange();
             OnPropertyChanged();
         }
     }
@@ -187,36 +141,193 @@ public partial class SettingsViewModel
 
     public void RefreshWidgetGroupSettings()
     {
-        OnPropertyChanged(nameof(IsWidgetGroupsEnabled));
-        OnPropertyChanged(nameof(WidgetGroupOptionsVisibility));
         OnPropertyChanged(nameof(SelectedWidgetGroupDefaultNavigationStyle));
         OnPropertyChanged(nameof(SelectedWidgetGroupDefaultTitleDisplayMode));
         OnPropertyChanged(nameof(IsWidgetGroupWheelSwitchEnabled));
         OnPropertyChanged(nameof(IsWidgetGroupHoverSwitchEnabled));
+        OnPropertyChanged(nameof(WidgetGroupOverviewSummaryText));
         NotifyExistingWidgetGroupPropertiesChanged();
+    }
+
+    public bool RenameWidgetGroup(string groupId, string? name)
+    {
+        WidgetGroupConfig? group = FindWidgetGroup(groupId);
+        if (group is null)
+        {
+            return false;
+        }
+
+        string normalized = name?.Trim() ?? string.Empty;
+        if (string.Equals(group.Name, normalized, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        group.Name = normalized;
+        CompleteWidgetGroupSettingsChange();
+        NotifyExistingWidgetGroupPropertiesChanged();
+        return true;
+    }
+
+    public bool SetWidgetGroupNavigationStyle(string groupId, string? value)
+    {
+        WidgetGroupConfig? group = FindWidgetGroup(groupId);
+        if (group is null)
+        {
+            return false;
+        }
+
+        string normalized = WidgetGroupNavigationStyles.Normalize(
+            value,
+            allowFollowDefault: true);
+        if (string.Equals(group.NavigationStyle, normalized, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string previous = WidgetGroupNavigationStyles.Normalize(
+            group.NavigationStyle,
+            allowFollowDefault: true);
+        group.NavigationStyle = normalized;
+        if (previous == WidgetGroupNavigationStyles.Tabs &&
+            normalized != WidgetGroupNavigationStyles.Tabs &&
+            group.WheelSwitchEnabled == false)
+        {
+            group.WheelSwitchEnabled = null;
+        }
+
+        CompleteWidgetGroupSettingsChange();
+        return true;
+    }
+
+    public bool SetWidgetGroupTitleDisplayMode(string groupId, string? value)
+    {
+        WidgetGroupConfig? group = FindWidgetGroup(groupId);
+        if (group is null)
+        {
+            return false;
+        }
+
+        string normalized = WidgetGroupTitleDisplayModes.Normalize(
+            value,
+            allowFollowDefault: true);
+        if (string.Equals(group.TitleDisplayMode, normalized, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        group.TitleDisplayMode = normalized;
+        CompleteWidgetGroupSettingsChange();
+        return true;
+    }
+
+    public bool SetWidgetGroupWheelSetting(string groupId, string? value)
+    {
+        WidgetGroupConfig? group = FindWidgetGroup(groupId);
+        if (group is null)
+        {
+            return false;
+        }
+
+        bool? normalized = ParseGroupBooleanSetting(value);
+        if (group.WheelSwitchEnabled == normalized)
+        {
+            return false;
+        }
+
+        group.WheelSwitchEnabled = normalized;
+        CompleteWidgetGroupSettingsChange();
+        return true;
+    }
+
+    public bool SetWidgetGroupHoverSetting(string groupId, string? value)
+    {
+        WidgetGroupConfig? group = FindWidgetGroup(groupId);
+        if (group is null)
+        {
+            return false;
+        }
+
+        bool? normalized = ParseGroupBooleanSetting(value);
+        if (group.HoverSwitchEnabled == normalized)
+        {
+            return false;
+        }
+
+        group.HoverSwitchEnabled = normalized;
+        CompleteWidgetGroupSettingsChange();
+        return true;
+    }
+
+    public bool SetWidgetGroupCollapseBehavior(string groupId, string? value)
+    {
+        WidgetGroupConfig? group = FindWidgetGroup(groupId);
+        if (group is null)
+        {
+            return false;
+        }
+
+        WidgetCollapseBehavior normalized = WidgetCollapseBehaviorNames.Normalize(
+            value,
+            WidgetCollapseBehavior.System,
+            allowSystem: true);
+        string settingValue = WidgetCollapseBehaviorNames.ToSettingValue(normalized);
+        if (string.Equals(group.CollapseBehavior, settingValue, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        group.CollapseBehavior = settingValue;
+        CompleteWidgetGroupSettingsChange();
+        return true;
+    }
+
+    public bool SetWidgetGroupChromeMode(string groupId, string? value)
+    {
+        WidgetGroupConfig? group = FindWidgetGroup(groupId);
+        if (group is null)
+        {
+            return false;
+        }
+
+        WidgetChromeMode normalized = WidgetChromeModeNames.NormalizeMode(
+            value,
+            WidgetChromeMode.Standard);
+        if (!WidgetGroupChromePolicy.IsSupportedGroupMode(normalized))
+        {
+            normalized = WidgetChromeMode.Standard;
+        }
+
+        string settingValue = WidgetChromeModeNames.ToSettingValue(normalized);
+        if (string.Equals(group.ChromeMode, settingValue, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        group.ChromeMode = settingValue;
+        CompleteWidgetGroupSettingsChange();
+        return true;
     }
 
     public bool ResetWidgetGroupOverrides(string groupId)
     {
-        WidgetGroupConfig? group = _settingsService.Settings.WidgetGroups
-            .FirstOrDefault(candidate =>
-                string.Equals(candidate.Id, groupId, StringComparison.Ordinal));
+        WidgetGroupConfig? group = FindWidgetGroup(groupId);
         if (group is null)
         {
             return false;
         }
 
         bool changed =
-            !string.Equals(
-                group.NavigationStyle,
-                WidgetGroupNavigationStyles.FollowDefault,
-                StringComparison.Ordinal) ||
-            !string.Equals(
-                group.TitleDisplayMode,
-                WidgetGroupTitleDisplayModes.FollowDefault,
-                StringComparison.Ordinal) ||
+            group.NavigationStyle != WidgetGroupNavigationStyles.FollowDefault ||
+            group.TitleDisplayMode != WidgetGroupTitleDisplayModes.FollowDefault ||
             group.WheelSwitchEnabled is not null ||
-            group.HoverSwitchEnabled is not null;
+            group.HoverSwitchEnabled is not null ||
+            WidgetCollapseBehaviorNames.Normalize(
+                group.CollapseBehavior,
+                WidgetCollapseBehavior.System,
+                allowSystem: true) != WidgetCollapseBehavior.System ||
+            WidgetGroupChromePolicy.NormalizePersistedMode(group.ChromeMode) !=
+                WidgetChromeMode.Standard;
         if (!changed)
         {
             return false;
@@ -226,73 +337,210 @@ public partial class SettingsViewModel
         group.TitleDisplayMode = WidgetGroupTitleDisplayModes.FollowDefault;
         group.WheelSwitchEnabled = null;
         group.HoverSwitchEnabled = null;
-        _settingsService.SaveDebounced();
+        group.CollapseBehavior = WidgetCollapseBehaviorNames.System;
+        group.ChromeMode = WidgetChromeModeNames.Standard;
+        CompleteWidgetGroupSettingsChange();
         NotifyExistingWidgetGroupPropertiesChanged();
         return true;
     }
 
+    private void SaveWidgetGroupPresentationChange()
+    {
+        _settingsService.SaveDebounced();
+        App.Current?.WidgetManager?.NotifyWidgetGroupPresentationSettingsChanged();
+        OnPropertyChanged(nameof(WidgetGroupOverviewSummaryText));
+        NotifyExistingWidgetGroupPropertiesChanged();
+    }
+
+    private void CompleteWidgetGroupSettingsChange()
+    {
+        _settingsService.SaveDebounced(notifySubscribers: false);
+        App.Current?.WidgetManager?.NotifyWidgetGroupPresentationSettingsChanged();
+        OnPropertyChanged(nameof(WidgetGroupOverviewSummaryText));
+    }
+
+    private WidgetGroupConfig? FindWidgetGroup(string groupId) =>
+        _settingsService.Settings.WidgetGroups.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, groupId, StringComparison.Ordinal));
+
     private WidgetGroupSettingsItem CreateWidgetGroupSettingsItem(
         WidgetGroupConfig group)
     {
-        var overrideDetails = new List<string>(4);
-        string navigationStyle = WidgetGroupNavigationStyles.Normalize(
+        string configuredNavigation = WidgetGroupNavigationStyles.Normalize(
             group.NavigationStyle,
             allowFollowDefault: true);
-        if (navigationStyle != WidgetGroupNavigationStyles.FollowDefault)
-        {
-            overrideDetails.Add(_localizationService.Format(
-                "Settings.WidgetGroups.Existing.Navigation",
-                GetWidgetGroupNavigationDisplayName(navigationStyle)));
-        }
-
-        string titleMode = WidgetGroupTitleDisplayModes.Normalize(
+        string effectiveNavigation = WidgetGroupNavigationStyles.Resolve(
+            configuredNavigation,
+            _settingsService.Settings.WidgetGroupDefaultNavigationStyle);
+        string configuredTitleMode = WidgetGroupTitleDisplayModes.Normalize(
             group.TitleDisplayMode,
             allowFollowDefault: true);
-        if (titleMode != WidgetGroupTitleDisplayModes.FollowDefault)
-        {
-            overrideDetails.Add(_localizationService.Format(
-                "Settings.WidgetGroups.Existing.TitleStyle",
-                GetWidgetGroupTitleDisplayName(titleMode)));
-        }
+        WidgetCollapseBehavior configuredCollapse =
+            WidgetCollapseBehaviorNames.Normalize(
+                group.CollapseBehavior,
+                WidgetCollapseBehavior.System,
+                allowSystem: true);
+        WidgetChromeMode configuredChrome =
+            WidgetGroupChromePolicy.NormalizePersistedMode(group.ChromeMode);
 
-        if (group.WheelSwitchEnabled is { } wheelEnabled)
-        {
-            overrideDetails.Add(_localizationService.Format(
-                "Settings.WidgetGroups.Existing.Wheel",
-                T(wheelEnabled ? "Common.On" : "Common.Off")));
-        }
-
-        if (group.HoverSwitchEnabled is { } hoverEnabled)
-        {
-            overrideDetails.Add(_localizationService.Format(
-                "Settings.WidgetGroups.Existing.Hover",
-                T(hoverEnabled ? "Common.On" : "Common.Off")));
-        }
+        bool hasOverrides =
+            configuredNavigation != WidgetGroupNavigationStyles.FollowDefault ||
+            configuredTitleMode != WidgetGroupTitleDisplayModes.FollowDefault ||
+            group.WheelSwitchEnabled is not null ||
+            group.HoverSwitchEnabled is not null ||
+            configuredCollapse != WidgetCollapseBehavior.System ||
+            configuredChrome != WidgetChromeMode.Standard;
 
         WidgetConfig? activeMember = _settingsService.Settings.Widgets
-            .FirstOrDefault(widget =>
-                string.Equals(
-                    widget.Id,
-                    group.ActiveMemberId,
-                    StringComparison.Ordinal));
+            .FirstOrDefault(widget => string.Equals(
+                widget.Id,
+                group.ActiveMemberId,
+                StringComparison.Ordinal));
         string displayName = !string.IsNullOrWhiteSpace(group.Name)
             ? group.Name.Trim()
-            : !string.IsNullOrWhiteSpace(activeMember?.Name)
-                ? activeMember.Name.Trim()
+            : activeMember is not null
+                ? GetWidgetDisplayName(activeMember)
                 : T("Settings.WidgetGroups.Existing.Unnamed");
         string memberCount = _localizationService.Format(
             "Settings.WidgetGroups.Existing.MemberCount",
             group.MemberIds.Count);
-        string overrides = overrideDetails.Count == 0
-            ? T("Settings.WidgetGroups.Existing.FollowsDefault")
-            : string.Join(" · ", overrideDetails);
+        string summary = _localizationService.Format(
+            hasOverrides
+                ? "Settings.WidgetGroups.Existing.SummaryCustom"
+                : "Settings.WidgetGroups.Existing.SummaryDefault",
+            memberCount,
+            GetWidgetGroupNavigationDisplayName(effectiveNavigation));
+
+        var members = new List<WidgetGroupMemberSettingsItem>(group.MemberIds.Count);
+        for (int index = 0; index < group.MemberIds.Count; index++)
+        {
+            string widgetId = group.MemberIds[index];
+            WidgetConfig? widget = _settingsService.Settings.Widgets
+                .FirstOrDefault(candidate => string.Equals(
+                    candidate.Id,
+                    widgetId,
+                    StringComparison.Ordinal));
+            members.Add(new WidgetGroupMemberSettingsItem(
+                group.Id,
+                widgetId,
+                widget is null ? widgetId : GetWidgetDisplayName(widget),
+                index > 0 ? group.MemberIds[index - 1] : null,
+                index + 1 < group.MemberIds.Count ? group.MemberIds[index + 1] : null));
+        }
 
         return new WidgetGroupSettingsItem(
             group.Id,
+            group.MemberIds.FirstOrDefault(),
             displayName,
-            $"{memberCount} · {overrides}",
-            overrideDetails.Count > 0);
+            summary,
+            hasOverrides,
+            configuredNavigation,
+            CreateGroupNavigationOptions(),
+            configuredTitleMode,
+            CreateGroupTitleOptions(),
+            FormatGroupBooleanSetting(group.WheelSwitchEnabled),
+            CreateGroupBooleanOptions(_settingsService.Settings.WidgetGroupWheelSwitchEnabled),
+            FormatGroupBooleanSetting(group.HoverSwitchEnabled),
+            CreateGroupBooleanOptions(_settingsService.Settings.WidgetGroupHoverSwitchEnabled),
+            WidgetCollapseBehaviorNames.ToSettingValue(configuredCollapse),
+            CreateGroupCollapseOptions(),
+            WidgetChromeModeNames.ToSettingValue(configuredChrome),
+            CreateGroupChromeOptions(),
+            members);
     }
+
+    private IReadOnlyList<SettingsOption> CreateGroupNavigationOptions() =>
+    [
+        new(
+            WidgetGroupNavigationStyles.FollowDefault,
+            FormatFollowDefault(GetWidgetGroupNavigationDisplayName(
+                SelectedWidgetGroupDefaultNavigationStyle))),
+        new(WidgetGroupNavigationStyles.Auto, T("Settings.WidgetGroupNavigation.Auto")),
+        new(WidgetGroupNavigationStyles.Tabs, T("Settings.WidgetGroupNavigation.Tabs")),
+        new(WidgetGroupNavigationStyles.Stack, T("Settings.WidgetGroupNavigation.Stack"))
+    ];
+
+    private IReadOnlyList<SettingsOption> CreateGroupTitleOptions() =>
+    [
+        new(
+            WidgetGroupTitleDisplayModes.FollowDefault,
+            FormatFollowDefault(GetWidgetGroupTitleDisplayName(
+                SelectedWidgetGroupDefaultTitleDisplayMode))),
+        new(WidgetGroupTitleDisplayModes.IconAndText, T("Settings.WidgetGroupTitle.IconAndText")),
+        new(WidgetGroupTitleDisplayModes.IconOnly, T("Settings.WidgetGroupTitle.IconOnly")),
+        new(WidgetGroupTitleDisplayModes.TextOnly, T("Settings.WidgetGroupTitle.TextOnly"))
+    ];
+
+    private IReadOnlyList<SettingsOption> CreateGroupBooleanOptions(bool defaultValue) =>
+    [
+        new(
+            GroupBooleanFollowDefault,
+            FormatFollowDefault(T(defaultValue ? "Common.On" : "Common.Off"))),
+        new(GroupBooleanOn, T("Common.On")),
+        new(GroupBooleanOff, T("Common.Off"))
+    ];
+
+    private IReadOnlyList<SettingsOption> CreateGroupCollapseOptions()
+    {
+        string defaultBehavior = WidgetCollapseBehaviorNames.ToSettingValue(
+            WidgetCollapseBehaviorNames.Normalize(
+                _settingsService.Settings.WidgetCollapseBehavior));
+        return
+        [
+            new(
+                WidgetCollapseBehaviorNames.System,
+                FormatFollowDefault(GetWidgetCollapseBehaviorDisplayName(defaultBehavior))),
+            new(
+                WidgetCollapseBehaviorNames.Expanded,
+                GetWidgetCollapseBehaviorDisplayName(WidgetCollapseBehaviorNames.Expanded)),
+            new(
+                WidgetCollapseBehaviorNames.Click,
+                GetWidgetCollapseBehaviorDisplayName(WidgetCollapseBehaviorNames.Click)),
+            new(
+                WidgetCollapseBehaviorNames.Smart,
+                GetWidgetCollapseBehaviorDisplayName(WidgetCollapseBehaviorNames.Smart))
+        ];
+    }
+
+    private IReadOnlyList<SettingsOption> CreateGroupChromeOptions() =>
+    [
+        new(WidgetChromeModeNames.Standard, T("Settings.WidgetChrome.Standard")),
+        new(WidgetChromeModeNames.Compact, T("Settings.WidgetChrome.Compact"))
+    ];
+
+    private string FormatFollowDefault(string currentValue) =>
+        _localizationService.Format(
+            "Settings.WidgetGroups.FollowDefaultWithValue",
+            currentValue);
+
+    private string GetWidgetDisplayName(WidgetConfig widget)
+    {
+        if (!widget.IsDefaultTitle && !string.IsNullOrWhiteSpace(widget.Name))
+        {
+            return widget.Name.Trim();
+        }
+
+        string localized = GetWidgetKindDisplayName(widget.WidgetKind);
+        return !string.IsNullOrWhiteSpace(localized)
+            ? localized
+            : !string.IsNullOrWhiteSpace(widget.Name)
+                ? widget.Name.Trim()
+                : widget.WidgetKind.ToString();
+    }
+
+    private static bool? ParseGroupBooleanSetting(string? value) => value switch
+    {
+        GroupBooleanOn => true,
+        GroupBooleanOff => false,
+        _ => null
+    };
+
+    private static string FormatGroupBooleanSetting(bool? value) => value switch
+    {
+        true => GroupBooleanOn,
+        false => GroupBooleanOff,
+        _ => GroupBooleanFollowDefault
+    };
 
     private string GetWidgetGroupNavigationDisplayName(string style) =>
         WidgetGroupNavigationStyles.Normalize(
@@ -330,6 +578,31 @@ public partial class SettingsViewModel
 
 public sealed record WidgetGroupSettingsItem(
     string GroupId,
+    string? FirstMemberId,
     string DisplayName,
     string Summary,
-    bool HasOverrides);
+    bool HasOverrides,
+    string NavigationStyle,
+    IReadOnlyList<SettingsOption> NavigationOptions,
+    string TitleDisplayMode,
+    IReadOnlyList<SettingsOption> TitleOptions,
+    string WheelSetting,
+    IReadOnlyList<SettingsOption> WheelOptions,
+    string HoverSetting,
+    IReadOnlyList<SettingsOption> HoverOptions,
+    string CollapseBehavior,
+    IReadOnlyList<SettingsOption> CollapseOptions,
+    string ChromeMode,
+    IReadOnlyList<SettingsOption> ChromeOptions,
+    IReadOnlyList<WidgetGroupMemberSettingsItem> Members);
+
+public sealed record WidgetGroupMemberSettingsItem(
+    string GroupId,
+    string WidgetId,
+    string DisplayName,
+    string? MoveUpTargetWidgetId,
+    string? MoveDownTargetWidgetId)
+{
+    public bool CanMoveUp => MoveUpTargetWidgetId is not null;
+    public bool CanMoveDown => MoveDownTargetWidgetId is not null;
+}

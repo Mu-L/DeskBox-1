@@ -7,7 +7,6 @@ using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
 namespace DeskBox.ViewModels;
@@ -44,9 +43,18 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string AnimationPresetStandard = "Standard";
     private const string AnimationPresetEmphasized = "Emphasized";
     private const string AnimationPresetCustom = "Custom";
+    private const string FileOpenMethodSingleClick = "SingleClick";
+    private const string FileOpenMethodDoubleClick = "DoubleClick";
+    private const string ShowDesktopBehaviorKeepVisible = "KeepVisible";
+    private const string ShowDesktopBehaviorHideWithWindows = "HideWithWindows";
+    private const string WeatherLocationModeAuto = "Auto";
+    private const string WeatherLocationModeManual = "Manual";
     private const string FeedbackEmail = "1047078635@qq.com";
     private const string RepositoryUrl = "https://github.com/Tianyu199509/DeskBox";
     private const string OfficialWebsiteUrl = "https://deskbox.fun";
+    private const string MicrosoftStoreProductId = "9PBZSNB4D69H";
+    private const string MicrosoftStoreUrl = "https://apps.microsoft.com/store/detail/" + MicrosoftStoreProductId;
+    private const string MicrosoftStoreAppUrl = "ms-windows-store://pdp/?ProductId=" + MicrosoftStoreProductId;
 
     private readonly SettingsService _settingsService;
     private readonly ThemeService _themeService;
@@ -63,8 +71,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private bool _lastUpdateDownloadFailed;
     private long _updateBytesReceived;
     private long? _updateTotalBytes;
-    private ImageSource? _donationWechatImageSource;
-    private ImageSource? _donationAlipayImageSource;
     private Color _currentAccentColor;
     private string _selectedTheme = ThemeSystem;
     private string _selectedTrayIconStyle = TrayIconStyleSystem;
@@ -73,7 +79,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedWidgetMaterialType = MaterialMica;
     private string _selectedWidgetBorderColorMode = BorderColorNeutral;
     private string _selectedWidgetBorderStyle = BorderThin;
-    private string _selectedWidgetCollapseBehavior = SettingsService.WidgetCollapseBehaviorClick;
+    private string _selectedWidgetCollapseBehavior = SettingsService.WidgetCollapseBehaviorExpanded;
     private string _selectedWidgetCompactContentMode = SettingsService.WidgetCompactContentModeSmart;
     private string _selectedLayoutDensity = SettingsService.LayoutDensityStandard;
     private string _selectedAnimationPreset = AnimationPresetStandard;
@@ -170,7 +176,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     [ObservableProperty] private bool _keepWidgetsVisibleOnShowDesktop = true;
     [ObservableProperty] private bool _showHoverActionLockPosition;
     [ObservableProperty] private bool _showHoverActionLockSize;
-    [ObservableProperty] private bool _showHoverActionAdd;
+    [ObservableProperty] private bool _showHoverActionAdd = true;
     [ObservableProperty] private bool _showHoverActionMore = true;
     [ObservableProperty] private bool _showHoverActionDelete = true;
     [ObservableProperty] private bool _showListItemDetails;
@@ -284,7 +290,6 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _selectedWidgetBorderStyle = settings.WidgetBorderStyle is BorderThin or BorderMedium or BorderThick
             ? settings.WidgetBorderStyle
             : BorderThin;
-        _widgetCapsuleModeEnabled = settings.WidgetCapsuleModeEnabled;
         _selectedWidgetCompactWidthMode = SettingsService.NormalizeWidgetCompactWidthMode(
             settings.WidgetCompactWidthMode);
         _selectedWidgetCapsuleArrangementMode = SettingsService.NormalizeWidgetCapsuleArrangementMode(
@@ -296,9 +301,8 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _selectedWidgetCapsuleBarDirection = SettingsService.NormalizeWidgetCapsuleBarDirection(
             settings.WidgetCapsuleBarDirection);
         _widgetCompactHideSensitiveContent = settings.WidgetCompactHideSensitiveContent;
-        _selectedWidgetCollapseBehavior = SettingsService.NormalizeWidgetCollapseBehavior(settings.WidgetCollapseBehavior) == SettingsService.WidgetCollapseBehaviorSmart
-            ? SettingsService.WidgetCollapseBehaviorSmart
-            : SettingsService.WidgetCollapseBehaviorClick;
+        _selectedWidgetCollapseBehavior = SettingsService.NormalizeWidgetCollapseBehavior(
+            settings.WidgetCollapseBehavior);
         _selectedWidgetCompactContentMode = SettingsService.NormalizeWidgetCompactContentMode(
             settings.WidgetCompactContentMode);
         _selectedWidgetCompactAnimationEffect = SettingsService.NormalizeWidgetCompactAnimationEffect(settings.WidgetCompactAnimationEffect);

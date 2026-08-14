@@ -39,6 +39,7 @@ public partial class SettingsViewModel
 
     partial void OnDoubleClickToOpenChanged(bool value)
     {
+        OnPropertyChanged(nameof(SelectedFileOpenMethod));
         if (_isRestoringDefaults)
         {
             return;
@@ -67,6 +68,7 @@ public partial class SettingsViewModel
 
     partial void OnKeepWidgetsVisibleOnShowDesktopChanged(bool value)
     {
+        OnPropertyChanged(nameof(SelectedShowDesktopBehavior));
         if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
         {
             return;
@@ -77,6 +79,38 @@ public partial class SettingsViewModel
         App.Current?.WidgetManager?.RefreshVisibleWidgetDesktopLayers(
             "settings-show-desktop-visibility");
     }
+
+    public string SelectedFileOpenMethod
+    {
+        get => DoubleClickToOpen ? FileOpenMethodDoubleClick : FileOpenMethodSingleClick;
+        set => DoubleClickToOpen = !string.Equals(
+            value,
+            FileOpenMethodSingleClick,
+            StringComparison.Ordinal);
+    }
+
+    public IReadOnlyList<SettingsOption> AvailableFileOpenMethodOptions =>
+    [
+        new(FileOpenMethodSingleClick, _localizationService.T("Settings.OpenMethod.SingleClick")),
+        new(FileOpenMethodDoubleClick, _localizationService.T("Settings.OpenMethod.DoubleClick"))
+    ];
+
+    public string SelectedShowDesktopBehavior
+    {
+        get => KeepWidgetsVisibleOnShowDesktop
+            ? ShowDesktopBehaviorKeepVisible
+            : ShowDesktopBehaviorHideWithWindows;
+        set => KeepWidgetsVisibleOnShowDesktop = !string.Equals(
+            value,
+            ShowDesktopBehaviorHideWithWindows,
+            StringComparison.Ordinal);
+    }
+
+    public IReadOnlyList<SettingsOption> AvailableShowDesktopBehaviorOptions =>
+    [
+        new(ShowDesktopBehaviorKeepVisible, _localizationService.T("Settings.ShowDesktopBehavior.KeepVisible")),
+        new(ShowDesktopBehaviorHideWithWindows, _localizationService.T("Settings.ShowDesktopBehavior.HideWithWindows"))
+    ];
 
     partial void OnDefaultWidthChanged(double value)
     {
@@ -162,6 +196,7 @@ public partial class SettingsViewModel
 
     partial void OnShowHoverButtonsChanged(bool value)
     {
+        OnPropertyChanged(nameof(HoverButtonActionsSummaryText));
         if (_isRestoringDefaults)
         {
             return;

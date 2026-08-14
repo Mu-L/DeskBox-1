@@ -808,6 +808,9 @@ public sealed partial class WidgetManager
             return false;
         }
 
+        config.IsVisible = true;
+        _settingsService.SaveDebounced(notifySubscribers: false);
+
         WidgetGroupConfig? group = WidgetGroupSettings.FindByMember(
             _settingsService.Settings,
             widgetId);
@@ -876,6 +879,44 @@ public sealed partial class WidgetManager
         var window = await CreateWidgetFromConfigAsync(config, keepPreparedForAnimation: !reveal);
         ShowLoadedWidgetWindow(window, reveal, autoRestoreOnReveal);
 
+        return true;
+    }
+
+    internal bool SetWidgetOnboardingTopMost(
+        string widgetId,
+        bool isTopMost)
+    {
+        IDesktopWidgetWindow? window = null;
+        if (_fileWidgets.TryGetValue(widgetId, out var fileSession))
+        {
+            window = fileSession.Host;
+        }
+        else if (_contentWidgets.TryGetValue(widgetId, out var contentWindow))
+        {
+            window = contentWindow;
+        }
+        if (window is null)
+        {
+            return false;
+        }
+
+        if (isTopMost)
+        {
+            if (WidgetLayerService.UsesDesktopPinnedMode())
+            {
+                window.RaiseTemporarilyFromManager();
+            }
+            else
+            {
+                Win32Helper.SetWindowTopMost(
+                    window.WindowHandle,
+                    showWindow: false);
+            }
+
+            return true;
+        }
+
+        window.ForceRestoreDesktopLayerFromManager();
         return true;
     }
 

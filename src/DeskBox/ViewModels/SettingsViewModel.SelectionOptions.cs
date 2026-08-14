@@ -186,6 +186,11 @@ public partial class SettingsViewModel
     private void NotifySelectionOptionsChanged()
     {
         OnPropertyChanged(nameof(AvailableThemeOptions));
+        OnPropertyChanged(nameof(AvailableAccentColorSourceOptions));
+        OnPropertyChanged(nameof(AvailableFileOpenMethodOptions));
+        OnPropertyChanged(nameof(AvailableShowDesktopBehaviorOptions));
+        OnPropertyChanged(nameof(AvailableWeatherLocationModeOptions));
+        OnPropertyChanged(nameof(AvailableFileStackModeOptions));
         OnPropertyChanged(nameof(AvailableTrayIconStyleOptions));
         OnPropertyChanged(nameof(AvailableLanguageOptions));
         OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceOptions));

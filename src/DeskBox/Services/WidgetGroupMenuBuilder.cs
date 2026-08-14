@@ -12,13 +12,13 @@ internal static class WidgetGroupMenuBuilder
         WidgetManager? widgetManager,
         LocalizationService localizationService)
     {
-        if (widgetManager is null ||
-            !widgetManager.IsWidgetGroupingEnabled)
+        if (widgetManager is null)
         {
             return;
         }
 
-        WidgetGroupPresentation? group = widgetManager.GetWidgetGroupPresentation(config.Id);
+        WidgetGroupPresentation? group =
+            widgetManager.GetWidgetGroupPresentation(config.Id);
         IReadOnlyList<WidgetGroupJoinTarget> targets =
             widgetManager.GetWidgetGroupJoinTargets(config.Id);
 
@@ -41,7 +41,8 @@ internal static class WidgetGroupMenuBuilder
             if (!target.CanJoin &&
                 !string.IsNullOrWhiteSpace(target.RejectionReasonKey))
             {
-                targetText += $" · {localizationService.T(target.RejectionReasonKey)}";
+                targetText +=
+                    $" · {localizationService.T(target.RejectionReasonKey)}";
             }
 
             var targetItem = new MenuFlyoutItem
@@ -50,7 +51,9 @@ internal static class WidgetGroupMenuBuilder
                 IsEnabled = target.CanJoin
             };
             targetItem.Click += async (_, _) => await TryExecuteAsync(
-                () => widgetManager.MergeWidgetsAsync(config.Id, target.TargetWidgetId),
+                () => widgetManager.MergeWidgetsAsync(
+                    config.Id,
+                    target.TargetWidgetId),
                 $"merge source={config.Id} target={target.TargetWidgetId}");
             joinItem.Items.Add(targetItem);
         }
@@ -69,38 +72,36 @@ internal static class WidgetGroupMenuBuilder
 
         var navigationMenu = new MenuFlyoutSubItem
         {
-            Text = localizationService.T(
-                "Widget.Group.NavigationStyle"),
+            Text = localizationService.T("Widget.Group.NavigationStyle"),
             Icon = new FontIcon { Glyph = "\uE8A1" }
         };
         AddNavigationItem(
             WidgetGroupNavigationStyles.FollowDefault,
-            "Widget.Group.Navigation.FollowDefault");
+            FormatFollowDefault(GetNavigationName(
+                widgetManager.GetWidgetGroupDefaultNavigationStyle())));
         AddNavigationItem(
-            WidgetGroupNavigationStyles.Stack,
-            "Widget.Group.Navigation.Combined");
+            WidgetGroupNavigationStyles.Auto,
+            GetNavigationName(WidgetGroupNavigationStyles.Auto));
         AddNavigationItem(
             WidgetGroupNavigationStyles.Tabs,
-            "Widget.Group.Navigation.Tabs");
+            GetNavigationName(WidgetGroupNavigationStyles.Tabs));
+        AddNavigationItem(
+            WidgetGroupNavigationStyles.Stack,
+            GetNavigationName(WidgetGroupNavigationStyles.Stack));
         groupControlMenu.Items.Add(navigationMenu);
 
-        void AddNavigationItem(string style, string textKey)
+        void AddNavigationItem(string style, string text)
         {
-            string? configured =
-                widgetManager.GetWidgetGroupNavigationStyle(config.Id);
+            string configured = WidgetGroupNavigationStyles.Normalize(
+                widgetManager.GetWidgetGroupNavigationStyle(config.Id),
+                allowFollowDefault: true);
             var item = new ToggleMenuFlyoutItem
             {
-                Text = localizationService.T(textKey),
-                IsChecked =
-                    string.Equals(
-                        configured,
-                        style,
-                        StringComparison.Ordinal) ||
-                    style == WidgetGroupNavigationStyles.Stack &&
-                    WidgetGroupNavigationStyles.Normalize(
-                        configured,
-                        allowFollowDefault: true) ==
-                    WidgetGroupNavigationStyles.Auto
+                Text = text,
+                IsChecked = string.Equals(
+                    configured,
+                    style,
+                    StringComparison.Ordinal)
             };
             item.Click += async (_, _) => await TryExecuteAsync(
                 () => widgetManager.SetWidgetGroupNavigationStyleAsync(
@@ -117,27 +118,29 @@ internal static class WidgetGroupMenuBuilder
         };
         AddTitleStyleItem(
             WidgetGroupTitleDisplayModes.FollowDefault,
-            "Widget.Group.TitleDisplay.FollowDefault");
+            FormatFollowDefault(GetTitleName(
+                widgetManager.GetWidgetGroupDefaultTitleDisplayMode())));
         AddTitleStyleItem(
             WidgetGroupTitleDisplayModes.IconAndText,
-            "Widget.Group.TitleDisplay.IconAndText");
+            GetTitleName(WidgetGroupTitleDisplayModes.IconAndText));
         AddTitleStyleItem(
             WidgetGroupTitleDisplayModes.IconOnly,
-            "Widget.Group.TitleDisplay.IconOnly");
+            GetTitleName(WidgetGroupTitleDisplayModes.IconOnly));
         AddTitleStyleItem(
             WidgetGroupTitleDisplayModes.TextOnly,
-            "Widget.Group.TitleDisplay.TextOnly");
+            GetTitleName(WidgetGroupTitleDisplayModes.TextOnly));
         groupControlMenu.Items.Add(titleStyleMenu);
 
-        void AddTitleStyleItem(string style, string textKey)
+        void AddTitleStyleItem(string style, string text)
         {
-            string? configuredStyle =
-                widgetManager.GetWidgetGroupTitleDisplayMode(config.Id);
+            string configured = WidgetGroupTitleDisplayModes.Normalize(
+                widgetManager.GetWidgetGroupTitleDisplayMode(config.Id),
+                allowFollowDefault: true);
             var item = new ToggleMenuFlyoutItem
             {
-                Text = localizationService.T(textKey),
+                Text = text,
                 IsChecked = string.Equals(
-                    configuredStyle,
+                    configured,
                     style,
                     StringComparison.Ordinal)
             };
@@ -156,22 +159,19 @@ internal static class WidgetGroupMenuBuilder
         };
         AddWheelItem(
             value: null,
-            "Widget.Group.TitleDisplay.FollowDefault");
-        AddWheelItem(
-            value: true,
-            "Common.On");
-        AddWheelItem(
-            value: false,
-            "Common.Off");
+            FormatFollowDefault(GetBooleanName(
+                widgetManager.GetWidgetGroupDefaultWheelSwitchEnabled())));
+        AddWheelItem(value: true, GetBooleanName(true));
+        AddWheelItem(value: false, GetBooleanName(false));
         groupControlMenu.Items.Add(wheelMenu);
 
-        void AddWheelItem(bool? value, string textKey)
+        void AddWheelItem(bool? value, string text)
         {
             bool? configured =
                 widgetManager.GetWidgetGroupWheelSwitchEnabled(config.Id);
             var item = new ToggleMenuFlyoutItem
             {
-                Text = localizationService.T(textKey),
+                Text = text,
                 IsChecked = configured == value
             };
             item.Click += async (_, _) => await TryExecuteAsync(
@@ -180,6 +180,36 @@ internal static class WidgetGroupMenuBuilder
                     value),
                 $"wheel-switch member={config.Id} value={value}");
             wheelMenu.Items.Add(item);
+        }
+
+        var hoverMenu = new MenuFlyoutSubItem
+        {
+            Text = localizationService.T("Widget.Group.HoverSwitch"),
+            Icon = new FontIcon { Glyph = "\uE7C9" }
+        };
+        AddHoverItem(
+            value: null,
+            FormatFollowDefault(GetBooleanName(
+                widgetManager.GetWidgetGroupDefaultHoverSwitchEnabled())));
+        AddHoverItem(value: true, GetBooleanName(true));
+        AddHoverItem(value: false, GetBooleanName(false));
+        groupControlMenu.Items.Add(hoverMenu);
+
+        void AddHoverItem(bool? value, string text)
+        {
+            bool? configured =
+                widgetManager.GetWidgetGroupHoverSwitchEnabled(config.Id);
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = text,
+                IsChecked = configured == value
+            };
+            item.Click += async (_, _) => await TryExecuteAsync(
+                () => widgetManager.SetWidgetGroupHoverSwitchEnabledAsync(
+                    config.Id,
+                    value),
+                $"hover-switch member={config.Id} value={value}");
+            hoverMenu.Items.Add(item);
         }
 
         var dissolveItem = new MenuFlyoutItem
@@ -199,13 +229,50 @@ internal static class WidgetGroupMenuBuilder
             Icon = new FontIcon { Glyph = "\uE8D9" }
         };
         removeItem.Click += async (_, _) => await TryExecuteAsync(
-            () => widgetManager.RemoveWidgetFromGroupAsync(config.Id, revealStandalone: true),
+            () => widgetManager.RemoveWidgetFromGroupAsync(
+                config.Id,
+                revealStandalone: true),
             $"remove member={config.Id}");
         groupControlMenu.Items.Add(removeItem);
         flyout.Items.Add(groupControlMenu);
+
+        string FormatFollowDefault(string value) =>
+            localizationService.Format(
+                "Settings.WidgetGroups.FollowDefaultWithValue",
+                value);
+
+        string GetBooleanName(bool value) =>
+            localizationService.T(value ? "Common.On" : "Common.Off");
+
+        string GetNavigationName(string style) =>
+            WidgetGroupNavigationStyles.Normalize(
+                style,
+                allowFollowDefault: false) switch
+            {
+                WidgetGroupNavigationStyles.Tabs =>
+                    localizationService.T("Widget.Group.Navigation.Tabs"),
+                WidgetGroupNavigationStyles.Stack =>
+                    localizationService.T("Widget.Group.Navigation.Stack"),
+                _ => localizationService.T("Widget.Group.Navigation.Auto")
+            };
+
+        string GetTitleName(string style) =>
+            WidgetGroupTitleDisplayModes.Normalize(
+                style,
+                allowFollowDefault: false) switch
+            {
+                WidgetGroupTitleDisplayModes.IconOnly =>
+                    localizationService.T("Widget.Group.TitleDisplay.IconOnly"),
+                WidgetGroupTitleDisplayModes.TextOnly =>
+                    localizationService.T("Widget.Group.TitleDisplay.TextOnly"),
+                _ => localizationService.T(
+                    "Widget.Group.TitleDisplay.IconAndText")
+            };
     }
 
-    private static async Task TryExecuteAsync(Func<Task<bool>> operation, string description)
+    private static async Task TryExecuteAsync(
+        Func<Task<bool>> operation,
+        string description)
     {
         try
         {

@@ -15,6 +15,20 @@ public sealed class LocalizationServiceLanguageTests
         yield return [SettingsService.LanguageRussian, "ru"];
     }
 
+    public static IEnumerable<object[]> SupportedLocaleTables()
+    {
+        yield return ["ZhCn"];
+        yield return ["JaJp"];
+        yield return ["DeDe"];
+        yield return ["PtBr"];
+        yield return ["HiIn"];
+        yield return ["EsEs"];
+        yield return ["FrFr"];
+        yield return ["ArSa"];
+        yield return ["BnBd"];
+        yield return ["RuRu"];
+    }
+
     [Fact]
     public void AvailableLanguages_ContainsRequestedLocales()
     {
@@ -55,6 +69,18 @@ public sealed class LocalizationServiceLanguageTests
             SettingsService.LanguageRussian => "RuRu",
             _ => throw new ArgumentOutOfRangeException(nameof(language))
         });
+
+        Assert.Equal(
+            english.Keys.OrderBy(key => key),
+            localized.Keys.OrderBy(key => key));
+    }
+
+    [Theory]
+    [MemberData(nameof(SupportedLocaleTables))]
+    public void SupportedLocale_ContainsEveryEnglishResourceKey(string propertyName)
+    {
+        var english = GetResourceTable("EnUs");
+        var localized = GetResourceTable(propertyName);
 
         Assert.Equal(
             english.Keys.OrderBy(key => key),

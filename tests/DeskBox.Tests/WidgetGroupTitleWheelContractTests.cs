@@ -34,8 +34,18 @@ public sealed class WidgetGroupTitleWheelContractTests
         Assert.DoesNotContain("_lastWheelSwitchAt", interaction, StringComparison.Ordinal);
         Assert.DoesNotContain("TryAcceptWheelStep", manager, StringComparison.Ordinal);
         Assert.DoesNotContain("WheelGestureQuietPeriod", coordinator, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ResetWheelStepCoalescing",
+            interaction,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("valleyOpacity", interaction, StringComparison.Ordinal);
+        Assert.DoesNotContain("echoOpacity", interaction, StringComparison.Ordinal);
+        Assert.DoesNotContain("_wheelFeedbackBurst", interaction, StringComparison.Ordinal);
         Assert.True(
             interaction.IndexOf("TryConsumeWheelStep", StringComparison.Ordinal) <
+            interaction.IndexOf("TryAcceptCoalescedWheelStep", StringComparison.Ordinal));
+        Assert.True(
+            interaction.IndexOf("TryAcceptCoalescedWheelStep", StringComparison.Ordinal) <
             interaction.IndexOf("AnimateWheelDirectionFeedback", StringComparison.Ordinal));
         Assert.Contains(
             "NotifyMemberInvocationCompleted",

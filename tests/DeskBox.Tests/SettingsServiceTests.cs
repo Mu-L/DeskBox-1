@@ -268,6 +268,24 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_LegacyDisabledGroupingBecomesAlwaysAvailable()
+    {
+        var settings = new AppSettings
+        {
+            WidgetGroupsEnabled = false
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.True(service.Settings.WidgetGroupsEnabled);
+        Assert.Empty(service.Settings.WidgetGroups);
+    }
+
+    [Fact]
     public async Task LoadAsync_SafelyDowngradesUnknownWidgetKind()
     {
         await File.WriteAllTextAsync(
@@ -696,6 +714,57 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false, SettingsService.WidgetCollapseBehaviorExpanded)]
+    [InlineData(true, SettingsService.WidgetCollapseBehaviorSmart)]
+    public async Task LoadAsync_MigratesLegacyCapsuleGateIntoThreeStateDefault(
+        bool legacyEnabled,
+        string expectedBehavior)
+    {
+        var settings = new AppSettings
+        {
+            WidgetCapsuleModeEnabled = legacyEnabled,
+            WidgetCollapseBehavior = SettingsService.WidgetCollapseBehaviorSmart,
+            WidgetCompactSettingsVersion = 1
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(expectedBehavior, service.Settings.WidgetCollapseBehavior);
+        Assert.Equal(
+            expectedBehavior != SettingsService.WidgetCollapseBehaviorExpanded,
+            service.Settings.WidgetCapsuleModeEnabled);
+        Assert.Equal(
+            SettingsService.CurrentWidgetCompactSettingsVersion,
+            service.Settings.WidgetCompactSettingsVersion);
+    }
+
+    [Fact]
+    public async Task LoadAsync_CurrentThreeStateDefaultIsAuthoritativeOverLegacyFlag()
+    {
+        var settings = new AppSettings
+        {
+            WidgetCapsuleModeEnabled = false,
+            WidgetCollapseBehavior = SettingsService.WidgetCollapseBehaviorSmart,
+            WidgetCompactSettingsVersion = SettingsService.CurrentWidgetCompactSettingsVersion
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(
+            SettingsService.WidgetCollapseBehaviorSmart,
+            service.Settings.WidgetCollapseBehavior);
+        Assert.True(service.Settings.WidgetCapsuleModeEnabled);
+    }
+
+    [Theory]
     [InlineData(
         SettingsService.SensitiveWidgetCompactExpandDelayMs,
         SettingsService.SensitiveWidgetCompactCollapseDelayMs,
@@ -912,14 +981,14 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.WidgetAnimationEffect, restoredDefaults.WidgetAnimationEffect);
         Assert.False(newUserDefaults.WidgetCapsuleModeEnabled);
         Assert.Equal(newUserDefaults.WidgetCapsuleModeEnabled, restoredDefaults.WidgetCapsuleModeEnabled);
-        Assert.False(newUserDefaults.WidgetGroupsEnabled);
+        Assert.True(newUserDefaults.WidgetGroupsEnabled);
         Assert.False(newUserDefaults.SearchHotkeyEnabled);
         Assert.Equal(newUserDefaults.SearchHotkeyEnabled, restoredDefaults.SearchHotkeyEnabled);
         Assert.Equal(SettingsService.WidgetCompactWidthModeAligned, newUserDefaults.WidgetCompactWidthMode);
         Assert.Equal(newUserDefaults.WidgetCompactWidthMode, restoredDefaults.WidgetCompactWidthMode);
         Assert.Equal(SettingsService.WidgetCompactAnimationSlow, newUserDefaults.WidgetCompactAnimationEffect);
         Assert.Equal(newUserDefaults.WidgetCompactAnimationEffect, restoredDefaults.WidgetCompactAnimationEffect);
-        Assert.Equal(SettingsService.WidgetCollapseBehaviorSmart, newUserDefaults.WidgetCollapseBehavior);
+        Assert.Equal(SettingsService.WidgetCollapseBehaviorExpanded, newUserDefaults.WidgetCollapseBehavior);
         Assert.Equal(newUserDefaults.WidgetCollapseBehavior, restoredDefaults.WidgetCollapseBehavior);
         Assert.Equal(SettingsService.SensitiveWidgetCompactExpandDelayMs, newUserDefaults.WidgetCompactExpandDelayMs);
         Assert.Equal(newUserDefaults.WidgetCompactExpandDelayMs, restoredDefaults.WidgetCompactExpandDelayMs);
@@ -1090,14 +1159,39 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Theory]
-        [InlineData(null, "More")]
-    [InlineData("", "More")]
-    [InlineData("Unknown", "More")]
+    [InlineData(null, "Add,More")]
+    [InlineData("", "Add,More")]
+    [InlineData("Unknown", "Add,More")]
     [InlineData("add,More,delete,LockSize", "Add,More,Delete")]
     [InlineData("Add,Add,LockSize", "Add,LockSize")]
     public void NormalizeWidgetHoverButtonActions_ConstrainsSelection(string? value, string expected)
     {
         Assert.Equal(expected, SettingsService.NormalizeWidgetHoverButtonActions(value));
+    }
+
+    [Fact]
+    public void TryUpdateWidgetHoverButtonAction_EnforcesOneToThreeSelections()
+    {
+        Assert.True(SettingsService.TryUpdateWidgetHoverButtonAction(
+            "Add,More",
+            SettingsService.WidgetHoverActionLockSize,
+            isSelected: true,
+            out string withThree));
+        Assert.Equal("LockSize,Add,More", withThree);
+
+        Assert.False(SettingsService.TryUpdateWidgetHoverButtonAction(
+            withThree,
+            SettingsService.WidgetHoverActionDelete,
+            isSelected: true,
+            out string stillThree));
+        Assert.Equal(withThree, stillThree);
+
+        Assert.False(SettingsService.TryUpdateWidgetHoverButtonAction(
+            "More",
+            SettingsService.WidgetHoverActionMore,
+            isSelected: false,
+            out string stillOne));
+        Assert.Equal("More", stillOne);
     }
 
     [Fact]

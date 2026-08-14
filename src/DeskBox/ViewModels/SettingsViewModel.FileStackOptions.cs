@@ -9,6 +9,7 @@ namespace DeskBox.ViewModels;
 
 public partial class SettingsViewModel
 {
+    private const string FileStackModeOff = "Off";
     private bool _fileStacksEnabled;
     private string _selectedFileStackGroupBy = SettingsService.FileStackGroupByKind;
     private int _selectedFileStackThreshold = SettingsService.DefaultFileStackThreshold;
@@ -60,6 +61,30 @@ public partial class SettingsViewModel
         }
     }
 
+    public string SelectedFileStackMode
+    {
+        get => FileStacksEnabled
+            ? SelectedFileStackGroupBy
+            : FileStackModeOff;
+        set
+        {
+            if (string.Equals(value, FileStackModeOff, StringComparison.Ordinal))
+            {
+                FileStacksEnabled = false;
+                return;
+            }
+
+            SelectedFileStackGroupBy = value;
+            FileStacksEnabled = true;
+        }
+    }
+
+    public IReadOnlyList<SettingsOption> AvailableFileStackModeOptions =>
+    [
+        new(FileStackModeOff, _localizationService.T("Settings.FileStacks.Mode.Off")),
+        .. AvailableFileStackGroupByOptions
+    ];
+
     public bool FileStacksEnabled
     {
         get => _fileStacksEnabled;
@@ -71,6 +96,7 @@ public partial class SettingsViewModel
             }
 
             OnPropertyChanged(nameof(FileStackSettingsSummaryText));
+            OnPropertyChanged(nameof(SelectedFileStackMode));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -94,6 +120,7 @@ public partial class SettingsViewModel
 
             OnPropertyChanged(nameof(FileStackCustomRulesVisibility));
             OnPropertyChanged(nameof(FileStackSettingsSummaryText));
+            OnPropertyChanged(nameof(SelectedFileStackMode));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -355,6 +382,8 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableFileStackThresholdDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackOrderByDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackUnmatchedBehaviorDisplayNames));
+        OnPropertyChanged(nameof(AvailableFileStackModeOptions));
+        OnPropertyChanged(nameof(SelectedFileStackMode));
         OnPropertyChanged(nameof(FileStackSettingsSummaryText));
         UpdateFileStackRulePriorities();
         RefreshFileStackRulePreview();

@@ -2,8 +2,6 @@ using System.Reflection;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace DeskBox.ViewModels;
 
@@ -16,26 +14,18 @@ public partial class SettingsViewModel
             .Split('+')[0] ??
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ??
         "1.0.2";
-    public string AboutVersionText => _localizationService.Format("Settings.About.VersionWithChannel", AppVersion, DistributionChannelText);
     public string DistributionChannelText => _localizationService.T(IsStoreUpdateDelivery
         ? "Settings.About.Channel.Store"
         : "Settings.About.Channel.Direct");
     public string OpenSourceRepositoryUrl => RepositoryUrl;
     public string OfficialWebsiteDisplayText => OfficialWebsiteUrl.Replace("https://", string.Empty).TrimEnd('/');
     public string OfficialWebsiteLink => OfficialWebsiteUrl;
+    public string MicrosoftStoreLink => MicrosoftStoreUrl;
+    public string MicrosoftStoreAppLink => MicrosoftStoreAppUrl;
     public string FeedbackEmailAddress => FeedbackEmail;
     public string FeedbackEmailLink => $"mailto:{FeedbackEmail}";
     public string DomesticMirrorDownloadUrl => AppUpdateService.DefaultManualDownloadUrl;
-    public string AboutDeveloperText => _localizationService.T("Settings.About.DeveloperName");
-    public Visibility DonationCardVisibility => IsDirectInstallerUpdateDelivery ? Visibility.Visible : Visibility.Collapsed;
-    public ImageSource? DonationWechatImageSource =>
-        IsDirectInstallerUpdateDelivery
-            ? _donationWechatImageSource ??= new BitmapImage(new Uri("ms-appx:///Assets/donation-wechat.png"))
-            : null;
-    public ImageSource? DonationAlipayImageSource =>
-        IsDirectInstallerUpdateDelivery
-            ? _donationAlipayImageSource ??= new BitmapImage(new Uri("ms-appx:///Assets/donation-alipay.png"))
-            : null;
+    public Visibility StoreSupportCardVisibility => IsDirectInstallerUpdateDelivery ? Visibility.Visible : Visibility.Collapsed;
     public string OpenSourceRepositoryDisplayText =>
         _localizationService.Format(
             "Settings.About.Developer",

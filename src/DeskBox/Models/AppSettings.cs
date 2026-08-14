@@ -280,9 +280,12 @@ public class AppSettings
     /// How widgets enter and leave their compact state.
     /// Valid values: <c>"Expanded"</c>, <c>"Click"</c>, <c>"Smart"</c>.
     /// </summary>
-    public string WidgetCollapseBehavior { get; set; } = "Smart";
+    public string WidgetCollapseBehavior { get; set; } = "Expanded";
 
-    /// <summary>Whether widgets are allowed to enter compact capsule mode.</summary>
+    /// <summary>
+    /// Legacy compatibility flag derived from <see cref="WidgetCollapseBehavior"/>.
+    /// New code uses the three-state default behavior directly.
+    /// </summary>
     public bool WidgetCapsuleModeEnabled { get; set; }
 
     /// <summary>
@@ -387,7 +390,7 @@ public class AppSettings
     /// Comma-separated widget title hover actions. Valid values: <c>"LockPosition"</c>,
     /// <c>"LockSize"</c>, <c>"Add"</c>, <c>"More"</c>, <c>"Delete"</c>.
     /// </summary>
-    public string WidgetHoverButtonActions { get; set; } = "More";
+    public string WidgetHoverButtonActions { get; set; } = "Add,More";
 
     /// <summary>
     /// Whether resize snap-to-edge alignment guides are enabled during
@@ -519,10 +522,10 @@ public class AppSettings
     public List<WidgetGroupConfig> WidgetGroups { get; set; } = [];
 
     /// <summary>
-    /// Enables creation and structural editing of widget groups. Existing
-    /// groups remain intact when this capability is disabled.
+    /// Legacy compatibility flag. Widget grouping is now always available;
+    /// normalization keeps this value true for older settings files.
     /// </summary>
-    public bool WidgetGroupsEnabled { get; set; }
+    public bool WidgetGroupsEnabled { get; set; } = true;
 
     /// <summary>
     /// Legacy navigation style retained only so pre-title-switcher settings can

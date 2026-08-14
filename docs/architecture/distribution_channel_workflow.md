@@ -20,7 +20,7 @@
 | 包身份 | 无 package identity | 有 package identity |
 | 数据路径 | 当前继续使用 DeskBox 自有本地数据目录 | 首版 Store 也继续使用相同数据目录，避免用户切换通道后数据丢失 |
 | 关于页渠道文案 | `官网版` | `Microsoft Store` |
-| 捐赠二维码 | 显示 | 隐藏 |
+| 商店支持入口 | 显示，跳转付费 Microsoft Store 版 | 隐藏 |
 | 国内网盘入口 | 可显示 | 不作为独立卡片显示，更新失败时只提供合适提示 |
 | Updater 产物 | 构建并复制 | 不构建、不打包 |
 | 运行时依赖 | 安装器检测 .NET / Windows App Runtime | Store 包建议自包含 .NET，Windows App Runtime 由包依赖或 Store 处理 |
@@ -73,7 +73,7 @@ dotnet build .\src\DeskBox\DeskBox.csproj `
 预期：
 
 - 关于页版本行显示 `官网版`。
-- 捐赠二维码显示。
+- 商店支持入口显示，并跳转 Microsoft Store 产品页。
 - 应用内更新使用 Direct 下载/安装逻辑。
 - 开机自启走注册表。
 - 输出目录包含 `DeskBox.Updater.exe`。
@@ -126,7 +126,7 @@ Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!App"
 
 - 进程路径在 `C:\Program Files\WindowsApps\...`。
 - 关于页版本行显示 `Microsoft Store`。
-- 捐赠二维码隐藏。
+- 商店支持入口隐藏。
 - `DeskBox.Updater.exe` 不在包内。
 - Store 更新入口显示为商店更新逻辑。
 - 开机自启走 `StartupTask`。
@@ -272,9 +272,9 @@ Store 产品页截图/图标素材如果使用 `store-assets-html/` 生成，该
 验收清单：
 
 - 包内没有 `DeskBox.Updater.exe`。
-- 包内没有 `Assets\donation-wechat.png` 和 `Assets\donation-alipay.png`。
+- 包内没有支付二维码资源。
 - 关于页显示 `Microsoft Store`。
-- 捐赠二维码隐藏。
+- 商店支持入口隐藏。
 - 更新入口使用 Store 文案和 StoreContext 逻辑。
 - `StartupTask` 声明存在，开机自启设置不写注册表。
 - 运行 Windows App Certification Kit。
@@ -316,7 +316,7 @@ $zip.Dispose()
 
 - 不要在多个页面散落 `#if DESKBOX_STORE`。
 - 不要让 Store 版引用 `DeskBox.Updater`。
-- 不要在 Store 包里带捐赠二维码、外部支付引导等可能触碰政策的资源。
+- 不要在 Store 包里带支付二维码、外部购买引导等可能触碰政策的资源。
 - 不要在 Store 首版随意迁移数据目录。
 - 不要用未打包 exe 验证 Store 更新和 StartupTask。
 
@@ -326,9 +326,9 @@ $zip.Dispose()
 
 Store 通道启用 MSIX / Windows App Runtime 相关能力后，普通未打包 exe 不一定具备完整运行环境。遇到 `REGDB_E_CLASSNOTREG` 或 Windows App Runtime 初始化错误时，不要先怀疑业务代码，先改用 MSIX 安装后验证。
 
-### 5.2 为什么官网版还能看到捐赠二维码？
+### 5.2 为什么官网版能看到商店支持入口？
 
-这是预期行为。官网版不受 Store 支付政策约束，保留捐赠入口。只有 Store 通道需要隐藏。
+这是预期行为。官网版通过 Microsoft Store 产品页提供可选的付费支持入口，Store 通道自身不再重复展示。
 
 ### 5.3 本地签名证书怎么处理？
 

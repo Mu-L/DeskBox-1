@@ -4,6 +4,7 @@
     x:Class="DeskBox.Views.OnboardingWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DeskBox.Controls"
     xmlns:svc="using:DeskBox.Services"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -87,8 +88,31 @@
             </Style>
             <Style x:Key="StatusBadge" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
-                <Setter Property="CornerRadius" Value="8"/>
-                <Setter Property="Padding" Value="12,9"/>
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="Padding" Value="13,10"/>
+            </Style>
+            <Style x:Key="TaskVisualSurface" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="20"/>
+                <Setter Property="Padding" Value="24"/>
+            </Style>
+            <Style x:Key="TaskStepBadge" TargetType="Border">
+                <Setter Property="HorizontalAlignment" Value="Left"/>
+                <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="Padding" Value="10,5"/>
+            </Style>
+            <Style x:Key="FeatureChoiceCard" TargetType="Border">
+                <Setter Property="MinHeight" Value="94"/>
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="14"/>
+                <Setter Property="Padding" Value="14"/>
             </Style>
 
         </Grid.Resources>
@@ -98,6 +122,30 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
+
+        <!-- Low-contrast theme-aware depth behind the guided workbench. -->
+        <Border
+            Grid.RowSpan="3"
+            Width="360"
+            Height="360"
+            Margin="0,-210,-170,0"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Background="{ThemeResource AccentFillColorDefaultBrush}"
+            CornerRadius="180"
+            IsHitTestVisible="False"
+            Opacity="0.035"/>
+        <Border
+            Grid.RowSpan="3"
+            Width="280"
+            Height="280"
+            Margin="-170,0,0,-190"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Bottom"
+            Background="{ThemeResource AccentFillColorDefaultBrush}"
+            CornerRadius="140"
+            IsHitTestVisible="False"
+            Opacity="0.025"/>
 
         <!-- ═════════════ Title Bar ═════════════ -->
         <Grid x:Name="TitleBarHost" Height="36" Margin="-40,-40,-40,6" Background="Transparent"/>
@@ -202,332 +250,525 @@
                     </Grid>
                 </StackPanel>
 
-                <StackPanel
+                <Grid
                     x:Name="TaskStep2Panel"
-                    MaxWidth="700"
+                    MaxWidth="820"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Spacing="18">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Image Width="28" Height="28" Source="ms-appx:///Assets/deskbox.svg"/>
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="15"
-                            FontWeight="SemiBold"
-                            Text="DeskBox"/>
-                    </StackPanel>
-                    <StackPanel Spacing="8">
-                        <TextBlock Style="{StaticResource StepTitleText}" svc:Localized.Key="Onboarding.Task.Step1.Title"/>
-                        <TextBlock
-                            MaxWidth="610"
-                            HorizontalAlignment="Left"
-                            Style="{StaticResource StepBodyText}"
-                            svc:Localized.Key="Onboarding.Task.Step1.Body"/>
-                    </StackPanel>
-                    <Border Style="{StaticResource SettingCard}" Padding="18,14">
-                        <Grid ColumnDefinitions="*,Auto,*" ColumnSpacing="18">
-                            <StackPanel Grid.Column="0" Spacing="7" HorizontalAlignment="Center">
-                                <Grid Width="44" Height="44">
-                                    <Border
-                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                        CornerRadius="10"/>
-                                    <FontIcon
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        FontSize="20"
-                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                        Glyph="&#xE7C3;"/>
-                                </Grid>
+                    Visibility="Collapsed">
+                    <Grid
+                        x:Name="TaskStep2Layout"
+                        ColumnDefinitions="0.88*,1.12*"
+                        ColumnSpacing="36"
+                        RowDefinitions="Auto,Auto">
+                        <StackPanel VerticalAlignment="Center" Spacing="18">
+                            <Border Style="{StaticResource TaskStepBadge}">
                                 <TextBlock
-                                    MaxWidth="180"
-                                    Style="{StaticResource VisualStageLabel}"
-                                    svc:Localized.Key="Onboarding.Scene.DesktopFile"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                <TextBlock
-                                    HorizontalAlignment="Center"
-                                    FontSize="23"
-                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                    Text="→"/>
-                                <TextBlock
-                                    FontSize="11"
+                                    FontSize="12"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                    svc:Localized.Key="Common.Move"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2" Spacing="7" HorizontalAlignment="Center">
-                                <Grid Width="62" Height="44">
-                                    <Border
-                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                        CornerRadius="10"
-                                        Opacity="0.12"/>
-                                    <Grid Margin="10,8" RowDefinitions="Auto,*">
-                                        <Border
-                                            Width="20"
-                                            Height="3"
-                                            HorizontalAlignment="Left"
-                                            Background="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                            CornerRadius="2"/>
-                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom">
-                                            <FontIcon FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE8B7;"/>
-                                            <Border Width="17" Height="3" VerticalAlignment="Center" Background="{ThemeResource AccentTextFillColorPrimaryBrush}" CornerRadius="2" Opacity="0.55"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Grid>
+                                    Text="03  /  04"/>
+                            </Border>
+                            <StackPanel Spacing="9">
+                                <TextBlock Style="{StaticResource StepTitleText}" svc:Localized.Key="Onboarding.Task.Step4.TrayTitle"/>
                                 <TextBlock
-                                    MaxWidth="180"
-                                    Style="{StaticResource VisualStageLabel}"
-                                    svc:Localized.Key="Onboarding.Scene.FileWidget"/>
+                                    MaxWidth="320"
+                                    HorizontalAlignment="Left"
+                                    Style="{StaticResource StepBodyText}"
+                                    svc:Localized.Key="Onboarding.Task.Step4.TrayBody"/>
                             </StackPanel>
-                        </Grid>
-                    </Border>
-                    <Border Style="{StaticResource FeatureCard}" Padding="18,16">
-                        <StackPanel Spacing="12">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                                <Grid Width="42" Height="42" VerticalAlignment="Center">
-                                    <Border
-                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                        CornerRadius="9"
-                                        Opacity="0.12"/>
-                                    <FontIcon
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        FontSize="19"
-                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                        Glyph="&#xE8B7;"/>
-                                </Grid>
-                                <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
-                                    <TextBlock
-                                        FontSize="14"
-                                        FontWeight="SemiBold"
-                                        svc:Localized.Key="Onboarding.Task.Step2.PathTitle"/>
-                                    <TextBlock
-                                        x:Name="TaskStep2StoragePathText"
-                                        FontFamily="Consolas"
-                                        FontSize="12.5"
-                                        FontWeight="SemiBold"
-                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                        TextTrimming="CharacterEllipsis"
-                                        TextWrapping="NoWrap"/>
-                                    <TextBlock
-                                        x:Name="TaskStep2PathMetaText"
-                                        FontSize="11.5"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        TextWrapping="Wrap"/>
-                                </StackPanel>
-                                <Button
-                                    x:Name="TaskStep2ChangePathButton"
-                                    Grid.Column="2"
-                                    MinHeight="38"
-                                    VerticalAlignment="Center"
-                                    Click="TaskStep2ChangePath_Click"
-                                    svc:Localized.Key="Onboarding.Task.Step2.ChangePath"/>
+                            <Button
+                                x:Name="TaskStep2OpenTrayMenuButton"
+                                MinHeight="42"
+                                HorizontalAlignment="Left"
+                                Click="TaskStep4OpenTrayMenu_Click"
+                                Style="{ThemeResource AccentButtonStyle}"
+                                svc:Localized.Key="Onboarding.Task.Step4.TrayButton"/>
+                        </StackPanel>
+
+                        <Border x:Name="TaskStep2VisualStage" Grid.Column="1" Style="{StaticResource TaskVisualSurface}">
+                            <Grid Height="350">
+                                <Border
+                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="14">
+                                    <Grid RowDefinitions="Auto,*,Auto">
+                                        <Grid Height="38" Margin="14,0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                            <Image Width="18" Height="18" VerticalAlignment="Center" Source="ms-appx:///Assets/deskbox.svg"/>
+                                            <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Text="DeskBox"/>
+                                        </Grid>
+                                        <Grid Grid.Row="1" Margin="14,2,14,12" ColumnDefinitions="*,*" ColumnSpacing="10" RowDefinitions="*,*" RowSpacing="10" Opacity="0.82">
+                                            <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8"/>
+                                            <Border Grid.Column="1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8"/>
+                                            <Border Grid.Row="1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8"/>
+                                            <Border Grid.Row="1" Grid.Column="1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8"/>
+                                        </Grid>
+                                        <Border
+                                            Grid.Row="2"
+                                            Height="48"
+                                            Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
+                                            CornerRadius="0,0,14,14">
+                                            <Grid Margin="14,0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                                                <Border Height="3" VerticalAlignment="Center" Background="{ThemeResource DividerStrokeColorDefaultBrush}" CornerRadius="2"/>
+                                                <FontIcon Grid.Column="1" VerticalAlignment="Center" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE70E;"/>
+                                                <Grid Grid.Column="2" Width="32" Height="32" VerticalAlignment="Center">
+                                                    <Border
+                                                        x:Name="TaskStep2TrayHalo"
+                                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                        CornerRadius="16"
+                                                        Opacity="0.18"/>
+                                                    <Image Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Source="ms-appx:///Assets/deskbox.svg"/>
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <Border
+                                    x:Name="TaskStep2MenuPreview"
+                                    Width="248"
+                                    Margin="0,0,26,66"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="10">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Margin="8,5,8,7" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" svc:Localized.Key="Onboarding.Step2.TrayActionTitle"/>
+                                        <Grid MinHeight="38" Margin="8,0" ColumnDefinitions="Auto,*" ColumnSpacing="11">
+                                            <FontIcon VerticalAlignment="Center" FontSize="15" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE710;"/>
+                                            <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12.5" FontWeight="SemiBold" svc:Localized.Key="Onboarding.Task.Step4.ManagedEntry"/>
+                                        </Grid>
+                                        <Grid MinHeight="38" Margin="8,0" ColumnDefinitions="Auto,*" ColumnSpacing="11">
+                                            <FontIcon VerticalAlignment="Center" FontSize="15" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE8B7;"/>
+                                            <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12.5" FontWeight="SemiBold" svc:Localized.Key="Onboarding.Task.Step4.MappedEntry"/>
+                                        </Grid>
+                                        <Rectangle Height="1" Margin="6,2" Fill="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+                                        <Grid MinHeight="38" Margin="8,0" ColumnDefinitions="Auto,*" ColumnSpacing="11">
+                                            <FontIcon VerticalAlignment="Center" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE713;"/>
+                                            <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12.5" FontWeight="SemiBold" svc:Localized.Key="Onboarding.Task.Step5.Settings"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
                             </Grid>
-                            <Border
-                                x:Name="TaskStep2PathWarningBorder"
-                                Padding="12,9"
-                                BorderBrush="#66FFB900"
-                                BorderThickness="1"
-                                CornerRadius="7"
-                                Visibility="Collapsed">
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <Grid
+                    x:Name="TaskStep3Panel"
+                    MaxWidth="820"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed">
+                    <Grid
+                        x:Name="TaskStep3Layout"
+                        ColumnDefinitions="0.88*,1.12*"
+                        ColumnSpacing="36"
+                        RowDefinitions="Auto,Auto">
+                        <StackPanel VerticalAlignment="Center" Spacing="18">
+                            <Border Style="{StaticResource TaskStepBadge}">
+                                <TextBlock
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Text="01  /  04"/>
+                            </Border>
+                            <StackPanel Spacing="9">
+                                <TextBlock Style="{StaticResource StepTitleText}" svc:Localized.Key="Onboarding.Task.Step3.Title"/>
+                                <TextBlock
+                                    MaxWidth="320"
+                                    HorizontalAlignment="Left"
+                                    Style="{StaticResource StepBodyText}"
+                                    svc:Localized.Key="Onboarding.Task.Step3.Body"/>
+                            </StackPanel>
+                            <Border x:Name="TaskStep3StatusBadge" Style="{StaticResource StatusBadge}" MaxWidth="320" HorizontalAlignment="Left">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
                                     <FontIcon
+                                        x:Name="TaskStep3StatusIcon"
+                                        VerticalAlignment="Center"
                                         FontSize="14"
-                                        Foreground="#FFFFB900"
-                                        Glyph="&#xE7BA;"/>
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                        Glyph="&#xE946;"/>
                                     <TextBlock
-                                        x:Name="TaskStep2PathWarningText"
+                                        x:Name="TaskStep3StatusText"
                                         Grid.Column="1"
-                                        FontSize="11.5"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource HintText}"
                                         TextWrapping="Wrap"/>
                                 </Grid>
                             </Border>
-                            <TextBlock
-                                FontSize="11.5"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                TextWrapping="Wrap"
-                                svc:Localized.Key="Onboarding.Task.Step1.LocalBody"/>
                         </StackPanel>
-                    </Border>
-                </StackPanel>
 
-                <StackPanel
-                    x:Name="TaskStep3Panel"
-                    MaxWidth="680"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Spacing="20"
-                    Visibility="Collapsed">
-                    <StackPanel Spacing="8">
-                        <TextBlock Style="{StaticResource StepTitleText}" svc:Localized.Key="Onboarding.Task.Step3.Title"/>
-                        <TextBlock
-                            MaxWidth="610"
-                            HorizontalAlignment="Left"
-                            Style="{StaticResource StepBodyText}"
-                            svc:Localized.Key="Onboarding.Task.Step3.Body"/>
-                    </StackPanel>
-                    <Border Style="{StaticResource FeatureCard}" Padding="16,14">
-                        <Grid ColumnDefinitions="1.15*,Auto,*,Auto,*" ColumnSpacing="10">
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Grid Width="42" Height="42">
-                                    <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="9" Opacity="0.12"/>
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="19" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE7C1;"/>
+                        <Border x:Name="TaskStep3VisualStage" Grid.Column="1" Style="{StaticResource TaskVisualSurface}">
+                            <Grid Height="350" RowDefinitions="Auto,*" RowSpacing="18">
+                                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                                    <Border Padding="9,7" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="9">
+                                        <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+                                            <FontIcon FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE7C1;"/>
+                                            <TextBlock Style="{StaticResource VisualStageLabel}" svc:Localized.Key="Onboarding.Task.Step3.DragTitle"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1" Padding="9,7" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="9">
+                                        <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+                                            <FontIcon FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE77F;"/>
+                                            <TextBlock Style="{StaticResource VisualStageLabel}" svc:Localized.Key="Onboarding.Task.Step3.PasteTitle"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="2" Padding="9,7" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="9">
+                                        <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+                                            <FontIcon FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE710;"/>
+                                            <TextBlock Style="{StaticResource VisualStageLabel}" svc:Localized.Key="Onboarding.Task.Step3.AddTitle"/>
+                                        </StackPanel>
+                                    </Border>
                                 </Grid>
-                                <TextBlock MaxWidth="150" VerticalAlignment="Center" Style="{StaticResource VisualStageLabel}" TextAlignment="Left" svc:Localized.Key="Onboarding.Task.Step3.DragTitle"/>
-                            </StackPanel>
-                            <FontIcon Grid.Column="1" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE76C;"/>
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Grid Width="36" Height="36">
-                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="9"/>
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="17" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Glyph="&#xE77F;"/>
+
+                                <Grid Grid.Row="1">
+                                    <Path
+                                        Margin="54,26,100,56"
+                                        Data="M 34,185 C 112,164 134,84 236,76"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                                        StrokeDashArray="3,4"
+                                        StrokeThickness="2"
+                                        Opacity="0.42"/>
+
+                                    <Border
+                                        x:Name="TaskStep3FileToken"
+                                        Width="116"
+                                        Height="58"
+                                        Margin="4,0,0,38"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Bottom"
+                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="12"
+                                        Padding="11">
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                            <Grid Width="32" Height="32" VerticalAlignment="Center">
+                                                <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="8" Opacity="0.14"/>
+                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9" FontWeight="Bold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Text="PDF"/>
+                                            </Grid>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                                                <Border Height="4" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="2" Opacity="0.62"/>
+                                                <Border Width="34" Height="4" HorizontalAlignment="Left" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="2" Opacity="0.28"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border
+                                        Width="224"
+                                        Height="190"
+                                        Margin="0,14,4,0"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="15"
+                                        Padding="14">
+                                        <Grid RowDefinitions="Auto,*" RowSpacing="12">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                <FontIcon VerticalAlignment="Center" FontSize="14" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE8B7;"/>
+                                                <Border Grid.Column="1" Width="48" Height="4" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="2" Opacity="0.55"/>
+                                                <FontIcon Grid.Column="2" VerticalAlignment="Center" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE712;"/>
+                                            </Grid>
+                                            <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="10" RowDefinitions="*,*" RowSpacing="10">
+                                                <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="9"/>
+                                                <Border Grid.Column="1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="9"/>
+                                                <Border Grid.Row="1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="9"/>
+                                                <Grid Grid.Row="1" Grid.Column="1">
+                                                    <Border
+                                                        x:Name="TaskStep3DropHalo"
+                                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                        CornerRadius="9"
+                                                        Opacity="0.13"/>
+                                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="19" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE710;"/>
+                                                </Grid>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
                                 </Grid>
-                                <TextBlock MaxWidth="145" VerticalAlignment="Center" Style="{StaticResource VisualStageLabel}" TextAlignment="Left" svc:Localized.Key="Onboarding.Task.Step3.PasteTitle"/>
-                            </StackPanel>
-                            <FontIcon Grid.Column="3" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE76C;"/>
-                            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Grid Width="36" Height="36">
-                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="9"/>
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="17" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Glyph="&#xE710;"/>
-                                </Grid>
-                                <TextBlock MaxWidth="145" VerticalAlignment="Center" Style="{StaticResource VisualStageLabel}" TextAlignment="Left" svc:Localized.Key="Onboarding.Task.Step3.AddTitle"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button
-                            x:Name="TaskStep3TryButton"
-                            MinHeight="42"
-                            Click="TaskStep3TryWidget_Click"
-                            Style="{ThemeResource AccentButtonStyle}"
-                            svc:Localized.Key="Onboarding.Task.Step3.TryButton"/>
-                        <Border Style="{StaticResource StatusBadge}" MaxWidth="430" VerticalAlignment="Center">
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <FontIcon
-                                    x:Name="TaskStep3StatusIcon"
-                                    VerticalAlignment="Center"
-                                    FontSize="14"
-                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                    Glyph="&#xE946;"/>
-                                <TextBlock
-                                    x:Name="TaskStep3StatusText"
-                                    Grid.Column="1"
-                                    VerticalAlignment="Center"
-                                    Style="{StaticResource HintText}"
-                                    TextWrapping="Wrap"/>
                             </Grid>
                         </Border>
-                    </StackPanel>
-                </StackPanel>
+                    </Grid>
+                </Grid>
 
-                <StackPanel
+                <Grid
                     x:Name="TaskStep4Panel"
-                    MaxWidth="700"
+                    MaxWidth="820"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Spacing="18"
                     Visibility="Collapsed">
-                    <StackPanel Spacing="8">
-                        <TextBlock Style="{StaticResource StepTitleText}" svc:Localized.Key="Onboarding.Task.Step4.Title"/>
-                        <TextBlock
-                            MaxWidth="620"
-                            HorizontalAlignment="Left"
-                            Style="{StaticResource StepBodyText}"
-                            svc:Localized.Key="Onboarding.Task.Step4.Body"/>
-                    </StackPanel>
-                    <Border Style="{StaticResource SettingCard}" Padding="18,14">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                            <Grid VerticalAlignment="Center" ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="7">
-                                <Border Width="66" Height="46" Background="{ThemeResource SubtleFillColorSecondaryBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                                    <Grid Margin="8" RowDefinitions="Auto,*">
-                                        <Border Width="22" Height="3" HorizontalAlignment="Left" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="2"/>
-                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom">
-                                            <FontIcon FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE8B7;"/>
-                                            <FontIcon FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE8B7;"/>
+                    <Grid
+                        x:Name="TaskStep4Layout"
+                        ColumnDefinitions="0.88*,1.12*"
+                        ColumnSpacing="36"
+                        RowDefinitions="Auto,Auto">
+                        <StackPanel VerticalAlignment="Center" Spacing="18">
+                            <Border Style="{StaticResource TaskStepBadge}">
+                                <TextBlock
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Text="02  /  04"/>
+                            </Border>
+                            <StackPanel Spacing="9">
+                                <TextBlock Style="{StaticResource StepTitleText}" svc:Localized.Key="Onboarding.Task.Step4.Title"/>
+                                <TextBlock
+                                    MaxWidth="320"
+                                    HorizontalAlignment="Left"
+                                    Style="{StaticResource StepBodyText}"
+                                    svc:Localized.Key="Onboarding.Task.Step4.Body"/>
+                            </StackPanel>
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    x:Name="TaskStep4HotkeyText"
+                                    MaxWidth="320"
+                                    FontSize="12.5"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    LineHeight="19"
+                                    TextWrapping="Wrap"/>
+                                <Button
+                                    x:Name="TaskStep4ToggleButton"
+                                    MinHeight="42"
+                                    HorizontalAlignment="Left"
+                                    Click="TaskStep4ToggleWidgets_Click"
+                                    svc:Localized.Key="Onboarding.Task.Step4.ToggleButton"/>
+                            </StackPanel>
+                            <Border x:Name="TaskStep4StatusBadge" Style="{StaticResource StatusBadge}" HorizontalAlignment="Left" MaxWidth="320">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                    <FontIcon
+                                        x:Name="TaskStep4StatusIcon"
+                                        VerticalAlignment="Center"
+                                        FontSize="14"
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                        Glyph="&#xE946;"/>
+                                    <TextBlock x:Name="TaskStep4StatusText" Grid.Column="1" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <Border x:Name="TaskStep4VisualStage" Grid.Column="1" Style="{StaticResource TaskVisualSurface}">
+                            <Grid Height="350">
+                                <Border
+                                    Margin="0,14,22,22"
+                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="14">
+                                    <Grid RowDefinitions="40,*">
+                                        <Grid Margin="14,0" ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="6">
+                                            <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{ThemeResource TextFillColorSecondaryBrush}" Opacity="0.30"/>
+                                            <Ellipse Grid.Column="1" Width="7" Height="7" VerticalAlignment="Center" Fill="{ThemeResource TextFillColorSecondaryBrush}" Opacity="0.22"/>
+                                            <Ellipse Grid.Column="2" Width="7" Height="7" VerticalAlignment="Center" Fill="{ThemeResource TextFillColorSecondaryBrush}" Opacity="0.16"/>
+                                            <Border Grid.Column="3" Height="20" Margin="16,0,0,0" VerticalAlignment="Center" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="10"/>
+                                        </Grid>
+                                        <Grid Grid.Row="1" Margin="18,14" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="11">
+                                            <Border Width="120" Height="8" HorizontalAlignment="Left" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="4" Opacity="0.34"/>
+                                            <Border Grid.Row="1" Width="210" Height="6" HorizontalAlignment="Left" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="3" Opacity="0.20"/>
+                                            <Border Grid.Row="2" Width="176" Height="6" HorizontalAlignment="Left" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="3" Opacity="0.14"/>
+                                            <Grid Grid.Row="3" Margin="0,8,0,0" ColumnDefinitions="*,*" ColumnSpacing="10">
+                                                <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="10"/>
+                                                <Border Grid.Column="1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="10"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+
+                                <Grid
+                                    x:Name="TaskStep4PreviewWidgets"
+                                    Width="164"
+                                    Height="204"
+                                    Margin="0,34,0,0"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Top">
+                                    <Border
+                                        Width="146"
+                                        Height="116"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Top"
+                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                        CornerRadius="14"
+                                        Opacity="0.86">
+                                        <Grid Margin="14" RowDefinitions="Auto,*">
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <FontIcon FontSize="13" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Glyph="&#xE8B7;"/>
+                                                <Border Width="44" Height="4" VerticalAlignment="Center" Background="{ThemeResource TextOnAccentFillColorPrimaryBrush}" CornerRadius="2" Opacity="0.75"/>
+                                            </StackPanel>
+                                            <Grid Grid.Row="1" Margin="0,12,0,0" ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                <Border Background="{ThemeResource TextOnAccentFillColorPrimaryBrush}" CornerRadius="7" Opacity="0.16"/>
+                                                <Border Grid.Column="1" Background="{ThemeResource TextOnAccentFillColorPrimaryBrush}" CornerRadius="7" Opacity="0.16"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                    <Border
+                                        Width="130"
+                                        Height="96"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="14">
+                                        <Grid Margin="13" RowDefinitions="Auto,*" RowSpacing="10">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE73E;"/>
+                                                <Border Width="40" Height="4" VerticalAlignment="Center" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="2" Opacity="0.46"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Row="1" Spacing="7">
+                                                <Border Height="5" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="3" Opacity="0.20"/>
+                                                <Border Width="72" Height="5" HorizontalAlignment="Left" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="3" Opacity="0.14"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+
+                                <Border
+                                    Width="188"
+                                    Height="58"
+                                    Margin="20,0,0,4"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Bottom"
+                                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="14">
+                                    <Grid Margin="12" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                        <Grid Width="34" Height="34">
+                                            <Border
+                                                x:Name="TaskStep4HotkeyHalo"
+                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                CornerRadius="10"
+                                                Opacity="0.18"/>
+                                            <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="15" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE765;"/>
+                                        </Grid>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock FontSize="10.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" svc:Localized.Key="Onboarding.Task.Step4.ToggleTitle"/>
+                                            <TextBlock x:Name="TaskStep4ShortcutText" FontSize="13" FontWeight="SemiBold"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
-                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="18" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Text="↔"/>
-                                <Border Grid.Column="2" Width="58" Height="24" VerticalAlignment="Center" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="12">
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Glyph="&#xE7E8;"/>
-                                </Border>
                             </Grid>
-                            <StackPanel Grid.Column="1" Spacing="3">
-                                <TextBlock FontSize="13" FontWeight="SemiBold" svc:Localized.Key="Onboarding.Task.Step4.ToggleTitle"/>
-                                <TextBlock
-                                    x:Name="TaskStep4HotkeyText"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    TextWrapping="Wrap"/>
-                            </StackPanel>
-                            <Button
-                                x:Name="TaskStep4ToggleButton"
-                                Grid.Column="2"
-                                MinHeight="40"
-                                Click="TaskStep4ToggleWidgets_Click"
-                            svc:Localized.Key="Onboarding.Task.Step4.ToggleButton"/>
-                        </Grid>
-                    </Border>
-                    <Border Style="{StaticResource StatusBadge}" HorizontalAlignment="Left" MaxWidth="520">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                            <FontIcon
-                                x:Name="TaskStep4StatusIcon"
-                                VerticalAlignment="Center"
-                                FontSize="14"
-                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                Glyph="&#xE946;"/>
-                            <TextBlock x:Name="TaskStep4StatusText" Grid.Column="1" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
-                        </Grid>
-                    </Border>
-                </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
 
                 <StackPanel
                     x:Name="TaskStep5Panel"
-                    MaxWidth="680"
+                    MaxWidth="820"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Spacing="20"
+                    Spacing="22"
                     Visibility="Collapsed">
-                    <StackPanel Spacing="8">
-                        <TextBlock Style="{StaticResource StepTitleText}" svc:Localized.Key="Onboarding.Task.Step5.Title"/>
-                        <TextBlock
-                            MaxWidth="600"
-                            HorizontalAlignment="Left"
-                            Style="{StaticResource StepBodyText}"
-                            svc:Localized.Key="Onboarding.Task.Step5.Body"/>
-                    </StackPanel>
-                    <StackPanel Spacing="8">
-                        <Button MinHeight="50" Padding="14,9" HorizontalContentAlignment="Stretch" Click="TaskStep5OrganizeDesktop_Click">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                <Grid Width="34" Height="34">
-                                    <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="8" Opacity="0.12"/>
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE8B7;"/>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+                        <StackPanel Spacing="9">
+                            <Border Style="{StaticResource TaskStepBadge}" Margin="0,0,0,9">
+                                <TextBlock
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Text="04  /  04"/>
+                            </Border>
+                            <TextBlock Style="{StaticResource StepTitleText}" svc:Localized.Key="Onboarding.Task.Step5.Title"/>
+                            <TextBlock
+                                MaxWidth="600"
+                                HorizontalAlignment="Left"
+                                Style="{StaticResource StepBodyText}"
+                                svc:Localized.Key="Onboarding.Task.Step5.Body"/>
+                        </StackPanel>
+                        <Image Grid.Column="1" Width="38" Height="38" Margin="0,8,4,0" VerticalAlignment="Top" Source="ms-appx:///Assets/deskbox.svg"/>
+                    </Grid>
+
+                    <Grid
+                        x:Name="TaskStep5FeatureGrid"
+                        Width="720"
+                        ColumnDefinitions="*,*,*"
+                        ColumnSpacing="12"
+                        RowDefinitions="Auto,Auto"
+                        RowSpacing="12">
+                        <Border x:Name="TaskStep5TodoCard" Style="{StaticResource FeatureChoiceCard}">
+                            <Grid RowDefinitions="Auto,Auto">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <controls:WidgetTitleIcon IconKind="Todo" Mode="Color" IconSize="16"/>
+                                        <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" svc:Localized.Key="Todo.Title"/>
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" x:Name="TaskStep5TodoToggle" Width="40" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center" OnContent="" OffContent="" Tag="Todo" Toggled="TaskStep5FeatureToggle_Toggled"/>
                                 </Grid>
-                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" TextWrapping="NoWrap" svc:Localized.Key="Onboarding.Task.Step5.Organize"/>
-                                <FontIcon Grid.Column="2" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE76C;"/>
+                                <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" svc:Localized.Key="Onboarding.Task.Step5.TodoDescription"/>
                             </Grid>
-                        </Button>
-                        <Button MinHeight="50" Padding="14,9" HorizontalContentAlignment="Stretch" Click="TaskStep5OpenAppearance_Click">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                <Grid Width="34" Height="34">
-                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8"/>
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Glyph="&#xE790;"/>
+                        </Border>
+                        <Border x:Name="TaskStep5QuickCaptureCard" Grid.Column="1" Style="{StaticResource FeatureChoiceCard}">
+                            <Grid RowDefinitions="Auto,Auto">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <controls:WidgetTitleIcon IconKind="QuickCapture" Mode="Color" IconSize="16"/>
+                                        <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" svc:Localized.Key="QuickCapture.Name"/>
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" x:Name="TaskStep5QuickCaptureToggle" Width="40" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center" OnContent="" OffContent="" Tag="QuickCapture" Toggled="TaskStep5FeatureToggle_Toggled"/>
                                 </Grid>
-                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" TextWrapping="NoWrap" svc:Localized.Key="Onboarding.Task.Step5.Appearance"/>
-                                <FontIcon Grid.Column="2" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE76C;"/>
+                                <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" svc:Localized.Key="Onboarding.Task.Step5.QuickCaptureDescription"/>
                             </Grid>
-                        </Button>
-                        <Button MinHeight="50" Padding="14,9" HorizontalContentAlignment="Stretch" Click="TaskStep5OpenSettings_Click">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                <Grid Width="34" Height="34">
-                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8"/>
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Glyph="&#xE713;"/>
+                        </Border>
+                        <Border x:Name="TaskStep5SearchCard" Grid.Column="2" Style="{StaticResource FeatureChoiceCard}">
+                            <Grid RowDefinitions="Auto,Auto">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <controls:WidgetTitleIcon IconKind="Search" Mode="Color" IconSize="16"/>
+                                        <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" svc:Localized.Key="Search.Title"/>
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" x:Name="TaskStep5SearchToggle" Width="40" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center" OnContent="" OffContent="" Tag="Search" Toggled="TaskStep5FeatureToggle_Toggled"/>
                                 </Grid>
-                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" TextWrapping="NoWrap" svc:Localized.Key="Onboarding.Task.Step5.Settings"/>
-                                <FontIcon Grid.Column="2" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE76C;"/>
+                                <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" svc:Localized.Key="Onboarding.Task.Step5.SearchDescription"/>
                             </Grid>
-                        </Button>
-                    </StackPanel>
+                        </Border>
+                        <Border x:Name="TaskStep5WeatherCard" Grid.Row="1" Style="{StaticResource FeatureChoiceCard}">
+                            <Grid RowDefinitions="Auto,Auto">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <controls:WidgetTitleIcon IconKind="Weather" Mode="Color" IconSize="16"/>
+                                        <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" svc:Localized.Key="Weather.Title"/>
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" x:Name="TaskStep5WeatherToggle" Width="40" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center" OnContent="" OffContent="" Tag="Weather" Toggled="TaskStep5FeatureToggle_Toggled"/>
+                                </Grid>
+                                <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" svc:Localized.Key="Onboarding.Task.Step5.WeatherDescription"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="TaskStep5MusicCard" Grid.Row="1" Grid.Column="1" Style="{StaticResource FeatureChoiceCard}">
+                            <Grid RowDefinitions="Auto,Auto">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <controls:WidgetTitleIcon IconKind="Music" Mode="Color" IconSize="16"/>
+                                        <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" svc:Localized.Key="Music.Title"/>
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" x:Name="TaskStep5MusicToggle" Width="40" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center" OnContent="" OffContent="" Tag="Music" Toggled="TaskStep5FeatureToggle_Toggled"/>
+                                </Grid>
+                                <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" svc:Localized.Key="Onboarding.Task.Step5.MusicDescription"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="TaskStep5OptionalCard" Grid.Row="1" Grid.Column="2" Style="{StaticResource FeatureChoiceCard}">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <Grid Width="36" Height="36">
+                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="10"/>
+                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE946;"/>
+                                </Grid>
+                                <TextBlock
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    FontSize="11.5"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    LineHeight="17"
+                                    TextWrapping="Wrap"
+                                    svc:Localized.Key="Onboarding.Task.Step5.OptionalBody"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
                 </StackPanel>
 
                 <!-- ─────────── Step 1: Core Value Overview (3 highlight cards) ─────────── -->
@@ -1192,12 +1433,23 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel
-                x:Name="ProgressDots"
                 Grid.Column="0"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="8"/>
+                Spacing="12">
+                <TextBlock
+                    x:Name="StepCounterText"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <StackPanel
+                    x:Name="ProgressDots"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="6"/>
+            </StackPanel>
 
             <StackPanel
                 Grid.Column="1"

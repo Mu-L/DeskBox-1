@@ -17,6 +17,8 @@ public sealed partial class WidgetGroupTitleSwitcher
     private DateTimeOffset _pointerEnteredAt;
     private string? _pendingWheelTargetId;
     private double _wheelAccumulator;
+    private DateTimeOffset _lastAcceptedWheelStepAt;
+    private int _lastAcceptedWheelDirection;
     private bool _pickerOpen;
     private bool _isPointerOverSelector;
     private bool _isSelectorPressed;
@@ -26,8 +28,6 @@ public sealed partial class WidgetGroupTitleSwitcher
     private Storyboard? _scrollSurfaceStoryboard;
     private Storyboard? _boundaryReboundStoryboard;
     private DispatcherTimer? _wheelFeedbackFallbackTimer;
-    private DateTimeOffset _lastWheelFeedbackAt;
-    private int _wheelFeedbackBurst;
     private double _pendingIdentityWidth;
 
     private void RegisterKeyboardAccelerators()
@@ -109,7 +109,6 @@ public sealed partial class WidgetGroupTitleSwitcher
         _isPointerOverSelector = false;
         _isSelectorPressed = false;
         _wheelAccumulator = 0;
-        _pendingWheelTargetId = null;
         CancelWheelFeedback();
         UpdateInteractionChrome();
     }
@@ -157,7 +156,6 @@ public sealed partial class WidgetGroupTitleSwitcher
         PointerRoutedEventArgs e)
     {
         _wheelAccumulator = 0;
-        _pendingWheelTargetId = null;
         CancelWheelFeedback();
     }
 
@@ -195,6 +193,16 @@ public sealed partial class WidgetGroupTitleSwitcher
                 delta,
                 out int direction);
         if (!consumedStep)
+        {
+            return true;
+        }
+
+        if (!WidgetGroupNavigationInteractionPolicy
+                .TryAcceptCoalescedWheelStep(
+                    ref _lastAcceptedWheelStepAt,
+                    ref _lastAcceptedWheelDirection,
+                    DateTimeOffset.UtcNow,
+                    direction))
         {
             return true;
         }
@@ -241,13 +249,6 @@ public sealed partial class WidgetGroupTitleSwitcher
             return;
         }
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        _wheelFeedbackBurst = now - _lastWheelFeedbackAt <=
-            TimeSpan.FromMilliseconds(420)
-                ? Math.Min(3, _wheelFeedbackBurst + 1)
-                : 0;
-        _lastWheelFeedbackAt = now;
-
         _wheelFeedbackStoryboard?.Stop();
         _wheelFeedbackStoryboard = null;
         UpWheelFeedback.Opacity = 0;
@@ -261,7 +262,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         ScaleTransform transform = scrollsUp
             ? UpWheelFeedbackTransform
             : DownWheelFeedbackTransform;
-        double peakOpacity = 0.25 + _wheelFeedbackBurst * 0.035;
+        const double peakOpacity = 0.25;
 
         if (!AreSystemAnimationsEnabled())
         {
@@ -272,8 +273,6 @@ public sealed partial class WidgetGroupTitleSwitcher
             return;
         }
 
-        double valleyOpacity = peakOpacity * 0.36;
-        double echoOpacity = peakOpacity * 0.62;
         var storyboard = new Storyboard();
         var opacityAnimation = new DoubleAnimationUsingKeyFrames();
         opacityAnimation.KeyFrames.Add(new DiscreteDoubleKeyFrame
@@ -289,19 +288,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         });
         opacityAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
         {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(155)),
-            Value = valleyOpacity,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
-        });
-        opacityAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
-        {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(230)),
-            Value = echoOpacity,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        });
-        opacityAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
-        {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)),
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(280)),
             Value = 0,
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
         });
@@ -323,7 +310,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         });
         scaleAnimation.KeyFrames.Add(new EasingDoubleKeyFrame
         {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)),
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(280)),
             Value = 1,
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
         });
@@ -351,7 +338,6 @@ public sealed partial class WidgetGroupTitleSwitcher
         _wheelFeedbackStoryboard?.Stop();
         _wheelFeedbackStoryboard = null;
         _wheelFeedbackFallbackTimer?.Stop();
-        _wheelFeedbackBurst = 0;
         UpWheelFeedback.Opacity = 0;
         DownWheelFeedback.Opacity = 0;
         UpWheelFeedbackTransform.ScaleY = 1;

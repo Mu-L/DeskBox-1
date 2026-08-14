@@ -249,6 +249,7 @@ private string GetWeatherRefreshIntervalDisplayName(int minutes) => minutes swit
 
 partial void OnWeatherAutoLocationChanged(bool value)
 {
+    OnPropertyChanged(nameof(SelectedWeatherLocationMode));
     if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
     {
         return;
@@ -264,6 +265,21 @@ partial void OnWeatherAutoLocationChanged(bool value)
         _ = RefreshWeatherLocationStatusAsync();
     }
 }
+
+public string SelectedWeatherLocationMode
+{
+    get => WeatherAutoLocation ? WeatherLocationModeAuto : WeatherLocationModeManual;
+    set => WeatherAutoLocation = !string.Equals(
+        value,
+        WeatherLocationModeManual,
+        StringComparison.Ordinal);
+}
+
+public IReadOnlyList<SettingsOption> AvailableWeatherLocationModeOptions =>
+[
+    new(WeatherLocationModeAuto, _localizationService.T("Settings.Weather.LocationMode.Auto")),
+    new(WeatherLocationModeManual, _localizationService.T("Settings.Weather.LocationMode.Manual"))
+];
 
 // P2-2: Search box is always visible — user can manually override even in auto mode.
 public Visibility WeatherCityNameVisibility => Visibility.Visible;

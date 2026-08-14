@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.4.1-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1)
+[![最新版本](https://img.shields.io/badge/release-1.4.2-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-DeskBox 1.4.2 安装包正在本地验证，暂不上传 GitHub。当前公开稳定版仍可在 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1) 下载。
+DeskBox 1.4.2 已发布到 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)。
 
-- [DeskBox 1.4.1 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.4.1 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.4.2 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.4.2 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -108,6 +108,7 @@ DeskBox 1.4.2 安装包正在本地验证，暂不上传 GitHub。当前公开�
 - **随记图片与附件更直观。** 剪贴板图片在列表和详情中直接显示缩略图，复制时写回图片本身；随记与待办共用横向附件方块，可显示图片缩略图或文件图标，并支持悬浮删除。
 - **音乐控制更接近 Windows。** 播放、暂停、上一首和下一首改为统一尺寸的面性图标，封面模式控制条、歌曲信息和悬浮质感同步调整。
 - **格子组连续滚动更顺手。** 移除会吞掉快速输入的双重时间限制，保留触控板步长合并、最终目标优先和首尾循环，持续向下滚动可循环切换。
+- **新手引导更快进入实际操作。** 缩短后的流程先带用户新建文件格子、认识托盘操作并体验全局显示与隐藏，最后再选择需要的功能格子；功能开关立即生效，并与设置保持同步。
 - **界面与运行可靠性继续收紧。** 补齐随记/固定空状态、固定页直接新增、浅深色拖动手势条、Markdown 图片与复杂内容显示，以及搜索索引和桌面层级的内存安全保护。
 
 完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.2 发布说明](docs/releases/v1.4.2.md)。

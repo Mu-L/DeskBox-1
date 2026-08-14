@@ -19,4 +19,9 @@ public sealed partial class FileWidgetSettingsSection : UserControl
             NavigationRequested?.Invoke(this, new SettingsSectionNavigationRequestedEventArgs(sectionTag));
         }
     }
+
+    private void OrganizeDesktopButton_Click(object sender, RoutedEventArgs e)
+    {
+        global::DeskBox.App.Current.ShowDesktopOrganizationWindow();
+    }
 }

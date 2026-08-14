@@ -250,9 +250,9 @@ public abstract partial class WidgetWindowBase
     }
 
     protected WidgetCollapseBehavior EffectiveCollapseBehavior =>
-        SettingsService.Settings.WidgetCapsuleModeEnabled
-            ? WidgetCollapseBehaviorNames.Resolve(Config, SettingsService.Settings.WidgetCollapseBehavior)
-            : WidgetCollapseBehavior.Expanded;
+        WidgetCollapseBehaviorNames.Resolve(
+            Config,
+            SettingsService.Settings.WidgetCollapseBehavior);
 
     protected virtual bool SupportsCompactDropExpansion =>
         Config.WidgetKind is WidgetKind.File or WidgetKind.Todo or WidgetKind.QuickCapture;
@@ -422,6 +422,7 @@ public abstract partial class WidgetWindowBase
         ApplyCompactTooltips();
         ApplyEffectiveCollapseBehavior(animate: true);
         RefreshStaleCompactPlacement();
+        App.Current?.WidgetManager?.RefreshCapsuleBarLayout();
     }
 
     /// <summary>
@@ -512,6 +513,12 @@ public abstract partial class WidgetWindowBase
 
         if (_compactInteractionDepth == 0)
         {
+            // Settings and context-menu changes can arrive while a flyout or
+            // bounds interaction temporarily blocks a collapse. Reconcile the
+            // effective behavior again after that interaction ends instead of
+            // dropping the requested state permanently.
+            ApplyEffectiveCollapseBehavior(animate: true);
+
             // A collapse-behavior menu can switch a collapsed widget from
             // Click to Smart while the flyout still owns an interaction. In
             // that case SetCollapsedState intentionally defers work, so arm
@@ -1466,8 +1473,7 @@ public abstract partial class WidgetWindowBase
     private void ApplyCompactTooltips()
     {
         var localization = App.Current.LocalizationService;
-        bool usesCapsuleBar = SettingsService.Settings.WidgetCapsuleModeEnabled &&
-            SettingsService.NormalizeWidgetCapsuleArrangementMode(
+        bool usesCapsuleBar = SettingsService.NormalizeWidgetCapsuleArrangementMode(
                 SettingsService.Settings.WidgetCapsuleArrangementMode) ==
             SettingsService.WidgetCapsuleArrangementBar;
         Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(
@@ -1547,12 +1553,26 @@ public abstract partial class WidgetWindowBase
         WidgetCollapseBehavior previousBehavior = _lastEffectiveCollapseBehavior;
         ApplyCollapseBehaviorVisuals();
         WidgetCollapseBehavior behavior = EffectiveCollapseBehavior;
+        bool enteredClickBehavior =
+            previousBehavior != WidgetCollapseBehavior.Click &&
+            behavior == WidgetCollapseBehavior.Click;
         bool enteredSmartBehavior =
             previousBehavior != WidgetCollapseBehavior.Smart &&
             behavior == WidgetCollapseBehavior.Smart;
         if (enteredSmartBehavior)
         {
             SynchronizeCompactPointerStateForSmartEntry();
+        }
+
+        if (enteredClickBehavior && !Config.IsCollapsed)
+        {
+            // Selecting click-to-expand must produce a visible capsule
+            // immediately. Persist that manual state before attempting the
+            // transition so a temporarily open flyout cannot lose it.
+            Config.IsCollapsed = true;
+            SettingsService.UpdateWidget(Config, notifySubscribers: false);
+            SettingsService.SaveDebounced(notifySubscribers: false);
+            SynchronizeWidgetGroupLayout();
         }
 
         WidgetCompactInteractionSnapshot snapshot = CaptureCompactInteractionSnapshot();
@@ -1616,8 +1636,7 @@ public abstract partial class WidgetWindowBase
             _suppressSmartExpansionUntilPointerExit = false;
         }
         bool canCollapse = behavior != WidgetCollapseBehavior.Expanded;
-        bool usesCapsuleBar = SettingsService.Settings.WidgetCapsuleModeEnabled &&
-            SettingsService.NormalizeWidgetCapsuleArrangementMode(
+        bool usesCapsuleBar = SettingsService.NormalizeWidgetCapsuleArrangementMode(
                 SettingsService.Settings.WidgetCapsuleArrangementMode) ==
             SettingsService.WidgetCapsuleArrangementBar;
         WidgetShellControl.SetCollapseActionAvailable(canCollapse);
@@ -2002,8 +2021,7 @@ public abstract partial class WidgetWindowBase
 
     protected bool UsesCompactExpansionGeometry()
     {
-        return SettingsService.Settings.WidgetCapsuleModeEnabled &&
-            EffectiveCollapseBehavior != WidgetCollapseBehavior.Expanded;
+        return EffectiveCollapseBehavior != WidgetCollapseBehavior.Expanded;
     }
 
     private WidgetCompactExpansionLayout ResolveCompactExpansionLayout(

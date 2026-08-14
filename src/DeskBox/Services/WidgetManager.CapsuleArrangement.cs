@@ -435,20 +435,12 @@ public sealed partial class WidgetManager
 
     private string ResolveEffectiveCapsuleArrangementMode()
     {
-        AppSettings settings = _settingsService.Settings;
-        return settings.WidgetCapsuleModeEnabled
-            ? SettingsService.NormalizeWidgetCapsuleArrangementMode(
-                settings.WidgetCapsuleArrangementMode)
-            : SettingsService.WidgetCapsuleArrangementFree;
+        return SettingsService.NormalizeWidgetCapsuleArrangementMode(
+            _settingsService.Settings.WidgetCapsuleArrangementMode);
     }
 
     private IReadOnlyList<WidgetConfig> GetCapsuleArrangementCandidates(AppSettings settings)
     {
-        if (!settings.WidgetCapsuleModeEnabled)
-        {
-            return [];
-        }
-
         return settings.Widgets
             .Where(config =>
                 config.IsVisible &&

@@ -7,24 +7,36 @@ public sealed class OnboardingExperienceTests
     private static readonly string[] RequiredTaskFlowKeys =
     [
         "Onboarding.SkipAll",
-        "Onboarding.Task.Step1.Title",
-        "Onboarding.Task.Step2.PathTitle",
-        "Onboarding.Task.Step2.ChangePath",
-        "Onboarding.Task.Step2.Warning.SystemDrive",
+        "Onboarding.Start",
         "Onboarding.Task.SkipPractice",
         "Onboarding.Task.Continue",
-        "Onboarding.Task.Step3.TryButton",
+        "Onboarding.Task.Step3.Title",
+        "Onboarding.Task.Step3.Body",
         "Onboarding.Task.Step3.StatusCompleted",
+        "Onboarding.Task.Step4.Title",
+        "Onboarding.Task.Step4.Body",
         "Onboarding.Task.Step4.ToggleBody",
         "Onboarding.Task.Step4.StatusHidden",
         "Onboarding.Task.Step4.StatusShown",
         "Onboarding.Task.Step4.StatusCompleted",
+        "Onboarding.Task.Step4.TrayTitle",
+        "Onboarding.Task.Step4.TrayBody",
+        "Onboarding.Task.Step4.TrayButton",
+        "Onboarding.Task.Step4.ManagedEntry",
+        "Onboarding.Task.Step4.MappedEntry",
         "Onboarding.Task.Step5.Title",
+        "Onboarding.Task.Step5.Body",
+        "Onboarding.Task.Step5.TodoDescription",
+        "Onboarding.Task.Step5.QuickCaptureDescription",
+        "Onboarding.Task.Step5.SearchDescription",
+        "Onboarding.Task.Step5.WeatherDescription",
+        "Onboarding.Task.Step5.MusicDescription",
+        "Onboarding.Task.Step5.OptionalBody",
         "Widget.Empty.ActionsHint"
     ];
 
     [Fact]
-    public void TaskFlow_HasOneIntroductionTwoOptionalPracticesAndFinishChoice()
+    public void TaskFlow_HasFilePracticeVisibilityPracticeManagementAndOptionalFeatures()
     {
         string root = FindRepositoryRoot();
         string xaml = File.ReadAllText(Path.Combine(
@@ -35,15 +47,22 @@ public sealed class OnboardingExperienceTests
             "src/DeskBox/Views/OnboardingWindow.xaml.cs"));
 
         Assert.Contains("private static readonly int StepCount = 4", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("0 => TaskStep2Panel", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("1 => TaskStep3Panel", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("2 => TaskStep4Panel", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("0 => TaskStep3Panel", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("1 => TaskStep4Panel", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("2 => TaskStep2Panel", codeBehind, StringComparison.Ordinal);
         Assert.Contains("3 => TaskStep5Panel", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"TaskStep3TryButton\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Click=\"TaskStep5OpenAppearance_Click\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"TaskStep3TryButton\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Click=\"TaskStep5OpenAppearance_Click\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"TaskStep4OpenTrayMenu_Click\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5TodoToggle\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5QuickCaptureToggle\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5SearchToggle\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5WeatherToggle\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5MusicToggle\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"TaskStep2ConfirmPathButton\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("1 when !_hasCompletedFilePractice", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("2 when !_hasCompletedVisibilityPractice", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"TaskStep2StoragePathText\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("0 when !_hasCompletedFilePractice", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("1 when !_hasCompletedVisibilityPractice", codeBehind, StringComparison.Ordinal);
 
         string activeFlow = xaml[xaml.IndexOf(
             "x:Name=\"TaskStep2Panel\"",
@@ -51,11 +70,11 @@ public sealed class OnboardingExperienceTests
             "x:Name=\"Step1Panel\"",
             StringComparison.Ordinal)];
         Assert.DoesNotContain("Onboarding.Task.Step4.FeatureEntry", activeFlow, StringComparison.Ordinal);
-        Assert.DoesNotContain("Click=\"TaskStep4OpenTrayMenu_Click\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Click=\"TaskStep4OpenTrayMenu_Click\"", activeFlow, StringComparison.Ordinal);
         Assert.DoesNotContain("Onboarding.Task.Step2.ManagedBody", activeFlow, StringComparison.Ordinal);
         Assert.DoesNotContain("Onboarding.Task.Step2.MappedBody", activeFlow, StringComparison.Ordinal);
         Assert.DoesNotContain("Onboarding.Task.Step3.DragBody", activeFlow, StringComparison.Ordinal);
-        Assert.DoesNotContain("Onboarding.Task.Step5.OptionalBody", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Onboarding.Task.Step5.OptionalBody", activeFlow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -76,6 +95,9 @@ public sealed class OnboardingExperienceTests
         Assert.Contains("_hasHiddenWidgetsDuringPractice", taskFlow, StringComparison.Ordinal);
         Assert.Contains("OnboardingFileImportCompleted", appCode, StringComparison.Ordinal);
         Assert.Contains("NotifyOnboardingFileImportCompleted", fileSurfaceCode, StringComparison.Ordinal);
+        Assert.Contains("ReleaseOnboardingFileWidgetRaise", taskFlow, StringComparison.Ordinal);
+        Assert.Contains("SetWidgetOnboardingTopMost", appCode, StringComparison.Ordinal);
+        Assert.DoesNotContain("PlaceWindowForWidgetPractice", taskFlow, StringComparison.Ordinal);
         Assert.DoesNotContain("_hasCompletedFilePractice = true", taskFlow[..taskFlow.IndexOf(
             "OnOnboardingFileImportCompleted",
             StringComparison.Ordinal)], StringComparison.Ordinal);
@@ -86,11 +108,38 @@ public sealed class OnboardingExperienceTests
     {
         string root = FindRepositoryRoot();
         string stringsDirectory = Path.Combine(root, "src/DeskBox/Strings");
+        string viewsDirectory = Path.Combine(root, "src/DeskBox/Views");
+        var referencedKeys = new HashSet<string>(RequiredTaskFlowKeys, StringComparer.Ordinal);
+
+        IEnumerable<string> onboardingSources =
+        [
+            Path.Combine(viewsDirectory, "OnboardingWindow.xaml"),
+            .. Directory.GetFiles(viewsDirectory, "OnboardingWindow*.cs")
+        ];
+        foreach (string sourcePath in onboardingSources)
+        {
+            string source = File.ReadAllText(sourcePath);
+            foreach (System.Text.RegularExpressions.Match match in
+                     System.Text.RegularExpressions.Regex.Matches(
+                         source,
+                         "svc:Localized\\.Key=\"([^\"]+)\""))
+            {
+                referencedKeys.Add(match.Groups[1].Value);
+            }
+
+            foreach (System.Text.RegularExpressions.Match match in
+                     System.Text.RegularExpressions.Regex.Matches(
+                         source,
+                         "(?:\\.T|\\.Format)\\(\"([^\"]+)\""))
+            {
+                referencedKeys.Add(match.Groups[1].Value);
+            }
+        }
 
         foreach (string path in Directory.GetFiles(stringsDirectory, "*.json"))
         {
             using JsonDocument strings = JsonDocument.Parse(File.ReadAllText(path));
-            foreach (string key in RequiredTaskFlowKeys)
+            foreach (string key in referencedKeys)
             {
                 Assert.True(
                     strings.RootElement.TryGetProperty(key, out JsonElement value) &&
@@ -101,7 +150,7 @@ public sealed class OnboardingExperienceTests
     }
 
     [Fact]
-    public void ChineseTaskFlow_ExplainsDefaultMoveAndOptionalPractice()
+    public void ChineseTaskFlow_IsDirectAndKeepsAdvancedConceptsOutOfFilePractice()
     {
         string root = FindRepositoryRoot();
         using JsonDocument strings = JsonDocument.Parse(File.ReadAllText(Path.Combine(
@@ -110,21 +159,29 @@ public sealed class OnboardingExperienceTests
 
         Assert.Contains(
             "移动",
-            strings.RootElement.GetProperty("Onboarding.Task.Step1.Body").GetString(),
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "原位置",
-            strings.RootElement.GetProperty("Onboarding.Task.Step1.Body").GetString(),
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "可以跳过",
             strings.RootElement.GetProperty("Onboarding.Task.Step3.Body").GetString(),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "复制",
+            strings.RootElement.GetProperty("Onboarding.Task.Step3.Body").GetString(),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "哪个窗口",
+            strings.RootElement.GetProperty("Onboarding.Task.Step4.Body").GetString(),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "映射为格子",
+            strings.RootElement.GetProperty("Onboarding.Task.Step4.TrayBody").GetString(),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "叫回来",
+            strings.RootElement.GetProperty("Onboarding.Task.Step4.StatusHidden").GetString(),
             StringComparison.Ordinal);
         Assert.Equal(
             "用桌面格子收纳文件。",
             strings.RootElement.GetProperty("Onboarding.Intro.Body").GetString());
         Assert.True(
-            strings.RootElement.GetProperty("Onboarding.Task.Step1.Body").GetString()!.Length < 40,
+            strings.RootElement.GetProperty("Onboarding.Task.Step4.Body").GetString()!.Length < 50,
             "The first-screen explanation should stay scannable.");
     }
 
@@ -145,7 +202,7 @@ public sealed class OnboardingExperienceTests
     }
 
     [Fact]
-    public void IntroLogoAnimation_RunsForAboutTwoAndAHalfSecondsWithFallbackGrace()
+    public void IntroLogoAnimation_IsBriefAndKeepsFallbackGrace()
     {
         string root = FindRepositoryRoot();
         string introCode = File.ReadAllText(Path.Combine(
@@ -153,9 +210,9 @@ public sealed class OnboardingExperienceTests
             "src/DeskBox/Views/OnboardingWindow.IntroAnimations.cs"));
 
         Assert.Contains("CreateDeskBoxMark", introCode, StringComparison.Ordinal);
-        Assert.Contains("IntroAnimationTargetMilliseconds = 2500", introCode, StringComparison.Ordinal);
+        Assert.Contains("IntroAnimationTargetMilliseconds = 900", introCode, StringComparison.Ordinal);
         Assert.Contains("IntroAnimationTargetMilliseconds + 1000", introCode, StringComparison.Ordinal);
-        Assert.Contains("await Task.Delay(640)", introCode, StringComparison.Ordinal);
+        Assert.Contains("await Task.Delay(180)", introCode, StringComparison.Ordinal);
         Assert.DoesNotContain("TimeSpan.FromSeconds(5)", introCode, StringComparison.Ordinal);
     }
 
@@ -166,20 +223,63 @@ public sealed class OnboardingExperienceTests
         string xaml = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Views/OnboardingWindow.xaml"));
+        string codeBehind = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/OnboardingWindow.xaml.cs"));
         string activeFlow = xaml[xaml.IndexOf(
             "x:Name=\"TaskStep2Panel\"",
             StringComparison.Ordinal)..xaml.IndexOf(
             "x:Name=\"Step1Panel\"",
             StringComparison.Ordinal)];
 
-        Assert.Contains("Onboarding.Scene.DesktopFile", activeFlow, StringComparison.Ordinal);
-        Assert.Contains("Onboarding.Scene.FileWidget", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step3.DragTitle", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step3.PasteTitle", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step3.AddTitle", activeFlow, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep3StatusIcon\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep4StatusIcon\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep2OpenTrayMenuButton\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Glyph=\"&#xE713;\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep3VisualStage\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep3FileToken\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep4PreviewWidgets\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep2MenuPreview\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5FeatureGrid\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Width=\"720\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("xmlns:controls=\"using:DeskBox.Controls\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Todo\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("<controls:WidgetTitleIcon IconKind=\"QuickCapture\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Search\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Weather\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Music\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Onboarding.Task.Step5.TodoDescription", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Onboarding.Task.Step5.QuickCaptureDescription", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Onboarding.Task.Step5.SearchDescription", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Onboarding.Task.Step5.WeatherDescription", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Onboarding.Task.Step5.MusicDescription", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"StepCounterText\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5TodoToggle\" Width=\"40\" MinWidth=\"0\" HorizontalAlignment=\"Right\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("dot.Width = active ? 8 : 6", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TaskFlow_UsesPurposefulMotionAndResponsiveVisualStages()
+    {
+        string root = FindRepositoryRoot();
+        string codeBehind = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/OnboardingWindow.xaml.cs"));
+        string taskFlow = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/OnboardingWindow.TaskFlow.cs"));
+
+        Assert.Contains("CreateFilePracticeAmbientStoryboard", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("CreateVisibilityPracticeAmbientStoryboard", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("CreateTrayAmbientStoryboard", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("CreateFeatureCardEntranceStoryboard", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ApplyTwoColumnTaskLayout", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("TaskStep5FeatureGrid.Width = compact", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("AnimateStatusFeedback", taskFlow, StringComparison.Ordinal);
+        Assert.Contains("UpdateVisibilityPreview", taskFlow, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -227,6 +327,70 @@ public sealed class OnboardingExperienceTests
         Assert.DoesNotContain("HasCompletedOnboarding = true", ensureMethod, StringComparison.Ordinal);
         Assert.Contains("OnboardingStepIndex = newStep", windowCode, StringComparison.Ordinal);
         Assert.Contains("CompletedOnboardingVersion = CurrentOnboardingVersion", windowCode, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FinalFeatureSwitches_PersistImmediatelyAndFinishWaitsForSynchronization()
+    {
+        string root = FindRepositoryRoot();
+        string xaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/OnboardingWindow.xaml"));
+        string windowCode = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/OnboardingWindow.xaml.cs"));
+        string taskFlow = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/OnboardingWindow.TaskFlow.cs"));
+
+        foreach (string kind in new[] { "Todo", "QuickCapture", "Search", "Weather", "Music" })
+        {
+            Assert.Contains(
+                $"Tag=\"{kind}\" Toggled=\"TaskStep5FeatureToggle_Toggled\"",
+                xaml,
+                StringComparison.Ordinal);
+        }
+
+        Assert.Contains("PersistFeatureWidgetSelectionAfterAsync", taskFlow, StringComparison.Ordinal);
+        Assert.Contains("reveal: enabled", taskFlow, StringComparison.Ordinal);
+        Assert.Contains("SynchronizeFeatureTogglesFromSettings", taskFlow, StringComparison.Ordinal);
+        Assert.Contains("_settingsService.SettingsChanged += OnFeatureWidgetSettingsChanged", windowCode, StringComparison.Ordinal);
+        Assert.Contains("_settingsService.SettingsChanged -= OnFeatureWidgetSettingsChanged", windowCode, StringComparison.Ordinal);
+        Assert.DoesNotContain("_featureWidgetsSelectedForReveal", taskFlow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyFeatureWidgetSelectionsAsync", taskFlow, StringComparison.Ordinal);
+
+        string completionMethod = windowCode[windowCode.IndexOf(
+            "private async Task CompleteOnboardingAsync",
+            StringComparison.Ordinal)..windowCode.IndexOf(
+            "private async Task NavigateToStepAsync",
+            StringComparison.Ordinal)];
+        Assert.True(
+            completionMethod.IndexOf("await _featureWidgetSelectionUpdateTask", StringComparison.Ordinal) <
+            completionMethod.IndexOf("Close();", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FeatureWidgetEnableOperations_AreSerializedAndShowingRestoresVisibility()
+    {
+        string root = FindRepositoryRoot();
+        string manager = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/WidgetManager.cs"));
+        string featureManager = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/WidgetManager.FeatureWidgets.cs"));
+        string settingsCallbacks = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/ViewModels/SettingsViewModel.FeatureCallbacks.cs"));
+
+        Assert.Contains("_featureWidgetUpdateLocks", featureManager, StringComparison.Ordinal);
+        Assert.Contains("await updateLock.WaitAsync()", featureManager, StringComparison.Ordinal);
+        Assert.Contains("updateLock.Release()", featureManager, StringComparison.Ordinal);
+        Assert.Contains("config.IsVisible = true;", manager, StringComparison.Ordinal);
+        Assert.Contains(
+            "SetFeatureWidgetEnabledAsync(\n                    WidgetKind.QuickCapture",
+            settingsCallbacks.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
     }
 
     [Fact]

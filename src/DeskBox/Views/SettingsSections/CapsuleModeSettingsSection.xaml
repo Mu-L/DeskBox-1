@@ -20,24 +20,7 @@
     </UserControl.Resources>
 
     <StackPanel Style="{StaticResource SectionPanelStyle}">
-        <TextBlock Style="{StaticResource SectionTitleTextStyle}" svc:Localized.Key="Settings.Section.CapsuleMode" />
-        <StackPanel Margin="0,8,0,0" Spacing="4">
-            <toolkit:SettingsCard
-                HorizontalContentAlignment="Right"
-                svc:Localized.DescriptionKey="Settings.Capsule.Enabled.Description"
-                svc:Localized.HeaderKey="Settings.Capsule.Enabled.Title">
-                <toolkit:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE73F;" />
-                </toolkit:SettingsCard.HeaderIcon>
-                <ToggleSwitch
-                    MinWidth="0"
-                    OffContent=""
-                    OnContent=""
-                    IsOn="{Binding WidgetCapsuleModeEnabled, Mode=TwoWay}" />
-            </toolkit:SettingsCard>
-
-            <TextBlock Style="{StaticResource CapsuleGroupTitleStyle}" svc:Localized.Key="Settings.Capsule.Group.Common" />
-
+        <StackPanel Spacing="4">
             <toolkit:SettingsCard
                 HorizontalContentAlignment="Right"
                 svc:Localized.DescriptionKey="Settings.CollapseBehavior.Description"
@@ -45,21 +28,13 @@
                 <toolkit:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE73F;" />
                 </toolkit:SettingsCard.HeaderIcon>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button
-                        Command="{Binding ResetCapsuleBehaviorOverridesCommand}"
-                        IsEnabled="{Binding HasCapsuleBehaviorOverrides}"
-                        Style="{StaticResource IconActionButtonStyle}"
-                        svc:Localized.ToolTipKey="Settings.Capsule.Overrides.ResetBehavior">
-                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
-                    </Button>
-                    <ComboBox
-                        MinWidth="{StaticResource SettingsControlMinWidth}"
-                        IsEnabled="{Binding WidgetCapsuleModeEnabled}"
-                        ItemsSource="{Binding AvailableWidgetCollapseBehaviorOptions}"
-                        controls:SettingsComboBox.Value="{Binding SelectedWidgetCollapseBehavior, Mode=TwoWay}" />
-                </StackPanel>
+                <ComboBox
+                    MinWidth="{StaticResource SettingsControlMinWidth}"
+                    ItemsSource="{Binding AvailableWidgetCollapseBehaviorOptions}"
+                    controls:SettingsComboBox.Value="{Binding SelectedWidgetCollapseBehavior, Mode=TwoWay}" />
             </toolkit:SettingsCard>
+
+            <TextBlock Style="{StaticResource CapsuleGroupTitleStyle}" svc:Localized.Key="Settings.Capsule.Group.Common" />
 
             <toolkit:SettingsCard
                 HorizontalContentAlignment="Right"
@@ -78,7 +53,6 @@
                     </Button>
                     <ComboBox
                         MinWidth="{StaticResource SettingsControlMinWidth}"
-                        IsEnabled="{Binding WidgetCapsuleModeEnabled}"
                         ItemsSource="{Binding AvailableWidgetCompactWidthModeOptions}"
                         controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactWidthMode, Mode=TwoWay}" />
                 </StackPanel>
@@ -93,7 +67,6 @@
                 </toolkit:SettingsCard.HeaderIcon>
                 <ComboBox
                     MinWidth="{StaticResource SettingsControlMinWidth}"
-                    IsEnabled="{Binding WidgetCapsuleModeEnabled}"
                     ItemsSource="{Binding AvailableWidgetCompactContentModeOptions}"
                     controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactContentMode, Mode=TwoWay}" />
             </toolkit:SettingsCard>
@@ -107,7 +80,6 @@
                 </toolkit:SettingsCard.HeaderIcon>
                 <ComboBox
                     MinWidth="{StaticResource SettingsControlMinWidth}"
-                    IsEnabled="{Binding WidgetCapsuleModeEnabled}"
                     ItemsSource="{Binding AvailableWidgetCapsuleArrangementOptions}"
                     controls:SettingsComboBox.Value="{Binding SelectedWidgetCapsuleArrangementMode, Mode=TwoWay}" />
             </toolkit:SettingsCard>
@@ -123,7 +95,6 @@
                     MinWidth="0"
                     OffContent=""
                     OnContent=""
-                    IsEnabled="{Binding WidgetCapsuleModeEnabled}"
                     IsOn="{Binding WidgetCompactHideSensitiveContent, Mode=TwoWay}" />
             </toolkit:SettingsCard>
 
@@ -152,7 +123,6 @@
                         Grid.Column="1"
                         MinWidth="{StaticResource SettingsControlMinWidth}"
                         VerticalAlignment="Center"
-                        IsEnabled="{Binding WidgetCapsuleModeEnabled}"
                         ItemsSource="{Binding AvailableWidgetCompactHoverResponseOptions}"
                         controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactHoverResponse, Mode=TwoWay}" />
                     <FontIcon
@@ -216,7 +186,6 @@
                         Grid.Column="1"
                         MinWidth="{StaticResource SettingsControlMinWidth}"
                         VerticalAlignment="Center"
-                        IsEnabled="{Binding WidgetCapsuleModeEnabled}"
                         ItemsSource="{Binding AvailableWidgetCompactAnimationEffectOptions}"
                         controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactAnimationEffect, Mode=TwoWay}" />
                     <FontIcon
@@ -234,8 +203,6 @@
                 Visibility="{Binding CapsuleOverridesEntryVisibility}">
                 <Button
                     Click="NestedSettingsButton_Click"
-                    IsHitTestVisible="{Binding WidgetCapsuleModeEnabled}"
-                    IsTabStop="{Binding WidgetCapsuleModeEnabled}"
                     Style="{StaticResource DrillDownRowStyle}"
                     Tag="CapsuleOverridesSettings">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">

@@ -7,6 +7,7 @@ internal static class WidgetCollapseMenuBuilder
 {
     public static MenuFlyoutSubItem Create(
         WidgetConfig config,
+        string defaultBehavior,
         LocalizationService localizationService,
         Action<WidgetCollapseBehavior> applyBehavior,
         Action resetCompactWidth)
@@ -28,7 +29,7 @@ internal static class WidgetCollapseMenuBuilder
         {
             var item = new ToggleMenuFlyoutItem
             {
-                Text = localizationService.T(GetTextKey(behavior)),
+                Text = GetText(behavior, defaultBehavior, localizationService),
                 IsChecked = selectedBehavior == behavior
             };
             item.Click += (_, _) => applyBehavior(behavior);
@@ -46,6 +47,24 @@ internal static class WidgetCollapseMenuBuilder
         subItem.Items.Add(resetWidthItem);
 
         return subItem;
+    }
+
+    private static string GetText(
+        WidgetCollapseBehavior behavior,
+        string defaultBehavior,
+        LocalizationService localizationService)
+    {
+        if (behavior != WidgetCollapseBehavior.System)
+        {
+            return localizationService.T(GetTextKey(behavior));
+        }
+
+        WidgetCollapseBehavior normalizedDefault = WidgetCollapseBehaviorNames.Normalize(
+            defaultBehavior,
+            WidgetCollapseBehavior.Expanded);
+        return localizationService.Format(
+            "Widget.CollapseBehavior.SystemWithDefault",
+            localizationService.T(GetTextKey(normalizedDefault)));
     }
 
     private static string GetTextKey(WidgetCollapseBehavior behavior)

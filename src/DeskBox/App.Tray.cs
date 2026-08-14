@@ -45,6 +45,17 @@ public partial class App
         };
         mapFolderItem.Click += async (_, _) => await RunTrayMenuActionAsync(contextMenu, CreateFolderWidgetFromPickerAsync);
 
+        var addFeatureWidgetItem = new MenuFlyoutItem
+        {
+            Text = localization.T("Common.AddFeatureWidget"),
+            Width = TrayMenuItemWidth,
+            Icon = new FontIcon { Glyph = "\uE710" }
+        };
+        addFeatureWidgetItem.Click += async (_, _) =>
+            await RunTraySettingsActionAsync(
+                contextMenu,
+                OpenFeatureWidgetsFromTray);
+
         var settingsItem = new MenuFlyoutItem
         {
             Text = localization.T("Tray.Settings"),
@@ -89,6 +100,7 @@ public partial class App
         }
 
         contextMenu.Items.Add(mapFolderItem);
+        contextMenu.Items.Add(addFeatureWidgetItem);
         contextMenu.Items.Add(new MenuFlyoutSeparator());
         contextMenu.Items.Add(openManagedStorageItem);
         contextMenu.Items.Add(new MenuFlyoutSeparator());
@@ -99,6 +111,7 @@ public partial class App
 
         _trayOrganizeDesktopItem = organizeDesktopItem;
         _trayMapFolderItem = mapFolderItem;
+        _trayAddFeatureWidgetItem = addFeatureWidgetItem;
         _trayOpenManagedStorageItem = openManagedStorageItem;
         _trayUpdateItem = updateItem;
         _traySettingsItem = settingsItem;
@@ -612,6 +625,11 @@ public partial class App
             _trayMapFolderItem.Text = LocalizationService.T("Common.NewFolderMapping");
         }
 
+        if (_trayAddFeatureWidgetItem is not null)
+        {
+            _trayAddFeatureWidgetItem.Text = LocalizationService.T("Common.AddFeatureWidget");
+        }
+
         foreach (var (widgetKind, item) in _trayCreateWidgetItems)
         {
             var descriptor = new WidgetContentFactory(LocalizationService).GetDescriptor(widgetKind);
@@ -698,9 +716,9 @@ public partial class App
         }
     }
 
-    private async Task CreateFolderWidgetFromPickerAsync()
+    internal async Task CreateFolderWidgetFromPickerAsync()
     {
-        if (_trayWindow is null || WidgetManager is null)
+        if (WidgetManager is null)
         {
             return;
         }
@@ -746,6 +764,11 @@ public partial class App
         CancelBackgroundMemoryCleanup();
         var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
         settingsWindow.ShowWindow();
+    }
+
+    private void OpenFeatureWidgetsFromTray()
+    {
+        ShowSettings("FeatureWidgets");
     }
 
     private void OpenDesktopOrganizationFromTray()

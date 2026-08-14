@@ -141,7 +141,7 @@ public sealed class SettingsService
     public const string WidgetCompactContentModeMinimal = "Minimal";
     public const string WidgetCompactContentModeSummary = "Summary";
     public const string WidgetCompactContentModeSmart = "Smart";
-    public const int CurrentWidgetCompactSettingsVersion = 1;
+    public const int CurrentWidgetCompactSettingsVersion = 2;
     public const string WidgetCompactAnimationSmooth = "Smooth";
     public const string WidgetCompactAnimationSlow = "Slow";
     public const string WidgetCompactAnimationSnappy = "Snappy";
@@ -181,7 +181,16 @@ public sealed class SettingsService
     public const string WidgetHoverActionMore = "More";
     public const string WidgetHoverActionDelete = "Delete";
     public const string DefaultWidgetHoverButtonActions =
-        WidgetHoverActionMore;
+        WidgetHoverActionAdd + "," + WidgetHoverActionMore;
+    public static IReadOnlyList<string> SupportedWidgetHoverButtonActions { get; } =
+        Array.AsReadOnly(new string[]
+        {
+            WidgetHoverActionLockPosition,
+            WidgetHoverActionLockSize,
+            WidgetHoverActionAdd,
+            WidgetHoverActionMore,
+            WidgetHoverActionDelete
+        });
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
 
@@ -310,7 +319,6 @@ public const int WeatherRefreshMaxMinutes = 180;
                 [nameof(AppSettings.TodoEnabled)] = DefaultPreferencePreservationReason.UserChoice,
                 [nameof(AppSettings.Widgets)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.WidgetGroups)] = DefaultPreferencePreservationReason.UserData,
-                [nameof(AppSettings.WidgetGroupsEnabled)] = DefaultPreferencePreservationReason.UserChoice,
                 [nameof(AppSettings.WidgetCapsuleBarOrder)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.WidgetCapsuleFreePlacements)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.DeletedWidgetIds)] = DefaultPreferencePreservationReason.UserData,
@@ -377,13 +385,14 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.KeepWidgetsVisibleOnShowDesktop = true;
         settings.DisplayWidgetChromeMode = WidgetChromeModeOverlay;
         settings.InteractiveWidgetChromeMode = WidgetChromeModeStandard;
-        settings.WidgetCollapseBehavior = WidgetCollapseBehaviorSmart;
+        settings.WidgetCollapseBehavior = WidgetCollapseBehaviorExpanded;
         settings.WidgetGroupDefaultNavigationStyle =
             WidgetGroupNavigationStyles.Auto;
         settings.WidgetGroupDefaultTitleDisplayMode =
             WidgetGroupTitleDisplayModes.IconAndText;
         settings.WidgetGroupWheelSwitchEnabled = true;
         settings.WidgetGroupHoverSwitchEnabled = false;
+        settings.WidgetGroupsEnabled = true;
         settings.WidgetCapsuleModeEnabled = false;
         settings.WidgetCompactWidthMode = WidgetCompactWidthModeAligned;
         settings.WidgetCapsuleArrangementMode = WidgetCapsuleArrangementFree;
@@ -1124,13 +1133,27 @@ settings.FocusClickedWidgetOnRaise = false;
         }
 
         string normalizedCollapseBehavior = NormalizeWidgetCollapseBehavior(settings.WidgetCollapseBehavior);
-        if (normalizedCollapseBehavior == WidgetCollapseBehaviorExpanded)
+        if (settings.WidgetCompactSettingsVersion < 2)
         {
-            normalizedCollapseBehavior = WidgetCollapseBehaviorClick;
+            // Before version 2, the enable switch was the real gate and the
+            // stored behavior was ignored while it was off. Fold that legacy
+            // combination into the new single three-state default.
+            normalizedCollapseBehavior = settings.WidgetCapsuleModeEnabled
+                ? normalizedCollapseBehavior == WidgetCollapseBehaviorExpanded
+                    ? WidgetCollapseBehaviorClick
+                    : normalizedCollapseBehavior
+                : WidgetCollapseBehaviorExpanded;
         }
         if (!string.Equals(settings.WidgetCollapseBehavior, normalizedCollapseBehavior, StringComparison.Ordinal))
         {
             settings.WidgetCollapseBehavior = normalizedCollapseBehavior;
+            changed = true;
+        }
+
+        bool legacyCapsuleEnabled = normalizedCollapseBehavior != WidgetCollapseBehaviorExpanded;
+        if (settings.WidgetCapsuleModeEnabled != legacyCapsuleEnabled)
+        {
+            settings.WidgetCapsuleModeEnabled = legacyCapsuleEnabled;
             changed = true;
         }
 
@@ -1248,7 +1271,7 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
-        if (settings.WidgetCompactSettingsVersion < CurrentWidgetCompactSettingsVersion)
+        if (settings.WidgetCompactSettingsVersion < 1)
         {
             settings.WidgetCompactContentMode = normalizedCollapsedStyle switch
             {
@@ -1256,6 +1279,11 @@ settings.FocusClickedWidgetOnRaise = false;
                 WidgetCollapsedStyleSmart => WidgetCompactContentModeSmart,
                 _ => WidgetCompactContentModeSummary
             };
+            changed = true;
+        }
+
+        if (settings.WidgetCompactSettingsVersion < CurrentWidgetCompactSettingsVersion)
+        {
             settings.WidgetCompactSettingsVersion = CurrentWidgetCompactSettingsVersion;
             changed = true;
         }
@@ -1707,26 +1735,53 @@ settings.FocusClickedWidgetOnRaise = false;
             : string.Join(",", normalized);
     }
 
+    public static bool CanToggleWidgetHoverButtonAction(string? value, string action)
+    {
+        var selected = ParseWidgetHoverButtonActions(value);
+        return selected.Contains(action, StringComparer.Ordinal)
+            ? selected.Count > 1
+            : selected.Count < 3 && SupportedWidgetHoverButtonActions.Contains(action, StringComparer.Ordinal);
+    }
+
+    public static bool TryUpdateWidgetHoverButtonAction(
+        string? value,
+        string action,
+        bool isSelected,
+        out string updatedValue)
+    {
+        var selected = ParseWidgetHoverButtonActions(value).ToHashSet(StringComparer.Ordinal);
+        if (!SupportedWidgetHoverButtonActions.Contains(action, StringComparer.Ordinal) ||
+            (isSelected && !selected.Contains(action) && selected.Count >= 3) ||
+            (!isSelected && selected.Contains(action) && selected.Count <= 1))
+        {
+            updatedValue = string.Join(",", SupportedWidgetHoverButtonActions.Where(selected.Contains));
+            return false;
+        }
+
+        if (isSelected)
+        {
+            selected.Add(action);
+        }
+        else
+        {
+            selected.Remove(action);
+        }
+
+        updatedValue = string.Join(",", SupportedWidgetHoverButtonActions.Where(selected.Contains));
+        return true;
+    }
+
     public static IReadOnlyList<string> ParseWidgetHoverButtonActions(string? value)
     {
-        string[] allowed =
-        [
-            WidgetHoverActionLockPosition,
-            WidgetHoverActionLockSize,
-            WidgetHoverActionAdd,
-            WidgetHoverActionMore,
-            WidgetHoverActionDelete
-        ];
-
         if (string.IsNullOrWhiteSpace(value))
         {
-            return [WidgetHoverActionMore];
+            return [WidgetHoverActionAdd, WidgetHoverActionMore];
         }
 
         var selected = new List<string>();
         foreach (string rawPart in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            string? normalized = allowed.FirstOrDefault(action =>
+            string? normalized = SupportedWidgetHoverButtonActions.FirstOrDefault(action =>
                 string.Equals(action, rawPart, StringComparison.OrdinalIgnoreCase));
             if (normalized is null || selected.Contains(normalized))
             {
@@ -1741,7 +1796,7 @@ settings.FocusClickedWidgetOnRaise = false;
         }
 
         return selected.Count == 0
-            ? [WidgetHoverActionMore]
+            ? [WidgetHoverActionAdd, WidgetHoverActionMore]
             : selected;
     }
 
@@ -1789,13 +1844,11 @@ settings.FocusClickedWidgetOnRaise = false;
         bool changed = false;
 
         changed |= WidgetGroupSettings.Normalize(settings);
-        if (settings.WidgetGroups.Count > 0 &&
-            !settings.WidgetGroupsEnabled)
+        if (!settings.WidgetGroupsEnabled)
         {
-            // A disabled capability must never strand persisted groups in an
-            // uneditable state. Legacy settings with existing groups are
-            // treated as enabled; the normal disable flow dissolves all groups
-            // before persisting false.
+            // Grouping is a normal widget operation rather than an optional
+            // runtime capability. Keep the old flag readable, but migrate all
+            // settings files to the always-available behavior.
             settings.WidgetGroupsEnabled = true;
             changed = true;
         }

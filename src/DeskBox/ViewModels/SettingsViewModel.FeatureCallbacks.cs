@@ -102,7 +102,10 @@ public partial class SettingsViewModel
         {
             if (App.Current?.WidgetManager is { } widgetManager)
             {
-                await widgetManager.SetQuickCaptureEnabledAsync(value, reveal: value);
+                await widgetManager.SetFeatureWidgetEnabledAsync(
+                    WidgetKind.QuickCapture,
+                    value,
+                    reveal: value);
                 return;
             }
 

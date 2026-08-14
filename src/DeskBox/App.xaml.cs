@@ -85,6 +85,7 @@ public partial class App : Application
     private bool _traySecondWindowSyncLogged;
     private MenuFlyoutItem? _trayOrganizeDesktopItem;
     private MenuFlyoutItem? _trayMapFolderItem;
+    private MenuFlyoutItem? _trayAddFeatureWidgetItem;
     private readonly Dictionary<WidgetKind, MenuFlyoutItem> _trayCreateWidgetItems = [];
     private MenuFlyoutItem? _trayOpenManagedStorageItem;
     private MenuFlyoutItem? _trayUpdateItem;
@@ -92,6 +93,7 @@ public partial class App : Application
     private MenuFlyoutItem? _trayExitItem;
     private SettingsWindow? _settingsWindow;
     private OnboardingWindow? _onboardingWindow;
+    private string? _onboardingRaisedFileWidgetId;
     internal event Action<int>? OnboardingFileImportCompleted;
     internal event Action<bool>? OnboardingWidgetsVisibilityChanged;
     private NativeAppNotificationService? _nativeNotificationService;
@@ -2259,10 +2261,32 @@ public partial class App : Application
             return false;
         }
 
-        return await WidgetManager.ShowWidgetAsync(
+        bool shown = await WidgetManager.ShowWidgetAsync(
             firstFileWidget.Id,
-            reveal: true,
+            reveal: false,
             autoRestoreOnReveal: false);
+        if (!shown)
+        {
+            return false;
+        }
+
+        _onboardingRaisedFileWidgetId = firstFileWidget.Id;
+        WidgetManager.SetWidgetOnboardingTopMost(
+            firstFileWidget.Id,
+            isTopMost: true);
+        return true;
+    }
+
+    internal void ReleaseOnboardingFileWidgetRaise()
+    {
+        string? widgetId = _onboardingRaisedFileWidgetId;
+        _onboardingRaisedFileWidgetId = null;
+        if (widgetId is not null)
+        {
+            WidgetManager?.SetWidgetOnboardingTopMost(
+                widgetId,
+                isTopMost: false);
+        }
     }
 
     internal bool HasVisibleWidgetsForOnboarding =>

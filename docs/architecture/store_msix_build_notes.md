@@ -73,5 +73,5 @@ Direct 构建继续使用：
 
 1. 运行 Windows App Certification Kit。
 2. 实测文件拖拽、托盘、开机自启、系统音量、多屏/DPI。
-3. 根据 Microsoft Store 政策确认关于页捐赠二维码是否隐藏或替换为官网说明。
-4. 确认包内没有 `DeskBox.Updater.*`、`donation-*` 或 `store-assets-html/` 这类非 Store 包资源。
+3. 确认关于页不显示跳转 Microsoft Store 的支持入口。
+4. 确认包内没有 `DeskBox.Updater.*`、支付二维码或 `store-assets-html/` 这类非 Store 包资源。
