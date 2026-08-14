@@ -1,3 +1,4 @@
+using DeskBox.Controls;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -22,7 +23,7 @@ public sealed partial class SettingsWindow : Window
 {
     private sealed record FeatureWidgetRowElements(
         Border Container,
-        FontIcon Icon,
+        WidgetTitleIcon Icon,
         TextBlock Title,
         TextBlock Description,
         Button? SettingsButton,

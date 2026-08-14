@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.4.2-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)
+[![最新版本](https://img.shields.io/badge/release-1.4.1-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,12 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-DeskBox 1.4.2 已发布到 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)。
+当前线上稳定版为 DeskBox 1.4.1，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1) 下载。
 
-- [DeskBox 1.4.2 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.4.2 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.4.1 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.4.1 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+
+> DeskBox 1.4.2 仍在开发中，尚未作为正式版本发布。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -102,16 +104,18 @@ DeskBox 1.4.2 已发布到 [GitHub Releases](https://github.com/Tianyu199509/Des
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.4.2 更新亮点
+## 1.4.2 待发布更新
 
-- **待办勾选不再错位。** 完成状态按实际任务同步，自定义排序、筛选和列表容器复用时不会误勾其他任务；在“已完成”中取消勾选只移出当前任务。
-- **随记图片与附件更直观。** 剪贴板图片在列表和详情中直接显示缩略图，复制时写回图片本身；随记与待办共用横向附件方块，可显示图片缩略图或文件图标，并支持悬浮删除。
-- **音乐控制更接近 Windows。** 播放、暂停、上一首和下一首改为统一尺寸的面性图标，封面模式控制条、歌曲信息和悬浮质感同步调整。
-- **格子组连续滚动更顺手。** 移除会吞掉快速输入的双重时间限制，保留触控板步长合并、最终目标优先和首尾循环，持续向下滚动可循环切换。
-- **新手引导更快进入实际操作。** 缩短后的流程先带用户新建文件格子、认识托盘操作并体验全局显示与隐藏，最后再选择需要的功能格子；功能开关立即生效，并与设置保持同步。
-- **界面与运行可靠性继续收紧。** 补齐随记/固定空状态、固定页直接新增、浅深色拖动手势条、Markdown 图片与复杂内容显示，以及搜索索引和桌面层级的内存安全保护。
+- **格子动画更顺滑。** 优化展开、收起、尺寸变化和组内快速切换，减少连续操作时的卡顿、动画中断和重复反馈。
+- **待办勾选更可靠。** 自定义排序和筛选时，勾选始终对应实际任务；在“已完成”中取消勾选只会移出当前任务。
+- **待办与随记更直观。** 剪贴板图片直接显示缩略图并按图片复制，附件改为可横向滚动的方块，图片显示预览，文件显示图标，悬浮即可删除。
+- **音乐控制更接近 Windows。** 播放、暂停、上一首和下一首使用统一尺寸的面性图标，封面模式采用更清楚的单行磨砂控制条。
+- **格子组滚动更稳定。** 一次有效滚轮输入只切换一个格子并播放一次背景提示，同时保留首尾循环，持续滚动可以连续切换。
+- **首次使用更容易理解。** 待办与随记可自动加入本地化示例内容，重置数据后也会恢复说明；新手引导放慢 Logo 过渡并精简操作流程。
+- **Markdown 阅读与编辑更清晰。** 浅色和深色主题下都能保持合适的正文与强调色，表格、代码、链接、任务列表和粘贴图片显示更加稳定。
+- **界面细节更统一。** 补齐空状态、详情头部磨砂背景、底部操作区、功能格子彩色图标、设置间距和搜索结果刷新等细节。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.2 发布说明](docs/releases/v1.4.2.md)。
+完整内容见 [待发布更新日志](CHANGELOG.md) 和 [1.4.2 预览说明](docs/releases/v1.4.2.md)。
 
 ## 当前界面
 

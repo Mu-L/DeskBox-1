@@ -624,6 +624,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _layoutDensityScale, NormalizeDensity(value)))
             {
                 OnPropertyChanged(nameof(RootPadding));
+                OnPropertyChanged(nameof(DetailPageMargin));
                 OnPropertyChanged(nameof(RootRowSpacing));
                 OnPropertyChanged(nameof(ItemMinHeight));
                 OnPropertyChanged(nameof(ItemPadding));
@@ -661,6 +662,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     public Thickness InputPadding => WidgetInputMetrics.Create(TextSize).Padding;
 
     public Thickness RootPadding => UniformThickness(Lerp(6, 10, LayoutDensityScale));
+
+    public Thickness DetailPageMargin => new(0, 6 - RootPadding.Top, 0, 0);
 
     public double RootRowSpacing => Math.Round(Lerp(5, 10, LayoutDensityScale));
 

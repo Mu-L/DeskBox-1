@@ -1,76 +1,78 @@
 # Changelog
 
-## 1.4.2 - 2026-08-13
+## 1.4.2 - Unreleased
 
 ### English
 
-#### Todo and Quick Capture correctness
+#### Todo and Quick Capture
 
-- Todo completion updates now follow the changed task rather than a recycled list container. Custom sorting and filtering no longer redirect a checkmark, and unchecking from Completed removes only the changed task without resetting the rest of the list.
-- The Todo detail header removes the duplicate completion action. Single-pane detail uses a back arrow, the title editor receives the full width, and important, favorite, copy, and delete actions use more consistent spacing and visual states.
-- Quick Capture clipboard images now persist a ready thumbnail for list and detail views. Copying an image-only clipboard record writes bitmap content back to Windows instead of copying its managed file path.
-- Todo and Quick Capture now share equal-size, horizontally scrollable attachment tiles. Image files show thumbnails, other files show a file icon, and each tile reveals its remove action on hover.
-- Records and Pinned retain their empty state after repeated tab switches. Pinned includes the same add card as Records and creates pinned content directly when used from that view.
-- Todo and Quick Capture title icons, action colors, neutral checkboxes, and compact header controls now share a more consistent visual scale and palette.
-- Moving from a newly created Quick Capture note to another record now saves meaningful draft content first. An empty draft never traps selection or creates an empty record.
-- Newly created Todo and Quick Capture widgets can include editable, localized example content. It is normal user data that can be changed or deleted at any time.
+- Todo checkmarks stay with the intended task under custom sorting and filtering. Unchecking an item in Completed removes only that task without clearing the next row's checkmark.
+- Single-pane Todo detail now uses a clear back arrow and removes the duplicate completion control. Header actions use consistent spacing and a compact frosted surface.
+- Clipboard images in Quick Capture show thumbnails in both list and detail views. Copying an image record writes the image itself back to Windows instead of a local path.
+- Todo and Quick Capture share equal-size attachment tiles. Images show thumbnails, other files show file icons, and the horizontal strip reveals a remove button on hover.
+- Records and Pinned keep their empty states after repeated tab changes. Pinned has its own add card and creates pinned content directly.
+- Meaningful Quick Capture drafts are saved before switching records, while an empty draft no longer blocks navigation or creates a blank entry.
+- Newly created Todo and Quick Capture widgets include editable localized guides. Resetting either feature restores its guide so the main functions remain easy to discover.
+- Markdown tables, code, links, task lists, emphasis, and pasted images render more consistently. Text and semantic accent colors remain readable in both light and dark themes.
 
-#### Music and native interface polish
+#### Music and interface polish
 
-- Music transport controls use filled vector shapes modeled on the Windows media controls. Play, pause, previous, and next share one responsive button size while repeat and volume remain compact auxiliary controls.
-- Cover mode uses a taller frosted control strip, left-aligned song information, theme-neutral material, and a tighter single-line layout; record and control layouts receive matching spacing and hover refinements.
-- The floating search window's drag handle now uses an opaque theme-aware color in both light and dark modes, avoiding visual overlap through translucent layers.
+- Music transport controls use filled Windows-style icons. Play, pause, previous, and next share one responsive size, while repeat and volume remain compact auxiliary controls.
+- Cover mode uses a taller frosted control strip with left-aligned song information and a tighter single-line layout. Record and control modes receive matching spacing and hover treatment.
+- Todo, Quick Capture, onboarding, desktop organization, and release notes use clearer frosted action surfaces with more consistent margins and compact controls.
+- The floating search window's drag handle uses an opaque light or dark color, avoiding the visible center overlap caused by translucent layers.
+- Feature-widget settings use the same colorful icons as widget title bars, with card spacing aligned to the rest of Settings. Several unclear settings descriptions are shorter and more direct.
 
-#### Markdown, images, and content safety
+#### Widget groups and animation
 
-- Markdown reading and editing improve responsive toolbar sizing, tables, code blocks, links, task content, image layout reservation, and source-preserving edits.
-- Inline data images are extracted into managed attachments before text limits are applied. Oversized new and legacy bodies are bounded without altering their saved preview semantics, and legacy inline images are migrated once.
-- Direct Todo and Quick Capture deletion paths are simplified, and list/detail action feedback now reports the specific operation that completed or failed.
-- Markdown reading now resolves a readable foreground for its active theme and keeps semantic accents at a usable contrast on light widget materials.
+- Expanding, collapsing, and resizing widgets release interrupted animation work more reliably, making repeated compact-mode operations feel smoother.
+- Group wheel navigation no longer stalls during rapid input or jumps two members from one effective step. One switch produces one background highlight instead of repeated flashing.
+- First-to-last circular navigation remains available, so continuous wheel movement can keep cycling through the group.
+- Newer navigation requests replace unfinished older ones without rolling back an already visible member. Collapsed groups also show a compact position indicator.
+- Widgets recover their desktop position more reliably after interaction, display changes, or Win+D, reducing unexpected overlap above other applications.
 
-#### Groups, search, and lifecycle reliability
+#### Onboarding, search, and smaller details
 
-- Widget-group wheel switching removes the stacked 220 ms and 700 ms time gates that could make rapid input appear frozen. Precision deltas still accumulate into deliberate steps, visual feedback runs only for an effective step, newer targets cancel unfinished older work, and first/last circular navigation remains available.
-- Search indexing uses a bounded change buffer, keeps full-volume USN indexing behind explicit internal opt-in, delays reconciliation outside the startup window, and avoids forced cleanup churn during content updates.
-- Background search refreshes reconcile result rows without resetting unchanged instances, preserving realized rows, selection visuals, and resolved icons.
-- Collapsed widget groups show a compact position rail without changing the expanded title layout. The floating title drag grip retains its collapse animation while eliminating the center seam, and weekly forecast temperatures share the day-label type scale.
-- Desktop-layer restoration is generation-safe and limited to DeskBox peers, while collapse, resize, and compact animation paths release stale work more reliably.
-- Application, package manifest, x64 installer, and ARM64 installer versions are aligned on 1.4.2 / 1.4.2.0.
+- The opening logo animation is slower and fades smoothly into the first onboarding step without shrinking toward the corner. The product message stays visible long enough to read.
+- Onboarding moves through the main actions more directly and keeps feature-widget choices synchronized with Settings.
+- Background search refreshes retain unchanged rows, selection, and resolved icons, reducing visible rebuilding and flicker.
+- Weekly high and low temperatures use the same visual scale as their day labels, and several empty, hover, and compact states now follow one consistent style.
 
 ### 中文
 
-#### 待办与随记正确性
+#### 待办与随记
 
-- 待办完成状态改为跟随实际变化的任务，不再依赖可能被复用的列表容器。自定义排序和筛选时不会误勾其他任务；在“已完成”中取消勾选只移出当前任务，不重置后续列表。
-- 待办详情头部移除重复勾选操作。单列详情使用返回箭头，标题编辑区获得完整宽度，重要、收藏、复制和删除等操作的间距与视觉状态更加一致。
-- 随记剪贴板图片会保存可直接使用的缩略图，并在列表和详情中展示。复制纯图片记录时会把图片本身写回 Windows 剪贴板，不再复制 DeskBox 管理文件的路径。
-- 待办与随记共用等尺寸、可横向滚动的附件方块。图片显示缩略图，其他文件显示文件图标，鼠标移入后展示删除操作。
-- “随记”和“固定”在反复切换标签后都会保留正确空状态；固定页补齐新增卡片，从该页创建的内容默认直接固定。
-- 待办与随记的标题图标、操作颜色、中性勾选框和紧凑头部控件统一视觉尺寸与色彩层级。
-- 从新建随记切换到其他记录时，会先保存有效草稿；空白草稿不会再卡住选择，也不会创建空记录。
-- 首次创建待办或随记格子时，可提供可编辑、可删除的本地化示例内容；它们是普通用户数据，不会在后续被自动重写。
+- 自定义排序和筛选时，待办勾选始终对应实际任务。在“已完成”中取消勾选只会移出当前任务，不会让下一项丢失勾选状态。
+- 待办单列详情使用明确的返回箭头，并移除重复的完成按钮。标题与右侧操作获得更合理的空间，顶部加入紧凑磨砂背景。
+- 随记剪贴板图片会在列表和详情中显示缩略图。复制图片记录时，写回 Windows 剪贴板的是图片本身，不再是本地路径。
+- 待办与随记共用等尺寸附件方块。图片显示缩略图，其他文件显示文件图标，可横向滚动，鼠标移入后出现删除按钮。
+- “随记”和“固定”反复切换后仍会显示正确空状态。固定页加入新增卡片，从这里创建的内容会直接固定。
+- 切换到其他随记前会先保存有效草稿。空白草稿不会阻止切换，也不会产生空记录。
+- 首次创建待办或随记格子时，会加入可编辑、可删除的本地化功能说明。重置数据后也会恢复对应说明。
+- Markdown 表格、代码、链接、任务列表、强调文字和粘贴图片显示更加稳定。浅色与深色主题下的正文和语义色都保持清晰。
 
-#### 音乐与原生界面细节
+#### 音乐与界面细节
 
-- 音乐播放控件改用接近 Windows 媒体控制的面性矢量图标。播放、暂停、上一首和下一首共用响应式尺寸，循环和音量继续保持较小的辅助控件规格。
-- 封面模式采用更高的磨砂控制条、左对齐歌曲信息、中性主题材质和紧凑单行布局；唱片与控制模式同步调整间距、悬浮背景和视觉质感。
-- 悬浮搜索窗口顶部拖动手势条改用适配浅色与深色主题的纯色画刷，避免半透明图层重叠造成中间发灰。
+- 音乐播放控件改用接近 Windows 媒体控制的面性图标。播放、暂停、上一首和下一首使用统一响应式尺寸，循环和音量继续保持较小规格。
+- 封面模式采用更高的磨砂控制条、左对齐歌曲信息和紧凑单行布局。唱片与控制模式同步调整间距和悬浮效果。
+- 待办、随记、新手引导、桌面整理和更新日志的操作区加入更清楚的磨砂层，并统一边距与紧凑控件尺寸。
+- 悬浮搜索窗口顶部拖动手势条改为适配浅色与深色主题的纯色，避免半透明图层重叠造成中间发灰。
+- 功能格子设置改用标题栏同款彩色图标，卡片间距与其他设置页保持一致，多项难以理解的说明也已缩短。
 
-#### Markdown、图片与内容安全
+#### 格子组与动画
 
-- Markdown 阅读和编辑优化响应式工具栏、表格、代码块、链接、任务内容、图片占位高度和保留源文的编辑流程。
-- 内嵌 data 图片会先提取为托管附件，再执行文本长度限制。新旧超长正文都会被安全限制，旧数据中的内嵌图片只迁移一次。
-- 简化待办与随记的直接删除路径，并让列表和详情操作反馈明确指出具体成功或失败的动作。
-- Markdown 阅读器会按当前主题使用可读前景色，并在浅色格子材质上保持语义强调色的足够对比度。
+- 优化格子展开、收起和尺寸变化时的动画衔接，连续操作时更少出现卡顿、中断或残留动画。
+- 格子组快速滚动不再出现切不动或一次跳过两个成员的情况。一次有效滚轮输入只切换一个格子，并只播放一次背景提示。
+- 保留首尾循环，持续向同一方向滚动可以一直循环切换格子组成员。
+- 新的切换请求会接替尚未完成的旧请求，不会把已经显示的成员切回去。收起后的格子组还会显示简洁的位置指示。
+- 操作格子、切换显示器或按下 Win+D 后，格子会更可靠地回到正确桌面层级，减少意外压在其他窗口上方的情况。
 
-#### 格子组、搜索与生命周期可靠性
+#### 新手引导、搜索与其他细节
 
-- 格子组滚轮切换移除叠加的 220 ms 与 700 ms 时间限制，解决快速输入看起来“切不动”的问题。触控板细碎增量仍会合并为有效步长，动画只在真正切换时触发，新目标会取消未完成旧工作，并保留首尾循环。
-- 搜索索引加入有界变化缓冲；全卷 USN 索引仅在内部明确启用时运行；索引协调延后到启动窗口之外，内容更新不再反复触发强制内存回收。
-- 搜索后台刷新会以细粒度方式对齐结果列表，保留未变化结果行、选择状态和已解析图标，减少闪动与重建。
-- 收起的格子组会展示紧凑的位置指示，不影响展开时标题布局；悬浮标题拖动横条保留收起动画并消除中间接缝；天气周视图高低温字号与日期标签统一。
-- 桌面层恢复使用代次保护并只调整 DeskBox 同级窗口；收起、尺寸调整和紧凑动画会更可靠地释放过期工作。
-- 应用、应用包清单、x64 安装器和 ARM64 安装器版本统一为 1.4.2 / 1.4.2.0。
+- 开场 Logo 动画放慢，并通过渐隐平滑进入第一步，不再向左上角缩小。产品说明会停留足够时间，方便用户读完。
+- 新手引导更直接地介绍主要操作，功能格子开关会立即生效，并与设置页保持同步。
+- 搜索结果后台刷新时会保留未变化的结果、选择状态和图标，减少列表重建与闪烁。
+- 天气周视图的高低温与日期标签使用统一视觉比例，多处空状态、悬浮状态和紧凑控件也完成统一。
 
 ## 1.4.1 - 2026-08-12
 

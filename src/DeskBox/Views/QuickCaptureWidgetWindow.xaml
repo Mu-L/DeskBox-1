@@ -719,12 +719,21 @@
                 <Border
                     x:Name="DetailHeader"
                     Grid.Row="0"
-                    MinHeight="36"
+                    MinHeight="40"
                     Padding="4,2"
                     Background="Transparent"
                     BorderBrush="Transparent"
                     BorderThickness="0">
-                    <Grid MinHeight="30" ColumnSpacing="2">
+                    <Grid>
+                        <Border
+                            x:Name="DetailHeaderAcrylicSurface"
+                            Background="{ThemeResource SystemControlAcrylicElementBrush}"
+                            BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            IsHitTestVisible="False"
+                            Opacity="0.42" />
+                        <Grid MinHeight="36" Padding="2,0" ColumnSpacing="2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="28" />
                             <ColumnDefinition Width="*" />
@@ -742,12 +751,7 @@
                             VerticalAlignment="Center">
                             <FontIcon
                                 FontSize="{StaticResource QuickCaptureDetailActionIconSize}"
-                                Glyph="&#xE73E;"
-                                RenderTransformOrigin="0.5,0.5">
-                                <FontIcon.RenderTransform>
-                                    <ScaleTransform ScaleX="1.3" ScaleY="1.3" />
-                                </FontIcon.RenderTransform>
-                            </FontIcon>
+                                Glyph="&#xE73E;" />
                         </Button>
                         <TextBox
                             x:Name="DetailTitleTextBox"
@@ -815,6 +819,7 @@
                             VerticalAlignment="Center">
                             <FontIcon FontSize="{StaticResource QuickCaptureDetailActionIconSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74D;" />
                         </Button>
+                        </Grid>
                     </Grid>
                 </Border>
 

@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.4.2-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)
+[![Latest release](https://img.shields.io/badge/release-1.4.1-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,12 @@ The six newer language packs prioritize the main file-widget and onboarding flow
 
 ## Download
 
-DeskBox 1.4.2 is available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2):
+The current stable release is DeskBox 1.4.1, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1).
 
-- [DeskBox 1.4.2 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_x64.exe) — most Intel and AMD PCs.
-- [DeskBox 1.4.2 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_arm64.exe) — Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.4.1 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_x64.exe), for most Intel and AMD PCs.
+- [DeskBox 1.4.1 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_arm64.exe), for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+
+> DeskBox 1.4.2 is still in development and has not been published as a release.
 
 The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
@@ -102,16 +104,18 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
 - Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
-## What is new in 1.4.2
+## Coming in 1.4.2
 
-- **Todo completion stays attached to the correct task:** custom sorting, filtering, and recycled list containers no longer redirect a checkmark to another row. Unchecking a task in Completed removes only that task.
-- **Quick Capture images and attachments are easier to recognize:** clipboard images render as thumbnails in both panes and copy back as bitmap data. Todo and Quick Capture share a horizontally scrollable attachment tile strip with image thumbnails, file icons, and hover removal.
-- **Music controls look and size like native Windows transport buttons:** play, pause, previous, and next use filled shapes at one responsive size, alongside a refined cover-mode control bar and song layout.
-- **Widget-group wheel switching remains responsive under rapid input:** the two time-based input blockers are gone, while precision-delta accumulation, latest-target cancellation, and circular first/last navigation remain intact.
-- **Onboarding gets to the first useful action sooner:** the shorter guided flow demonstrates creating a file widget, tray controls, and global show/hide before offering optional feature widgets. Feature switches apply immediately and stay synchronized with Settings.
-- **Interface and runtime polish continues:** Records and Pinned keep consistent empty states, Pinned can create pinned content directly, the floating drag handle has solid light/dark colors, Markdown rendering is more robust, and search indexing and desktop-layer restoration use tighter memory and lifecycle safeguards.
+- **Smoother widget motion.** Expanding, collapsing, resizing, and rapidly switching grouped widgets are more responsive, with fewer interrupted or repeated visual effects.
+- **Reliable Todo completion.** Checkmarks stay with the intended task under custom sorting and filtering. Unchecking a task in Completed removes only that task.
+- **More visual Todo and Quick Capture workspaces.** Clipboard images show thumbnails and copy back as images. Attachments use scrollable tiles with image previews, file icons, and hover removal.
+- **Windows-style music controls.** Play, pause, previous, and next use matching filled transport icons. Cover mode receives a clearer single-line frosted control bar.
+- **Continuous group navigation.** One effective wheel step changes one member and plays one highlight animation, while first-to-last circular navigation remains available.
+- **Clearer first use.** Todo and Quick Capture can start with localized editable examples, and resetting their data restores those guides. Onboarding uses a calmer logo transition and a more focused flow.
+- **Improved reading and editing.** Markdown colors remain readable in light and dark themes, while tables, code, links, task lists, and pasted images render more consistently.
+- **Refined interface details.** Empty states, detail headers, frosted action areas, feature-widget icons, settings spacing, search-result refreshes, and several compact controls are more consistent.
 
-Read the full [changelog](CHANGELOG.md) or the [1.4.2 release notes](docs/releases/v1.4.2.md).
+Read the complete [unreleased changelog](CHANGELOG.md) or the [1.4.2 preview notes](docs/releases/v1.4.2.md).
 
 ## Current interface
 

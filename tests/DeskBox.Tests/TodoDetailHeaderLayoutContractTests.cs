@@ -14,7 +14,7 @@ public sealed class TodoDetailHeaderLayoutContractTests
 
         Assert.Contains("x:Name=\"DetailHeaderActions\"", xaml, StringComparison.Ordinal);
         Assert.Contains(
-            "x:Name=\"DetailHeaderActions\"\n                            Grid.Column=\"2\"\n                            Margin=\"0,0,8,0\"",
+            "x:Name=\"DetailHeaderActions\"\n                            Grid.Column=\"2\"\n                            HorizontalAlignment=\"Right\"",
             xaml.ReplaceLineEndings("\n"),
             StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"DetailCompletionCheckBox\"", xaml, StringComparison.Ordinal);

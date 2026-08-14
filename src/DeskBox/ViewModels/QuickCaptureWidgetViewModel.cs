@@ -310,6 +310,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
             if (SetProperty(ref _layoutDensityScale, NormalizeDensity(value)))
             {
                 OnPropertyChanged(nameof(RootPadding));
+                OnPropertyChanged(nameof(DetailPageMargin));
                 OnPropertyChanged(nameof(RootRowSpacing));
                 OnPropertyChanged(nameof(ItemPadding));
                 OnPropertyChanged(nameof(ItemMargin));
@@ -352,6 +353,8 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
         DensityMetric(4, 6, 9),
         DensityMetric(4, 6, 9),
         DensityMetric(6, 8, 12));
+
+    public Thickness DetailPageMargin => new(0, 6 - RootPadding.Top, 0, 0);
 
     public double RootRowSpacing => DensityMetric(3, 4, 7);
 

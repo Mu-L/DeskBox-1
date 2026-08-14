@@ -587,6 +587,7 @@
             x:Name="DetailPage"
             Grid.RowSpan="3"
             Grid.Column="2"
+            Margin="{Binding ElementName=RootGrid, Path=DataContext.DetailPageMargin}"
             Canvas.ZIndex="5"
             Background="Transparent"
             DataContext="{Binding SelectedDetailItem}"
@@ -599,13 +600,22 @@
 
             <Border
                 Grid.Row="0"
-                Padding="8,5"
+                Padding="4,2"
                 Background="Transparent"
                 BorderThickness="0">
                 <StackPanel Spacing="3">
-                    <Grid MinHeight="36" ColumnSpacing="4">
+                    <Grid>
+                        <Border
+                            x:Name="DetailHeaderAcrylicSurface"
+                            Background="{ThemeResource SystemControlAcrylicElementBrush}"
+                            BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource WidgetCornerRadiusSmall}"
+                            IsHitTestVisible="False"
+                            Opacity="0.42" />
+                        <Grid MinHeight="36" Padding="2,0" ColumnSpacing="2">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition x:Name="DetailBackColumn" Width="30" />
+                            <ColumnDefinition x:Name="DetailBackColumn" Width="28" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
@@ -631,13 +641,12 @@
                             ToolTipService.ToolTip="{Binding ElementName=RootGrid, Path=DataContext.DetailSaveText}"
                             Visibility="Collapsed">
                             <FontIcon
-                                FontSize="{Binding ElementName=RootGrid, Path=DataContext.SmallIconSize}"
+                                FontSize="{StaticResource TodoDetailActionIconSize}"
                                 Glyph="&#xE73E;" />
                         </Button>
                         <StackPanel
                             x:Name="DetailHeaderActions"
                             Grid.Column="2"
-                            Margin="0,0,8,0"
                             HorizontalAlignment="Right"
                             Orientation="Horizontal"
                             Spacing="2">
@@ -664,6 +673,7 @@
                                     Glyph="&#xE74D;" />
                             </Button>
                         </StackPanel>
+                        </Grid>
                     </Grid>
 
                     <Grid>

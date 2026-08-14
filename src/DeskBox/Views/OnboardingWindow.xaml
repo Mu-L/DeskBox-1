@@ -1426,53 +1426,63 @@
             x:Name="FooterNav"
             Grid.Row="2"
             Opacity="1"
-            Margin="0,24,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+            Margin="0,16,0,0">
+            <Border
+                x:Name="FooterAcrylicSurface"
+                Background="{ThemeResource SystemControlAcrylicElementBrush}"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                IsHitTestVisible="False"
+                Opacity="0.46" />
+            <Grid Padding="16,11">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-            <StackPanel
-                Grid.Column="0"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="12">
-                <TextBlock
-                    x:Name="StepCounterText"
-                    VerticalAlignment="Center"
-                    FontSize="12"
-                    FontWeight="SemiBold"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 <StackPanel
-                    x:Name="ProgressDots"
+                    Grid.Column="0"
+                    HorizontalAlignment="Left"
                     VerticalAlignment="Center"
                     Orientation="Horizontal"
-                    Spacing="6"/>
-            </StackPanel>
+                    Spacing="12">
+                    <TextBlock
+                        x:Name="StepCounterText"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <StackPanel
+                        x:Name="ProgressDots"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="6"/>
+                </StackPanel>
 
-            <StackPanel
-                Grid.Column="1"
-                HorizontalAlignment="Right"
-                Orientation="Horizontal"
-                Spacing="8">
-                <Button
-                    x:Name="SkipButton"
-                    MinWidth="88"
-                    Click="SkipButton_Click"
-                    svc:Localized.Key="Onboarding.Skip"/>
-                <Button
-                    x:Name="BackButton"
-                    MinWidth="88"
-                    Click="BackButton_Click"
-                    svc:Localized.Key="Onboarding.Back"/>
-                <Button
-                    x:Name="NextButton"
-                    MinWidth="96"
-                    Click="NextButton_Click"
-                    Style="{ThemeResource AccentButtonStyle}"
-                    svc:Localized.Key="Onboarding.Next"/>
-            </StackPanel>
+                <StackPanel
+                    Grid.Column="1"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        x:Name="SkipButton"
+                        MinWidth="88"
+                        Click="SkipButton_Click"
+                        svc:Localized.Key="Onboarding.Skip"/>
+                    <Button
+                        x:Name="BackButton"
+                        MinWidth="88"
+                        Click="BackButton_Click"
+                        svc:Localized.Key="Onboarding.Back"/>
+                    <Button
+                        x:Name="NextButton"
+                        MinWidth="96"
+                        Click="NextButton_Click"
+                        Style="{ThemeResource AccentButtonStyle}"
+                        svc:Localized.Key="Onboarding.Next"/>
+                </StackPanel>
+            </Grid>
         </Grid>
 
         <!-- ═════════════ Intro Overlay ═════════════ -->

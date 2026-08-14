@@ -2,7 +2,6 @@ using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace DeskBox.Controls;
 
@@ -145,9 +144,6 @@ public sealed partial class DesktopOrganizationTaskView : UserControl
             app.OrganizerService,
             app.LocalizationService);
     }
-
-    private static Brush ResourceBrush(string key) =>
-        (Brush)Application.Current.Resources[key];
 
     private static string T(string key) => App.Current.LocalizationService.T(key);
 

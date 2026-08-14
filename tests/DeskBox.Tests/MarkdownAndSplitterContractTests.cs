@@ -454,9 +454,10 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("x:Name=\"DetailBodyReaderSurface\"", quickCaptureXaml, StringComparison.Ordinal);
         Assert.Contains("DetailBodyReaderSurface.AddHandler", quickCaptureCode, StringComparison.Ordinal);
         Assert.Contains("handledEventsToo: true", quickCaptureCode, StringComparison.Ordinal);
-        Assert.Contains("Padding=\"4,0,0,0\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Padding=\"4,0,0,0\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"4,0,4,6\"", quickCaptureXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"DetailHeaderActions\"", quickCaptureXaml, StringComparison.Ordinal);
-        Assert.Contains("MinHeight=\"32\"", quickCaptureXaml, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"40\"", quickCaptureXaml, StringComparison.Ordinal);
         Assert.Contains("Margin=\"2,2,2,2\"", quickCaptureXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("DetailHeader_SizeChanged", quickCaptureXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("CompactDetailHeaderWidth", quickCaptureCode, StringComparison.Ordinal);

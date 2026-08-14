@@ -97,7 +97,7 @@ public sealed partial class DesktopOrganizationTaskView
                 var pathText = new TextBlock
                 {
                     Text = item.SourcePath,
-                    Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
+                    Style = (Style)Resources["DesktopOrganizationSecondaryTextStyle"],
                     FontSize = 12,
                     TextTrimming = TextTrimming.CharacterEllipsis
                 };
@@ -133,11 +133,7 @@ public sealed partial class DesktopOrganizationTaskView
         {
             Width = TargetCardWidth,
             Height = TargetCardHeight,
-            Background = ResourceBrush("CardBackgroundFillColorDefaultBrush"),
-            BorderBrush = ResourceBrush("CardStrokeColorDefaultBrush"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(12),
+            Style = (Style)Resources["DesktopOrganizationTargetCardStyle"],
             Tag = target.SourceBucketId
         };
 
@@ -163,7 +159,7 @@ public sealed partial class DesktopOrganizationTaskView
         {
             Text = Format("DesktopOrganization.Preview.ItemCount", target.Items.Count),
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
+            Style = (Style)Resources["DesktopOrganizationSecondaryTextStyle"],
             FontSize = 12
         };
         Grid.SetColumn(count, 1);
@@ -186,7 +182,7 @@ public sealed partial class DesktopOrganizationTaskView
         var destinationPath = new TextBlock
         {
             Text = target.TargetDirectoryPath,
-            Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
+            Style = (Style)Resources["DesktopOrganizationSecondaryTextStyle"],
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
@@ -402,7 +398,7 @@ public sealed partial class DesktopOrganizationTaskView
             grid.Children.Add(new TextBlock
             {
                 Text = App.Current.LocalizationService.T("DesktopOrganization.Preview.NoItems"),
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                Style = (Style)Resources["DesktopOrganizationSecondaryTextStyle"],
                 TextWrapping = TextWrapping.Wrap
             });
         }
@@ -461,7 +457,6 @@ public sealed partial class DesktopOrganizationTaskView
         // Keep selection calm and Fluent-like. The checkbox carries the
         // accent state; the card itself uses the neutral stroke so a row of
         // selected cards does not become a wall of orange outlines.
-        card.BorderBrush = ResourceBrush("CardStrokeColorDefaultBrush");
     }
 
     private void UpdateSummary(DesktopOrganizationPlan? plan)

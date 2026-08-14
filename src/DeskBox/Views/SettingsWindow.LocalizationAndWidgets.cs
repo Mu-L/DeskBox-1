@@ -1,3 +1,4 @@
+using DeskBox.Controls;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -160,44 +161,55 @@ public sealed partial class SettingsWindow
 
         var root = new Grid
         {
-            MinHeight = 70
+            MinHeight = 64,
+            Margin = new Thickness(4),
+            ColumnSpacing = 12
         };
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var identity = new Grid
+        {
+            ColumnSpacing = 12
+        };
+        identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         Button? settingsButton = null;
         if (entry.HasSettingsPage && !string.IsNullOrWhiteSpace(entry.SettingsSectionTag))
         {
             settingsButton = new Button
             {
-                Padding = new Thickness(0),
                 Style = (Style)SettingsRoot.Resources["DrillDownRowStyle"],
-                Tag = entry.SettingsSectionTag
+                Tag = entry.SettingsSectionTag,
+                Content = identity
             };
             settingsButton.Click += FeatureWidgetSettingsButton_Click;
+            Grid.SetColumn(settingsButton, 0);
             root.Children.Add(settingsButton);
         }
-
-        var content = new Grid
+        else
         {
-            Padding = new Thickness(12, 10, 10, 10),
-            ColumnSpacing = 10
-        };
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            identity.MinHeight = 64;
+            identity.Padding = new Thickness(16, 10, 16, 10);
+            Grid.SetColumn(identity, 0);
+            root.Children.Add(identity);
+        }
 
-        var icon = new FontIcon
+        var icon = new WidgetTitleIcon
         {
+            IconKind = WidgetTitleIconKindNames.FromWidgetKind(entry.Kind),
+            Mode = WidgetTitleIconModeNames.Color,
+            IconSize = 16,
             Glyph = entry.Glyph,
-            FontSize = 18,
-            FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
-            Foreground = CreateFeatureWidgetIconBrush(),
+            LabelText = entry.Title,
             IsHitTestVisible = false,
             VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(icon, 0);
-        content.Children.Add(icon);
+        identity.Children.Add(icon);
 
         var textPanel = new StackPanel
         {
@@ -217,7 +229,7 @@ public sealed partial class SettingsWindow
         };
         textPanel.Children.Add(description);
         Grid.SetColumn(textPanel, 1);
-        content.Children.Add(textPanel);
+        identity.Children.Add(textPanel);
 
         Button? resetButton = null;
         if (FeatureWidgetSettings.IsFeatureWidget(entry.Kind))
@@ -240,8 +252,8 @@ public sealed partial class SettingsWindow
             ToolTipService.SetToolTip(resetButton, _localizationService.T("Settings.FeatureWidgets.ResetTooltip"));
             resetButton.Click += FeatureWidgetResetButton_Click;
             Canvas.SetZIndex(resetButton, 2);
-            Grid.SetColumn(resetButton, 2);
-            content.Children.Add(resetButton);
+            Grid.SetColumn(resetButton, 1);
+            root.Children.Add(resetButton);
         }
 
         ToggleSwitch? toggle = null;
@@ -259,8 +271,8 @@ public sealed partial class SettingsWindow
             ClearToggleSwitchContent(toggle);
             toggle.Toggled += FeatureWidgetToggle_Toggled;
             Canvas.SetZIndex(toggle, 2);
-            Grid.SetColumn(toggle, 3);
-            content.Children.Add(toggle);
+            Grid.SetColumn(toggle, 2);
+            root.Children.Add(toggle);
         }
 
         FontIcon? arrow = null;
@@ -273,14 +285,12 @@ public sealed partial class SettingsWindow
                 FontSize = 12,
                 FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
                 Glyph = "\uE974",
-                Foreground = CreateFeatureWidgetIconBrush(),
-                Margin = new Thickness(0, 0, -4, 0)
+                Foreground = CreateFeatureWidgetIconBrush()
             };
-            Grid.SetColumn(arrow, 4);
-            content.Children.Add(arrow);
+            Grid.SetColumn(arrow, 3);
+            root.Children.Add(arrow);
         }
 
-        root.Children.Add(content);
         border.Child = root;
         return new FeatureWidgetRowElements(
             border,
@@ -299,8 +309,11 @@ public sealed partial class SettingsWindow
     private void UpdateFeatureWidgetRow(FeatureWidgetRowElements row, FeatureWidgetEntry entry)
     {
         Brush iconBrush = CreateFeatureWidgetIconBrush();
+        row.Icon.IconKind = WidgetTitleIconKindNames.FromWidgetKind(entry.Kind);
+        row.Icon.Mode = WidgetTitleIconModeNames.Color;
+        row.Icon.IconSize = 16;
         row.Icon.Glyph = entry.Glyph;
-        row.Icon.Foreground = iconBrush;
+        row.Icon.LabelText = entry.Title;
         row.Title.Text = entry.Title;
         row.Description.Text = entry.DisplayDescription;
 

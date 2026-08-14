@@ -173,7 +173,28 @@ public sealed class SettingsCopyAndHierarchyTests
             ["Settings.QuickCapture.Format.Description"] = "选择随记编辑器使用 Markdown 或纯文本",
             ["Settings.Accent.Source.Title"] = "主题色来源",
             ["Settings.OpenMethod.Title"] = "打开方式",
-            ["Settings.ShowDesktopBehavior.Title"] = "显示桌面时",
+            ["Settings.ShowDesktopBehavior.Title"] = "按 Win+D 后",
+            ["Settings.WidgetLayerMode.Title"] = "格子层级",
+            ["Settings.WidgetLayerMode.Dynamic"] = "动态层级",
+            ["Settings.WidgetLayerMode.DesktopPinned"] = "桌面固定层",
+            ["Settings.AttachmentStorageMode.Title"] = "附件保存方式",
+            ["Settings.ShowImageFilesAsIcons.Title"] = "图片和视频只显示图标",
+            ["Settings.Capsule.WidthMode.Title"] = "展开后的宽度",
+            ["Settings.Capsule.WidthMode.Aligned"] = "沿用胶囊宽度",
+            ["Settings.Capsule.WidthMode.Independent"] = "使用格子宽度",
+            ["Settings.ManagedStorage.ListTitle"] = "已关闭格子的收纳文件夹",
+            ["Settings.AttachmentHealth.Title"] = "检查附件",
+            ["Settings.RuntimeHealth.Title"] = "后台服务状态",
+            ["Settings.RuntimeHealth.Resync"] = "重新同步",
+            ["Settings.DataBackup.Description"] = "备份设置、格子、随记、待办和附件副本，不含文件格子中的文件",
+            ["Settings.Restore.Description"] = "恢复默认设置，保留语言、开机启动、格子开关和已有内容",
+            ["Settings.Restore.Tooltip"] = "恢复默认设置，不会删除已有内容",
+            ["Settings.Todo.Group.FooterActions.Title"] = "底部栏",
+            ["Settings.Todo.Group.FooterActions.Description"] = "选择底部显示的剩余任务数量和清除已完成按钮",
+            ["Settings.Todo.FooterDisplay.Title"] = "显示内容",
+            ["Settings.Todo.ShowFooterStats.Title"] = "剩余任务数量",
+            ["Settings.Todo.ShowClearCompleted.Title"] = "清除已完成按钮",
+            ["Settings.Onboarding.Description"] = "重新查看格子创建、文件收纳、功能格子、外观和快捷键说明",
             ["Settings.Weather.LocationMode.Title"] = "位置来源",
             ["Settings.FileStacks.Mode.Title"] = "自动归组",
             ["Settings.HoverButtonActions.None"] = "不显示"
@@ -209,6 +230,27 @@ public sealed class SettingsCopyAndHierarchyTests
             "controls:SettingsComboBox.Value=\"{Binding SelectedWidgetTitleIconMode, Mode=TwoWay}\"",
             appearanceXaml,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FeatureWidgetOverview_UsesColorTitleIconsAndStandardCardSpacing()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.LocalizationAndWidgets.cs"));
+
+        Assert.Contains("new WidgetTitleIcon", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "IconKind = WidgetTitleIconKindNames.FromWidgetKind(entry.Kind)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("Mode = WidgetTitleIconModeNames.Color", source, StringComparison.Ordinal);
+        Assert.Contains("IconSize = 16", source, StringComparison.Ordinal);
+        Assert.Contains("Margin = new Thickness(4)", source, StringComparison.Ordinal);
+        Assert.Contains("ColumnSpacing = 12", source, StringComparison.Ordinal);
+        Assert.Contains("identity.Padding = new Thickness(16, 10, 16, 10)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("var icon = new FontIcon", source, StringComparison.Ordinal);
     }
 
     [Fact]
