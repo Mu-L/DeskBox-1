@@ -108,4 +108,29 @@ public sealed class QuickCaptureSettingsRuntimeContractTests
         Assert.Contains("QuickCaptureEditorEnterBehavior", standaloneEdit, StringComparison.Ordinal);
         Assert.Contains("SettingsService.ShouldSubmitEditorOnEnter", standaloneEdit, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void NewNoteDraft_DoesNotBlockSelectingAnotherNote()
+    {
+        string code = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"))
+            .ReplaceLineEndings("\n");
+
+        Assert.Contains(
+            "if (_isCreatingDetail && !HasNewDetailContent())\n        {\n            // A blank draft has nothing to preserve.",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await SaveDetailAsync(completeEditing: false);",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "private bool HasNewDetailContent() =>",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await FlushPendingDetailSaveAsync();\n        if (_detailHasUnsavedChanges)\n        {\n            return;\n        }\n\n        OpenDetail(item);",
+            code,
+            StringComparison.Ordinal);
+    }
 }

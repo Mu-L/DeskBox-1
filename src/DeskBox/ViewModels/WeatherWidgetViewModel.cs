@@ -390,6 +390,8 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
                 OnPropertyChanged(nameof(ForecastHourTextSize));
                 OnPropertyChanged(nameof(ForecastTempTextSize));
                 OnPropertyChanged(nameof(WeekDayLabelTextSize));
+                OnPropertyChanged(nameof(WeekTempMaxSize));
+                OnPropertyChanged(nameof(WeekTempMinSize));
             }
         }
     }
@@ -411,8 +413,8 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     public double ForecastTempTextSize => Math.Max(10, TextSize - 1);
     public double WeekDayLabelTextSize => Math.Max(11, TextSize - 1);
     public double WeekEmojiSize => _layoutMode == "Expanded" ? 18 : 16;
-    public double WeekTempMaxSize => _layoutMode == "Expanded" ? 15 : 13;
-    public double WeekTempMinSize => _layoutMode == "Expanded" ? 12 : 11;
+    public double WeekTempMaxSize => WeekDayLabelTextSize;
+    public double WeekTempMinSize => WeekDayLabelTextSize;
     public double HourlyCardWidth => 52;
 
     // Mini layout supplementary info — multiple chips for richer display

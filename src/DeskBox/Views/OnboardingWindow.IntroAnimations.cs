@@ -18,7 +18,7 @@ namespace DeskBox.Views;
 
 public sealed partial class OnboardingWindow
 {
-    private const int IntroAnimationTargetMilliseconds = 900;
+    private const int IntroAnimationTargetMilliseconds = 3720;
 
     private void PrepareIntroContent()
     {
@@ -100,33 +100,42 @@ public sealed partial class OnboardingWindow
         UIElement middleLayer,
         UIElement frontLayer)
     {
-        await AnimateIntroLayerAsync(introGeneration, backLayer, -36, -18, 0, 0, 0.9, 1, 90);
-        await Task.Delay(10);
+        await AnimateIntroLayerAsync(introGeneration, backLayer, -36, -18, 0, 0, 0.9, 1, 340);
+        await Task.Delay(60);
         if (introGeneration != _introGeneration) return;
-        await AnimateIntroLayerAsync(introGeneration, middleLayer, -14, -8, 0, 0, 0.93, 1, 80);
-        await Task.Delay(10);
+        await AnimateIntroLayerAsync(introGeneration, middleLayer, -14, -8, 0, 0, 0.93, 1, 320);
+        await Task.Delay(60);
         if (introGeneration != _introGeneration) return;
-        await AnimateIntroLayerAsync(introGeneration, frontLayer, 28, 18, 0, 0, 0.95, 1, 80);
-        if (introGeneration != _introGeneration) return;
-
-        await AnimateIntroElementAsync(introGeneration, IntroTitleText, 0, 1, 0, 0, 8, 0, 1, 1, 80);
-        await AnimateIntroElementAsync(introGeneration, IntroBodyText, 0, 1, 0, 0, 8, 0, 1, 1, 70);
-        await Task.Delay(180);
+        await AnimateIntroLayerAsync(introGeneration, frontLayer, 28, 18, 0, 0, 0.95, 1, 320);
         if (introGeneration != _introGeneration) return;
 
-        _ = AnimateIntroElementAsync(introGeneration, IntroTitleText, 1, 0, 0, 0, 0, -6, 1, 0.98, 70);
-        _ = AnimateIntroElementAsync(introGeneration, IntroBodyText, 1, 0, 0, 0, 0, -6, 1, 0.98, 70);
-        _ = AnimateIntroElementAsync(introGeneration, StepContainer, 0, 1, 0, 0, 8, 0, 0.995, 1, 150);
-        _ = AnimateIntroElementAsync(introGeneration, FooterNav, 0, 1, 0, 0, 8, 0, 1, 1, 140);
-        _ = AnimateIntroElementAsync(introGeneration, BrandLogoHost, 0, 1, 0, 0, 0, 0, 1, 1, 120);
-        var target = GetIntroMarkTargetTransform();
-        await AnimateIntroElementAsync(
-            introGeneration,
-            IntroMarkHost,
-            1, 0.98, 0, target.TranslateX, 0, target.TranslateY, 1, target.Scale, 180);
+        await AnimateIntroElementAsync(introGeneration, IntroTitleText, 0, 1, 0, 0, 8, 0, 1, 1, 220);
+        await AnimateIntroElementAsync(introGeneration, IntroBodyText, 0, 1, 0, 0, 8, 0, 1, 1, 200);
+        await Task.Delay(1500);
         if (introGeneration != _introGeneration) return;
 
-        await AnimateIntroElementAsync(introGeneration, IntroOverlay, 1, 0, 0, 0, 0, 0, 1, 1, 100);
+        Task titleFade = AnimateIntroElementAsync(
+            introGeneration, IntroTitleText, 1, 0, 0, 0, 0, 0, 1, 1, 260);
+        Task bodyFade = AnimateIntroElementAsync(
+            introGeneration, IntroBodyText, 1, 0, 0, 0, 0, 0, 1, 1, 240);
+        Task logoFade = AnimateIntroElementAsync(
+            introGeneration, IntroMarkHost, 1, 0, 0, 0, 0, 0, 1, 1, 480);
+        Task stepFadeIn = AnimateIntroElementAsync(
+            introGeneration, StepContainer, 0, 1, 0, 0, 8, 0, 0.995, 1, 420);
+        Task footerFadeIn = AnimateIntroElementAsync(
+            introGeneration, FooterNav, 0, 1, 0, 0, 8, 0, 1, 1, 400);
+        Task brandFadeIn = AnimateIntroElementAsync(
+            introGeneration, BrandLogoHost, 0, 1, 0, 0, 0, 0, 1, 1, 400);
+        await Task.WhenAll(
+            titleFade,
+            bodyFade,
+            logoFade,
+            stepFadeIn,
+            footerFadeIn,
+            brandFadeIn);
+        if (introGeneration != _introGeneration) return;
+
+        await AnimateIntroElementAsync(introGeneration, IntroOverlay, 1, 0, 0, 0, 0, 0, 1, 1, 220);
     }
 
     private Task AnimateIntroLayerAsync(
@@ -238,32 +247,6 @@ public sealed partial class OnboardingWindow
                     fe.Translation = System.Numerics.Vector3.Zero;
                 }
             }
-        }
-    }
-
-    private IntroMarkTarget GetIntroMarkTargetTransform()
-    {
-        try
-        {
-            double introWidth = IntroMarkHost.ActualWidth > 0 ? IntroMarkHost.ActualWidth : IntroMarkHost.Width;
-            double introHeight = IntroMarkHost.ActualHeight > 0 ? IntroMarkHost.ActualHeight : IntroMarkHost.Height;
-            double brandWidth = BrandLogoHost.ActualWidth > 0 ? BrandLogoHost.ActualWidth : BrandLogoHost.Width;
-            double brandHeight = BrandLogoHost.ActualHeight > 0 ? BrandLogoHost.ActualHeight : BrandLogoHost.Height;
-            var introCenter = IntroMarkHost
-                .TransformToVisual(RootGrid)
-                .TransformPoint(new Windows.Foundation.Point(introWidth / 2, introHeight / 2));
-            var brandCenter = BrandLogoHost
-                .TransformToVisual(RootGrid)
-                .TransformPoint(new Windows.Foundation.Point(brandWidth / 2, brandHeight / 2));
-
-            return new IntroMarkTarget(
-                brandCenter.X - introCenter.X,
-                brandCenter.Y - introCenter.Y,
-                Math.Clamp(brandWidth / Math.Max(1, introWidth), 0.18, 0.28));
-        }
-        catch
-        {
-            return new IntroMarkTarget(-304, -172, 0.22);
         }
     }
 

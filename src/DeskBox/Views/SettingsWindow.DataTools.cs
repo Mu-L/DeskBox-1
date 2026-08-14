@@ -68,6 +68,9 @@ public sealed partial class SettingsWindow
         }
 
         await App.Current.QuickCaptureService.ClearAsync();
+        await WidgetFirstRunGuideFactory.EnsureQuickCaptureGuideAsync(
+            App.Current.QuickCaptureService,
+            _localizationService);
         await ViewModel.RefreshQuickCaptureImageCacheInfoAsync();
     }
 

@@ -99,6 +99,17 @@ public sealed class WeatherWidgetViewModelTests
         Assert.Equal("Expanded", layout);
     }
 
+    [Fact]
+    public void WeekForecastTemperatures_UseTheSameTextSizeAsDayLabels()
+    {
+        using WeatherWidgetViewModel viewModel = CreateViewModel();
+
+        viewModel.UpdateAvailableSize(320, 260);
+
+        Assert.Equal(viewModel.WeekDayLabelTextSize, viewModel.WeekTempMaxSize);
+        Assert.Equal(viewModel.WeekDayLabelTextSize, viewModel.WeekTempMinSize);
+    }
+
     [Theory]
     [InlineData(225, 150)]
     [InlineData(230, 154)]

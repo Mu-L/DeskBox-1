@@ -1173,8 +1173,12 @@ public sealed partial class QuickCaptureSurfaceContent :
     private async Task FlushPendingDetailSaveAsync()
     {
         _detailAutoSaveTimer?.Stop();
-        if (_isCreatingDetail)
+        if (_isCreatingDetail && !HasNewDetailContent())
         {
+            // A blank draft has nothing to preserve. Clearing the dirty flag
+            // lets a list click leave the new-note surface immediately.
+            _detailEditRevision = _detailSavedRevision;
+            _detailHasUnsavedChanges = false;
             return;
         }
 
@@ -1183,6 +1187,10 @@ public sealed partial class QuickCaptureSurfaceContent :
             await SaveDetailAsync(completeEditing: false);
         }
     }
+
+    private bool HasNewDetailContent() =>
+        !string.IsNullOrWhiteSpace(DetailMarkdownEditor.Text) ||
+        _pendingDetailAttachments.Count > 0;
 
     private async Task<bool> SaveDetailAsync(bool completeEditing)
     {

@@ -12,6 +12,8 @@
 - Todo and Quick Capture now share equal-size, horizontally scrollable attachment tiles. Image files show thumbnails, other files show a file icon, and each tile reveals its remove action on hover.
 - Records and Pinned retain their empty state after repeated tab switches. Pinned includes the same add card as Records and creates pinned content directly when used from that view.
 - Todo and Quick Capture title icons, action colors, neutral checkboxes, and compact header controls now share a more consistent visual scale and palette.
+- Moving from a newly created Quick Capture note to another record now saves meaningful draft content first. An empty draft never traps selection or creates an empty record.
+- Newly created Todo and Quick Capture widgets can include editable, localized example content. It is normal user data that can be changed or deleted at any time.
 
 #### Music and native interface polish
 
@@ -24,11 +26,14 @@
 - Markdown reading and editing improve responsive toolbar sizing, tables, code blocks, links, task content, image layout reservation, and source-preserving edits.
 - Inline data images are extracted into managed attachments before text limits are applied. Oversized new and legacy bodies are bounded without altering their saved preview semantics, and legacy inline images are migrated once.
 - Direct Todo and Quick Capture deletion paths are simplified, and list/detail action feedback now reports the specific operation that completed or failed.
+- Markdown reading now resolves a readable foreground for its active theme and keeps semantic accents at a usable contrast on light widget materials.
 
 #### Groups, search, and lifecycle reliability
 
 - Widget-group wheel switching removes the stacked 220 ms and 700 ms time gates that could make rapid input appear frozen. Precision deltas still accumulate into deliberate steps, visual feedback runs only for an effective step, newer targets cancel unfinished older work, and first/last circular navigation remains available.
 - Search indexing uses a bounded change buffer, keeps full-volume USN indexing behind explicit internal opt-in, delays reconciliation outside the startup window, and avoids forced cleanup churn during content updates.
+- Background search refreshes reconcile result rows without resetting unchanged instances, preserving realized rows, selection visuals, and resolved icons.
+- Collapsed widget groups show a compact position rail without changing the expanded title layout. The floating title drag grip retains its collapse animation while eliminating the center seam, and weekly forecast temperatures share the day-label type scale.
 - Desktop-layer restoration is generation-safe and limited to DeskBox peers, while collapse, resize, and compact animation paths release stale work more reliably.
 - Application, package manifest, x64 installer, and ARM64 installer versions are aligned on 1.4.2 / 1.4.2.0.
 
@@ -42,6 +47,8 @@
 - 待办与随记共用等尺寸、可横向滚动的附件方块。图片显示缩略图，其他文件显示文件图标，鼠标移入后展示删除操作。
 - “随记”和“固定”在反复切换标签后都会保留正确空状态；固定页补齐新增卡片，从该页创建的内容默认直接固定。
 - 待办与随记的标题图标、操作颜色、中性勾选框和紧凑头部控件统一视觉尺寸与色彩层级。
+- 从新建随记切换到其他记录时，会先保存有效草稿；空白草稿不会再卡住选择，也不会创建空记录。
+- 首次创建待办或随记格子时，可提供可编辑、可删除的本地化示例内容；它们是普通用户数据，不会在后续被自动重写。
 
 #### 音乐与原生界面细节
 
@@ -54,11 +61,14 @@
 - Markdown 阅读和编辑优化响应式工具栏、表格、代码块、链接、任务内容、图片占位高度和保留源文的编辑流程。
 - 内嵌 data 图片会先提取为托管附件，再执行文本长度限制。新旧超长正文都会被安全限制，旧数据中的内嵌图片只迁移一次。
 - 简化待办与随记的直接删除路径，并让列表和详情操作反馈明确指出具体成功或失败的动作。
+- Markdown 阅读器会按当前主题使用可读前景色，并在浅色格子材质上保持语义强调色的足够对比度。
 
 #### 格子组、搜索与生命周期可靠性
 
 - 格子组滚轮切换移除叠加的 220 ms 与 700 ms 时间限制，解决快速输入看起来“切不动”的问题。触控板细碎增量仍会合并为有效步长，动画只在真正切换时触发，新目标会取消未完成旧工作，并保留首尾循环。
 - 搜索索引加入有界变化缓冲；全卷 USN 索引仅在内部明确启用时运行；索引协调延后到启动窗口之外，内容更新不再反复触发强制内存回收。
+- 搜索后台刷新会以细粒度方式对齐结果列表，保留未变化结果行、选择状态和已解析图标，减少闪动与重建。
+- 收起的格子组会展示紧凑的位置指示，不影响展开时标题布局；悬浮标题拖动横条保留收起动画并消除中间接缝；天气周视图高低温字号与日期标签统一。
 - 桌面层恢复使用代次保护并只调整 DeskBox 同级窗口；收起、尺寸调整和紧凑动画会更可靠地释放过期工作。
 - 应用、应用包清单、x64 安装器和 ARM64 安装器版本统一为 1.4.2 / 1.4.2.0。
 

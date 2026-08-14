@@ -27,6 +27,13 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     private long _searchGeneration;
     private bool _isDisposed;
     private const int MaxEnrichedSearchResults = 40;
+    private static readonly TimeSpan IndexRefreshDebounceDelay = TimeSpan.FromSeconds(1);
+
+    private enum SearchRefreshKind
+    {
+        UserQuery,
+        IndexUpdate
+    }
 
     /// <summary>Flat results for the active query, in engine relevance order.</summary>
     private List<SearchResultItem> _allResults = [];
@@ -117,6 +124,13 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     public string DisplayMode => _settingsService.Settings.SearchDisplayMode;
     public string HotkeyHint => GetHotkeyHint();
 
+    /// <summary>
+    /// True only while an index-driven update publishes its final result set. The
+    /// view uses this transient state to avoid replaying the user-search entrance
+    /// animation when background file-system activity changes a query's results.
+    /// </summary>
+    public bool IsApplyingBackgroundResultRefresh { get; private set; }
+
     /// <summary>Public access to recent queries for UI binding.</summary>
     public IReadOnlyList<string> RecentQueries => _historyService.RecentQueries;
 
@@ -160,7 +174,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
 
     partial void OnQueryChanged(string value)
     {
-        _ = SearchAsync(value);
+        _ = SearchAsync(value, SearchRefreshKind.UserQuery);
     }
 
     partial void OnSelectedTabChanged(SearchTabItem? value)
@@ -195,7 +209,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             _indexRefreshCts?.Cancel();
             _indexRefreshCts?.Dispose();
             _indexRefreshCts = new CancellationTokenSource();
-            _ = RefreshAfterIndexUpdateAsync(_indexRefreshCts.Token);
+            _ = RefreshAfterIndexUpdateAsync(Query, _indexRefreshCts.Token);
         }
 
         if (_uiContext is not null)
@@ -208,14 +222,21 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task RefreshAfterIndexUpdateAsync(CancellationToken cancellationToken)
+    private async Task RefreshAfterIndexUpdateAsync(
+        string query,
+        CancellationToken cancellationToken)
     {
         try
         {
-            await Task.Delay(300, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(Query))
+            // File-system watchers can produce bursts for a single user operation.
+            // Wait for a quiet interval, then leave an active user search alone; its
+            // own result set is newer than this background invalidation request.
+            await Task.Delay(IndexRefreshDebounceDelay, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(query) &&
+                string.Equals(query, Query, StringComparison.Ordinal) &&
+                !IsSearching)
             {
-                await SearchAsync(Query);
+                await SearchAsync(query, SearchRefreshKind.IndexUpdate);
             }
         }
         catch (OperationCanceledException)
@@ -401,7 +422,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     /// Performs search with debouncing, then rebuilds the tab bar from the flat
     /// result pool and kicks off lazy metadata enrichment.
     /// </summary>
-    private async Task SearchAsync(string query)
+    private async Task SearchAsync(string query, SearchRefreshKind refreshKind)
     {
         CancelCurrentSearch();
         long generation = Interlocked.Increment(ref _searchGeneration);
@@ -421,12 +442,24 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         var searchCts = new CancellationTokenSource();
         _searchCts = searchCts;
         CancellationToken token = searchCts.Token;
-        _allResults = [];
+        bool preserveVisibleResults = refreshKind == SearchRefreshKind.IndexUpdate &&
+                                      IsQueryActive &&
+                                      HasResults;
+        if (!preserveVisibleResults)
+        {
+            _allResults = [];
+        }
         IsQueryActive = true;
-        HasResults = false;
+        if (!preserveVisibleResults)
+        {
+            HasResults = false;
+        }
         IsSearching = true;
         StatusText = _localizationService.T("Search.Status.Searching");
-        RebuildTabs();
+        if (!preserveVisibleResults)
+        {
+            RebuildTabs();
+        }
 
         try
         {
@@ -441,7 +474,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
                     return;
                 }
 
-                ApplySearchResponse(response, token);
+                ApplySearchResponse(response, token, refreshKind);
             }
         }
         catch (OperationCanceledException)
@@ -464,27 +497,63 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
 
     private void ApplySearchResponse(
         SearchResponse response,
-        CancellationToken token)
+        CancellationToken token,
+        SearchRefreshKind refreshKind)
     {
-        _allResults = response.RankedItems.Count > 0
+        // The immediate staged response is useful for a user-entered query, but a
+        // background refresh should leave the visible snapshot untouched until the
+        // complete provider set is ready.
+        if (refreshKind == SearchRefreshKind.IndexUpdate && !response.IsComplete)
+        {
+            return;
+        }
+
+        List<SearchResultItem> incoming = response.RankedItems.Count > 0
             ? response.RankedItems.ToList()
             : response.Groups.SelectMany(g => g.Items).ToList();
 
         // Stamp each result with a localized type label once (cheap, no I/O).
-        foreach (SearchResultItem item in _allResults)
+        foreach (SearchResultItem item in incoming)
         {
             item.TypeDisplay = GetTypeDisplay(item);
         }
 
+        bool backgroundResultUnchanged = refreshKind == SearchRefreshKind.IndexUpdate &&
+            Services.SearchResultCollectionReconciler.HasSameIdentitySequence(
+                _allResults,
+                incoming);
+
+        if (backgroundResultUnchanged)
+        {
+            // No visual update means no row recycling, selection reset, or entrance
+            // animation while unrelated files are being written elsewhere.
+            return;
+        }
+
+        _allResults = refreshKind == SearchRefreshKind.IndexUpdate
+            ? Services.SearchResultCollectionReconciler.ReuseExistingInstances(
+                _allResults,
+                incoming)
+            : incoming;
+
         IsQueryActive = true;
-        HasResults = _allResults.Count > 0;
-        StatusText = string.Format(
-            _localizationService.T(response.IsComplete
-                ? "Search.Status.Results"
-                : "Search.Status.PartialResults"),
-            response.TotalResultCount,
-            response.Elapsed.TotalMilliseconds);
-        RebuildTabs();
+        IsApplyingBackgroundResultRefresh = refreshKind == SearchRefreshKind.IndexUpdate;
+        try
+        {
+            HasResults = _allResults.Count > 0;
+            StatusText = string.Format(
+                _localizationService.T(response.IsComplete
+                    ? "Search.Status.Results"
+                    : "Search.Status.PartialResults"),
+                response.TotalResultCount,
+                response.Elapsed.TotalMilliseconds);
+            RebuildTabs();
+            RebuildCurrentResults(preserveSelection: true);
+        }
+        finally
+        {
+            IsApplyingBackgroundResultRefresh = false;
+        }
 
         if (response.IsComplete)
         {
@@ -669,7 +738,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         SelectedTab = Tabs.FirstOrDefault(t => t.Id == preferredTabId) ?? Tabs.FirstOrDefault();
         if (SelectedTab is null)
         {
-            CurrentResults.Clear();
+            Services.SearchResultCollectionReconciler.Reconcile(CurrentResults, []);
             HasCurrentResults = false;
             SelectedIndex = -1;
             SelectedItem = null;
@@ -746,16 +815,14 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     private void RebuildCurrentResults(bool preserveSelection = false)
     {
         var previous = SelectedItem;
-        CurrentResults.Clear();
-
         var tab = SelectedTab;
+        IReadOnlyList<SearchResultItem> target = [];
         if (tab is not null)
         {
-            foreach (var item in GetSortedTabItems(tab))
-            {
-                CurrentResults.Add(item);
-            }
+            target = GetSortedTabItems(tab);
         }
+
+        Services.SearchResultCollectionReconciler.Reconcile(CurrentResults, target);
 
         HasCurrentResults = CurrentResults.Count > 0;
 
@@ -1099,7 +1166,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     {
         return string.IsNullOrWhiteSpace(Query)
             ? LoadRecommendationsAsync()
-            : SearchAsync(Query);
+            : SearchAsync(Query, SearchRefreshKind.UserQuery);
     }
 
     /// <summary>

@@ -476,11 +476,60 @@ public sealed partial class WidgetShell : UserControl
             animateIdentity,
             origin,
             forward);
-        bool grouped = presentation is not null;
-        CompactGroupBadge.Visibility = grouped ? Visibility.Visible : Visibility.Collapsed;
-        CompactGroupBadgeText.Text = grouped ? presentation!.Members.Count.ToString() : string.Empty;
+        UpdateCompactGroupPositionRail(presentation);
+        ApplyCompactAdaptiveLayout();
         UpdateTitleBarContentVisibility();
         ApplyChromeMode();
+    }
+
+    private void UpdateCompactGroupPositionRail(
+        WidgetGroupPresentation? presentation)
+    {
+        CompactGroupPositionRail.Children.Clear();
+        bool showRail = presentation is not null &&
+            presentation.Members.Count > 1;
+        CompactGroupPositionRail.Visibility = showRail
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CompactGroupPositionRailColumn.Width = new GridLength(
+            showRail ? 10 : 0);
+        if (!showRail)
+        {
+            return;
+        }
+
+        int activeIndex = presentation!.Members
+            .Select((member, index) => (member, index))
+            .Where(item => string.Equals(
+                item.member.WidgetId,
+                presentation.ActiveMemberId,
+                StringComparison.Ordinal))
+            .Select(item => item.index)
+            .DefaultIfEmpty(0)
+            .First();
+        IReadOnlyList<WidgetGroupPositionRailSlot> slots =
+            WidgetGroupNavigationInteractionPolicy.ResolvePositionRailSlots(
+                activeIndex,
+                presentation.Members.Count);
+        var accentBrush = new SolidColorBrush(TitleIconAccentColor);
+        foreach (WidgetGroupPositionRailSlot slot in slots)
+        {
+            bool active = slot.IsActive;
+            CompactGroupPositionRail.Children.Add(new Border
+            {
+                Width = 3,
+                Height = active ? 7 : 3,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Background = accentBrush,
+                CornerRadius = new CornerRadius(1.5),
+                IsHitTestVisible = false,
+                Opacity = active ? 0.94 : 0.3
+            });
+        }
+
+        // The position rail already communicates that this is the group move
+        // region, so do not stack the generic six-dot drag affordance on it.
+        CompactDragGripIndicator.Opacity = 0;
     }
 
     internal bool TryHandleGroupKeyboardNavigation(KeyRoutedEventArgs e)
@@ -1912,9 +1961,17 @@ public sealed partial class WidgetShell : UserControl
             };
             identityHitSize = _compactWidthTier == WidgetCompactWidthTier.Narrow ? 34 : 40;
         }
-        CompactIdentityHost.Width = Math.Max(identityVisualSize, identityHitSize);
+        double identityBaseSize = Math.Max(identityVisualSize, identityHitSize);
+        double groupRailWidth = _groupPresentation is not null
+            ? CompactGroupPositionRailColumn.Width.Value
+            : 0;
+        CompactIdentityHost.Width = identityBaseSize + groupRailWidth;
         CompactIdentityHost.Height = Math.Max(identityVisualSize, identityHitSize);
-        CompactIdentityHost.Opacity = (showVinyl || !useFullBleed) ? 1 : 0;
+        CompactIdentityVisualHost.Opacity = (showVinyl || !useFullBleed) ? 1 : 0;
+        if (!_isCompactTransitionActive)
+        {
+            CompactIdentityHost.Opacity = 1;
+        }
         CompactThumbnailHost.Width = identityVisualSize;
         CompactThumbnailHost.Height = identityVisualSize;
         CompactTitleIcon.IconSize = _compactWidthTier == WidgetCompactWidthTier.Narrow
@@ -3349,6 +3406,7 @@ public sealed partial class WidgetShell : UserControl
         if (d is WidgetShell shell)
         {
             shell.Bindings.Update();
+            shell.UpdateCompactGroupPositionRail(shell._groupPresentation);
         }
     }
 
@@ -3661,6 +3719,7 @@ public sealed partial class WidgetShell : UserControl
 
     private void AnimateDragGripIndicator(bool show)
     {
+        show = show && _groupPresentation is null;
         if (!SystemAnimationsEnabled())
         {
             CompactDragGripIndicator.Opacity = show ? 0.7 : 0;

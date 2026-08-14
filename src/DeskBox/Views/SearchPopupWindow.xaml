@@ -790,12 +790,19 @@
         </Grid>
 
         <!-- Persistent footer: contextual result actions on the left, settings on the right. -->
-        <Grid x:Name="FooterBar" Grid.Row="4" Padding="12,7" ColumnSpacing="8"
-              Background="{ThemeResource LayerFillColorAltBrush}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+        <Grid x:Name="FooterBar" Grid.Row="4">
+            <!-- Keep the 50% acrylic on its own layer so footer controls remain crisp. -->
+            <Border x:Name="FooterAcrylicSurface"
+                    Background="{ThemeResource SystemControlAcrylicElementBrush}"
+                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,1,0,0"
+                    Opacity="0.5"
+                    IsHitTestVisible="False"/>
+            <Grid Padding="12,7" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
             <toolkit:WrapPanel x:Name="SelectionActionBar" Grid.Column="0"
                                Orientation="Horizontal" HorizontalSpacing="6"
@@ -857,16 +864,17 @@
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
             </Grid>
 
-            <Button x:Name="OpenSettingsButton" Grid.Column="1"
-                    Style="{StaticResource QuickButtonStyle}"
-                    MinHeight="30" Padding="9,0"
-                    HorizontalAlignment="Right"
-                    Click="OpenSettingsButton_Click">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <Image Source="/Assets/WidgetTitleIcons/settings.svg" Width="16" Height="16"/>
-                    <TextBlock x:Name="OpenSettingsLabel" FontSize="12.5"/>
-                </StackPanel>
-            </Button>
+                <Button x:Name="OpenSettingsButton" Grid.Column="1"
+                        Style="{StaticResource QuickButtonStyle}"
+                        MinHeight="30" Padding="9,0"
+                        HorizontalAlignment="Right"
+                        Click="OpenSettingsButton_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Image Source="/Assets/WidgetTitleIcons/settings.svg" Width="16" Height="16"/>
+                        <TextBlock x:Name="OpenSettingsLabel" FontSize="12.5"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
         </Grid>
 
         <!--

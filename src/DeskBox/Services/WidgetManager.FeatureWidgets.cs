@@ -66,6 +66,7 @@ public sealed partial class WidgetManager
 
         var config = _settingsService.Settings.Widgets.FirstOrDefault(widget =>
             widget.WidgetKind == WidgetKind.QuickCapture);
+        bool isNewConfig = config is null;
 
         if (config is null)
         {
@@ -83,6 +84,11 @@ public sealed partial class WidgetManager
         config.IsDisabled = false;
         config.IsVisible = true;
         await _settingsService.SaveAsync();
+
+        if (isNewConfig)
+        {
+            await SeedQuickCaptureGuideAsync();
+        }
 
         var window = await CreateContentWidgetFromConfigAsync(config);
         if (reveal)
@@ -134,6 +140,7 @@ public sealed partial class WidgetManager
 
         _settingsService.Settings.Widgets.Add(config);
         await _settingsService.SaveAsync();
+        await SeedTodoGuideAsync(config);
 
         var window = await CreateContentWidgetFromConfigAsync(config, revealAfterCreate: true);
         if (focusNewInput)
@@ -142,6 +149,34 @@ public sealed partial class WidgetManager
         }
 
         return window;
+    }
+
+    private async Task SeedQuickCaptureGuideAsync()
+    {
+        try
+        {
+            await WidgetFirstRunGuideFactory.EnsureQuickCaptureGuideAsync(
+                _quickCaptureService,
+                _localizationService);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[WidgetManager] Failed to seed Quick Capture guide: {ex}");
+        }
+    }
+
+    private async Task SeedTodoGuideAsync(WidgetConfig config)
+    {
+        try
+        {
+            await WidgetFirstRunGuideFactory.EnsureTodoGuideAsync(
+                new TodoWidgetStore(config.Id),
+                _localizationService);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[WidgetManager] Failed to seed Todo guide: {ex}");
+        }
     }
 
     public async Task ShowTodoReminderTargetAsync(string? widgetId, string? itemId, bool preferTodayFilter)
@@ -707,6 +742,15 @@ public sealed partial class WidgetManager
             _settingsService.Settings.DeletedWidgetIds.RemoveAll(id =>
                 string.Equals(id, config.Id, StringComparison.Ordinal));
             _deletedWidgetIds.Remove(config.Id);
+
+            if (kind == WidgetKind.QuickCapture)
+            {
+                await SeedQuickCaptureGuideAsync();
+            }
+            else if (kind == WidgetKind.Todo)
+            {
+                await SeedTodoGuideAsync(config);
+            }
 
             await _settingsService.SaveAsync();
             App.Log($"[WidgetManager] ResetFeatureWidget kind={kind} enabled=false id={config.Id}");

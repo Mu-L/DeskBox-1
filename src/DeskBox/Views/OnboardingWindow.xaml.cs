@@ -27,8 +27,6 @@ public sealed partial class OnboardingWindow : Window
     private const int CompactLayoutThreshold = 880;
     private static readonly UIntPtr OnboardingWindowSubclassId = new(0xD05C0B01);
 
-    private sealed record IntroMarkTarget(double TranslateX, double TranslateY, double Scale);
-
     private readonly SettingsService _settingsService;
     private readonly LocalizationService _localizationService;
     private readonly AppWindow _appWindow;
@@ -106,7 +104,7 @@ public sealed partial class OnboardingWindow : Window
             DispatcherQueue.TryEnqueue(async () =>
             {
                 int introGeneration = _introGeneration;
-                await Task.Delay(4000);
+                await Task.Delay(IntroAnimationTargetMilliseconds + 1500);
                 if (introGeneration == _introGeneration &&
                     IntroOverlay.Visibility == Visibility.Visible &&
                     (StepContainer.Opacity <= 0.01 ||

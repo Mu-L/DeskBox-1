@@ -405,7 +405,7 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     FontSize="{Binding PrimaryIconSize}"
-                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Glyph="&#xE710;" />
                                 <TextBlock
                                     Grid.Column="1"

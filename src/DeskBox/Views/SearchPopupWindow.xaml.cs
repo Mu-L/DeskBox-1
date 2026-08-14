@@ -2732,7 +2732,14 @@ public sealed partial class SearchPopupWindow : Window
                 if (e.PropertyName == nameof(SearchPopupViewModel.HasResults) &&
                     _viewModel.HasResults)
                 {
-                    AnimateResultsRefresh();
+                    if (_viewModel.IsApplyingBackgroundResultRefresh)
+                    {
+                        ResultsPanel.Opacity = 1;
+                    }
+                    else
+                    {
+                        AnimateResultsRefresh();
+                    }
                 }
                 break;
 

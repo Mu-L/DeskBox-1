@@ -3,6 +3,24 @@ namespace DeskBox.Tests;
 public sealed class SearchPopupVisualContractTests
 {
     [Fact]
+    public void BackgroundIndexRefresh_DoesNotReplayTheUserSearchEntrance()
+    {
+        string root = FindRepositoryRoot();
+        string viewModel = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/ViewModels/SearchPopupViewModel.cs"));
+        string popup = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SearchPopupWindow.xaml.cs"));
+
+        Assert.Contains("IndexRefreshDebounceDelay = TimeSpan.FromSeconds(1)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("SearchRefreshKind.IndexUpdate && !response.IsComplete", viewModel, StringComparison.Ordinal);
+        Assert.Contains("HasSameIdentitySequence", viewModel, StringComparison.Ordinal);
+        Assert.Contains("ReuseExistingInstances", viewModel, StringComparison.Ordinal);
+        Assert.Contains("if (_viewModel.IsApplyingBackgroundResultRefresh)", popup, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FileAndSearchRows_UseCompactNativeAlignedSurfaces()
     {
         string root = FindRepositoryRoot();
@@ -52,6 +70,10 @@ public sealed class SearchPopupVisualContractTests
         Assert.Contains("SortTypeDivider", searchPopup, StringComparison.Ordinal);
         Assert.Contains("SortSizeDivider", searchPopup, StringComparison.Ordinal);
         Assert.Contains("SortDateDivider", searchPopup, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"FooterAcrylicSurface\"", searchPopup, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{ThemeResource SystemControlAcrylicElementBrush}\"", searchPopup, StringComparison.Ordinal);
+        Assert.Contains("Opacity=\"0.5\"", searchPopup, StringComparison.Ordinal);
+        Assert.Contains("IsHitTestVisible=\"False\"", searchPopup, StringComparison.Ordinal);
         Assert.DoesNotContain("SortHeaderBackground", searchPopup, StringComparison.Ordinal);
         Assert.DoesNotContain("Margin=\"-12,0,0,0\"", searchPopup, StringComparison.Ordinal);
         Assert.DoesNotContain("IsPointerOnRowInteractivePart", searchInteractions, StringComparison.Ordinal);

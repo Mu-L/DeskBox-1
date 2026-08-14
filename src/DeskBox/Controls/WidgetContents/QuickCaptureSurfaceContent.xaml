@@ -138,7 +138,7 @@
                         <ColumnDefinition Width="26" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <FontIcon HorizontalAlignment="Center" FontSize="14" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE710;" />
+                    <FontIcon HorizontalAlignment="Center" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE710;" />
                     <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{Binding TextSize}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding AddNoteText}" />
                 </Grid>
             </Button>

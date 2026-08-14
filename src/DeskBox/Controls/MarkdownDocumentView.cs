@@ -30,6 +30,9 @@ public sealed class MarkdownDocumentView : UserControl
     private const double InternalScrollBarContentClearance = 12;
     private const double EmbeddedBlockMinimumWidth = 160;
     private const double TableColumnMinimumWidth = 96;
+    private const double LightThemeSemanticMinimumContrast = 4.5;
+    private static readonly Windows.UI.Color LightMarkdownWorstCaseSurface =
+        Windows.UI.Color.FromArgb(0xFF, 0xB8, 0xB8, 0xB8);
 
     private readonly RichTextBlock _documentText = new()
     {
@@ -38,6 +41,8 @@ public sealed class MarkdownDocumentView : UserControl
     };
     private readonly ScrollViewer _scrollViewer = new();
     private readonly MarkdownDocumentService _markdownService;
+    private Brush _contentForeground = new SolidColorBrush(Microsoft.UI.Colors.Black);
+    private Brush _semanticForeground = new SolidColorBrush(Microsoft.UI.Colors.Black);
     private Func<string, string?>? _attachmentResolver;
     private int _taskListIndex;
     private bool _isLoaded;
@@ -216,6 +221,7 @@ public sealed class MarkdownDocumentView : UserControl
         double verticalOffset = _scrollViewer.VerticalOffset;
         _lastRenderedWidth = ActualWidth;
         string source = Markdown ?? string.Empty;
+        UpdateForegrounds();
         _documentText.Blocks.Clear();
         _taskListIndex = 0;
         WasTruncated = false;
@@ -241,6 +247,96 @@ public sealed class MarkdownDocumentView : UserControl
         }
 
         RestoreScrollOffset(source, verticalOffset);
+    }
+
+    private void UpdateForegrounds()
+    {
+        // This control is created in code, so an application-level theme brush
+        // can belong to a different resource scope than the hosting widget.
+        // Resolve the readable body foreground from this control's actual theme
+        // instead: Markdown must be black in Light mode and white in Dark mode.
+        // Semantic spans still use the active accent; in Light mode we darken
+        // that accent until it remains legible on light widget materials.
+        _contentForeground = new SolidColorBrush(
+            UsesDarkTheme ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black);
+        _semanticForeground = UsesDarkTheme
+            ? BrushResource("AccentTextFillColorPrimaryBrush")
+            : CreateLightThemeSemanticForeground();
+        _documentText.Foreground = _contentForeground;
+    }
+
+    private bool UsesDarkTheme => ActualTheme == ElementTheme.Dark ||
+        (ActualTheme == ElementTheme.Default &&
+         Application.Current?.RequestedTheme == ApplicationTheme.Dark);
+
+    private static Brush CreateLightThemeSemanticForeground()
+    {
+        Windows.UI.Color accent = Application.Current is App { ThemeService: { } themeService }
+            ? themeService.GetEffectiveAccentColor()
+            : Windows.UI.Color.FromArgb(0xFF, 0x00, 0x5F, 0xB8);
+        return new SolidColorBrush(EnsureMinimumContrast(
+            accent,
+            LightMarkdownWorstCaseSurface,
+            LightThemeSemanticMinimumContrast));
+    }
+
+    private static Windows.UI.Color EnsureMinimumContrast(
+        Windows.UI.Color foreground,
+        Windows.UI.Color background,
+        double minimumContrast)
+    {
+        var opaqueForeground = Windows.UI.Color.FromArgb(
+            0xFF,
+            foreground.R,
+            foreground.G,
+            foreground.B);
+        if (GetContrastRatio(opaqueForeground, background) >= minimumContrast)
+        {
+            return opaqueForeground;
+        }
+
+        for (int step = 1; step <= 20; step++)
+        {
+            Windows.UI.Color candidate = Blend(opaqueForeground, Microsoft.UI.Colors.Black, step / 20d);
+            if (GetContrastRatio(candidate, background) >= minimumContrast)
+            {
+                return candidate;
+            }
+        }
+
+        return Microsoft.UI.Colors.Black;
+    }
+
+    private static Windows.UI.Color Blend(
+        Windows.UI.Color source,
+        Windows.UI.Color target,
+        double amount) => Windows.UI.Color.FromArgb(
+            0xFF,
+            (byte)Math.Round(source.R + (target.R - source.R) * amount),
+            (byte)Math.Round(source.G + (target.G - source.G) * amount),
+            (byte)Math.Round(source.B + (target.B - source.B) * amount));
+
+    private static double GetContrastRatio(Windows.UI.Color first, Windows.UI.Color second)
+    {
+        double firstLuminance = GetRelativeLuminance(first);
+        double secondLuminance = GetRelativeLuminance(second);
+        return (Math.Max(firstLuminance, secondLuminance) + 0.05) /
+               (Math.Min(firstLuminance, secondLuminance) + 0.05);
+    }
+
+    private static double GetRelativeLuminance(Windows.UI.Color color)
+    {
+        static double ToLinear(byte channel)
+        {
+            double value = channel / 255d;
+            return value <= 0.04045
+                ? value / 12.92
+                : Math.Pow((value + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * ToLinear(color.R) +
+               0.7152 * ToLinear(color.G) +
+               0.0722 * ToLinear(color.B);
     }
 
     private void RestoreScrollOffset(string renderedSource, double verticalOffset)
@@ -389,7 +485,7 @@ public sealed class MarkdownDocumentView : UserControl
                 paragraph.Inlines.Add(new Run
                 {
                     Text = list.IsOrdered ? $"{number++}. " : "• ",
-                    Foreground = BrushResource("TextFillColorSecondaryBrush")
+                    Foreground = _semanticForeground
                 });
             }
 
@@ -429,6 +525,7 @@ public sealed class MarkdownDocumentView : UserControl
             Text = code.Lines.ToString().TrimEnd('\r', '\n'),
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
             FontSize = Math.Max(11, BaseFontSize - 1),
+            Foreground = _semanticForeground,
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.Wrap
         };
@@ -484,6 +581,7 @@ public sealed class MarkdownDocumentView : UserControl
                 var cellText = new RichTextBlock
                 {
                     FontSize = Math.Max(11, BaseFontSize - 0.5),
+                    Foreground = _contentForeground,
                     IsTextSelectionEnabled = true,
                     TextWrapping = TextWrapping.Wrap
                 };
@@ -627,14 +725,14 @@ public sealed class MarkdownDocumentView : UserControl
         return false;
     }
 
-    private static void AppendQuoteMarker(Paragraph paragraph, int quoteDepth)
+    private void AppendQuoteMarker(Paragraph paragraph, int quoteDepth)
     {
         if (quoteDepth > 0)
         {
             paragraph.Inlines.Add(new Run
             {
                 Text = "▎ ",
-                Foreground = BrushResource("AccentFillColorDefaultBrush")
+                Foreground = _semanticForeground
             });
         }
     }
@@ -734,7 +832,7 @@ public sealed class MarkdownDocumentView : UserControl
                     Text = code.Content,
                     FontFamily = new FontFamily("Cascadia Mono, Consolas"),
                     FontWeight = FontWeights.SemiBold,
-                    Foreground = BrushResource("AccentTextFillColorPrimaryBrush")
+                    Foreground = _semanticForeground
                 });
                 break;
             case LineBreakInline:
@@ -877,17 +975,17 @@ public sealed class MarkdownDocumentView : UserControl
         destination.Add(hyperlink);
     }
 
-    private static Hyperlink CreateHyperlink() => new()
+    private Hyperlink CreateHyperlink() => new()
     {
         FontWeight = FontWeights.SemiBold,
-        Foreground = BrushResource("AccentTextFillColorPrimaryBrush"),
+        Foreground = _semanticForeground,
         TextDecorations = Windows.UI.Text.TextDecorations.Underline
     };
 
-    private static Span CreateLinkSpan() => new()
+    private Span CreateLinkSpan() => new()
     {
         FontWeight = FontWeights.SemiBold,
-        Foreground = BrushResource("TextFillColorSecondaryBrush"),
+        Foreground = _contentForeground,
         TextDecorations = Windows.UI.Text.TextDecorations.Underline
     };
 

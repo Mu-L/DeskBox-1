@@ -316,97 +316,108 @@
                         ScaleX="1"
                         ScaleY="1" />
                 </Grid.RenderTransform>
-                <controls:WidgetTitleIcon
-                    x:Name="CompactTitleIcon"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    AccentColor="{x:Bind TitleIconAccentColor, Mode=OneWay}"
-                    Glyph="{x:Bind TitleGlyph, Mode=OneWay}"
-                    IconSize="14"
-                    IconKind="{x:Bind TitleIconKind, Mode=OneWay}"
-                    LabelText="{x:Bind OverlayTitle, Mode=OneWay}" />
-                <TextBlock
-                    x:Name="CompactEmojiIcon"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    FontSize="15"
-                    Visibility="Collapsed"
-                    IsHitTestVisible="False" />
-                <Border
-                    x:Name="CompactThumbnailHost"
-                    Width="28"
-                    Height="28"
-                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                    CornerRadius="8"
-                    Visibility="Collapsed">
-                    <Image x:Name="CompactThumbnail" Stretch="UniformToFill" />
-                </Border>
-                <!-- Rotating vinyl disc (music capsule only). Sits before the title text. -->
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="CompactGroupPositionRailColumn" Width="0" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- A collapsed group always exposes its current position. This
+                     is intentionally independent from the expanded title layout. -->
                 <Grid
-                    x:Name="CompactVinylHost"
-                    Width="26"
-                    Height="26"
+                    x:Name="CompactGroupPositionRailViewport"
+                    Grid.Column="0"
+                    Width="5"
+                    Height="20"
+                    Margin="0,0,5,0"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    RenderTransformOrigin="0.5,0.5"
-                    Visibility="Collapsed">
-                    <Grid.RenderTransform>
-                        <RotateTransform x:Name="CompactVinylRotateTransform" Angle="0" />
-                    </Grid.RenderTransform>
-                    <!-- black disc body -->
-                    <Ellipse Fill="#0B0B0B" />
-                    <!-- concentric groove rings -->
-                    <Ellipse Stroke="#222222" StrokeThickness="0.6" Margin="1.5" />
-                    <Ellipse Stroke="#2B2B2B" StrokeThickness="0.5" Margin="3" />
-                    <Ellipse Stroke="#1E1E1E" StrokeThickness="0.5" Margin="4.5" />
-                    <!-- directional sheen -->
-                    <Ellipse>
-                        <Ellipse.Fill>
-                            <RadialGradientBrush GradientOrigin="0.32,0.26" Center="0.5,0.5" RadiusX="0.62" RadiusY="0.62">
-                                <GradientStop Offset="0" Color="#55FFFFFF" />
-                                <GradientStop Offset="0.4" Color="#00FFFFFF" />
-                                <GradientStop Offset="1" Color="#00000000" />
-                            </RadialGradientBrush>
-                        </Ellipse.Fill>
-                    </Ellipse>
-                    <!-- center label backing -->
-                    <Ellipse Margin="6.5" Fill="#000000" />
-                    <!-- center label = album cover -->
-                    <Ellipse x:Name="CompactVinylLabel" Margin="6.5">
-                        <Ellipse.Fill>
-                            <ImageBrush x:Name="CompactVinylLabelBrush" Stretch="UniformToFill" />
-                        </Ellipse.Fill>
-                    </Ellipse>
-                    <!-- spindle hole -->
-                    <Ellipse Width="1.6" Height="1.6" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="#000000" />
+                    IsHitTestVisible="False">
+                    <StackPanel
+                        x:Name="CompactGroupPositionRail"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsHitTestVisible="False"
+                        Orientation="Vertical"
+                        Spacing="2"
+                        Visibility="Collapsed" />
+                </Grid>
+
+                <Grid
+                    x:Name="CompactIdentityVisualHost"
+                    Grid.Column="1">
+                    <controls:WidgetTitleIcon
+                        x:Name="CompactTitleIcon"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        AccentColor="{x:Bind TitleIconAccentColor, Mode=OneWay}"
+                        Glyph="{x:Bind TitleGlyph, Mode=OneWay}"
+                        IconSize="14"
+                        IconKind="{x:Bind TitleIconKind, Mode=OneWay}"
+                        LabelText="{x:Bind OverlayTitle, Mode=OneWay}" />
+                    <TextBlock
+                        x:Name="CompactEmojiIcon"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="15"
+                        Visibility="Collapsed"
+                        IsHitTestVisible="False" />
+                    <Border
+                        x:Name="CompactThumbnailHost"
+                        Width="28"
+                        Height="28"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                        CornerRadius="8"
+                        Visibility="Collapsed">
+                        <Image x:Name="CompactThumbnail" Stretch="UniformToFill" />
+                    </Border>
+                    <!-- Rotating vinyl disc (music capsule only). Sits before the title text. -->
+                    <Grid
+                        x:Name="CompactVinylHost"
+                        Width="26"
+                        Height="26"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        RenderTransformOrigin="0.5,0.5"
+                        Visibility="Collapsed">
+                        <Grid.RenderTransform>
+                            <RotateTransform x:Name="CompactVinylRotateTransform" Angle="0" />
+                        </Grid.RenderTransform>
+                        <!-- black disc body -->
+                        <Ellipse Fill="#0B0B0B" />
+                        <!-- concentric groove rings -->
+                        <Ellipse Stroke="#222222" StrokeThickness="0.6" Margin="1.5" />
+                        <Ellipse Stroke="#2B2B2B" StrokeThickness="0.5" Margin="3" />
+                        <Ellipse Stroke="#1E1E1E" StrokeThickness="0.5" Margin="4.5" />
+                        <!-- directional sheen -->
+                        <Ellipse>
+                            <Ellipse.Fill>
+                                <RadialGradientBrush GradientOrigin="0.32,0.26" Center="0.5,0.5" RadiusX="0.62" RadiusY="0.62">
+                                    <GradientStop Offset="0" Color="#55FFFFFF" />
+                                    <GradientStop Offset="0.4" Color="#00FFFFFF" />
+                                    <GradientStop Offset="1" Color="#00000000" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <!-- center label backing -->
+                        <Ellipse Margin="6.5" Fill="#000000" />
+                        <!-- center label = album cover -->
+                        <Ellipse x:Name="CompactVinylLabel" Margin="6.5">
+                            <Ellipse.Fill>
+                                <ImageBrush x:Name="CompactVinylLabelBrush" Stretch="UniformToFill" />
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <!-- spindle hole -->
+                        <Ellipse Width="1.6" Height="1.6" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="#000000" />
+                    </Grid>
                 </Grid>
                 <Border
                     x:Name="CompactIdentityRegionHighlight"
+                    Grid.ColumnSpan="2"
                     Margin="-8,0,0,0"
                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                     CornerRadius="14,6,6,14"
                     IsHitTestVisible="False"
                     Opacity="0" />
-                <Border
-                    x:Name="CompactGroupBadge"
-                    MinWidth="14"
-                    Height="14"
-                    Padding="3,0"
-                    Margin="0,-2,-2,0"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Top"
-                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                    CornerRadius="7"
-                    IsHitTestVisible="False"
-                    Visibility="Collapsed">
-                    <TextBlock
-                        x:Name="CompactGroupBadgeText"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        FontSize="8"
-                        FontWeight="SemiBold"
-                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                </Border>
             </Grid>
 
             <!-- Drag grip dots (outside IdentityHost so full-bleed opacity doesn't hide them) -->

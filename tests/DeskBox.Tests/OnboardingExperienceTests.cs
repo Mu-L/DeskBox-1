@@ -178,8 +178,12 @@ public sealed class OnboardingExperienceTests
             strings.RootElement.GetProperty("Onboarding.Task.Step4.StatusHidden").GetString(),
             StringComparison.Ordinal);
         Assert.Equal(
-            "用桌面格子收纳文件。",
+            "让文件、随记和待办随时留在桌面的轻量格子里",
             strings.RootElement.GetProperty("Onboarding.Intro.Body").GetString());
+        Assert.DoesNotContain(
+            "。",
+            strings.RootElement.GetProperty("Onboarding.Intro.Body").GetString(),
+            StringComparison.Ordinal);
         Assert.True(
             strings.RootElement.GetProperty("Onboarding.Task.Step4.Body").GetString()!.Length < 50,
             "The first-screen explanation should stay scannable.");
@@ -202,7 +206,7 @@ public sealed class OnboardingExperienceTests
     }
 
     [Fact]
-    public void IntroLogoAnimation_IsBriefAndKeepsFallbackGrace()
+    public void IntroLogoAnimation_HoldsTextForOnePointFiveSecondsThenCrossfadesToFirstStep()
     {
         string root = FindRepositoryRoot();
         string introCode = File.ReadAllText(Path.Combine(
@@ -210,10 +214,16 @@ public sealed class OnboardingExperienceTests
             "src/DeskBox/Views/OnboardingWindow.IntroAnimations.cs"));
 
         Assert.Contains("CreateDeskBoxMark", introCode, StringComparison.Ordinal);
-        Assert.Contains("IntroAnimationTargetMilliseconds = 900", introCode, StringComparison.Ordinal);
+        Assert.Contains("IntroAnimationTargetMilliseconds = 3720", introCode, StringComparison.Ordinal);
         Assert.Contains("IntroAnimationTargetMilliseconds + 1000", introCode, StringComparison.Ordinal);
-        Assert.Contains("await Task.Delay(180)", introCode, StringComparison.Ordinal);
-        Assert.DoesNotContain("TimeSpan.FromSeconds(5)", introCode, StringComparison.Ordinal);
+        Assert.Contains("await Task.Delay(1500)", introCode, StringComparison.Ordinal);
+        Assert.Contains("Task.WhenAll(", introCode, StringComparison.Ordinal);
+        Assert.Contains(
+            "introGeneration, IntroMarkHost, 1, 0, 0, 0, 0, 0, 1, 1, 480",
+            introCode,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("GetIntroMarkTargetTransform", introCode, StringComparison.Ordinal);
+        Assert.DoesNotContain("target.Translate", introCode, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -601,6 +601,9 @@ public sealed partial class QuickCaptureWidgetViewModel
     public async Task ClearAsync()
     {
         await _quickCaptureService.ClearAsync();
+        await WidgetFirstRunGuideFactory.EnsureQuickCaptureGuideAsync(
+            _quickCaptureService,
+            _localizationService);
     }
 
     public async Task ClearRecentAsync()

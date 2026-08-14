@@ -139,6 +139,31 @@ public sealed class MarkdownAndSplitterContractTests
     }
 
     [Fact]
+    public void Reader_UsesHighContrastMarkdownForegroundsInLightTheme()
+    {
+        string reader = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/MarkdownDocumentView.cs"));
+
+        Assert.Contains("UpdateForegrounds();", reader, StringComparison.Ordinal);
+        Assert.Contains("_documentText.Foreground = _contentForeground", reader, StringComparison.Ordinal);
+        Assert.Contains(
+            "UsesDarkTheme ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black",
+            reader,
+            StringComparison.Ordinal);
+        Assert.Contains("_semanticForeground = UsesDarkTheme", reader, StringComparison.Ordinal);
+        Assert.Contains("AccentTextFillColorPrimaryBrush", reader, StringComparison.Ordinal);
+        Assert.Contains("CreateLightThemeSemanticForeground", reader, StringComparison.Ordinal);
+        Assert.Contains("EnsureMinimumContrast", reader, StringComparison.Ordinal);
+        Assert.Contains("LightThemeSemanticMinimumContrast = 4.5", reader, StringComparison.Ordinal);
+        Assert.Contains("Foreground = _semanticForeground", reader, StringComparison.Ordinal);
+        Assert.Contains("Foreground = _contentForeground", reader, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "_contentForeground = BrushResource(\"TextFillColorPrimaryBrush\")",
+            reader,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void QuickCapture_OnlyLoadsTheFullBodyIntoTheEditorWhenEditing()
     {
         string surface = File.ReadAllText(TestPaths.FromRepository(
@@ -537,5 +562,32 @@ public sealed class MarkdownAndSplitterContractTests
             itemSyncCode.IndexOf("SetViewSwitchLoading(false);", StringComparison.Ordinal) <
             itemSyncCode.IndexOf("ItemsViewTransitionToken++;", StringComparison.Ordinal),
             "The completed view state must be visible before detail subscribers reconcile the empty tab.");
+    }
+
+    [Fact]
+    public void QuickCapture_AddNoteCards_UseNeutralAddIcons()
+    {
+        string surfaceXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string legacyWindowXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.xaml"));
+
+        Assert.Contains(
+            "Foreground=\"{ThemeResource TextFillColorSecondaryBrush}\" Glyph=\"&#xE710;\"",
+            surfaceXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Foreground=\"{ThemeResource TextFillColorSecondaryBrush}\"",
+            legacyWindowXaml,
+            StringComparison.Ordinal);
+        Assert.Contains("Glyph=\"&#xE710;\"", legacyWindowXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AccentTextFillColorPrimaryBrush",
+            surfaceXaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AccentTextFillColorPrimaryBrush",
+            legacyWindowXaml,
+            StringComparison.Ordinal);
     }
 }
