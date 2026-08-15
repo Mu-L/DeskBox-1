@@ -38,6 +38,8 @@ public sealed class SettingsSynchronizationTests
             SettingsService.WidgetCollapseBehaviorSmart;
         settingsService.Settings.WidgetCompactWidthMode =
             SettingsService.WidgetCompactWidthModeIndependent;
+        settingsService.Settings.WidgetCompactExpansionDirection =
+            SettingsService.WidgetCompactExpansionDirectionUp;
         settingsService.Settings.WidgetCapsuleArrangementMode =
             SettingsService.WidgetCapsuleArrangementBar;
         settingsService.Settings.WidgetCapsuleBarPlacement =
@@ -70,6 +72,9 @@ public sealed class SettingsSynchronizationTests
         Assert.Equal(
             SettingsService.WidgetCompactWidthModeIndependent,
             reloadedService.Settings.WidgetCompactWidthMode);
+        Assert.Equal(
+            SettingsService.WidgetCompactExpansionDirectionUp,
+            reloadedService.Settings.WidgetCompactExpansionDirection);
         Assert.Equal(
             SettingsService.WidgetCapsuleArrangementBar,
             reloadedService.Settings.WidgetCapsuleArrangementMode);

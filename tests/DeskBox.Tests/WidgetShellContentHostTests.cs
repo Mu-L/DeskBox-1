@@ -98,6 +98,24 @@ public sealed class WidgetShellContentHostTests
     }
 
     [Fact]
+    public async Task ReusableContent_PreparesProjectionInsteadOfReinitializing()
+    {
+        var calls = new List<string>();
+        var content = new ReusableWidgetContent("cached", calls);
+        var host = new WidgetShellContentHost(
+            setContent: current => calls.Add($"set:{current.WidgetId}"));
+
+        await host.SetContentAsync(content);
+
+        Assert.Equal(
+        [
+            "prepare:cached",
+            "set:cached",
+            "appearance:cached"
+        ], calls);
+    }
+
+    [Fact]
     public async Task PreparedTransition_KeepsOutgoingContentUntilCompletion()
     {
         var calls = new List<string>();
@@ -444,6 +462,61 @@ public sealed class WidgetShellContentHostTests
         public void Dispose()
         {
             DisposeCount++;
+            calls.Add($"dispose:{id}");
+        }
+    }
+
+    private sealed class ReusableWidgetContent(
+        string id,
+        List<string> calls) :
+        IWidgetContent,
+        IWidgetGroupContentCacheable
+    {
+        public bool IsReadyForReuse => true;
+
+        public WidgetConfig Config { get; } = new()
+        {
+            Id = id,
+            Name = id,
+            WidgetKind = WidgetKind.File
+        };
+
+        public string WidgetId => Config.Id;
+
+        public WidgetKind WidgetKind => Config.WidgetKind;
+
+        public FrameworkElement View =>
+            throw new NotSupportedException(
+                "Tests do not instantiate WinUI views.");
+
+        public Task InitializeAsync()
+        {
+            calls.Add($"initialize:{id}");
+            return Task.CompletedTask;
+        }
+
+        public Task RefreshAsync() => Task.CompletedTask;
+
+        public void PrepareForReuse()
+        {
+            calls.Add($"prepare:{id}");
+        }
+
+        public void ApplyAppearance()
+        {
+            calls.Add($"appearance:{id}");
+        }
+
+        public void OnActivated()
+        {
+        }
+
+        public void OnDeactivated()
+        {
+        }
+
+        public void Dispose()
+        {
             calls.Add($"dispose:{id}");
         }
     }

@@ -14,6 +14,7 @@
             </ResourceDictionary.MergedDictionaries>
             <Style x:Key="CapsuleGroupTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource SettingTitleTextStyle}">
                 <Setter Property="FontSize" Value="15" />
+                <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Margin" Value="4,14,4,4" />
             </Style>
         </ResourceDictionary>
@@ -56,6 +57,19 @@
                         ItemsSource="{Binding AvailableWidgetCompactWidthModeOptions}"
                         controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactWidthMode, Mode=TwoWay}" />
                 </StackPanel>
+            </toolkit:SettingsCard>
+
+            <toolkit:SettingsCard
+                HorizontalContentAlignment="Right"
+                svc:Localized.DescriptionKey="Settings.Capsule.ExpansionDirection.Description"
+                svc:Localized.HeaderKey="Settings.Capsule.ExpansionDirection.Title">
+                <toolkit:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8CB;" />
+                </toolkit:SettingsCard.HeaderIcon>
+                <ComboBox
+                    MinWidth="{StaticResource SettingsControlMinWidth}"
+                    ItemsSource="{Binding AvailableWidgetCompactExpansionDirectionOptions}"
+                    controls:SettingsComboBox.Value="{Binding SelectedWidgetCompactExpansionDirection, Mode=TwoWay}" />
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard
@@ -111,7 +125,7 @@
                         IsTabStop="{Binding CanOpenWidgetCompactHoverResponseDetails}"
                         Style="{StaticResource DrillDownRowStyle}"
                         Tag="CapsuleBehaviorSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE823;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Capsule.HoverResponse.Title" />
@@ -146,7 +160,7 @@
                         IsTabStop="{Binding IsWidgetCapsuleBarEnabled}"
                         Style="{StaticResource DrillDownRowStyle}"
                         Tag="CapsuleArrangementSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE707;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Capsule.ArrangementDetails.Title" />
@@ -174,7 +188,7 @@
                         IsTabStop="{Binding CanOpenWidgetCompactAnimationDetails}"
                         Style="{StaticResource DrillDownRowStyle}"
                         Tag="CapsuleAnimationSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE7B5;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Capsule.Animation.Title" />
@@ -205,7 +219,7 @@
                     Click="NestedSettingsButton_Click"
                     Style="{StaticResource DrillDownRowStyle}"
                     Tag="CapsuleOverridesSettings">
-                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <Grid ColumnDefinitions="Auto,*,Auto" Style="{StaticResource SettingCardIdentityGridStyle}">
                         <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE713;" IsHitTestVisible="False" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                             <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Capsule.Overrides.Title" />

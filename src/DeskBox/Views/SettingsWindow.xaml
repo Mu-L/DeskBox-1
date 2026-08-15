@@ -32,6 +32,7 @@
             <x:Double x:Key="SettingsCardSpacing">4</x:Double>
             <x:Double x:Key="SettingsRowMinHeight">64</x:Double>
             <x:Double x:Key="SettingsRowColumnSpacing">18</x:Double>
+            <x:Double x:Key="SettingsHeaderIconTextSpacing">20</x:Double>
             <Thickness x:Key="SettingsRowPadding">16,10</Thickness>
             <CornerRadius x:Key="SettingsCardCornerRadius">6</CornerRadius>
 			
@@ -91,8 +92,12 @@
 			
             <Style x:Key="SettingTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="14" />
-                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontWeight" Value="Normal" />
                 <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <Style x:Key="SettingCardIdentityGridStyle" TargetType="Grid">
+                <Setter Property="ColumnSpacing" Value="{StaticResource SettingsHeaderIconTextSpacing}" />
             </Style>
 			
             <Style x:Key="SettingDescriptionTextStyle" TargetType="TextBlock">
@@ -108,6 +113,7 @@
 
             <Style x:Key="SettingsSubsectionTitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SettingTitleTextStyle}">
                 <Setter Property="FontSize" Value="15" />
+                <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
 
             <Style x:Key="SettingValueTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SettingDescriptionTextStyle}">
@@ -1024,7 +1030,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Style="{StaticResource SettingsGroupStyle}" Margin="0,0,0,4">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="16,10" MinHeight="64">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" Style="{StaticResource SettingCardIdentityGridStyle}" Padding="16,10" MinHeight="64">
                                             <FontIcon Grid.Column="0" FontSize="18" Glyph="{Binding Glyph}" VerticalAlignment="Center" />
                                             <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
                                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" Text="{Binding DisplayName}" />
@@ -1323,7 +1329,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                         <Border Style="{StaticResource SettingsGroupStyle}">
                             <Button Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="InteractionHotkeySettings">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <Grid ColumnDefinitions="Auto,*,Auto" Style="{StaticResource SettingCardIdentityGridStyle}">
                                     <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE765;" IsHitTestVisible="False" VerticalAlignment="Center" />
                                     <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Interaction.Hotkeys.Title" />
@@ -2149,7 +2155,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 Click="NestedSettingsButton_Click"
                                 Style="{StaticResource DrillDownRowStyle}"
                                 Tag="BackupRestoreSettings">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <Grid ColumnDefinitions="Auto,*,Auto" Style="{StaticResource SettingCardIdentityGridStyle}">
                                     <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE74E;" IsHitTestVisible="False" VerticalAlignment="Center" />
                                     <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DataBackup.Title" />
@@ -2165,7 +2171,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 Click="NestedSettingsButton_Click"
                                 Style="{StaticResource DrillDownRowStyle}"
                                 Tag="DataHealthSettings">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <Grid ColumnDefinitions="Auto,*,Auto" Style="{StaticResource SettingCardIdentityGridStyle}">
                                     <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE9D9;" IsHitTestVisible="False" VerticalAlignment="Center" />
                                     <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.AttachmentHealth.Title" />
@@ -2181,7 +2187,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 Click="NestedSettingsButton_Click"
                                 Style="{StaticResource DrillDownRowStyle}"
                                 Tag="CompatibilityDiagnosticsSettings">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <Grid ColumnDefinitions="Auto,*,Auto" Style="{StaticResource SettingCardIdentityGridStyle}">
                                     <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8A7;" IsHitTestVisible="False" VerticalAlignment="Center" />
                                     <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.DragDropPermission.Title" />

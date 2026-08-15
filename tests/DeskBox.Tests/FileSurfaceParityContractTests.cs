@@ -298,6 +298,96 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
+    public void FileStacks_UseInlineRenameAndStableProjectionTransitions()
+    {
+        string root = FindRepositoryRoot();
+        string xaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml"));
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        string itemVisuals = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs"));
+        string menus = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.SelectionAndMenus.cs"));
+        string stackViewModel = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/ViewModels/WidgetViewModel.Stacks.cs"));
+
+        Assert.Contains("FindOrRealizeStackRenameTargetAsync", source, StringComparison.Ordinal);
+        Assert.Contains("StartItemRenameAsync(stack)", source, StringComparison.Ordinal);
+        Assert.Contains("SetStackNameOverride(stack.StackKey, newName)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("new ContentDialog", menus, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("AddDeleteThemeTransition", xaml, StringComparison.Ordinal);
+        Assert.Equal(2, xaml.Split(
+            "RepositionThemeTransition IsStaggeringEnabled=\"False\"",
+            StringSplitOptions.None).Length - 1);
+        Assert.Equal(2, xaml.Split(
+            "EntranceThemeTransition FromVerticalOffset=\"4\" IsStaggeringEnabled=\"False\"",
+            StringSplitOptions.None).Length - 1);
+
+        Assert.Contains("ResetSelectionForStackProjectionChange", menus, StringComparison.Ordinal);
+        Assert.Contains("ItemsGrid.SelectedItems.Clear()", menus, StringComparison.Ordinal);
+        Assert.Contains("ItemsList.SelectedItems.Clear()", menus, StringComparison.Ordinal);
+        Assert.DoesNotContain("EnsureExclusiveItemSelection", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyPointerSelection(", itemVisuals, StringComparison.Ordinal);
+        Assert.DoesNotContain("item.IsSelected =", itemVisuals, StringComparison.Ordinal);
+        Assert.DoesNotContain("item.IsSelected =", menus, StringComparison.Ordinal);
+        Assert.Contains(
+            "GetActiveItemsView().SelectedItems.Contains(item)",
+            itemVisuals,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "FindDescendantByTag(container, \"InteractiveSurface\")",
+            itemVisuals,
+            StringComparison.Ordinal);
+        Assert.Contains("selectedStacks", source, StringComparison.Ordinal);
+        Assert.Contains("listView.SelectedItems.Remove(stack)", source, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueuePriority.Low", menus, StringComparison.Ordinal);
+        Assert.Contains(
+            "ApplyStackProjectionChange(() =>\n            ViewModel.ToggleStack(stack))",
+            source.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public void PrepareForReuse()",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ViewModel.StabilizeStackDisplay()",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("FileStacksEnabled: true", menus, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (!FileStacksEnabled)\n        {\n            WidgetFileStackSettings.SetEnabledOverride(Config, true);",
+            stackViewModel.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "WidgetFileStackSettings.SetEnabledOverride(Config, true)",
+            stackViewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TryMoveStackMemberOverride(",
+            stackViewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PersistStackCustomizations()",
+            stackViewModel,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "groupBy,\n            StringComparison.Ordinal),\n            IsEnabled = ViewModel.FileStacksEnabled",
+            menus.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "App.Current.ShowSettings(\"FileStackSettings\")",
+            menus,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ManagedShortcutDrag_UsesMoveOnlyAndFinalizesVirtualCopy()
     {
         string root = FindRepositoryRoot();

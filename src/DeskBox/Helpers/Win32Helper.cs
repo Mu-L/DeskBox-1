@@ -546,6 +546,7 @@ public static partial class Win32Helper
     public const int WM_KEYUP = 0x0101;
     public const int WM_SYSKEYDOWN = 0x0104;
     public const int WM_SYSKEYUP = 0x0105;
+    public const int WM_MOUSEACTIVATE = 0x0021;
     public const int WM_LBUTTONDOWN = 0x0201;
     public const int WM_MOUSEWHEEL = 0x020A;
     public const int WM_RBUTTONDOWN = 0x0204;
@@ -558,6 +559,7 @@ public static partial class Win32Helper
     public const int WM_NCHITTEST = 0x0084;
     public const int WM_NCLBUTTONDBLCLK = 0x00A3;
     public const int WM_EXITSIZEMOVE = 0x0232;
+    public const int MA_NOACTIVATE = 3;
 
     public const int HTCLIENT = 1;
     public const int HTCAPTION = 2;
@@ -1423,15 +1425,11 @@ public static partial class Win32Helper
     /// Open a file or URL using the default associated application.
     /// </summary>
     /// <remarks>
-    /// Launches via <see cref="Process.Start(ProcessStartInfo)"/> with
-    /// <see cref="ProcessStartInfo.UseShellExecute"/> = true, which internally calls
-    /// ShellExecuteEx — the same modern path Explorer uses. This resolves associations
-    /// (including packaged/UWP handlers and per-user UserChoice) the same way
-    /// double-clicking in Explorer does, avoiding the silent failures the legacy
-    /// ShellExecuteW P/Invoke produced for certain file types (e.g. .md whose handler is
-    /// a Store app or whose UserChoice hash is fragile). <paramref name="ownerWindow"/>
-    /// is forwarded to the "Open With" fallback so any system dialog has a real parent
-    /// and is not hidden behind a topmost widget.
+    /// First delegates to the running Explorer desktop process so launched applications
+    /// inherit the current user shell environment rather than DeskBox's potentially stale
+    /// startup environment. If Explorer is unavailable, falls back to ShellExecuteEx via
+    /// <see cref="Process.Start(ProcessStartInfo)"/>. <paramref name="ownerWindow"/> is
+    /// forwarded to the "Open With" fallback so any system dialog has a real parent.
     /// </remarks>
     public static bool OpenFileOrChooseApp(IntPtr ownerWindow, string path)
     {
@@ -1441,13 +1439,27 @@ public static partial class Win32Helper
         // legacy SE_ERR_NOASSOC (31) that raw ShellExecute returns.
         const int ErrorNoAssociation = 1155;
 
-        string? directory = Path.GetDirectoryName(path);
+        string directory = ResolveShellLaunchDirectory(path);
+        if (ExplorerShellLaunchService.TryOpen(
+                path,
+                directory,
+                "open",
+                out string? explorerLaunchError))
+        {
+            App.Log($"[DIAG] Explorer-hosted ShellExecute OK path='{path}'");
+            return true;
+        }
+
+        App.Log(
+            $"[OpenFile] Explorer-hosted launch unavailable for '{path}': " +
+            $"{explorerLaunchError ?? "unknown error"}. Falling back to local ShellExecuteEx.");
+
         var startInfo = new ProcessStartInfo
         {
             FileName = path,
             UseShellExecute = true,
             Verb = "open",
-            WorkingDirectory = string.IsNullOrEmpty(directory) ? string.Empty : directory
+            WorkingDirectory = directory
         };
 
         // ELECTRON_RUN_AS_NODE=1 makes any Electron-based default handler (MarkText,
@@ -1505,6 +1517,16 @@ public static partial class Win32Helper
                 Environment.SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", savedElectronRunAsNode);
             }
         }
+    }
+
+    internal static string ResolveShellLaunchDirectory(string path)
+    {
+        if (Uri.TryCreate(path, UriKind.Absolute, out Uri? uri) && !uri.IsFile)
+        {
+            return string.Empty;
+        }
+
+        return Path.GetDirectoryName(path) ?? string.Empty;
     }
 
     public static void OpenFile(string path)

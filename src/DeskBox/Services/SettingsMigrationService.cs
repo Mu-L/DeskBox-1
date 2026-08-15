@@ -20,7 +20,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -31,6 +31,7 @@ public sealed class SettingsMigrationPipeline
         _migrations.Add(new Migration_1_To_2());
         _migrations.Add(new Migration_2_To_3());
         _migrations.Add(new Migration_3_To_4());
+        _migrations.Add(new Migration_4_To_5());
     }
 
     /// <summary>
@@ -183,5 +184,23 @@ internal sealed class Migration_3_To_4 : ISettingsMigration
     public void Migrate(AppSettings settings)
     {
         settings.HasResolvedInitialFileWidgetSetup = true;
+    }
+}
+
+/// <summary>
+/// Migrates the legacy search result limit that was previously treated as an
+/// application default. Future 50, 100, and 200 selections are user choices
+/// and are preserved by normal settings validation.
+/// </summary>
+internal sealed class Migration_4_To_5 : ISettingsMigration
+{
+    public int FromVersion => 4;
+
+    public void Migrate(AppSettings settings)
+    {
+        if (settings.SearchMaxResults == 50)
+        {
+            settings.SearchMaxResults = 200;
+        }
     }
 }

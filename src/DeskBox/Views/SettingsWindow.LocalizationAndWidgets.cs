@@ -172,7 +172,7 @@ public sealed partial class SettingsWindow
 
         var identity = new Grid
         {
-            ColumnSpacing = 12
+            Style = (Style)SettingsRoot.Resources["SettingCardIdentityGridStyle"]
         };
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });

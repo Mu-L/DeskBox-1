@@ -20,7 +20,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="DesktopOrganizationSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE74C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="DesktopOrganization.Settings.Title" />
@@ -44,7 +44,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="FileDisplaySettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8A5;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.FileLayout.Title" />
@@ -65,7 +65,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="FileStackSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE81E;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.FileStacks.Title" />

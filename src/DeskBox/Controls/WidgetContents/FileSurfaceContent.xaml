@@ -79,6 +79,16 @@
             </Setter>
         </Style>
 
+        <Style
+            x:Key="FileStackActionButtonStyle"
+            TargetType="Button"
+            BasedOn="{StaticResource WidgetItemActionButtonStyle}">
+            <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+
         <DataTemplate x:Key="SurfaceFileIconTemplate">
             <Grid
                 Tag="ItemSlot"
@@ -113,6 +123,7 @@
                 CornerRadius="8"
                 AllowDrop="True"
                 Loaded="StackSurface_Loaded"
+                Unloaded="StackSurface_Unloaded"
                 DragLeave="StackSurface_DragLeave"
                 DragOver="StackSurface_DragOver"
                 Drop="StackSurface_Drop"
@@ -185,11 +196,9 @@
                             Padding="0"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            BorderThickness="0"
                             Click="StackCollapseButton_Click"
-                            CornerRadius="6"
                             IsTabStop="False"
+                            Style="{StaticResource FileStackActionButtonStyle}"
                             Visibility="{Binding ExpandedAnchorVisibility}">
                             <FontIcon FontSize="12" Glyph="&#xE70E;" />
                         </Button>
@@ -200,6 +209,7 @@
                         HorizontalAlignment="Center"
                         FontSize="{Binding LabelFontSize}"
                         MaxLines="2"
+                        Tag="StackName"
                         Text="{Binding Name}"
                         TextAlignment="Center"
                         TextTrimming="CharacterEllipsis"
@@ -231,6 +241,7 @@
                 CornerRadius="8"
                 AllowDrop="True"
                 Loaded="StackSurface_Loaded"
+                Unloaded="StackSurface_Unloaded"
                 DragLeave="StackSurface_DragLeave"
                 DragOver="StackSurface_DragOver"
                 Drop="StackSurface_Drop"
@@ -278,19 +289,28 @@
                             Width="{Binding ListIconSize}"
                             Height="{Binding ListIconSize}"
                             Padding="0"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            BorderThickness="0"
                             Click="StackCollapseButton_Click"
                             IsTabStop="False"
+                            Style="{StaticResource FileStackActionButtonStyle}"
                             Visibility="{Binding ExpandedAnchorVisibility}">
                             <FontIcon FontSize="11" Glyph="&#xE70E;" />
                         </Button>
                     </Grid>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                        <TextBlock FontSize="{Binding LabelFontSize}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock FontSize="{Binding LabelFontSize}" Tag="StackName" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                         <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
-                    <FontIcon Grid.Column="2" FontSize="10" Glyph="{Binding ChevronGlyph}" VerticalAlignment="Center" />
+                    <Button
+                        Grid.Column="2"
+                        Width="24"
+                        Height="24"
+                        Click="StackToggleButton_Click"
+                        IsTabStop="False"
+                        Style="{StaticResource FileStackActionButtonStyle}"
+                        ToolTipService.ToolTip="{Binding AutomationState}"
+                        VerticalAlignment="Center">
+                        <FontIcon FontSize="10" Glyph="{Binding ChevronGlyph}" />
+                    </Button>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -397,7 +417,8 @@
                 Visibility="{Binding IconViewVisibility}">
                 <GridView.ItemContainerTransitions>
                     <TransitionCollection>
-                        <AddDeleteThemeTransition />
+                        <RepositionThemeTransition IsStaggeringEnabled="False" />
+                        <EntranceThemeTransition FromVerticalOffset="4" IsStaggeringEnabled="False" />
                     </TransitionCollection>
                 </GridView.ItemContainerTransitions>
             </GridView>
@@ -428,7 +449,8 @@
                 Visibility="{Binding ListViewVisibility}">
                 <ListView.ItemContainerTransitions>
                     <TransitionCollection>
-                        <AddDeleteThemeTransition />
+                        <RepositionThemeTransition IsStaggeringEnabled="False" />
+                        <EntranceThemeTransition FromVerticalOffset="4" IsStaggeringEnabled="False" />
                     </TransitionCollection>
                 </ListView.ItemContainerTransitions>
             </ListView>

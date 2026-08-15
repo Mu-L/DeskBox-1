@@ -303,6 +303,17 @@ public sealed class WidgetCompactBoundsCalculatorTests
     }
 
     [Theory]
+    [InlineData(null, SettingsService.WidgetCompactExpansionDirectionAuto)]
+    [InlineData("unexpected", SettingsService.WidgetCompactExpansionDirectionAuto)]
+    [InlineData("auto", SettingsService.WidgetCompactExpansionDirectionAuto)]
+    [InlineData("down", SettingsService.WidgetCompactExpansionDirectionDown)]
+    [InlineData("up", SettingsService.WidgetCompactExpansionDirectionUp)]
+    public void NormalizeCompactExpansionDirection_ConstrainsValue(string? value, string expected)
+    {
+        Assert.Equal(expected, SettingsService.NormalizeWidgetCompactExpansionDirection(value));
+    }
+
+    [Theory]
     [InlineData(null, SettingsService.WidgetCollapsedStyleSummary)]
     [InlineData("unexpected", SettingsService.WidgetCollapsedStyleSummary)]
     [InlineData("minimal", SettingsService.WidgetCollapsedStyleMinimal)]

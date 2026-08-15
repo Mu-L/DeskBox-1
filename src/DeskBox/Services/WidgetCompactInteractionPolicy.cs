@@ -35,6 +35,7 @@ internal readonly record struct WidgetCompactInteractionSnapshot(
 internal static class WidgetCompactInteractionPolicy
 {
     internal const int InteractionRegionHoverDelayFloorMilliseconds = 620;
+    internal const int RoutedPointerAuthoritySafetyProbeCount = 2;
 
     public static WidgetCompactInteractionSnapshot SynchronizeForSmartEntry(
         WidgetCompactInteractionSnapshot snapshot,
@@ -83,6 +84,27 @@ internal static class WidgetCompactInteractionPolicy
                 configuredDelayMilliseconds,
                 InteractionRegionHoverDelayFloorMilliseconds)
             : configuredDelayMilliseconds;
+    }
+
+    public static int ResolveRoutedPointerAuthorityLifetimeMilliseconds(
+        int configuredDelayMilliseconds,
+        int recoveryProbeMilliseconds)
+    {
+        int longestHoverDelay = ResolveHoverExpandDelayMilliseconds(
+            configuredDelayMilliseconds,
+            allowInteractionRegionDwell: true);
+        return longestHoverDelay +
+            (Math.Max(0, recoveryProbeMilliseconds) *
+             RoutedPointerAuthoritySafetyProbeCount);
+    }
+
+    public static bool CanTrustPointerOwnership(
+        bool isPointerPhysicallyInside,
+        bool nativeRootCanReceivePointer,
+        bool hasRecentRoutedPointerEvidence)
+    {
+        return isPointerPhysicallyInside &&
+            (nativeRootCanReceivePointer || hasRecentRoutedPointerEvidence);
     }
 
     public static bool CanAutoCollapse(

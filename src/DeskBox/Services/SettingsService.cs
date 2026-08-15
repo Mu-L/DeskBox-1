@@ -118,6 +118,9 @@ public sealed class SettingsService
     public const string WidgetCollapseBehaviorAuto = WidgetCollapseBehaviorSmart;
     public const string WidgetCompactWidthModeAligned = "Aligned";
     public const string WidgetCompactWidthModeIndependent = "Independent";
+    public const string WidgetCompactExpansionDirectionAuto = "Auto";
+    public const string WidgetCompactExpansionDirectionDown = "Down";
+    public const string WidgetCompactExpansionDirectionUp = "Up";
     public const string WidgetCapsuleArrangementFree = "Free";
     public const string WidgetCapsuleArrangementBar = "Bar";
     // Legacy top-level values retained for settings migration.
@@ -300,6 +303,7 @@ public const string WeatherDataSourceMsn = "MSN";
 public const string WeatherDataSourceOpenMeteo = "OpenMeteo";
 public const int WeatherRefreshMinMinutes = 15;
 public const int WeatherRefreshMaxMinutes = 180;
+public const int DefaultSearchMaxResults = 100;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -395,6 +399,7 @@ public const int WeatherRefreshMaxMinutes = 180;
         settings.WidgetGroupsEnabled = true;
         settings.WidgetCapsuleModeEnabled = false;
         settings.WidgetCompactWidthMode = WidgetCompactWidthModeAligned;
+        settings.WidgetCompactExpansionDirection = WidgetCompactExpansionDirectionAuto;
         settings.WidgetCapsuleArrangementMode = WidgetCapsuleArrangementFree;
         settings.WidgetCapsuleBarSpacing = DefaultWidgetCapsuleBarSpacing;
         settings.WidgetCapsuleBarPlacement = WidgetCapsuleBarPlacementFloating;
@@ -485,7 +490,7 @@ settings.WeatherRefreshIntervalMinutes = 60;
         settings.SearchCustomIndexerEnabled = false;
         settings.SearchCustomIndexPaths = [];
         settings.SearchShowRecommendations = true;
-        settings.SearchMaxResults = 200;
+        settings.SearchMaxResults = DefaultSearchMaxResults;
         settings.SearchDefaultTab = "all";
         settings.SearchSaveHistory = true;
         settings.SearchAppIconAnimation = 0;
@@ -1168,6 +1173,17 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
+        string normalizedCompactExpansionDirection = NormalizeWidgetCompactExpansionDirection(
+            settings.WidgetCompactExpansionDirection);
+        if (!string.Equals(
+                settings.WidgetCompactExpansionDirection,
+                normalizedCompactExpansionDirection,
+                StringComparison.Ordinal))
+        {
+            settings.WidgetCompactExpansionDirection = normalizedCompactExpansionDirection;
+            changed = true;
+        }
+
         string? legacyCapsuleArrangement = settings.WidgetCapsuleArrangementMode;
         string normalizedCapsuleArrangement = NormalizeWidgetCapsuleArrangementMode(
             legacyCapsuleArrangement);
@@ -1568,6 +1584,24 @@ settings.FocusClickedWidgetOnRaise = false;
             StringComparison.OrdinalIgnoreCase)
                 ? WidgetCompactWidthModeIndependent
                 : WidgetCompactWidthModeAligned;
+    }
+
+    public static string NormalizeWidgetCompactExpansionDirection(string? value)
+    {
+        if (string.Equals(
+                value,
+                WidgetCompactExpansionDirectionDown,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return WidgetCompactExpansionDirectionDown;
+        }
+
+        return string.Equals(
+                value,
+                WidgetCompactExpansionDirectionUp,
+                StringComparison.OrdinalIgnoreCase)
+            ? WidgetCompactExpansionDirectionUp
+            : WidgetCompactExpansionDirectionAuto;
     }
 
     public static string NormalizeWidgetCapsuleArrangementMode(string? value)
@@ -2403,10 +2437,9 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
-        // Migrate legacy default (50) to new default (200)
-        if (settings.SearchMaxResults is > 0 and < 200)
+        if (settings.SearchMaxResults is not (50 or 100 or 200))
         {
-            settings.SearchMaxResults = 200;
+            settings.SearchMaxResults = DefaultSearchMaxResults;
             changed = true;
         }
 

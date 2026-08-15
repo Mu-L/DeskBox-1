@@ -411,6 +411,50 @@ public sealed partial class WidgetShell : UserControl
     public FrameworkElement DragHandleElement => _isCollapsed ? CollapsedChromeLayer : OverlayDragHandle;
     public FrameworkElement GroupNavigationElement => GroupTitleSwitcher;
 
+    /// <summary>
+    /// Clears hover state that WinUI can leave behind when the native host is
+    /// hidden without delivering the matching routed PointerExited events.
+    /// </summary>
+    public void ResetTransientCompactPointerState()
+    {
+        if (!_isPointerOverShell &&
+            !_isPointerOverDragHandle &&
+            !_isCompactKeyboardFocused &&
+            !_isPointerOverCompactIdentity &&
+            !_isPointerOverCompactExpansionZone &&
+            !IsPointerOverCompactActionRegion() &&
+            CompactIdentityRegionHighlight.Opacity <= 0.001 &&
+            CompactActionRegionHighlight.Opacity <= 0.001 &&
+            CompactTextHoverBackground.Opacity <= 0.001 &&
+            CompactDragGripIndicator.Opacity <= 0.001)
+        {
+            return;
+        }
+
+        bool shellWasActive = _isPointerOverShell;
+        _isPointerOverShell = false;
+        _isPointerOverDragHandle = false;
+        _isCompactKeyboardFocused = false;
+        ResetCompactInteractionRegions();
+
+        // Replace any still-active hover animation with a zero-duration value.
+        // Setting only the backing property is insufficient while a Storyboard
+        // is holding its previous PointerOver value.
+        SetOpacityImmediately(CompactIdentityRegionHighlight, 0);
+        SetOpacityImmediately(CompactActionRegionHighlight, 0);
+        SetOpacityImmediately(CompactTextHoverBackground, 0);
+        SetOpacityImmediately(CompactDragGripIndicator, 0);
+        CompactReorderGlyph.Opacity = 0.58;
+        ApplyCompactActionVisibility(animate: false);
+        UpdateCompactReorderHandleVisual(animate: false);
+        UpdateOverlayDragHandleVisual(animate: false);
+
+        if (shellWasActive)
+        {
+            CompactPointerExited?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     public FrameworkElement? GroupMergeTitleTargetElement
     {
         get
@@ -3889,6 +3933,21 @@ public sealed partial class WidgetShell : UserControl
         Storyboard.SetTargetProperty(anim, "Opacity");
         sb.Children.Add(anim);
         sb.Begin();
+    }
+
+    private static void SetOpacityImmediately(UIElement element, double target)
+    {
+        var storyboard = new Storyboard();
+        var animation = new DoubleAnimation
+        {
+            To = target,
+            Duration = TimeSpan.Zero
+        };
+        Storyboard.SetTarget(animation, element);
+        Storyboard.SetTargetProperty(animation, "Opacity");
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
+        element.Opacity = target;
     }
 
     private void ResetCompactInteractionRegions()

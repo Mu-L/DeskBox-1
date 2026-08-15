@@ -200,7 +200,7 @@ public sealed partial class FileSurfaceContent
         }
 
         UpdateSelectionCommandBar();
-        SynchronizeItemSelectionState();
+        RefreshItemSelectionVisuals();
     }
 
     private void UpdateSelectionRectangle()
@@ -239,7 +239,7 @@ public sealed partial class FileSurfaceContent
         SelectionRectangle.Width = 0;
         SelectionRectangle.Height = 0;
         UpdateSelectionCommandBar();
-        SynchronizeItemSelectionState();
+        RefreshItemSelectionVisuals();
     }
 
     public void ClearItemSelection()
@@ -247,7 +247,7 @@ public sealed partial class FileSurfaceContent
         ItemsGrid.SelectedItems.Clear();
         ItemsList.SelectedItems.Clear();
         UpdateSelectionCommandBar();
-        SynchronizeItemSelectionState();
+        RefreshItemSelectionVisuals();
     }
 
     private void ClearSelection() => ClearItemSelection();
@@ -339,11 +339,11 @@ public sealed partial class FileSurfaceContent
             _ => MoveSelectedItemsBackToDesktopAsync(),
             DeleteItemsAsync,
             GetSelectedItems,
-            ViewModel.FileStacksEnabled,
+            FileStacksEnabled: true,
             items =>
             {
-                _ = ViewModel.CreateManualStack(items);
-                ClearSelection();
+                ApplyStackProjectionChange(() =>
+                    _ = ViewModel.CreateManualStack(items));
             },
             ClearSelection);
     }
@@ -561,7 +561,8 @@ public sealed partial class FileSurfaceContent
             IsChecked = ViewModel.FileStacksFollowGlobalDefaults
         };
         followDefaults.Click += (_, _) =>
-            ViewModel.ClearFileStackOverrides();
+            ApplyStackProjectionChange(
+                ViewModel.ClearFileStackOverrides);
         menu.Items.Add(followDefaults);
 
         var enabled = new ToggleMenuFlyoutItem
@@ -570,7 +571,8 @@ public sealed partial class FileSurfaceContent
             IsChecked = ViewModel.FileStacksEnabled
         };
         enabled.Click += (_, _) =>
-            ViewModel.SetFileStacksEnabledOverride(enabled.IsChecked);
+            ApplyStackProjectionChange(() =>
+                ViewModel.SetFileStacksEnabledOverride(enabled.IsChecked));
         menu.Items.Add(enabled);
         menu.Items.Add(new MenuFlyoutSeparator());
 
@@ -581,7 +583,8 @@ public sealed partial class FileSurfaceContent
             IsEnabled = ViewModel.FileStacksEnabled
         };
         defaultGrouping.Click += (_, _) =>
-            ViewModel.SetFileStackGroupByOverride(null);
+            ApplyStackProjectionChange(() =>
+                ViewModel.SetFileStackGroupByOverride(null));
         menu.Items.Add(defaultGrouping);
         AddStackGroupingItem(
             menu,
@@ -628,11 +631,20 @@ public sealed partial class FileSurfaceContent
                     Text = label
                 };
                 restoreItem.Click += (_, _) =>
-                    ViewModel.SetStackDisabled(key, false);
+                    ApplyStackProjectionChange(() =>
+                        ViewModel.SetStackDisabled(key, false));
                 restore.Items.Add(restoreItem);
             }
             menu.Items.Add(restore);
         }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        MenuFlyoutItem editRules = CreateMenuItem(
+            "Settings.FileStacks.Custom.Rules.Title",
+            "\uE713");
+        editRules.Click += (_, _) =>
+            App.Current.ShowSettings("FileStackSettings");
+        menu.Items.Add(editRules);
 
         return menu;
     }
@@ -650,11 +662,11 @@ public sealed partial class FileSurfaceContent
                 string.Equals(
                     ViewModel.FileStackGroupBy,
                     groupBy,
-                    StringComparison.Ordinal),
-            IsEnabled = ViewModel.FileStacksEnabled
+                    StringComparison.Ordinal)
         };
         item.Click += (_, _) =>
-            ViewModel.SetFileStackGroupByOverride(groupBy);
+            ApplyStackProjectionChange(() =>
+                ViewModel.SetFileStackGroupByOverride(groupBy));
         menu.Items.Add(item);
     }
 
@@ -671,7 +683,8 @@ public sealed partial class FileSurfaceContent
             IsEnabled = ViewModel.FileStacksEnabled
         };
         useDefault.Click += (_, _) =>
-            ViewModel.SetFileStackThresholdOverride(null);
+            ApplyStackProjectionChange(() =>
+                ViewModel.SetFileStackThresholdOverride(null));
         menu.Items.Add(useDefault);
         menu.Items.Add(new MenuFlyoutSeparator());
         foreach (int threshold in new[] { 2, 3, 5 })
@@ -687,7 +700,8 @@ public sealed partial class FileSurfaceContent
                 IsEnabled = ViewModel.FileStacksEnabled
             };
             item.Click += (_, _) =>
-                ViewModel.SetFileStackThresholdOverride(threshold);
+                ApplyStackProjectionChange(() =>
+                    ViewModel.SetFileStackThresholdOverride(threshold));
             menu.Items.Add(item);
         }
 
@@ -707,7 +721,8 @@ public sealed partial class FileSurfaceContent
             IsEnabled = ViewModel.FileStacksEnabled
         };
         useDefault.Click += (_, _) =>
-            ViewModel.SetFileStackOrderByOverride(null);
+            ApplyStackProjectionChange(() =>
+                ViewModel.SetFileStackOrderByOverride(null));
         menu.Items.Add(useDefault);
         menu.Items.Add(new MenuFlyoutSeparator());
         AddStackOrderItem(
@@ -746,7 +761,8 @@ public sealed partial class FileSurfaceContent
             IsEnabled = ViewModel.FileStacksEnabled
         };
         item.Click += (_, _) =>
-            ViewModel.SetFileStackOrderByOverride(orderBy);
+            ApplyStackProjectionChange(() =>
+                ViewModel.SetFileStackOrderByOverride(orderBy));
         menu.Items.Add(item);
     }
 
@@ -760,7 +776,9 @@ public sealed partial class FileSurfaceContent
                 : "Widget.Stack.Expand"),
             Icon = new FontIcon { Glyph = stack.ChevronGlyph }
         };
-        toggle.Click += (_, _) => ViewModel.ToggleStack(stack);
+        toggle.Click += (_, _) =>
+            ApplyStackProjectionChange(() =>
+                ViewModel.ToggleStack(stack));
         flyout.Items.Add(toggle);
 
         MenuFlyoutItem rename = CreateMenuItem(
@@ -789,7 +807,8 @@ public sealed partial class FileSurfaceContent
             "Widget.Stack.DisableGroup",
             "\uE748");
         disable.Click += (_, _) =>
-            ViewModel.SetStackDisabled(stack.StackKey, true);
+            ApplyStackProjectionChange(() =>
+                ViewModel.SetStackDisabled(stack.StackKey, true));
         flyout.Items.Add(disable);
         flyout.Items.Add(new MenuFlyoutSeparator());
 
@@ -808,6 +827,14 @@ public sealed partial class FileSurfaceContent
             CopyPathsToClipboard(stack.Members);
         };
         flyout.Items.Add(copyPaths);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        MenuFlyoutItem editRules = CreateMenuItem(
+            "Settings.FileStacks.Custom.Rules.Title",
+            "\uE713");
+        editRules.Click += (_, _) =>
+            App.Current.ShowSettings("FileStackSettings");
+        flyout.Items.Add(editRules);
         return flyout;
     }
 
@@ -891,30 +918,43 @@ public sealed partial class FileSurfaceContent
         });
     }
 
-    private async Task RenameStackAsync(WidgetStackItem stack)
+    private void ApplyStackProjectionChange(Action change)
     {
-        var editor = new TextBox { Text = stack.Name };
-        var dialog = new ContentDialog
+        ResetSelectionForStackProjectionChange();
+        change();
+        DispatcherQueue.TryEnqueue(() =>
         {
-            XamlRoot = XamlRoot,
-            Title = T("Widget.Stack.Rename"),
-            Content = editor,
-            PrimaryButtonText = T("Common.Save"),
-            CloseButtonText = T("Common.Cancel"),
-            DefaultButton = ContentDialogButton.Primary
-        };
-        if (await dialog.ShowAsync() ==
-                ContentDialogResult.Primary &&
-            !string.IsNullOrWhiteSpace(editor.Text))
-        {
-            ViewModel.SetStackNameOverride(
-                stack.StackKey,
-                editor.Text.Trim());
-        }
+            ResetSelectionForStackProjectionChange();
+            // Collection reconciliation and container recycling can finish on
+            // the following layout turn. Clear once more after that work so a
+            // collapsed stack header cannot donate IsSelected to a child.
+            DispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                ResetSelectionForStackProjectionChange);
+        });
+    }
+
+    private void ResetSelectionForStackProjectionChange()
+    {
+        _selectionPointerPressed = false;
+        _isBoxSelecting = false;
+        _selectionSnapshot = [];
+        _selectionHits = [];
+        _pendingPointerDragItems = [];
+        _pressedStack = null;
+        _stackPointerDragStarted = false;
+        SelectionRectangle.Visibility = Visibility.Collapsed;
+        SelectionRectangle.Width = 0;
+        SelectionRectangle.Height = 0;
+        ItemsGrid.SelectedItems.Clear();
+        ItemsList.SelectedItems.Clear();
+        UpdateSelectionCommandBar();
+        UpdateItemSurfaceVisuals();
     }
 
     private void SelectStackMembers(WidgetStackItem stack)
     {
+        ResetSelectionForStackProjectionChange();
         ViewModel.SetStackExpanded(stack, true);
         DispatcherQueue.TryEnqueue(() =>
         {

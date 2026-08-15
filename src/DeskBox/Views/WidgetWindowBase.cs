@@ -31,6 +31,7 @@ public abstract partial class WidgetWindowBase : Window
 {
     private const int MinWidth = (int)SettingsService.MinWidgetWidth;
     private const int MinHeight = (int)SettingsService.MinWidgetHeight;
+    private static readonly UIntPtr DesktopPinnedActivationSubclassId = new(0xDDB5);
 
     private static readonly int[] BackdropRefreshDelays = [80, 240, 580];
     private static readonly TimeSpan InactiveBackdropControllerRetention = TimeSpan.FromSeconds(3);
@@ -96,6 +97,9 @@ public abstract partial class WidgetWindowBase : Window
     protected bool IsHideAnimationRunning;
     protected DateTime LastElevateForInteractionUtc = DateTime.MinValue;
     protected DispatcherQueueTimer? TopMostSafetyTimer;
+    private Win32Helper.SubclassProc? _desktopPinnedActivationSubclassProc;
+    private bool _isDesktopPinnedActivationSubclassInstalled;
+    private PointerEventHandler? _desktopPinnedPointerPressedHandler;
 
     // ── Protected state: closing ───────────────────────────────
     protected bool IsClosing;
@@ -270,6 +274,8 @@ public abstract partial class WidgetWindowBase : Window
     protected void CleanupBase()
     {
         CancelPendingInteractiveResizeFrame();
+        RemoveDesktopPinnedPointerRouting();
+        RemoveDesktopPinnedActivationGuard();
         WidgetShellControl.HostedContentChanged -= WidgetShellControl_HostedContentChanged;
         CleanupWidgetGrouping();
         CleanupWidgetCollapse();

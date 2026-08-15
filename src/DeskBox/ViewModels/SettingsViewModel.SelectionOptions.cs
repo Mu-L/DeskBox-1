@@ -33,6 +33,11 @@ public partial class SettingsViewModel
             AvailableWidgetCompactWidthModes,
             AvailableWidgetCompactWidthModeDisplayNames);
 
+    public IReadOnlyList<SettingsOption> AvailableWidgetCompactExpansionDirectionOptions =>
+        CreateSelectionOptions(
+            AvailableWidgetCompactExpansionDirections,
+            AvailableWidgetCompactExpansionDirectionDisplayNames);
+
     public IReadOnlyList<SettingsOption> AvailableWidgetCapsuleArrangementOptions =>
         CreateSelectionOptions(
             AvailableWidgetCapsuleArrangementModes,
@@ -199,6 +204,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableWidgetBorderStyleOptions));
         OnPropertyChanged(nameof(AvailableWidgetCollapseBehaviorOptions));
         OnPropertyChanged(nameof(AvailableWidgetCompactWidthModeOptions));
+        OnPropertyChanged(nameof(AvailableWidgetCompactExpansionDirectionOptions));
         OnPropertyChanged(nameof(AvailableWidgetCapsuleArrangementOptions));
         OnPropertyChanged(nameof(AvailableWidgetCapsuleBarPlacementOptions));
         OnPropertyChanged(nameof(AvailableWidgetCapsuleBarDirectionOptions));

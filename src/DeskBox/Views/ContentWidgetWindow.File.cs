@@ -1,11 +1,24 @@
 using DeskBox.Controls;
 using DeskBox.Controls.WidgetContents;
+using DeskBox.Helpers;
 using DeskBox.Models;
 
 namespace DeskBox.Views;
 
 public sealed partial class ContentWidgetWindow
 {
+    internal void ActivateQuickLookNavigationTarget(FileSurfaceContent content)
+    {
+        if (!Visible || !ReferenceEquals(CurrentContent, content))
+        {
+            return;
+        }
+
+        base.Activate();
+        Win32Helper.SetForegroundWindow(HWnd);
+        content.FocusQuickLookNavigationTarget();
+    }
+
     private WidgetCompactPresentation CreateFileCompactPresentation(
         FileSurfaceContent file,
         string contentMode)

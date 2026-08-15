@@ -1,6 +1,7 @@
 using DeskBox.Controls;
 using DeskBox.Models;
 using DeskBox.Services;
+using DeskBox.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 
@@ -8,24 +9,28 @@ namespace DeskBox.Tests;
 
 public sealed class FileItemMultiDragTests
 {
-    [Theory]
-    [InlineData(true, false, false, FileItemPointerSelectionAction.Preserve)]
-    [InlineData(true, true, false, FileItemPointerSelectionAction.Preserve)]
-    [InlineData(false, false, true, FileItemPointerSelectionAction.Preserve)]
-    [InlineData(false, true, false, FileItemPointerSelectionAction.Add)]
-    [InlineData(false, false, false, FileItemPointerSelectionAction.Replace)]
-    public void ResolvePointerSelectionAction_PreservesSelectedDragAnchor(
-        bool itemIsSelected,
-        bool controlPressed,
-        bool shiftPressed,
-        FileItemPointerSelectionAction expected)
+    [Fact]
+    public void TryMoveStackMemberOverride_ReordersPersistedManualMembers()
     {
+        List<string> paths =
+        [
+            @"E:\DeskBox\my\first.lnk",
+            @"E:\DeskBox\my\second.lnk",
+            @"E:\DeskBox\my\third.lnk"
+        ];
+
+        bool moved = WidgetViewModel.TryMoveStackMemberOverride(
+            paths,
+            @"E:\DeskBox\my\first.lnk",
+            @"E:\DeskBox\my\third.lnk");
+
+        Assert.True(moved);
         Assert.Equal(
-            expected,
-            FileItemSelectionBehavior.ResolvePointerSelectionAction(
-                itemIsSelected,
-                controlPressed,
-                shiftPressed));
+        [
+            @"E:\DeskBox\my\second.lnk",
+            @"E:\DeskBox\my\third.lnk",
+            @"E:\DeskBox\my\first.lnk"
+        ], paths);
     }
 
     [Fact]

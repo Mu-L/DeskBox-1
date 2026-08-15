@@ -17,6 +17,8 @@ public static class WidgetLayerService
 
     public static void MoveToDesktopBottom(IntPtr windowHandle)
     {
+        ApplyDesktopPinnedActivationStyle(windowHandle);
+
         // Desktop-pinned mode always rests inside Explorer. Dynamic mode uses
         // the same owner only when the user wants widgets to survive Win+D.
         if (ShouldAttachRestingWindowToDesktop() &&
@@ -32,6 +34,8 @@ public static class WidgetLayerService
 
     public static IntPtr ClearTopMostPreservingForeground(IntPtr windowHandle)
     {
+        ApplyDesktopPinnedActivationStyle(windowHandle);
+
         if (UsesDesktopPinnedMode())
         {
             if (!TryAttachToDesktopIconLayer(windowHandle))
@@ -175,6 +179,8 @@ public static class WidgetLayerService
 
     public static void ClearTopMost(IntPtr windowHandle)
     {
+        ApplyDesktopPinnedActivationStyle(windowHandle);
+
         if (UsesDesktopPinnedMode())
         {
             if (!TryAttachToDesktopIconLayer(windowHandle))
@@ -190,6 +196,8 @@ public static class WidgetLayerService
 
     public static void HoldTemporaryTopMost(IntPtr windowHandle)
     {
+        ApplyDesktopPinnedActivationStyle(windowHandle);
+
         if (UsesDesktopPinnedMode())
         {
             if (!TryAttachToDesktopIconLayer(windowHandle))
@@ -206,6 +214,8 @@ public static class WidgetLayerService
 
     public static void BringToFront(IntPtr windowHandle)
     {
+        ApplyDesktopPinnedActivationStyle(windowHandle);
+
         if (UsesDesktopPinnedMode())
         {
             if (!TryAttachToDesktopIconLayer(windowHandle))
@@ -604,6 +614,106 @@ public static class WidgetLayerService
         return string.Equals(mode, SettingsService.WidgetLayerModeDesktopPinned, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Determines whether a pointer press must leave the current foreground
+    /// application active. Desktop-pinned widgets behave like desktop content:
+    /// an exposed part can still receive the mouse message, but it must not
+    /// activate and jump above another application. Dynamic mode keeps the
+    /// existing interactive raise behavior.
+    /// </summary>
+    public static bool ShouldSuppressPointerActivation(IntPtr windowHandle)
+    {
+        IntPtr foregroundRoot = GetForegroundRoot(Win32Helper.GetForegroundWindow());
+        bool hasForeground =
+            foregroundRoot != IntPtr.Zero &&
+            Win32Helper.IsWindow(foregroundRoot);
+        bool foregroundIsWidget =
+            foregroundRoot == windowHandle ||
+            App.Current?.WidgetManager?.IsWidgetWindow(foregroundRoot) == true;
+
+        return WidgetLayerPointerActivationPolicy.ShouldSuppress(
+            UsesDesktopPinnedMode(),
+            hasForeground,
+            hasForeground && IsDesktopShellWindow(foregroundRoot),
+            foregroundIsWidget);
+    }
+
+    /// <summary>
+    /// Allows a desktop-pinned widget to become active only when the current
+    /// foreground belongs to the desktop shell or another widget. The
+    /// WS_EX_NOACTIVATE resting style makes this decision before the routed
+    /// pointer event, so clicking an exposed blank area cannot raise the whole
+    /// HWND above a foreign application.
+    /// </summary>
+    public static bool TryAllowDesktopPinnedPointerActivation(IntPtr windowHandle)
+    {
+        if (!UsesDesktopPinnedMode())
+        {
+            SetWindowNoActivate(windowHandle, enabled: false);
+            return true;
+        }
+
+        if (ShouldSuppressPointerActivation(windowHandle))
+        {
+            SetWindowNoActivate(windowHandle, enabled: true);
+            return false;
+        }
+
+        SetWindowNoActivate(windowHandle, enabled: false);
+        return true;
+    }
+
+    public static bool IsWindowNoActivate(IntPtr windowHandle)
+    {
+        return windowHandle != IntPtr.Zero &&
+            (Win32Helper.GetWindowLong(windowHandle, Win32Helper.GWL_EXSTYLE) &
+                Win32Helper.WS_EX_NOACTIVATE) != 0;
+    }
+
+    private static void ApplyDesktopPinnedActivationStyle(IntPtr windowHandle)
+    {
+        SetWindowNoActivate(windowHandle, UsesDesktopPinnedMode());
+    }
+
+    private static void SetWindowNoActivate(IntPtr windowHandle, bool enabled)
+    {
+        if (windowHandle == IntPtr.Zero || !Win32Helper.IsWindow(windowHandle))
+        {
+            return;
+        }
+
+        int extendedStyle = Win32Helper.GetWindowLong(
+            windowHandle,
+            Win32Helper.GWL_EXSTYLE);
+        int updatedStyle = enabled
+            ? extendedStyle | Win32Helper.WS_EX_NOACTIVATE
+            : extendedStyle & ~Win32Helper.WS_EX_NOACTIVATE;
+        if (updatedStyle == extendedStyle)
+        {
+            return;
+        }
+
+        _ = Win32Helper.SetWindowLong(
+            windowHandle,
+            Win32Helper.GWL_EXSTYLE,
+            updatedStyle);
+        _ = Win32Helper.SetWindowPos(
+            windowHandle,
+            IntPtr.Zero,
+            0,
+            0,
+            0,
+            0,
+            Win32Helper.SWP_NOMOVE |
+                Win32Helper.SWP_NOSIZE |
+                Win32Helper.SWP_NOZORDER |
+                Win32Helper.SWP_NOACTIVATE |
+                Win32Helper.SWP_FRAMECHANGED);
+        App.LogVerbose(
+            $"[WidgetLayer] no-activate style hwnd=0x{windowHandle.ToInt64():X} " +
+            $"enabled={enabled}");
+    }
+
     private static bool ShouldAttachRestingWindowToDesktop()
     {
         bool keepVisible = App.Current?.SettingsService?.Settings
@@ -857,4 +967,19 @@ public static class WidgetLayerService
     }
 
     private sealed record DesktopLayerAttachment(IntPtr OriginalOwner);
+}
+
+internal static class WidgetLayerPointerActivationPolicy
+{
+    public static bool ShouldSuppress(
+        bool usesDesktopPinnedMode,
+        bool hasForegroundWindow,
+        bool foregroundIsDesktopShell,
+        bool foregroundIsWidget)
+    {
+        return usesDesktopPinnedMode &&
+            hasForegroundWindow &&
+            !foregroundIsDesktopShell &&
+            !foregroundIsWidget;
+    }
 }

@@ -79,6 +79,8 @@ public sealed partial class WidgetManager
         }
 
         string previousMode = _lastEffectiveCapsuleArrangementMode;
+        HashSet<string> previouslyConstrainedIds =
+            _lastCapsuleBarBounds.Keys.ToHashSet(StringComparer.Ordinal);
         _lastEffectiveCapsuleArrangementMode = mode;
         _lastCapsuleBarPlacement = placement;
         _lastCapsuleBarDirection = direction;
@@ -111,6 +113,12 @@ public sealed partial class WidgetManager
                     rebuildOrder);
             }
 
+            ClearRetiredCapsuleArrangementConstraints(
+                previouslyConstrainedIds,
+                mode == SettingsService.WidgetCapsuleArrangementBar
+                    ? _lastCapsuleBarBounds.Keys
+                    : Array.Empty<string>());
+
             if (changed)
             {
                 _settingsService.SaveDebounced(notifySubscribers: false);
@@ -119,6 +127,20 @@ public sealed partial class WidgetManager
         finally
         {
             _isApplyingCapsuleArrangement = false;
+        }
+    }
+
+    private void ClearRetiredCapsuleArrangementConstraints(
+        IEnumerable<string> previouslyConstrainedIds,
+        IEnumerable<string> currentlyConstrainedIds)
+    {
+        var current = currentlyConstrainedIds.ToHashSet(StringComparer.Ordinal);
+        foreach (string id in previouslyConstrainedIds)
+        {
+            if (!current.Contains(id))
+            {
+                FindLoadedWindow(id)?.ClearCompactArrangementConstraint();
+            }
         }
     }
 

@@ -210,7 +210,7 @@ public sealed partial class FileSurfaceContent :
         activeView.SelectedItems.Clear();
         activeView.SelectedItems.Add(item);
         UpdateSelectionCommandBar();
-        SynchronizeItemSelectionState();
+        RefreshItemSelectionVisuals();
         ShowFeedback(new WidgetFeedbackRequest(
             T("Widget.SavedHere"),
             WidgetFeedbackSeverity.Success,
@@ -258,6 +258,15 @@ public sealed partial class FileSurfaceContent :
         QueueDiskReconciliationIfStale("activated");
     }
 
+    public void PrepareForReuse()
+    {
+        // A group member can stay detached while its source items or settings
+        // change. Clear recycled selector state first, then rebuild the stack
+        // projection before the cached surface is attached again.
+        ResetSelectionForStackProjectionChange();
+        ViewModel.StabilizeStackDisplay();
+    }
+
     public void OnDeactivated()
     {
         // File hydration and folder watchers follow the actual window visibility,
@@ -291,7 +300,7 @@ public sealed partial class FileSurfaceContent :
                 string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase)))
             .ToArray();
         ApplyCutState();
-        SynchronizeItemSelectionState();
+        RefreshItemSelectionVisuals();
     }
 
     public void OnWindowVisibilityChanged(bool visible)
@@ -367,6 +376,7 @@ public sealed partial class FileSurfaceContent :
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         StopScrollBarHideTimer();
+        App.Current.WidgetManager?.NotifyQuickLookSurfaceUnavailable(this);
     }
 
     private void Items_CollectionChanged(
@@ -453,14 +463,24 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        if (e.ClickedItem is WidgetItem item &&
-            !_settingsService.Settings.DoubleClickToOpen &&
-            !Win32Helper.IsKeyPressed(VirtualKey.Control) &&
-            !Win32Helper.IsKeyPressed(VirtualKey.Shift))
+        if (e.ClickedItem is not WidgetItem item)
+        {
+            return;
+        }
+
+        bool controlPressed =
+            Win32Helper.IsKeyPressed(VirtualKey.Control);
+        bool shiftPressed =
+            Win32Helper.IsKeyPressed(VirtualKey.Shift);
+
+        if (!_settingsService.Settings.DoubleClickToOpen &&
+            !controlPressed &&
+            !shiftPressed)
         {
             ViewModel.OpenItem(item);
         }
     }
+
     private void ToggleStackFromInput(WidgetStackItem stack)
     {
         long now = Environment.TickCount64;
@@ -475,7 +495,8 @@ public sealed partial class FileSurfaceContent :
 
         _lastStackInputKey = stack.StackKey;
         _lastStackInputTick = now;
-        ViewModel.ToggleStack(stack);
+        ApplyStackProjectionChange(() =>
+            ViewModel.ToggleStack(stack));
     }
 
 
@@ -1042,16 +1063,24 @@ public sealed partial class FileSurfaceContent :
         await StartItemRenameAsync(item);
     }
 
+    private async Task RenameStackAsync(WidgetStackItem stack)
+    {
+        // Let the MenuFlyout finish closing before taking keyboard focus.
+        await Task.Yield();
+        await StartItemRenameAsync(stack);
+    }
+
     private async Task StartItemRenameAsync(WidgetItem item)
     {
-        FrameworkElement? target =
-            await FindOrRealizeItemRenameTargetAsync(item);
+        FrameworkElement? target = item is WidgetStackItem stack
+            ? await FindOrRealizeStackRenameTargetAsync(stack)
+            : await FindOrRealizeItemRenameTargetAsync(item);
         UIElement? contentHost = SelectionOverlay.Parent as UIElement;
         if (target is null || contentHost is null)
         {
             App.Log(
                 $"[WidgetSurface] Inline rename target unavailable " +
-                $"id={WidgetId} path={item.Path}");
+                $"id={WidgetId} target={item.Name}");
             return;
         }
 
@@ -1102,14 +1131,14 @@ public sealed partial class FileSurfaceContent :
 
         SelectItemNameForRename(
             ItemRenameTextBox,
-            renameItem.IsFolder);
+            renameItem is WidgetStackItem || renameItem.IsFolder);
         DispatcherQueue.TryEnqueue(() =>
         {
             if (ReferenceEquals(_itemRenameTarget, renameItem))
             {
                 SelectItemNameForRename(
                     ItemRenameTextBox,
-                    renameItem.IsFolder);
+                    renameItem is WidgetStackItem || renameItem.IsFolder);
             }
         });
 
@@ -1164,7 +1193,14 @@ public sealed partial class FileSurfaceContent :
         _isCommittingItemRename = true;
         try
         {
-            await ViewModel.RenameItemAsync(_itemRenameTarget, newName);
+            if (_itemRenameTarget is WidgetStackItem stack)
+            {
+                ViewModel.SetStackNameOverride(stack.StackKey, newName);
+            }
+            else
+            {
+                await ViewModel.RenameItemAsync(_itemRenameTarget, newName);
+            }
             CompleteItemRename();
         }
         catch (Exception ex)
@@ -1264,6 +1300,11 @@ public sealed partial class FileSurfaceContent :
 
     private FrameworkElement? FindItemNameElement(WidgetItem item)
     {
+        if (item is WidgetStackItem stack)
+        {
+            return FindStackNameElement(stack);
+        }
+
         if (GetActiveItemsView().ContainerFromItem(item)
             is not SelectorItem container)
         {
@@ -1315,6 +1356,72 @@ public sealed partial class FileSurfaceContent :
             ? null
             : FindItemNameElement(finalItem) ??
               FindItemSurface(finalItem);
+    }
+
+    private async Task<FrameworkElement?>
+        FindOrRealizeStackRenameTargetAsync(WidgetStackItem stack)
+    {
+        const int realizationPasses = 5;
+        for (int pass = 0; pass < realizationPasses; pass++)
+        {
+            if (_isDisposed)
+            {
+                return null;
+            }
+
+            ListViewBase activeView = GetActiveItemsView();
+            activeView.ScrollIntoView(stack);
+            activeView.UpdateLayout();
+            FrameworkElement? target = FindStackNameElement(stack) ??
+                FindStackSurface(stack);
+            if (target is not null)
+            {
+                return target;
+            }
+
+            if (!await YieldForItemContainerRealizationAsync())
+            {
+                break;
+            }
+        }
+
+        return FindStackNameElement(stack) ?? FindStackSurface(stack);
+    }
+
+    private Border? FindStackSurface(WidgetStackItem stack) =>
+        _stackSurfaces.FirstOrDefault(surface =>
+            ReferenceEquals(surface.DataContext, stack));
+
+    private FrameworkElement? FindStackNameElement(WidgetStackItem stack)
+    {
+        Border? surface = FindStackSurface(stack);
+        return surface is null
+            ? null
+            : FindDescendantByTag(surface, "StackName");
+    }
+
+    private static FrameworkElement? FindDescendantByTag(
+        DependencyObject parent,
+        string tag)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(parent);
+        for (int index = 0; index < childCount; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(parent, index);
+            if (child is FrameworkElement element &&
+                string.Equals(element.Tag as string, tag, StringComparison.Ordinal))
+            {
+                return element;
+            }
+
+            FrameworkElement? match = FindDescendantByTag(child, tag);
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        return null;
     }
 
     private Task<bool> YieldForItemContainerRealizationAsync()
@@ -2210,6 +2317,10 @@ public sealed partial class FileSurfaceContent :
 
         if (e.Key == VirtualKey.Escape)
         {
+            if (App.Current.WidgetManager is { } manager)
+            {
+                _ = manager.CloseQuickLookPreviewAsync();
+            }
             e.Handled = true;
             ClearSelection();
             _cutClipboardPaths = [];
@@ -2265,7 +2376,12 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        await TryHandleSpacePreviewAsync(e);
+        if (await TryHandleSpacePreviewAsync(e) || e.Handled)
+        {
+            return;
+        }
+
+        QueueQuickLookBoundaryNavigation(e);
     }
 
     internal async Task<bool> TryHandleClipboardShortcutAsync(
@@ -2318,7 +2434,13 @@ public sealed partial class FileSurfaceContent :
         // for selection and otherwise swallows the key before normal KeyDown.
         e.Handled = true;
         WidgetItem previewTarget = selectedItems[0];
-        if (s_quickLookService.CanPreview(previewTarget.Path))
+        if (App.Current.WidgetManager is { } manager)
+        {
+            await manager.TryToggleQuickLookPreviewAsync(
+                this,
+                previewTarget.Path);
+        }
+        else if (s_quickLookService.CanPreview(previewTarget.Path))
         {
             await s_quickLookService.TryToggleAsync(previewTarget.Path);
         }
@@ -2342,6 +2464,82 @@ public sealed partial class FileSurfaceContent :
             .ToList();
     }
 
+    internal WidgetItem? GetPrimaryQuickLookSelection()
+    {
+        IReadOnlyList<WidgetItem> selectedItems = GetSelectedItems();
+        return selectedItems.Count == 1 ? selectedItems[0] : null;
+    }
+
+    internal IReadOnlyList<string> GetQuickLookNavigationPaths() =>
+        GetActiveItemsView().Items
+            .OfType<WidgetItem>()
+            .Where(item =>
+                item is not WidgetStackItem &&
+                !string.IsNullOrWhiteSpace(item.Path))
+            .Select(item => item.Path)
+            .ToArray();
+
+    internal bool TrySelectQuickLookTarget(string path)
+    {
+        ListViewBase activeView = GetActiveItemsView();
+        WidgetItem? target = activeView.Items
+            .OfType<WidgetItem>()
+            .FirstOrDefault(item =>
+                item is not WidgetStackItem &&
+                string.Equals(
+                    item.Path,
+                    path,
+                    StringComparison.OrdinalIgnoreCase));
+        if (target is null)
+        {
+            return false;
+        }
+
+        ClearItemSelection();
+        activeView.SelectedItem = target;
+        activeView.ScrollIntoView(target);
+        return true;
+    }
+
+    internal void FocusQuickLookNavigationTarget()
+    {
+        ListViewBase activeView = GetActiveItemsView();
+        activeView.UpdateLayout();
+        if (activeView.SelectedItem is { } selected &&
+            activeView.ContainerFromItem(selected) is Control container)
+        {
+            container.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        activeView.Focus(FocusState.Programmatic);
+    }
+
+    private void QueueQuickLookBoundaryNavigation(KeyRoutedEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source &&
+            FileItemSelectionGeometry.HasAncestor<TextBox>(source) ||
+            e.Key is not (VirtualKey.Left or VirtualKey.Up or
+                VirtualKey.Right or VirtualKey.Down) ||
+            Win32Helper.IsKeyPressed(VirtualKey.Control) ||
+            Win32Helper.IsKeyPressed(VirtualKey.Shift) ||
+            Win32Helper.IsKeyPressed(VirtualKey.Menu) ||
+            GetPrimaryQuickLookSelection() is not { } selected ||
+            App.Current.WidgetManager is not { } manager ||
+            !manager.IsCurrentQuickLookPreviewTarget(this, selected.Path))
+        {
+            return;
+        }
+
+        string originalPath = selected.Path;
+        VirtualKey key = e.Key;
+        DispatcherQueue.TryEnqueue(async () =>
+            await manager.ContinueQuickLookNavigationAfterNativeAsync(
+                this,
+                originalPath,
+                key));
+    }
+
     private void Items_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
@@ -2351,12 +2549,46 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        if (e.AddedItems.Count > 0)
+        if (sender is ListViewBase listView)
         {
-            ClearOtherWidgetSelections();
+            WidgetStackItem[] selectedStacks = listView.SelectedItems
+                .OfType<WidgetStackItem>()
+                .Where(stack => stack.IsExpanded)
+                .ToArray();
+            if (selectedStacks.Length > 0)
+            {
+                // An expanded stack header is an interaction surface, not a
+                // file selection. Keeping one selected during collapse lets
+                // WinUI recycle that container onto a member on the next
+                // expansion. Collapsed headers remain selectable long enough
+                // for the existing stack-reorder drag gesture to start.
+                _isSynchronizingSelection = true;
+                try
+                {
+                    foreach (WidgetStackItem stack in selectedStacks)
+                    {
+                        listView.SelectedItems.Remove(stack);
+                    }
+                }
+                finally
+                {
+                    _isSynchronizingSelection = false;
+                }
+            }
         }
 
-        SynchronizeItemSelectionState();
+        if (e.AddedItems.OfType<WidgetItem>()
+            .Any(item => item is not WidgetStackItem))
+        {
+            ClearOtherWidgetSelections();
+            if (GetPrimaryQuickLookSelection() is { } selected)
+            {
+                _ = App.Current.WidgetManager?
+                    .FollowQuickLookSelectionAsync(this, selected.Path);
+            }
+        }
+
+        RefreshItemSelectionVisuals();
         UpdateSelectionCommandBar();
     }
 
@@ -2721,6 +2953,7 @@ public sealed partial class FileSurfaceContent :
         }
 
         PersistSurfaceReorder();
+        App.Current.WidgetManager?.NotifyQuickLookSurfaceUnavailable(this);
         _isDisposed = true;
         _isReadyForReuse = false;
         _lifetimeCancellation.Cancel();

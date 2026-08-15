@@ -6,6 +6,7 @@ using DeskBox.ViewModels;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
@@ -15,6 +16,7 @@ namespace DeskBox.Controls.WidgetContents;
 public sealed partial class FileSurfaceContent
 {
     private readonly HashSet<Border> _itemSurfaces = [];
+    private readonly HashSet<Border> _stackSurfaces = [];
     private readonly FileItemSurfaceStyleCache _itemSurfaceStyleCache = new();
 
     private void ApplySelectionRectangleAppearance()
@@ -97,16 +99,11 @@ public sealed partial class FileSurfaceContent
                 .Distinct()
                 .ToArray()
             : [];
-        ClearOtherWidgetSelections();
-        FileItemSelectionBehavior.ApplyPointerSelection(
-            listView,
-            item,
-            Win32Helper.IsKeyPressed(
-                Windows.System.VirtualKey.Control),
-            Win32Helper.IsKeyPressed(
-                Windows.System.VirtualKey.Shift));
-
-        SynchronizeItemSelectionState();
+        // Keep pointer-down selection read-only. The native selector commits
+        // its final state after ItemClick; changing SelectedItems here makes
+        // the same click toggle twice and can leave a stale custom highlight.
+        // The snapshot above only preserves an existing multi-selection for a
+        // drag that starts on one of its selected anchors.
     }
 
     private void ItemSurface_DragOver(
@@ -446,7 +443,18 @@ public sealed partial class FileSurfaceContent
     {
         if (sender is Border border)
         {
+            _stackSurfaces.Add(border);
             ApplyStackSurfaceVisual(border, hovered: false);
+        }
+    }
+
+    private void StackSurface_Unloaded(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Border border)
+        {
+            _stackSurfaces.Remove(border);
         }
     }
 
@@ -687,24 +695,26 @@ public sealed partial class FileSurfaceContent
                 DataContext: WidgetStackItem stack
             })
         {
-            ViewModel.SetStackExpanded(stack, false);
+            ApplyStackProjectionChange(() =>
+                ViewModel.SetStackExpanded(stack, false));
         }
     }
 
-    private void SynchronizeItemSelectionState()
+    private void StackToggleButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
-        HashSet<WidgetItem> selected = GetActiveItemsView()
-            .SelectedItems
-            .OfType<WidgetItem>()
-            .Where(item => item is not WidgetStackItem)
-            .ToHashSet();
-        foreach (WidgetItem item in ViewModel.Items)
+        if (sender is FrameworkElement
+            {
+                DataContext: WidgetStackItem stack
+            })
         {
-            item.IsSelected = selected.Contains(item);
+            ToggleStackFromInput(stack);
         }
-
-        UpdateItemSurfaceVisuals();
     }
+
+    private void RefreshItemSelectionVisuals() =>
+        UpdateItemSurfaceVisuals();
 
     private void ClearOtherWidgetSelections()
     {
@@ -713,15 +723,35 @@ public sealed partial class FileSurfaceContent
 
     private void UpdateItemSurfaceVisuals()
     {
+        ListViewBase activeView = GetActiveItemsView();
+        foreach (WidgetItem item in activeView.Items
+                     .OfType<WidgetItem>()
+                     .Where(item => item is not WidgetStackItem))
+        {
+            if (activeView.ContainerFromItem(item) is not SelectorItem container ||
+                FindDescendantByTag(container, "InteractiveSurface") is not Border border)
+            {
+                continue;
+            }
+
+            // Collection projection can realize an expanded stack member
+            // without delivering the template Loaded event to this host. Find
+            // every realized surface from the native item containers so a
+            // later SelectionChanged always refreshes previously selected
+            // stack children as well.
+            _itemSurfaces.Add(border);
+            FileItemSurfaceVisualState state =
+                FileItemSurface.FindOwner(border)?.VisualState ??
+                FileItemSurfaceVisualState.Normal;
+            ApplyItemSurfaceVisual(border, state);
+        }
+
         foreach (Border border in _itemSurfaces.ToArray())
         {
             if (border.XamlRoot is null)
             {
                 _itemSurfaces.Remove(border);
-                continue;
             }
-
-            ApplyItemSurfaceVisual(border, FileItemSurfaceVisualState.Normal);
         }
     }
 
@@ -741,12 +771,15 @@ public sealed partial class FileSurfaceContent
         WidgetItem? item =
             FileItemSurface.FindOwner(border)?.DataContext as WidgetItem ??
             border.DataContext as WidgetItem;
+        bool isSelected = item is not null &&
+                          item is not WidgetStackItem &&
+                          GetActiveItemsView().SelectedItems.Contains(item);
         _itemSurfaceStyleCache.Apply(
             border,
             state,
             Root.ActualTheme,
             accent,
-            item?.IsSelected == true,
+            isSelected,
             item?.IsCut == true);
     }
 

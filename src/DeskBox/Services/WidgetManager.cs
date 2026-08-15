@@ -62,6 +62,7 @@ internal interface IDesktopWidgetWindow
     void ApplyAppearancePreview();
     void RestoreBoundsForCurrentTopology();
     void ApplyCompactArrangement(Windows.Graphics.RectInt32 bounds, bool constrainSize);
+    void ClearCompactArrangementConstraint();
     void PreviewCompactArrangement(Windows.Graphics.RectInt32 bounds);
     void SetTrayAnimationOffsetOverride(double? offsetX, double? offsetY);
     void CancelTrayAnimationAndRestorePosition();

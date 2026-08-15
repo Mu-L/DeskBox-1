@@ -38,6 +38,24 @@ public sealed class SettingsServiceTests : IDisposable
             service.Settings.DefaultManagedStorageRootPath);
     }
 
+    [Theory]
+    [InlineData(50)]
+    [InlineData(100)]
+    [InlineData(200)]
+    public async Task SaveAsync_PreservesSupportedSearchResultLimits(int limit)
+    {
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+        service.Settings.SearchMaxResults = limit;
+
+        await service.SaveAsync();
+
+        Assert.Equal(limit, service.Settings.SearchMaxResults);
+        var reloaded = new SettingsService(_settingsRoot);
+        await reloaded.LoadAsync();
+        Assert.Equal(limit, reloaded.Settings.SearchMaxResults);
+    }
+
     [Fact]
     public async Task LoadAsync_ExistingProfilePreservesManagedStoragePath()
     {
@@ -939,6 +957,7 @@ public sealed class SettingsServiceTests : IDisposable
             WidgetAnimationEffect = SettingsService.WidgetAnimationEffectFade,
             WidgetCapsuleModeEnabled = true,
             WidgetCompactWidthMode = SettingsService.WidgetCompactWidthModeIndependent,
+            WidgetCompactExpansionDirection = SettingsService.WidgetCompactExpansionDirectionUp,
             WidgetCompactAnimationEffect = SettingsService.WidgetCompactAnimationSnappy,
             FileStackThreshold = 5,
             FileStackOrderBy = SettingsService.FileStackOrderByDateModified,
@@ -986,6 +1005,12 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.SearchHotkeyEnabled, restoredDefaults.SearchHotkeyEnabled);
         Assert.Equal(SettingsService.WidgetCompactWidthModeAligned, newUserDefaults.WidgetCompactWidthMode);
         Assert.Equal(newUserDefaults.WidgetCompactWidthMode, restoredDefaults.WidgetCompactWidthMode);
+        Assert.Equal(
+            SettingsService.WidgetCompactExpansionDirectionAuto,
+            newUserDefaults.WidgetCompactExpansionDirection);
+        Assert.Equal(
+            newUserDefaults.WidgetCompactExpansionDirection,
+            restoredDefaults.WidgetCompactExpansionDirection);
         Assert.Equal(SettingsService.WidgetCompactAnimationSlow, newUserDefaults.WidgetCompactAnimationEffect);
         Assert.Equal(newUserDefaults.WidgetCompactAnimationEffect, restoredDefaults.WidgetCompactAnimationEffect);
         Assert.Equal(SettingsService.WidgetCollapseBehaviorExpanded, newUserDefaults.WidgetCollapseBehavior);
@@ -1048,6 +1073,8 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.WidgetHoverButtonActions, restoredDefaults.WidgetHoverButtonActions);
         Assert.Equal(SettingsService.WeatherSkinRich, newUserDefaults.WeatherSkin);
         Assert.Equal(newUserDefaults.WeatherSkin, restoredDefaults.WeatherSkin);
+        Assert.Equal(SettingsService.DefaultSearchMaxResults, newUserDefaults.SearchMaxResults);
+        Assert.Equal(newUserDefaults.SearchMaxResults, restoredDefaults.SearchMaxResults);
     }
 
     [Fact]

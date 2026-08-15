@@ -249,8 +249,89 @@ public sealed class SettingsCopyAndHierarchyTests
         Assert.Contains("IconSize = 16", source, StringComparison.Ordinal);
         Assert.Contains("Margin = new Thickness(4)", source, StringComparison.Ordinal);
         Assert.Contains("ColumnSpacing = 12", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "Style = (Style)SettingsRoot.Resources[\"SettingCardIdentityGridStyle\"]",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("identity.Padding = new Thickness(16, 10, 16, 10)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("var icon = new FontIcon", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SettingsOverviewCards_MatchLanguageCardTypographyAndIdentitySpacing()
+    {
+        string root = FindRepositoryRoot();
+        string windowXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.xaml"));
+        string overviewResources = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Styles/SettingsOverviewResources.xaml"));
+        string appearanceXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsSections/AppearanceSettingsSection.xaml"));
+        string fileWidgetXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsSections/FileWidgetSettingsSection.xaml"));
+        string featureRows = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.LocalizationAndWidgets.cs"));
+
+        foreach (string resources in new[] { windowXaml, overviewResources })
+        {
+            string titleStyle = SliceSection(
+                resources,
+                "x:Key=\"SettingTitleTextStyle\"",
+                "</Style>");
+            Assert.Contains(
+                "<Setter Property=\"FontWeight\" Value=\"Normal\" />",
+                titleStyle,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("Value=\"SemiBold\"", titleStyle, StringComparison.Ordinal);
+            Assert.Contains(
+                "<x:Double x:Key=\"SettingsHeaderIconTextSpacing\">20</x:Double>",
+                resources,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "x:Key=\"SettingCardIdentityGridStyle\"",
+                resources,
+                StringComparison.Ordinal);
+        }
+
+        Assert.Equal(
+            6,
+            CountOccurrences(
+                appearanceXaml,
+                "Style=\"{StaticResource SettingCardIdentityGridStyle}\""));
+        Assert.Equal(
+            3,
+            CountOccurrences(
+                fileWidgetXaml,
+                "Style=\"{StaticResource SettingCardIdentityGridStyle}\""));
+
+        string interaction = SliceSection(
+            windowXaml,
+            "x:Name=\"InteractionSection\"",
+            "x:Name=\"InteractionHotkeySettingsSection\"");
+        Assert.Equal(
+            1,
+            CountOccurrences(
+                interaction,
+                "Style=\"{StaticResource SettingCardIdentityGridStyle}\""));
+
+        string maintenance = SliceSection(
+            windowXaml,
+            "x:Name=\"MaintenanceSection\"",
+            "x:Name=\"BackupRestoreSettingsSection\"");
+        Assert.Equal(
+            3,
+            CountOccurrences(
+                maintenance,
+                "Style=\"{StaticResource SettingCardIdentityGridStyle}\""));
+        Assert.Contains(
+            "SettingsRoot.Resources[\"SettingCardIdentityGridStyle\"]",
+            featureRows,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -337,6 +418,9 @@ public sealed class SettingsCopyAndHierarchyTests
             "Settings.CollapseBehavior.Click",
             "Settings.CollapseBehavior.Manual",
             "Settings.Capsule.WidthMode.Aligned",
+            "Settings.Capsule.ExpansionDirection.Auto",
+            "Settings.Capsule.ExpansionDirection.Down",
+            "Settings.Capsule.ExpansionDirection.Up",
             "Settings.CollapsedStyle.Smart",
             "Settings.CompactContent.Smart",
             "Settings.Capsule.Direction.Auto",

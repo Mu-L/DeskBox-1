@@ -17,6 +17,8 @@ namespace DeskBox.Services;
 public sealed class QuickLookPreviewService
 {
     internal const string ToggleMessage = "QuickLook.App.PipeMessages.Toggle";
+    internal const string SwitchMessage = "QuickLook.App.PipeMessages.Switch";
+    internal const string CloseMessage = "QuickLook.App.PipeMessages.Close";
     private const string ProcessName = "QuickLook";
     private const int ConnectTimeoutMs = 600;
 
@@ -34,9 +36,25 @@ public sealed class QuickLookPreviewService
     public bool CanPreview(string? path) =>
         IsPreviewablePath(path) && IsQuickLookRunning();
 
-    public async Task<bool> TryToggleAsync(string path)
+    public Task<bool> TryToggleAsync(string path) =>
+        TrySendAsync(path, BuildToggleMessage(path), validatePath: true);
+
+    /// <summary>
+    /// Changes the item shown by an existing QuickLook preview. QuickLook
+    /// deliberately ignores this message when its preview window is closed.
+    /// </summary>
+    public Task<bool> TrySwitchAsync(string path) =>
+        TrySendAsync(path, BuildSwitchMessage(path), validatePath: true);
+
+    public Task<bool> TryCloseAsync() =>
+        TrySendAsync(null, BuildCloseMessage(), validatePath: false);
+
+    private static async Task<bool> TrySendAsync(
+        string? path,
+        string message,
+        bool validatePath)
     {
-        if (!IsPreviewablePath(path))
+        if (validatePath && !IsPreviewablePath(path))
         {
             App.Log($"[QuickLook] Path not previewable: '{path}'.");
             return false;
@@ -64,7 +82,7 @@ public sealed class QuickLookPreviewService
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
                 bufferSize: 1024,
                 leaveOpen: false);
-            await writer.WriteLineAsync(BuildToggleMessage(path));
+            await writer.WriteLineAsync(message);
             await writer.FlushAsync(timeout.Token);
             return true;
         }
@@ -160,6 +178,11 @@ public sealed class QuickLookPreviewService
 
     internal static string BuildToggleMessage(string path) =>
         $"{ToggleMessage}|{path}|";
+
+    internal static string BuildSwitchMessage(string path) =>
+        $"{SwitchMessage}|{path}|";
+
+    internal static string BuildCloseMessage() => $"{CloseMessage}||";
 
     private static bool IsQuickLookRunning()
     {

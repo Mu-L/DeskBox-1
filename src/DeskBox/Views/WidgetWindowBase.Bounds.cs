@@ -41,6 +41,8 @@ public abstract partial class WidgetWindowBase
         exStyle |= Win32Helper.WS_EX_TOOLWINDOW;
         Win32Helper.SetWindowLong(HWnd, Win32Helper.GWL_EXSTYLE, exStyle);
 
+        InstallDesktopPinnedActivationGuard();
+        InstallDesktopPinnedPointerRouting();
         ConfigureWindowExtra();
 
         int style = Win32Helper.GetWindowLong(HWnd, Win32Helper.GWL_STYLE);
@@ -101,6 +103,142 @@ public abstract partial class WidgetWindowBase
             ApplyBackdropPreference();
             OnRootElementThemeChanged();
         };
+    }
+
+    private void InstallDesktopPinnedActivationGuard()
+    {
+        _desktopPinnedActivationSubclassProc ??= DesktopPinnedActivationSubclassProc;
+        if (_isDesktopPinnedActivationSubclassInstalled)
+        {
+            return;
+        }
+
+        _isDesktopPinnedActivationSubclassInstalled = Win32Helper.SetWindowSubclass(
+            HWnd,
+            _desktopPinnedActivationSubclassProc,
+            DesktopPinnedActivationSubclassId,
+            UIntPtr.Zero);
+        App.LogVerbose(
+            $"[ZOrder] {LogPrefix} desktop-pinned activation guard installed=" +
+            $"{_isDesktopPinnedActivationSubclassInstalled} hwnd=0x{HWnd.ToInt64():X}");
+    }
+
+    private void RemoveDesktopPinnedActivationGuard()
+    {
+        if (!_isDesktopPinnedActivationSubclassInstalled ||
+            _desktopPinnedActivationSubclassProc is null)
+        {
+            return;
+        }
+
+        _ = Win32Helper.RemoveWindowSubclass(
+            HWnd,
+            _desktopPinnedActivationSubclassProc,
+            DesktopPinnedActivationSubclassId);
+        _isDesktopPinnedActivationSubclassInstalled = false;
+    }
+
+    private void InstallDesktopPinnedPointerRouting()
+    {
+        _desktopPinnedPointerPressedHandler ??=
+            RootElement_PointerPressedForDesktopPinnedLayer;
+        RootElement.AddHandler(
+            UIElement.PointerPressedEvent,
+            _desktopPinnedPointerPressedHandler,
+            handledEventsToo: true);
+        Activated -= WidgetWindowBase_ActivatedForDesktopPinnedLayer;
+        Activated += WidgetWindowBase_ActivatedForDesktopPinnedLayer;
+    }
+
+    private void RemoveDesktopPinnedPointerRouting()
+    {
+        if (_desktopPinnedPointerPressedHandler is not null)
+        {
+            RootElement.RemoveHandler(
+                UIElement.PointerPressedEvent,
+                _desktopPinnedPointerPressedHandler);
+            _desktopPinnedPointerPressedHandler = null;
+        }
+
+        Activated -= WidgetWindowBase_ActivatedForDesktopPinnedLayer;
+    }
+
+    private void RootElement_PointerPressedForDesktopPinnedLayer(
+        object sender,
+        PointerRoutedEventArgs args)
+    {
+        if (!WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            return;
+        }
+
+        if (!WidgetLayerService.TryAllowDesktopPinnedPointerActivation(HWnd))
+        {
+            WidgetLayerService.MoveToDesktopBottom(HWnd);
+            IsAtDesktopLayer = true;
+            IsRaisedFromManager = false;
+            KeepRaisedUntilDeactivate = false;
+            RestoreDesktopLayerWhenIdle = false;
+            App.LogVerbose(
+                $"[ZOrder] {LogPrefix} pinned routed pointer kept behind foreground " +
+                $"hwnd=0x{HWnd.ToInt64():X}");
+            return;
+        }
+
+        if (Win32Helper.GetForegroundWindow() != HWnd)
+        {
+            base.Activate();
+            _ = Win32Helper.SetForegroundWindow(HWnd);
+        }
+    }
+
+    private void WidgetWindowBase_ActivatedForDesktopPinnedLayer(
+        object sender,
+        WindowActivatedEventArgs args)
+    {
+        if (!WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            return;
+        }
+
+        if (args.WindowActivationState == WindowActivationState.Deactivated ||
+            WidgetLayerService.IsWindowNoActivate(HWnd))
+        {
+            WidgetLayerService.MoveToDesktopBottom(HWnd);
+            IsAtDesktopLayer = true;
+            IsRaisedFromManager = false;
+            KeepRaisedUntilDeactivate = false;
+            RestoreDesktopLayerWhenIdle = false;
+        }
+    }
+
+    private IntPtr DesktopPinnedActivationSubclassProc(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr subclassId,
+        UIntPtr referenceData)
+    {
+        if (message == Win32Helper.WM_MOUSEACTIVATE &&
+            WidgetLayerService.ShouldSuppressPointerActivation(hWnd))
+        {
+            // MA_NOACTIVATE keeps the existing foreground application active
+            // but still lets the widget receive the mouse message. Reasserting
+            // the desktop owner here also repairs any stale owner/Z-order state
+            // without a visible raise-and-restore flash.
+            WidgetLayerService.MoveToDesktopBottom(hWnd);
+            IsAtDesktopLayer = true;
+            IsRaisedFromManager = false;
+            KeepRaisedUntilDeactivate = false;
+            RestoreDesktopLayerWhenIdle = false;
+            App.LogVerbose(
+                $"[ZOrder] {LogPrefix} desktop-pinned pointer activation suppressed " +
+                $"hwnd=0x{hWnd.ToInt64():X}");
+            return new IntPtr(Win32Helper.MA_NOACTIVATE);
+        }
+
+        return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
     }
 
     // ── Bounds management ──────────────────────────────────────

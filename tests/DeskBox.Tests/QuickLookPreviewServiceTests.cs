@@ -20,6 +20,24 @@ public sealed class QuickLookPreviewServiceTests : IDisposable
     }
 
     [Fact]
+    public void BuildSwitchMessage_UsesQuickLookPipeProtocol()
+    {
+        const string path = @"C:\Work\next preview file.png";
+
+        Assert.Equal(
+            $"{QuickLookPreviewService.SwitchMessage}|{path}|",
+            QuickLookPreviewService.BuildSwitchMessage(path));
+    }
+
+    [Fact]
+    public void BuildCloseMessage_UsesQuickLookPipeProtocol()
+    {
+        Assert.Equal(
+            $"{QuickLookPreviewService.CloseMessage}||",
+            QuickLookPreviewService.BuildCloseMessage());
+    }
+
+    [Fact]
     public void IsPreviewablePath_AcceptsExistingFilesAndDirectories()
     {
         Directory.CreateDirectory(_root);

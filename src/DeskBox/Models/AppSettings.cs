@@ -295,6 +295,12 @@ public class AppSettings
     public string WidgetCompactWidthMode { get; set; } = "Aligned";
 
     /// <summary>
+    /// Vertical direction used when a compact widget expands.
+    /// Valid values: <c>"Auto"</c>, <c>"Down"</c>, <c>"Up"</c>.
+    /// </summary>
+    public string WidgetCompactExpansionDirection { get; set; } = "Auto";
+
+    /// <summary>
     /// How compact widgets are arranged on the desktop.
     /// Valid values: <c>"Free"</c>, <c>"Bar"</c>.
     /// </summary>
@@ -690,7 +696,7 @@ public class AppSettings
     public bool SearchSaveHistory { get; set; } = true;
 
     /// <summary>Maximum number of search results to display.</summary>
-    public int SearchMaxResults { get; set; } = 200;
+    public int SearchMaxResults { get; set; } = 100;
 
     /// <summary>Default result tab for a new query: all, app, file, or deskbox.</summary>
     public string SearchDefaultTab { get; set; } = "all";

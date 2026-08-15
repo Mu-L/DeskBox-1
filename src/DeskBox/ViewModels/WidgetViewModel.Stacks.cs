@@ -254,10 +254,64 @@ public partial class WidgetViewModel
             return false;
         }
 
+        bool movedMembershipOverride =
+            _stackMemberOverrides.TryGetValue(
+                stack.StackKey,
+                out List<string>? overridePaths) &&
+            overridePaths.Count == stack.Members.Count &&
+            stack.Members.All(member => overridePaths.Any(path =>
+                string.Equals(
+                    NormalizeStackMemberPath(path),
+                    NormalizeStackMemberPath(member.Path),
+                    StringComparison.OrdinalIgnoreCase))) &&
+            TryMoveStackMemberOverride(
+                overridePaths,
+                item.Path,
+                targetMember.Path);
+
         Items.Move(currentItemIndex, targetItemIndex);
-        // CollectionChanged also queues a rebuild. Rebuilding synchronously
-        // keeps the insertion feedback attached to the pointer during drag.
-        RebuildStackDisplayItems();
+        if (movedMembershipOverride)
+        {
+            // A manual stack projects members from its persisted override,
+            // not from Items. Save that sequence before rebuilding or the
+            // dragged member will immediately snap back to its former slot.
+            PersistStackCustomizations();
+        }
+        else
+        {
+            // CollectionChanged also queues a rebuild. Rebuilding synchronously
+            // keeps the insertion feedback attached to the pointer during drag.
+            RebuildStackDisplayItems();
+        }
+
+        return true;
+    }
+
+    internal static bool TryMoveStackMemberOverride(
+        List<string> paths,
+        string sourcePath,
+        string targetPath)
+    {
+        int sourceIndex = paths.FindIndex(path =>
+            string.Equals(
+                NormalizeStackMemberPath(path),
+                NormalizeStackMemberPath(sourcePath),
+                StringComparison.OrdinalIgnoreCase));
+        int targetIndex = paths.FindIndex(path =>
+            string.Equals(
+                NormalizeStackMemberPath(path),
+                NormalizeStackMemberPath(targetPath),
+                StringComparison.OrdinalIgnoreCase));
+        if (sourceIndex < 0 ||
+            targetIndex < 0 ||
+            sourceIndex == targetIndex)
+        {
+            return false;
+        }
+
+        string path = paths[sourceIndex];
+        paths.RemoveAt(sourceIndex);
+        paths.Insert(targetIndex, path);
         return true;
     }
 
@@ -316,6 +370,10 @@ public partial class WidgetViewModel
     public void SetFileStackGroupByOverride(string? groupBy)
     {
         WidgetFileStackSettings.SetGroupByOverride(Config, groupBy);
+        if (!string.IsNullOrWhiteSpace(groupBy))
+        {
+            WidgetFileStackSettings.SetEnabledOverride(Config, true);
+        }
         PersistStackOverrides();
     }
 
@@ -378,16 +436,17 @@ public partial class WidgetViewModel
     public bool CreateManualStack(
         IEnumerable<WidgetItem> selectedItems)
     {
-        if (!FileStacksEnabled)
-        {
-            return false;
-        }
-
         List<WidgetItem> members =
             NormalizeStackMembers(selectedItems);
         if (members.Count < 2)
         {
             return false;
+        }
+
+        if (!FileStacksEnabled)
+        {
+            WidgetFileStackSettings.SetEnabledOverride(Config, true);
+            PersistStackOverrides();
         }
 
         EnsureStackManualOrder();

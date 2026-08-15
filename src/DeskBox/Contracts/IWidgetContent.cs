@@ -52,6 +52,8 @@ public interface ICancellableWidgetContent
 public interface IWidgetGroupContentCacheable : IDisposable
 {
     bool IsReadyForReuse { get; }
+
+    void PrepareForReuse() { }
 }
 
 /// <summary>

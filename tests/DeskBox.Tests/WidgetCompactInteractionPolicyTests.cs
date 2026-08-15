@@ -4,6 +4,40 @@ namespace DeskBox.Tests;
 
 public sealed class WidgetCompactInteractionPolicyTests
 {
+    [Theory]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, false, true, true)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, true, false)]
+    public void CanTrustPointerOwnership_UsesFreshRoutedEvidenceWhenNativeHitTestingLags(
+        bool pointerInside,
+        bool nativeRootCanReceivePointer,
+        bool hasRecentRoutedEvidence,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WidgetCompactInteractionPolicy.CanTrustPointerOwnership(
+                pointerInside,
+                nativeRootCanReceivePointer,
+                hasRecentRoutedEvidence));
+    }
+
+    [Fact]
+    public void RoutedPointerAuthorityLifetime_CoversLongestHoverDelayAndTwoRecoveryProbes()
+    {
+        Assert.Equal(
+            WidgetCompactInteractionPolicy.InteractionRegionHoverDelayFloorMilliseconds + 240,
+            WidgetCompactInteractionPolicy.ResolveRoutedPointerAuthorityLifetimeMilliseconds(
+                configuredDelayMilliseconds: 180,
+                recoveryProbeMilliseconds: 120));
+        Assert.Equal(
+            1240,
+            WidgetCompactInteractionPolicy.ResolveRoutedPointerAuthorityLifetimeMilliseconds(
+                configuredDelayMilliseconds: 1000,
+                recoveryProbeMilliseconds: 120));
+    }
+
     [Fact]
     public void SynchronizeForSmartEntry_ReplacesStaleRoutedPointerState()
     {

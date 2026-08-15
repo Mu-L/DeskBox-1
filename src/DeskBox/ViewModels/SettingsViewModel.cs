@@ -292,6 +292,9 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
             : BorderThin;
         _selectedWidgetCompactWidthMode = SettingsService.NormalizeWidgetCompactWidthMode(
             settings.WidgetCompactWidthMode);
+        _selectedWidgetCompactExpansionDirection =
+            SettingsService.NormalizeWidgetCompactExpansionDirection(
+                settings.WidgetCompactExpansionDirection);
         _selectedWidgetCapsuleArrangementMode = SettingsService.NormalizeWidgetCapsuleArrangementMode(
             settings.WidgetCapsuleArrangementMode);
         _widgetCapsuleBarSpacing = SettingsService.NormalizeWidgetCapsuleBarSpacing(

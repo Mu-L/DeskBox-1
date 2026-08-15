@@ -8,6 +8,8 @@ namespace DeskBox.ViewModels;
 public partial class SettingsViewModel
 {
     private string _selectedWidgetCompactWidthMode = SettingsService.WidgetCompactWidthModeAligned;
+    private string _selectedWidgetCompactExpansionDirection =
+        SettingsService.WidgetCompactExpansionDirectionAuto;
     private string _selectedWidgetCapsuleArrangementMode = SettingsService.WidgetCapsuleArrangementFree;
     private double _widgetCapsuleBarSpacing = SettingsService.DefaultWidgetCapsuleBarSpacing;
     private string _selectedWidgetCapsuleBarPlacement = SettingsService.WidgetCapsuleBarPlacementFloating;
@@ -24,6 +26,7 @@ public partial class SettingsViewModel
     private string[]? _cachedWidgetCompactHoverResponseDisplayNames;
     private string[]? _cachedWidgetCompactMediaCornerDisplayNames;
     private string[]? _cachedWidgetCompactWidthModeDisplayNames;
+    private string[]? _cachedWidgetCompactExpansionDirectionDisplayNames;
     private string[]? _cachedWidgetCapsuleArrangementDisplayNames;
     private string[]? _cachedWidgetCapsuleBarPlacementDisplayNames;
     private string[]? _cachedWidgetCapsuleBarDirectionDisplayNames;
@@ -77,6 +80,44 @@ public partial class SettingsViewModel
 
     public string SelectedWidgetCompactWidthModeText =>
         GetWidgetCompactWidthModeDisplayName(SelectedWidgetCompactWidthMode);
+
+    public string[] AvailableWidgetCompactExpansionDirections { get; } =
+    [
+        SettingsService.WidgetCompactExpansionDirectionAuto,
+        SettingsService.WidgetCompactExpansionDirectionDown,
+        SettingsService.WidgetCompactExpansionDirectionUp
+    ];
+
+    public string[] AvailableWidgetCompactExpansionDirectionDisplayNames =>
+        _cachedWidgetCompactExpansionDirectionDisplayNames ??=
+            AvailableWidgetCompactExpansionDirections
+                .Select(GetWidgetCompactExpansionDirectionDisplayName)
+                .ToArray();
+
+    public string SelectedWidgetCompactExpansionDirection
+    {
+        get => _selectedWidgetCompactExpansionDirection;
+        set
+        {
+            string normalized = SettingsService.NormalizeWidgetCompactExpansionDirection(value);
+            if (!SetProperty(ref _selectedWidgetCompactExpansionDirection, normalized))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(SelectedWidgetCompactExpansionDirectionText));
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.WidgetCompactExpansionDirection = normalized;
+            _settingsService.SaveDebounced();
+        }
+    }
+
+    public string SelectedWidgetCompactExpansionDirectionText =>
+        GetWidgetCompactExpansionDirectionDisplayName(SelectedWidgetCompactExpansionDirection);
 
     public Visibility CapsuleHoverResponseEntryVisibility =>
         IsSmartWidgetCollapseBehavior ? Visibility.Visible : Visibility.Collapsed;
@@ -918,6 +959,16 @@ public partial class SettingsViewModel
             SettingsService.WidgetCapsuleArrangementBar =>
                 _localizationService.T("Settings.Capsule.Arrangement.Bar"),
             _ => _localizationService.T("Settings.Capsule.Arrangement.Free")
+        };
+
+    private string GetWidgetCompactExpansionDirectionDisplayName(string direction) =>
+        SettingsService.NormalizeWidgetCompactExpansionDirection(direction) switch
+        {
+            SettingsService.WidgetCompactExpansionDirectionDown =>
+                _localizationService.T("Settings.Capsule.ExpansionDirection.Down"),
+            SettingsService.WidgetCompactExpansionDirectionUp =>
+                _localizationService.T("Settings.Capsule.ExpansionDirection.Up"),
+            _ => _localizationService.T("Settings.Capsule.ExpansionDirection.Auto")
         };
 
     private string GetWidgetCapsuleBarPlacementDisplayName(string placement) =>

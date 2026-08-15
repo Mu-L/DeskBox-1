@@ -6,6 +6,7 @@
     <x:Double x:Key="SettingsControlMinWidth">176</x:Double>
     <x:Double x:Key="SettingsCardSpacing">4</x:Double>
     <x:Double x:Key="SettingsRowMinHeight">64</x:Double>
+    <x:Double x:Key="SettingsHeaderIconTextSpacing">20</x:Double>
     <Thickness x:Key="SettingsRowPadding">16,10</Thickness>
     <CornerRadius x:Key="SettingsCardCornerRadius">6</CornerRadius>
 
@@ -29,8 +30,12 @@
 
     <Style x:Key="SettingTitleTextStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="14" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="SettingCardIdentityGridStyle" TargetType="Grid">
+        <Setter Property="ColumnSpacing" Value="{StaticResource SettingsHeaderIconTextSpacing}" />
     </Style>
 
     <Style x:Key="SettingDescriptionTextStyle" TargetType="TextBlock">
@@ -51,6 +56,7 @@
 
     <Style x:Key="SettingsSubsectionTitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SettingTitleTextStyle}">
         <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="DrillDownRowStyle" TargetType="Button">

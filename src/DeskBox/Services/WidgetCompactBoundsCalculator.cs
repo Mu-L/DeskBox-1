@@ -274,7 +274,10 @@ public static class WidgetCompactBoundsCalculator
         };
     }
 
-    public static void CapturePlacement(WidgetConfig config, RectInt32 bounds)
+    public static void CapturePlacement(
+        WidgetConfig config,
+        RectInt32 bounds,
+        string? expansionDirection = null)
     {
         RectInt32 workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
         var placementConfig = new WidgetConfig
@@ -290,6 +293,19 @@ public static class WidgetCompactBoundsCalculator
                 WidgetPositioningService.GetDpiScale(workArea))
         };
         WidgetPositioningService.CaptureAnchor(placementConfig, bounds, workArea);
+        string normalizedDirection =
+            SettingsService.NormalizeWidgetCompactExpansionDirection(expansionDirection);
+        if (normalizedDirection != SettingsService.WidgetCompactExpansionDirectionAuto)
+        {
+            placementConfig.PositionAnchor =
+                WidgetCompactExpansionDirectionPolicy.ApplyToPositionAnchor(
+                    normalizedDirection,
+                    placementConfig.PositionAnchor);
+            WidgetPositioningService.CaptureAnchorPreservingCurrentEdge(
+                placementConfig,
+                bounds,
+                workArea);
+        }
         WidgetPositioningService.UpdateConfigFromPhysicalBounds(placementConfig, bounds, workArea);
 
         config.CompactPlacement = new WidgetCompactPlacement

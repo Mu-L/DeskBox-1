@@ -106,14 +106,20 @@ public sealed class WidgetShellContentHost
         Task? initializationTask = null;
         try
         {
-            initializationTask = content is IWidgetGroupContentCacheable
+            if (content is IWidgetGroupContentCacheable
                 {
                     IsReadyForReuse: true
-                }
-                ? Task.CompletedTask
-                : content is ICancellableWidgetContent cancellableContent
+                } reusableContent)
+            {
+                reusableContent.PrepareForReuse();
+                initializationTask = Task.CompletedTask;
+            }
+            else
+            {
+                initializationTask = content is ICancellableWidgetContent cancellableContent
                     ? cancellableContent.InitializeAsync(cancellationToken)
                     : content.InitializeAsync();
+            }
             _pendingInitializationTask = initializationTask;
             await initializationTask.WaitAsync(cancellationToken);
         }

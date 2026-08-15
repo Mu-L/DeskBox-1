@@ -79,6 +79,9 @@ public partial class SettingsViewModel
 
             SelectedWidgetCompactWidthMode = SettingsService.NormalizeWidgetCompactWidthMode(
                 settings.WidgetCompactWidthMode);
+            SelectedWidgetCompactExpansionDirection =
+                SettingsService.NormalizeWidgetCompactExpansionDirection(
+                    settings.WidgetCompactExpansionDirection);
             SelectedWidgetCapsuleArrangementMode = SettingsService.NormalizeWidgetCapsuleArrangementMode(
                 settings.WidgetCapsuleArrangementMode);
             WidgetCapsuleBarSpacing = SettingsService.NormalizeWidgetCapsuleBarSpacing(
@@ -285,6 +288,7 @@ RefreshWeatherCityPopularCities();
             _cachedWidgetCollapseBehaviorDisplayNames = null;
             _cachedWidgetCompactContentModeDisplayNames = null;
             _cachedWidgetCompactWidthModeDisplayNames = null;
+            _cachedWidgetCompactExpansionDirectionDisplayNames = null;
             _cachedWidgetCapsuleArrangementDisplayNames = null;
             _cachedWidgetCapsuleBarPlacementDisplayNames = null;
             _cachedWidgetCapsuleBarDirectionDisplayNames = null;
@@ -325,6 +329,7 @@ RefreshWeatherCityPopularCities();
             OnPropertyChanged(nameof(AvailableWidgetBorderStyleDisplayNames));
             OnPropertyChanged(nameof(AvailableWidgetCollapseBehaviorDisplayNames));
             OnPropertyChanged(nameof(AvailableWidgetCompactWidthModeDisplayNames));
+            OnPropertyChanged(nameof(AvailableWidgetCompactExpansionDirectionDisplayNames));
             OnPropertyChanged(nameof(AvailableWidgetCompactContentModeDisplayNames));
             OnPropertyChanged(nameof(AvailableWidgetCapsuleArrangementDisplayNames));
             OnPropertyChanged(nameof(AvailableWidgetCapsuleBarPlacementDisplayNames));
@@ -374,6 +379,7 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedWidgetBorderStyleText));
         OnPropertyChanged(nameof(SelectedWidgetCollapseBehaviorText));
         OnPropertyChanged(nameof(SelectedWidgetCompactWidthModeText));
+        OnPropertyChanged(nameof(SelectedWidgetCompactExpansionDirectionText));
         OnPropertyChanged(nameof(IsSmartWidgetCollapseBehavior));
         OnPropertyChanged(nameof(IsSmartWidgetCollapseBehaviorSelected));
         OnPropertyChanged(nameof(CapsuleHoverResponseEntryVisibility));

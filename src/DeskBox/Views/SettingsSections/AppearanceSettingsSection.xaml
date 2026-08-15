@@ -100,7 +100,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="CapsuleMode">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE73F;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Section.CapsuleMode" />
@@ -121,7 +121,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="WidgetGroups">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE713;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Section.WidgetGroups" />
@@ -142,7 +142,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceMaterialSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE790;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Material.Title" />
@@ -163,7 +163,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceDensitySettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8A5;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Density.Title" />
@@ -184,7 +184,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceWindowSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE8B7;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.AppVisual.Title" />
@@ -205,7 +205,7 @@
             <Border Style="{StaticResource SettingsGroupStyle}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
                     <Button Grid.Column="0" Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="AppearanceAnimationSettings">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE7B5;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Group.Animation.Title" />

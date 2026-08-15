@@ -519,6 +519,7 @@ _isHideAnimationRunning = false;
             return false;
         }
 
+        PrepareCompactHostForTrayHide();
         _autoRestoreTimer?.Stop();
         CancelPendingDesktopLayerRestore();
 _trayAnimation.NextGeneration();
@@ -533,6 +534,7 @@ else
 }
 _isHideAnimationRunning = true;
         Visible = false;
+        NotifyCompactHostVisibilityChanged(false);
         ViewModel.Config.IsVisible = false;
         if (persistVisibility)
         {

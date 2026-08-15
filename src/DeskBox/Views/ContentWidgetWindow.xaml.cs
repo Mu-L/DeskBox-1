@@ -754,6 +754,7 @@ IsHideAnimationRunning = false;
             return false;
         }
 
+        PrepareCompactHostForTrayHide();
         _autoRestoreTimer?.Stop();
         CancelPendingDesktopLayerRestore();
 TrayAnimation.NextGeneration();
@@ -769,6 +770,7 @@ else
 IsHideAnimationRunning = true;
         _isHidePrepared = true;
         Visible = false;
+        NotifyCompactHostVisibilityChanged(false);
         UpdatePersistedVisibility(isVisible: false, persistVisibility);
 
         LogTrayWindow($"PrepareHide gen={TrayAnimation.Generation}");
