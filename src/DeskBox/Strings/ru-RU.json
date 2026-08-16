@@ -705,7 +705,7 @@
   "Settings.HoverButtonActions.Description": "Выберите, какие кнопки показывать; можно включить несколько кнопок",
   "Settings.HoverButtonActions.LockPosition": "Положение блокировки",
   "Settings.HoverButtonActions.LockSize": "Размер замка",
-  "Settings.HoverButtonActions.Add": "Добавить контент",
+  "Settings.HoverButtonActions.Add": "Добавить виджет",
   "Settings.HoverButtonActions.More": "Дополнительные действия",
   "Settings.HoverButtonActions.Delete": "Закрыть виджет",
   "Settings.ListDetails.Title": "Список деталей",

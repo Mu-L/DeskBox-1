@@ -705,7 +705,7 @@
   "Settings.HoverButtonActions.Description": "Choisissez les boutons à afficher ; plusieurs boutons peuvent être activés",
   "Settings.HoverButtonActions.LockPosition": "Position de verrouillage",
   "Settings.HoverButtonActions.LockSize": "Taille du verrou",
-  "Settings.HoverButtonActions.Add": "Ajouter du contenu",
+  "Settings.HoverButtonActions.Add": "Ajouter un widget",
   "Settings.HoverButtonActions.More": "Plus de propositions",
   "Settings.HoverButtonActions.Delete": "Fermer le widget",
   "Settings.ListDetails.Title": "Détails de la liste",

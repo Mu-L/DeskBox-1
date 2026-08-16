@@ -379,7 +379,7 @@ public sealed class SettingsCopyAndHierarchyTests
     }
 
     [Fact]
-    public void WidgetCreationEntries_AreAvailableFromTrayAndFileWidgetTitleBar()
+    public void WidgetCreationEntries_AreAvailableFromTrayAndEveryWidgetTitleBar()
     {
         string root = FindRepositoryRoot();
         string traySource = File.ReadAllText(Path.Combine(
@@ -401,7 +401,11 @@ public sealed class SettingsCopyAndHierarchyTests
         Assert.Contains("OpenFeatureWidgetsFromTray", traySource, StringComparison.Ordinal);
         Assert.Contains("ShowSettings(\"FeatureWidgets\")", traySource, StringComparison.Ordinal);
 
-        Assert.Contains("_config.WidgetKind == WidgetKind.File", widgetCommands, StringComparison.Ordinal);
+        Assert.DoesNotContain("contentCanAdd", widgetCommands, StringComparison.Ordinal);
+        Assert.DoesNotContain("if (_config.WidgetKind == WidgetKind.File)", widgetCommands, StringComparison.Ordinal);
+        Assert.Contains("ContentWidgetShell.ShowAddButton =", widgetCommands, StringComparison.Ordinal);
+        Assert.Contains("actions.Contains(SettingsService.WidgetHoverActionAdd)", widgetCommands, StringComparison.Ordinal);
+        Assert.Contains("ShowWidgetCreateFlyout();", widgetCommands, StringComparison.Ordinal);
         Assert.Contains("Common.NewWidget", widgetCommands, StringComparison.Ordinal);
         Assert.Contains("Common.NewFolderMapping", widgetCommands, StringComparison.Ordinal);
         Assert.Contains("Common.AddFeatureWidget", widgetCommands, StringComparison.Ordinal);

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.2 - Unreleased
+## 1.4.2 - 2026-08-16
 
 ### English
 
@@ -44,6 +44,7 @@
 - Todo, Quick Capture, onboarding, desktop organization, and release notes use clearer frosted action surfaces with more consistent margins and compact controls.
 - The floating search window's drag handle uses an opaque light or dark color, avoiding the visible center overlap caused by translucent layers.
 - Feature-widget settings use the same colorful icons as widget title bars, with card spacing aligned to the rest of Settings. Several unclear settings descriptions are shorter and more direct.
+- The title-bar add button opens the same widget-creation menu from file and feature widgets. Todo and Quick Capture keep their content-specific new-item actions inside their workspaces.
 
 #### Onboarding, search, and smaller details
 
@@ -94,6 +95,7 @@
 - 待办、随记、新手引导、桌面整理和更新日志的操作区加入更清楚的磨砂层，并统一边距与紧凑控件尺寸。
 - 悬浮搜索窗口顶部拖动手势条改为适配浅色与深色主题的纯色，避免半透明图层重叠造成中间发灰。
 - 功能格子设置改用标题栏同款彩色图标，卡片间距与其他设置页保持一致，多项难以理解的说明也已缩短。
+- 文件格子和全部功能格子的标题栏添加按钮统一打开格子创建菜单。待办与随记继续通过内容区内的入口新建任务或笔记。
 
 #### 新手引导、搜索与其他细节
 

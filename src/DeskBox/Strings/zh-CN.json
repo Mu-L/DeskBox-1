@@ -337,7 +337,7 @@
     "Settings.Update.Status.StoreInstallComplete": "商店更新已完成",
     "Music.SourceUnknown": "系统媒体",
     "Tray.OpenManagedStorage": "打开收纳目录",
-    "Settings.HoverButtonActions.Add": "添加",
+    "Settings.HoverButtonActions.Add": "添加格子",
     "Settings.DragDropPermission.RepairFailedTitle": "修复未完成",
     "Settings.WidgetLayerMode.Description": "选择动态唤起，或固定在桌面图标上方",
     "Settings.ShowDesktopVisibility.Title": "Win+D 时保留桌面格子",

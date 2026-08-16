@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.4.1-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1)
+[![最新版本](https://img.shields.io/badge/release-1.4.2-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,12 +36,10 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-当前线上稳定版为 DeskBox 1.4.1，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.1) 下载。
+当前线上稳定版为 DeskBox 1.4.2，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2) 下载。
 
-- [DeskBox 1.4.1 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.4.1 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.1/DeskBox_Setup_1.4.1_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
-
-> DeskBox 1.4.2 仍在开发中，尚未作为正式版本发布。
+- [DeskBox 1.4.2 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
+- [DeskBox 1.4.2 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
 
 安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
@@ -104,7 +102,7 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.4.2 待发布更新
+## 1.4.2 更新亮点
 
 - **文件叠放更容易控制。** 关闭自动叠放后仍会保留手动叠放，支持从资源管理器、浏览器和其他格子拖入文件，移出或调整成员时不会改乱整个格子的排序。
 - **胶囊位置更稳定。** 展开方向可选自动、向下或向上。固定方向会保持标题边缘不动，悬停恢复和 F7 显示也不会留下位置漂移或拖动遮罩。
@@ -113,9 +111,9 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - **格子组切换更顺滑。** 一次滚轮输入只切换一个成员并播放一次提示，快速操作不会轻易卡住，同时保留首尾循环。
 - **音乐控制更接近 Windows。** 播放、暂停、上一首和下一首使用统一尺寸的面性图标，封面模式采用更清楚的单行磨砂控制条。
 - **首次使用与内容编辑更清楚。** 待办和随记的本地化说明会在重置后恢复，新手引导过渡更从容，Markdown 在浅色与深色主题下都保持清晰。
-- **界面细节更统一。** 固定桌面层的格子点击后不会跑到其他应用上方，空状态、功能格子图标、设置间距、搜索刷新和紧凑控件也完成统一。
+- **界面细节更统一。** 固定桌面层的格子点击后不会跑到其他应用上方。标题栏添加按钮统一打开格子创建菜单，空状态、设置间距、搜索刷新和紧凑控件也完成统一。
 
-完整内容见 [待发布更新日志](CHANGELOG.md) 和 [1.4.2 预览说明](docs/releases/v1.4.2.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.2 发布说明](docs/releases/v1.4.2.md)。
 
 ## 当前界面
 

@@ -71,14 +71,13 @@ public sealed partial class ContentWidgetWindow
     private void ApplyTitleActionButtonConfiguration()
     {
         var actions = SettingsService.ParseWidgetHoverButtonActions(SettingsService.Settings.WidgetHoverButtonActions);
-        bool contentCanAdd = _contentHost.CurrentContent is IWidgetAddActionContent;
         ContentWidgetShell.PositionLockActionButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionLockPosition)
             ? Visibility.Visible
             : Visibility.Collapsed;
         ContentWidgetShell.SizeLockActionButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionLockSize)
             ? Visibility.Visible
             : Visibility.Collapsed;
-        ContentWidgetShell.ShowAddButton = contentCanAdd &&
+        ContentWidgetShell.ShowAddButton =
             actions.Contains(SettingsService.WidgetHoverActionAdd);
         ContentWidgetShell.MoreActionButton.Visibility = actions.Contains(SettingsService.WidgetHoverActionMore)
             ? Visibility.Visible
@@ -101,21 +100,12 @@ public sealed partial class ContentWidgetWindow
 
     // ── Button click handlers ──────────────────────────────────
 
-    private async void AddButton_Click(object sender, RoutedEventArgs e)
+    private void AddButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_config.WidgetKind == WidgetKind.File)
-        {
-            ShowFileWidgetCreateFlyout();
-            return;
-        }
-
-        if (_contentHost.CurrentContent is IWidgetAddActionContent addActionContent)
-        {
-            await addActionContent.AddFromTitleButtonAsync();
-        }
+        ShowWidgetCreateFlyout();
     }
 
-    private void ShowFileWidgetCreateFlyout()
+    private void ShowWidgetCreateFlyout()
     {
         var localization = App.Current.LocalizationService;
         var flyout = new MenuFlyout();
@@ -158,8 +148,8 @@ public sealed partial class ContentWidgetWindow
     }
 
     /// <summary>
-    /// Programmatically triggers the "add new item" action (same as clicking the + button).
-    /// Used by search actions to open the create-detail editor after showing the widget.
+    /// Programmatically opens the content-specific new-item editor.
+    /// The title bar add button is reserved for the global widget creation menu.
     /// </summary>
     internal void TriggerAddAction()
     {

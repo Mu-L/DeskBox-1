@@ -705,7 +705,7 @@
     "Settings.HoverButtonActions.Description": "Choose which buttons to show; multiple buttons can be enabled",
     "Settings.HoverButtonActions.LockPosition": "Lock position",
     "Settings.HoverButtonActions.LockSize": "Lock size",
-    "Settings.HoverButtonActions.Add": "Add content",
+    "Settings.HoverButtonActions.Add": "Add widget",
     "Settings.HoverButtonActions.More": "More actions",
     "Settings.HoverButtonActions.Delete": "Close widget",
     "Settings.ListDetails.Title": "List details",
