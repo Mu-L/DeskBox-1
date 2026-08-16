@@ -212,6 +212,8 @@ public sealed class SettingsService
     public const string FileStackOrderByDateModified = "DateModified";
     public const string FileStackUnmatchedKeepLoose = "KeepLoose";
     public const string FileStackUnmatchedOther = "Other";
+    public const int MaxFileStackCustomRules = 32;
+    public const int MaxFileStackExtensionsPerRule = 64;
     public const int DefaultQuickCaptureItemPreviewLineCount = 3;
     public const int DefaultTodoItemPreviewLineCount = 2;
     [Obsolete("Use the feature-specific preview line defaults.")]
@@ -2061,7 +2063,9 @@ settings.FocusClickedWidgetOnRaise = false;
         settings.FileStackCustomRules ??= [];
         var normalizedRules = new List<FileStackCustomRule>();
         var usedRuleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rule in settings.FileStackCustomRules.Where(rule => rule is not null).Take(32))
+        foreach (var rule in settings.FileStackCustomRules
+                     .Where(rule => rule is not null)
+                     .Take(MaxFileStackCustomRules))
         {
             string id = rule.Id?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(id) || !usedRuleIds.Add(id))
@@ -2079,7 +2083,9 @@ settings.FocusClickedWidgetOnRaise = false;
                 name = name[..80];
             }
 
-            var extensions = NormalizeFileStackExtensions(rule.Extensions).Take(64).ToList();
+            var extensions = NormalizeFileStackExtensions(rule.Extensions)
+                .Take(MaxFileStackExtensionsPerRule)
+                .ToList();
             normalizedRules.Add(new FileStackCustomRule
             {
                 Id = id,

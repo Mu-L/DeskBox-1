@@ -60,7 +60,6 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -91,38 +90,47 @@
                     </toolkit:SegmentedItem>
                 </toolkit:Segmented>
                 <Button
+                    x:Name="SearchButton"
                     Grid.Column="1"
                     Width="24"
                     Height="24"
                     MinWidth="24"
+                    AutomationProperties.Name="{Binding SearchPlaceholderText}"
                     Click="SearchButton_Click"
                     Style="{StaticResource WidgetCompactIconButtonStyle}"
-                    ToolTipService.ToolTip="{Binding SearchPlaceholderText}">
+                    ToolTipService.ToolTip="{Binding SearchPlaceholderText}"
+                    Visibility="{Binding SearchButtonVisibility}">
                     <FontIcon FontSize="12" Glyph="&#xE721;" />
                 </Button>
-            </Grid>
-
-            <Grid Grid.Row="1" ColumnSpacing="5" Visibility="{Binding SearchBoxVisibility}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
                 <TextBox
                     x:Name="SearchTextBox"
+                    Grid.Column="0"
                     MinHeight="{Binding InputHeight}"
                     Padding="{Binding InputPadding}"
+                    AutomationProperties.Name="{Binding SearchPlaceholderText}"
                     FontSize="{Binding TextSize}"
                     KeyDown="SearchTextBox_KeyDown"
                     PlaceholderText="{Binding SearchPlaceholderText}"
                     Style="{StaticResource WidgetSearchTextBoxStyle}"
-                    Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <Button Grid.Column="1" Width="26" Height="26" MinWidth="26" Click="ClearSearchButton_Click" Style="{StaticResource WidgetCompactIconButtonStyle}">
-                    <FontIcon FontSize="12" Glyph="&#xE711;" />
+                    Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    Visibility="{Binding SearchBoxVisibility}" />
+                <Button
+                    x:Name="CloseSearchButton"
+                    Grid.Column="1"
+                    MinWidth="0"
+                    MinHeight="{Binding InputHeight}"
+                    Padding="8,0"
+                    AutomationProperties.Name="{Binding CloseSearchText}"
+                    Click="CloseSearchButton_Click"
+                    Style="{StaticResource SubtleButtonStyle}"
+                    ToolTipService.ToolTip="{Binding CloseSearchText}"
+                    Visibility="{Binding SearchBoxVisibility}">
+                    <TextBlock FontSize="{Binding SecondaryTextSize}" Text="{Binding SearchCancelText}" />
                 </Button>
             </Grid>
 
             <Button
-                Grid.Row="2"
+                Grid.Row="1"
                 MinHeight="42"
                 Padding="8,5"
                 HorizontalAlignment="Stretch"
@@ -143,7 +151,7 @@
                 </Grid>
             </Button>
 
-            <Grid Grid.Row="3">
+            <Grid Grid.Row="2">
                 <ListView
                     x:Name="ItemsList"
                     AllowDrop="True"

@@ -30,7 +30,9 @@ public partial class FileStackCustomRuleEditor : ObservableObject
     {
         Id = Id,
         Name = Name.Trim(),
-        Extensions = ParseExtensions(ExtensionsText).ToList()
+        Extensions = ParseExtensions(ExtensionsText)
+            .Take(SettingsService.MaxFileStackExtensionsPerRule)
+            .ToList()
     };
 
     public static FileStackCustomRuleEditor FromModel(FileStackCustomRule rule) => new()

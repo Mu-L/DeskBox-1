@@ -37,7 +37,7 @@
             <Setter Property="Margin" Value="0" />
             <Setter Property="MinWidth" Value="0" />
             <Setter Property="MinHeight" Value="0" />
-            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -60,7 +60,7 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
             <Setter Property="MinHeight" Value="0" />
-            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -121,6 +121,9 @@
                 Margin="{Binding TileMargin}"
                 Padding="{Binding TilePadding}"
                 CornerRadius="8"
+                AutomationProperties.HelpText="{Binding Summary}"
+                AutomationProperties.ItemStatus="{Binding AutomationState}"
+                AutomationProperties.Name="{Binding Name}"
                 AllowDrop="True"
                 Loaded="StackSurface_Loaded"
                 Unloaded="StackSurface_Unloaded"
@@ -130,7 +133,8 @@
                 PointerEntered="StackSurface_PointerEntered"
                 PointerExited="StackSurface_PointerExited"
                 PointerPressed="StackSurface_PointerPressed"
-                PointerReleased="StackSurface_PointerReleased">
+                PointerReleased="StackSurface_PointerReleased"
+                ToolTipService.ToolTip="{Binding AutomationState}">
                 <StackPanel HorizontalAlignment="Center" Spacing="4">
                     <Grid Width="{Binding PreviewSize}" Height="{Binding PreviewSize}">
                         <Grid Visibility="{Binding CollapsedPreviewVisibility}">
@@ -193,6 +197,8 @@
                         <Button
                             Width="{Binding PreviewItemSize}"
                             Height="{Binding PreviewItemSize}"
+                            MinWidth="28"
+                            MinHeight="28"
                             Padding="0"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
@@ -239,6 +245,9 @@
                 Margin="{Binding ListMargin}"
                 Padding="{Binding ListPadding}"
                 CornerRadius="8"
+                AutomationProperties.HelpText="{Binding Summary}"
+                AutomationProperties.ItemStatus="{Binding AutomationState}"
+                AutomationProperties.Name="{Binding Name}"
                 AllowDrop="True"
                 Loaded="StackSurface_Loaded"
                 Unloaded="StackSurface_Unloaded"
@@ -248,7 +257,8 @@
                 PointerEntered="StackSurface_PointerEntered"
                 PointerExited="StackSurface_PointerExited"
                 PointerPressed="StackSurface_PointerPressed"
-                PointerReleased="StackSurface_PointerReleased">
+                PointerReleased="StackSurface_PointerReleased"
+                ToolTipService.ToolTip="{Binding AutomationState}">
                 <Grid ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -302,8 +312,8 @@
                     </StackPanel>
                     <Button
                         Grid.Column="2"
-                        Width="24"
-                        Height="24"
+                        Width="28"
+                        Height="28"
                         Click="StackToggleButton_Click"
                         IsTabStop="False"
                         Style="{StaticResource FileStackActionButtonStyle}"
@@ -418,7 +428,6 @@
                 <GridView.ItemContainerTransitions>
                     <TransitionCollection>
                         <RepositionThemeTransition IsStaggeringEnabled="False" />
-                        <EntranceThemeTransition FromVerticalOffset="4" IsStaggeringEnabled="False" />
                     </TransitionCollection>
                 </GridView.ItemContainerTransitions>
             </GridView>
@@ -450,7 +459,6 @@
                 <ListView.ItemContainerTransitions>
                     <TransitionCollection>
                         <RepositionThemeTransition IsStaggeringEnabled="False" />
-                        <EntranceThemeTransition FromVerticalOffset="4" IsStaggeringEnabled="False" />
                     </TransitionCollection>
                 </ListView.ItemContainerTransitions>
             </ListView>

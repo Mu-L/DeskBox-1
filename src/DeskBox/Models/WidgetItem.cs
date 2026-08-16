@@ -90,9 +90,14 @@ public partial class WidgetItem : ObservableObject
     [ObservableProperty]
     public partial bool IsCut { get; set; }
 
-    /// <summary>Temporary indentation marker while an automatic stack is expanded.</summary>
+    /// <summary>Temporary membership marker while a stack is expanded.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StackChildMarkerVisibility))]
     public partial bool IsStackChild { get; set; }
+
+    public Visibility StackChildMarkerVisibility => IsStackChild
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public string SecondaryInfo
     {

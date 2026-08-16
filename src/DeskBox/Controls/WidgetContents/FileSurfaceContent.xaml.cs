@@ -264,6 +264,8 @@ public sealed partial class FileSurfaceContent :
         // change. Clear recycled selector state first, then rebuild the stack
         // projection before the cached surface is attached again.
         ResetSelectionForStackProjectionChange();
+        ResetStackInteractionVisuals();
+        PersistSurfaceReorder();
         ViewModel.StabilizeStackDisplay();
     }
 
@@ -376,6 +378,8 @@ public sealed partial class FileSurfaceContent :
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         StopScrollBarHideTimer();
+        ResetStackInteractionVisuals();
+        PersistSurfaceReorder();
         App.Current.WidgetManager?.NotifyQuickLookSurfaceUnavailable(this);
     }
 
@@ -495,8 +499,9 @@ public sealed partial class FileSurfaceContent :
 
         _lastStackInputKey = stack.StackKey;
         _lastStackInputTick = now;
-        ApplyStackProjectionChange(() =>
-            ViewModel.ToggleStack(stack));
+        RequestStackState(
+            stack,
+            !GetDesiredStackState(stack));
     }
 
 
@@ -547,6 +552,14 @@ public sealed partial class FileSurfaceContent :
             : GetSelectedItems().Count > 1
                 ? CreateMultiSelectionFlyout()
                 : CreateItemFlyout(item);
+        if (item is WidgetStackItem)
+        {
+            flyout.Closed += (_, _) =>
+            {
+                ItemsGrid.SelectedItems.Remove(item);
+                ItemsList.SelectedItems.Remove(item);
+            };
+        }
         FrameworkElement target =
             FindItemElement(e.OriginalSource) ??
             sender as FrameworkElement ??
@@ -1551,15 +1564,10 @@ public sealed partial class FileSurfaceContent :
         ClearStackMemberDropTarget();
         ApplyDropVisual(FileDropVisualState.None);
         ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
-        if (_isSurfaceReorderDragActive &&
-            _surfaceReorderHasLastPosition)
-        {
-            CommitSurfaceReorder(_surfaceReorderLastPosition);
-        }
-        else
-        {
-            PersistSurfaceReorder();
-        }
+        // Leaving the surface means the user may be dragging to Explorer,
+        // another widget or another application. Discard the internal preview;
+        // only a confirmed drop back onto this surface may change ordering.
+        PersistSurfaceReorder();
     }
 
     private async void Root_Drop(object sender, DragEventArgs e)
@@ -2064,7 +2072,7 @@ public sealed partial class FileSurfaceContent :
 
         if (!_isSurfaceReorderDragActive)
         {
-            if (ViewModel.FileStacksEnabled)
+            if (ViewModel.UsesStackProjection)
             {
                 if (!ViewModel.PrepareVisibleItemReorder(draggedItem))
                 {
@@ -2184,6 +2192,10 @@ public sealed partial class FileSurfaceContent :
 
         if (!string.IsNullOrWhiteSpace(_surfaceReorderStackKey))
         {
+            if (ViewModel.Config.SortMode != WidgetSortMode.Manual)
+            {
+                ViewModel.SetSortMode(WidgetSortMode.Manual);
+            }
             ViewModel.MoveStackForReorder(
                 _surfaceReorderStackKey,
                 targetIndex);
@@ -2205,7 +2217,7 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        int currentIndex = ViewModel.FileStacksEnabled
+        int currentIndex = ViewModel.UsesStackProjection
             ? activeView.Items.IndexOf(draggedItem)
             : ViewModel.Items.IndexOf(draggedItem);
         if (currentIndex < 0)
@@ -2213,8 +2225,13 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        if (ViewModel.FileStacksEnabled)
+        if (ViewModel.UsesStackProjection)
         {
+            if (!draggedItem.IsStackChild &&
+                ViewModel.Config.SortMode != WidgetSortMode.Manual)
+            {
+                ViewModel.SetSortMode(WidgetSortMode.Manual);
+            }
             ViewModel.MoveVisibleItemForReorder(
                 draggedItem,
                 targetIndex);
@@ -2310,13 +2327,31 @@ public sealed partial class FileSurfaceContent :
                 ViewModel.IconViewVisibility == Visibility.Visible
                     ? ItemsGrid
                     : ItemsList;
-            activeView.SelectAll();
+            activeView.SelectedItems.Clear();
+            foreach (WidgetItem item in activeView.Items
+                         .OfType<WidgetItem>()
+                         .Where(item => item is not WidgetStackItem))
+            {
+                activeView.SelectedItems.Add(item);
+            }
             UpdateSelectionCommandBar();
             return;
         }
 
         if (e.Key == VirtualKey.Escape)
         {
+            if (ViewModel.HasExpandedStack)
+            {
+                if (ViewModel.GetExpandedStack() is { } expandedStack)
+                {
+                    RequestStackState(
+                        expandedStack,
+                        expanded: false);
+                }
+                e.Handled = true;
+                return;
+            }
+
             if (App.Current.WidgetManager is { } manager)
             {
                 _ = manager.CloseQuickLookPreviewAsync();
@@ -2371,6 +2406,17 @@ public sealed partial class FileSurfaceContent :
         KeyRoutedEventArgs e)
     {
         ShowScrollBarTemporarily(sender as ListViewBase);
+        if (e.Key == VirtualKey.Enter &&
+            sender is ListViewBase
+            {
+                SelectedItem: WidgetStackItem stack
+            })
+        {
+            e.Handled = true;
+            ToggleStackFromInput(stack);
+            return;
+        }
+
         if (await TryHandleClipboardShortcutAsync(e))
         {
             return;

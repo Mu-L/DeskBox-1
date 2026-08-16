@@ -162,6 +162,10 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public string SearchPlaceholderText => _localizationService.T("QuickCapture.SearchPlaceholder");
 
+    public string CloseSearchText => _localizationService.T("QuickCapture.CloseSearch");
+
+    public string SearchCancelText => _localizationService.T("Common.Cancel");
+
     public string InputPlaceholderText => _localizationService.T("QuickCapture.InputPlaceholder");
 
     public string AddNoteText => _localizationService.T("QuickCapture.AddNote");

@@ -16,6 +16,10 @@ public sealed class WidgetStackItem : WidgetItem
 
     public required string StackKey { get; init; }
 
+    public bool IsManual => StackKey.StartsWith(
+        "Manual:",
+        StringComparison.Ordinal);
+
     public IReadOnlyList<WidgetItem> Members => _members;
 
     public string Summary => _summary;

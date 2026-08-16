@@ -86,16 +86,6 @@ public static class WidgetStackGroupingService
                 normalizedOrder);
         }
 
-        if (normalized == SettingsService.FileStackGroupByKind &&
-            BuildCustomRuleMatchers(customRules).Count > 0)
-        {
-            return GroupByKindWithCustomRules(
-                indexedItems,
-                customRules,
-                normalizedOrder,
-                today);
-        }
-
         return indexedItems
             .GroupBy(entry => ResolveCategory(entry.Item, normalized, today))
             .OrderBy(group => GetCategoryOrder(group.Key))
@@ -170,63 +160,6 @@ public static class WidgetStackGroupingService
                 CanStack: false)));
         }
 
-        return groups;
-    }
-
-    private static IReadOnlyList<WidgetStackGroup> GroupByKindWithCustomRules(
-        IReadOnlyList<IndexedItem> items,
-        IReadOnlyList<FileStackCustomRule>? customRules,
-        string orderBy,
-        DateTime today)
-    {
-        var rules = BuildCustomRuleMatchers(customRules);
-        var matches = rules.ToDictionary(
-            rule => rule.Index,
-            _ => new List<IndexedItem>());
-        var unmatched = new List<IndexedItem>();
-
-        foreach (IndexedItem entry in items)
-        {
-            string extension = Path.GetExtension(entry.Item.Path);
-            CustomRuleMatcher? match = rules.FirstOrDefault(
-                rule => rule.Extensions.Contains(extension));
-            if (match is null)
-            {
-                unmatched.Add(entry);
-            }
-            else
-            {
-                matches[match.Index].Add(entry);
-            }
-        }
-
-        var groups = new List<WidgetStackGroup>();
-        foreach (CustomRuleMatcher rule in rules)
-        {
-            if (matches[rule.Index] is not { Count: > 0 } members)
-            {
-                continue;
-            }
-
-            string displayName = string.IsNullOrWhiteSpace(rule.Rule.Name)
-                ? string.Join(", ", rule.Extensions)
-                : rule.Rule.Name.Trim();
-            groups.Add(new WidgetStackGroup(
-                WidgetStackCategory.Other,
-                OrderMembers(members, orderBy),
-                $"Custom:{rule.Rule.Id}",
-                displayName));
-        }
-
-        groups.AddRange(unmatched
-            .GroupBy(entry => ResolveCategory(
-                entry.Item,
-                SettingsService.FileStackGroupByKind,
-                today))
-            .OrderBy(group => GetCategoryOrder(group.Key))
-            .Select(group => new WidgetStackGroup(
-                group.Key,
-                OrderMembers(group, orderBy))));
         return groups;
     }
 

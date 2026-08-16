@@ -854,16 +854,21 @@ public sealed partial class QuickCaptureSurfaceContent :
     {
         if (e.Key == Windows.System.VirtualKey.Escape)
         {
-            ViewModel.SearchText = string.Empty;
-            ResponsiveContentGrid.Focus(FocusState.Programmatic);
+            CloseSearchAndRestoreFocus();
             e.Handled = true;
         }
     }
 
-    private void ClearSearchButton_Click(object sender, RoutedEventArgs e)
+    private void CloseSearchButton_Click(object sender, RoutedEventArgs e)
     {
-        ViewModel.SearchText = string.Empty;
-        SearchTextBox.Focus(FocusState.Programmatic);
+        CloseSearchAndRestoreFocus();
+    }
+
+    private void CloseSearchAndRestoreFocus()
+    {
+        ViewModel.CollapseSearch();
+        DispatcherQueue.TryEnqueue(() =>
+            SearchButton.Focus(FocusState.Programmatic));
     }
 
     private async void ViewButton_Click(object sender, RoutedEventArgs e)

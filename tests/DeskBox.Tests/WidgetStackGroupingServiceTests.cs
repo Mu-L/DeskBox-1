@@ -225,7 +225,7 @@ public sealed class WidgetStackGroupingServiceTests
     }
 
     [Fact]
-    public void Group_CustomRulesExtendBuiltInKindGrouping()
+    public void Group_KindModeIgnoresCustomRules()
     {
         var prototype = new WidgetItem { Path = "prototype.rp" };
         var document = new WidgetItem { Path = "notes.txt" };
@@ -248,14 +248,13 @@ public sealed class WidgetStackGroupingServiceTests
             groups,
             group =>
             {
-                Assert.Equal("Custom:prototype", group.EffectiveKey);
-                Assert.Equal("Prototype", group.DisplayName);
-                Assert.Equal([prototype], group.Items);
+                Assert.Equal(WidgetStackCategory.Documents, group.Category);
+                Assert.Equal([document], group.Items);
             },
             group =>
             {
-                Assert.Equal(WidgetStackCategory.Documents, group.Category);
-                Assert.Equal([document], group.Items);
+                Assert.Equal(WidgetStackCategory.Other, group.Category);
+                Assert.Equal([prototype], group.Items);
             });
     }
 }

@@ -1,7 +1,56 @@
+using System.Xml.Linq;
+
 namespace DeskBox.Tests;
 
 public sealed class QuickCaptureSettingsRuntimeContractTests
 {
+    [Fact]
+    public void SharedSurface_SearchReplacesTabsInlineAndHasExplicitCancel()
+    {
+        string xamlPath = TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml");
+        XDocument document = XDocument.Load(xamlPath);
+        XNamespace presentation =
+            "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace x =
+            "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement listPage = document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "ListPage");
+        XElement searchButton = listPage.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "SearchButton");
+        XElement searchBox = listPage.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "SearchTextBox");
+        XElement closeButton = listPage.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "CloseSearchButton");
+        XElement segmented = listPage.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") ==
+            "QuickCaptureViewSegmented");
+
+        Assert.Same(segmented.Parent, searchButton.Parent);
+        Assert.Same(segmented.Parent, searchBox.Parent);
+        Assert.Same(segmented.Parent, closeButton.Parent);
+        Assert.Equal(
+            "{Binding SearchButtonVisibility}",
+            (string?)searchButton.Attribute("Visibility"));
+        Assert.Equal(
+            "{Binding SearchBoxVisibility}",
+            (string?)searchBox.Attribute("Visibility"));
+        Assert.Equal(
+            "CloseSearchButton_Click",
+            (string?)closeButton.Attribute("Click"));
+        Assert.Equal(
+            "{Binding SearchCancelText}",
+            (string?)closeButton
+                .Element(presentation + "TextBlock")?
+                .Attribute("Text"));
+
+        string code = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+        Assert.Contains("CloseSearchAndRestoreFocus();", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.CollapseSearch();", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClearSearchButton_Click", code, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SharedSurface_ConsumesWideOpenModeAndTabBarVisibility()
     {

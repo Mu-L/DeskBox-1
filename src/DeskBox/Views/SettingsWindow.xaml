@@ -1195,7 +1195,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                         <Button
                                             Grid.Column="1"
                                             Click="AddFileStackRuleButton_Click"
-                                            IsEnabled="{Binding FileStacksEnabled}"
+                                            IsEnabled="{Binding CanAddFileStackCustomRule}"
                                             Style="{StaticResource ActionButtonStyle}">
                                             <StackPanel Orientation="Horizontal" Spacing="7">
                                                 <SymbolIcon Symbol="Add" />
@@ -1284,6 +1284,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                                             svc:Localized.HeaderKey="Settings.FileStacks.Custom.Name" />
                                                         <TextBox
                                                             Grid.Column="1"
+                                                            MaxLength="1024"
                                                             PlaceholderText=".psd .ai .fig"
                                                             Text="{Binding ExtensionsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                             svc:Localized.HeaderKey="Settings.FileStacks.Custom.Extensions" />

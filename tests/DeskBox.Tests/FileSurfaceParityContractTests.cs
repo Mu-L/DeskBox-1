@@ -316,6 +316,9 @@ public sealed class FileSurfaceParityContractTests
         string stackViewModel = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/ViewModels/WidgetViewModel.Stacks.cs"));
+        string stackAnimations = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.StackAnimations.cs"));
 
         Assert.Contains("FindOrRealizeStackRenameTargetAsync", source, StringComparison.Ordinal);
         Assert.Contains("StartItemRenameAsync(stack)", source, StringComparison.Ordinal);
@@ -326,7 +329,7 @@ public sealed class FileSurfaceParityContractTests
         Assert.Equal(2, xaml.Split(
             "RepositionThemeTransition IsStaggeringEnabled=\"False\"",
             StringSplitOptions.None).Length - 1);
-        Assert.Equal(2, xaml.Split(
+        Assert.Equal(0, xaml.Split(
             "EntranceThemeTransition FromVerticalOffset=\"4\" IsStaggeringEnabled=\"False\"",
             StringSplitOptions.None).Length - 1);
 
@@ -349,7 +352,7 @@ public sealed class FileSurfaceParityContractTests
         Assert.Contains("listView.SelectedItems.Remove(stack)", source, StringComparison.Ordinal);
         Assert.Contains("DispatcherQueuePriority.Low", menus, StringComparison.Ordinal);
         Assert.Contains(
-            "ApplyStackProjectionChange(() =>\n            ViewModel.ToggleStack(stack))",
+            "RequestStackState(\n            stack,\n            !GetDesiredStackState(stack))",
             source.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Contains(
@@ -360,15 +363,31 @@ public sealed class FileSurfaceParityContractTests
             "ViewModel.StabilizeStackDisplay()",
             source,
             StringComparison.Ordinal);
-        Assert.Contains("FileStacksEnabled: true", menus, StringComparison.Ordinal);
-        Assert.Contains(
+        Assert.Contains("CanCreateManualStack: true", menus, StringComparison.Ordinal);
+        Assert.DoesNotContain(
             "if (!FileStacksEnabled)\n        {\n            WidgetFileStackSettings.SetEnabledOverride(Config, true);",
             stackViewModel.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Contains(
-            "WidgetFileStackSettings.SetEnabledOverride(Config, true)",
+            "public bool UsesStackProjection",
             stackViewModel,
             StringComparison.Ordinal);
+        Assert.Contains("ConvertStackToManual(", stackViewModel, StringComparison.Ordinal);
+        Assert.Contains(
+            "WindowsCompatibilityService.AreAnimationsEnabled",
+            stackAnimations,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackTransitionGeneration",
+            stackAnimations,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StartStackMemberEntranceAnimations",
+            stackAnimations,
+            StringComparison.Ordinal);
+        Assert.Equal(2, itemVisuals.Split(
+            "ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);",
+            StringSplitOptions.None).Length - 1);
         Assert.Contains(
             "TryMoveStackMemberOverride(",
             stackViewModel,

@@ -68,6 +68,16 @@
                     Width="{Binding LayoutContext.IconImageSize, ElementName=SurfaceRoot}"
                     Height="{Binding LayoutContext.IconImageSize, ElementName=SurfaceRoot}"
                     Visibility="{Binding FallbackIconVisibility}" />
+                <Border
+                    Width="14"
+                    Height="2"
+                    Margin="0,0,0,-3"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource AccentFillColorSecondaryBrush}"
+                    CornerRadius="1"
+                    IsHitTestVisible="False"
+                    Visibility="{Binding StackChildMarkerVisibility}" />
             </Grid>
             <TextBlock
                 x:Name="IconItemNameText"

@@ -33,7 +33,10 @@ public partial class SettingsViewModel
 
     public Visibility FileStackRulesEmptyVisibility => FileStackCustomRules.Count == 0
         ? Visibility.Visible
-        : Visibility.Collapsed;
+            : Visibility.Collapsed;
+
+    public bool CanAddFileStackCustomRule => FileStacksEnabled &&
+        FileStackCustomRules.Count < SettingsService.MaxFileStackCustomRules;
 
     public string FileStackPreviewSummaryText
     {
@@ -97,6 +100,7 @@ public partial class SettingsViewModel
 
             OnPropertyChanged(nameof(FileStackSettingsSummaryText));
             OnPropertyChanged(nameof(SelectedFileStackMode));
+            OnPropertyChanged(nameof(CanAddFileStackCustomRule));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -276,6 +280,11 @@ public partial class SettingsViewModel
 
     public void AddFileStackCustomRule()
     {
+        if (!CanAddFileStackCustomRule)
+        {
+            return;
+        }
+
         int nextNumber = FileStackCustomRules.Count + 1;
         var editor = new FileStackCustomRuleEditor
         {
@@ -430,6 +439,7 @@ public partial class SettingsViewModel
 
         OnPropertyChanged(nameof(FileStackRulesEmptyVisibility));
         OnPropertyChanged(nameof(FileStackSettingsSummaryText));
+        OnPropertyChanged(nameof(CanAddFileStackCustomRule));
         UpdateFileStackRulePriorities();
     }
 
@@ -456,6 +466,7 @@ public partial class SettingsViewModel
 
         OnPropertyChanged(nameof(FileStackRulesEmptyVisibility));
         OnPropertyChanged(nameof(FileStackSettingsSummaryText));
+        OnPropertyChanged(nameof(CanAddFileStackCustomRule));
         UpdateFileStackRulePriorities();
         RefreshFileStackRulePreview();
         if (!_isSynchronizingFileStackRules)
@@ -537,6 +548,7 @@ public partial class SettingsViewModel
         foreach (FileStackCustomRuleEditor editor in FileStackCustomRules)
         {
             var extensions = FileStackCustomRuleEditor.ParseExtensions(editor.ExtensionsText)
+                .Take(SettingsService.MaxFileStackExtensionsPerRule)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             if (extensions.Count == 0)
             {

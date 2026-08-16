@@ -20,8 +20,10 @@ public sealed record FileItemMenuActions(
     Func<IReadOnlyList<WidgetItem>, Task> MoveItemsBackToDesktopAsync,
     Func<IReadOnlyList<WidgetItem>, Task> DeleteItemsAsync,
     Func<IReadOnlyList<WidgetItem>> GetSelectedItems,
-    bool FileStacksEnabled,
+    bool CanCreateManualStack,
     Action<IReadOnlyList<WidgetItem>> CreateManualStack,
+    Func<WidgetItem, bool> CanRemoveFromStack,
+    Action<WidgetItem> RemoveFromStack,
     Action ClearSelection);
 
 public static class FileItemMenuBuilder
@@ -104,6 +106,20 @@ public static class FileItemMenuBuilder
         };
         flyout.Items.Add(properties);
 
+        if (actions.CanRemoveFromStack(item))
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+            MenuFlyoutItem removeFromStack = actions.CreateMenuItem(
+                "Widget.Stack.RemoveItem",
+                "\uE8FB");
+            removeFromStack.Click += (_, _) =>
+            {
+                flyout.Hide();
+                actions.RemoveFromStack(item);
+            };
+            flyout.Items.Add(removeFromStack);
+        }
+
         if (actions.CanMoveItemsBackToDesktop())
         {
             flyout.Items.Add(new MenuFlyoutSeparator());
@@ -138,7 +154,7 @@ public static class FileItemMenuBuilder
     {
         var flyout = new MenuFlyout();
 
-        if (actions.FileStacksEnabled)
+        if (actions.CanCreateManualStack)
         {
             MenuFlyoutItem startStack = actions.CreateMenuItem(
                 "Widget.Stack.Start",

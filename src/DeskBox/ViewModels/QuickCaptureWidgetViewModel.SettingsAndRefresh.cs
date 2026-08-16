@@ -41,6 +41,8 @@ public sealed partial class QuickCaptureWidgetViewModel
         OnPropertyChanged(nameof(RecentTabText));
         OnPropertyChanged(nameof(EnableRecentCaptureText));
         OnPropertyChanged(nameof(SearchPlaceholderText));
+        OnPropertyChanged(nameof(CloseSearchText));
+        OnPropertyChanged(nameof(SearchCancelText));
         OnPropertyChanged(nameof(InputPlaceholderText));
         OnPropertyChanged(nameof(AddNoteText));
         OnPropertyChanged(nameof(ExpandInputTooltipText));
