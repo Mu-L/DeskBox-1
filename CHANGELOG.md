@@ -14,6 +14,28 @@
 - Meaningful Quick Capture drafts are saved before switching records, while an empty draft no longer blocks navigation or creates a blank entry.
 - Newly created Todo and Quick Capture widgets include editable localized guides. Resetting either feature restores its guide so the main functions remain easy to discover.
 - Markdown tables, code, links, task lists, emphasis, and pasted images render more consistently. Text and semantic accent colors remain readable in both light and dark themes.
+- Quick Capture search now opens in the tab row instead of adding another line. The field's clear button removes the query, while Cancel or Esc closes search and restores the tabs.
+
+#### File widgets, stacks, and previews
+
+- Manual stacks remain available when automatic stacking is turned off. Changing the members or order of an automatic stack converts it to a manual stack so later rule updates do not overwrite the change.
+- Files can be dragged into a stack from File Explorer, a browser, or another file widget. Members can be removed individually, a stack can be dissolved, and a stack with one remaining member dissolves automatically.
+- Dragging an item out of a widget no longer changes its sorting mode. Reordering inside a stack stays local to that stack instead of rearranging the entire file widget.
+- Stack expand and collapse transitions use dedicated motion, keyboard handling, focus recovery, and clearer ownership cues. Drop highlights and pulsing borders are cleared as soon as a drag ends.
+- File-type and custom stacking rules now follow the selected mode independently, avoiding unexpected groups produced by two rule sets at once.
+- Files and applications opened from a file widget now launch through the Explorer desktop shell. They receive the same user environment as desktop-launched items, improving compatibility with local development tools, services, and globally installed integrations.
+- When QuickLook reaches the edge of the current file widget, arrow-key navigation can continue into an adjacent visible file widget without closing the preview.
+
+#### Capsule mode, widget groups, and desktop layer
+
+- Capsule expansion direction can be set to Auto, Down, or Up. Fixed directions keep the title edge anchored, including after widgets are hidden and restored with F7.
+- Hover auto-expand reconnects after mode changes, hiding, and restoring. Hiding a widget also clears stale hover state and the temporary drag mask.
+- Widgets assigned to the desktop layer stay there when their title or empty area is clicked. Dynamic-layer widgets keep their existing temporary foreground behavior.
+- Expanding, collapsing, and resizing widgets release interrupted animation work more reliably, making repeated compact-mode operations feel smoother.
+- Group wheel navigation no longer stalls during rapid input or jumps two members from one effective step. One switch produces one background highlight instead of repeated flashing.
+- First-to-last circular navigation remains available, so continuous wheel movement can keep cycling through the group.
+- Newer navigation requests replace unfinished older ones without rolling back an already visible member. Collapsed groups also show a compact position indicator.
+- Widgets recover their desktop position more reliably after interaction, display changes, or Win+D, reducing unexpected overlap above other applications.
 
 #### Music and interface polish
 
@@ -22,14 +44,6 @@
 - Todo, Quick Capture, onboarding, desktop organization, and release notes use clearer frosted action surfaces with more consistent margins and compact controls.
 - The floating search window's drag handle uses an opaque light or dark color, avoiding the visible center overlap caused by translucent layers.
 - Feature-widget settings use the same colorful icons as widget title bars, with card spacing aligned to the rest of Settings. Several unclear settings descriptions are shorter and more direct.
-
-#### Widget groups and animation
-
-- Expanding, collapsing, and resizing widgets release interrupted animation work more reliably, making repeated compact-mode operations feel smoother.
-- Group wheel navigation no longer stalls during rapid input or jumps two members from one effective step. One switch produces one background highlight instead of repeated flashing.
-- First-to-last circular navigation remains available, so continuous wheel movement can keep cycling through the group.
-- Newer navigation requests replace unfinished older ones without rolling back an already visible member. Collapsed groups also show a compact position indicator.
-- Widgets recover their desktop position more reliably after interaction, display changes, or Win+D, reducing unexpected overlap above other applications.
 
 #### Onboarding, search, and smaller details
 
@@ -50,6 +64,28 @@
 - 切换到其他随记前会先保存有效草稿。空白草稿不会阻止切换，也不会产生空记录。
 - 首次创建待办或随记格子时，会加入可编辑、可删除的本地化功能说明。重置数据后也会恢复对应说明。
 - Markdown 表格、代码、链接、任务列表、强调文字和粘贴图片显示更加稳定。浅色与深色主题下的正文和语义色都保持清晰。
+- 随记搜索会在标签栏原位置展开，不再额外占用一行。输入框内的清除按钮只清空关键词，点击“取消”或按 Esc 才会退出搜索并恢复标签栏。
+
+#### 文件格子、叠放与预览
+
+- 关闭自动叠放后，手动创建的叠放仍会保留。调整自动叠放的成员或顺序后，该组会转为手动叠放，后续规则更新不会覆盖用户操作。
+- 支持从资源管理器、浏览器和其他文件格子直接拖入叠放。成员可以单独移出，也可以解散整个叠放，只剩一个成员时会自动解散。
+- 将文件拖出格子不会意外切换排序方式。叠放内部的排序只影响当前叠放，不会改变整个文件格子的顺序。
+- 叠放使用专门的展开与收起动画，并补齐键盘操作、焦点恢复和归属提示。拖放结束后，高亮和呼吸边框会立即清理。
+- 文件类型与自定义叠放规则会按当前选中的模式分别生效，不再同时叠加并产生意外分组。
+- 从文件格子打开文件或应用时，改由资源管理器桌面 Shell 执行。启动后的程序会获得与桌面启动一致的用户环境，本地开发工具、服务和全局扩展能够更可靠地读取已有配置。
+- QuickLook 浏览到当前文件格子边界后，可以继续使用方向键切换到相邻的可见文件格子，无需关闭预览。
+
+#### 胶囊模式、格子组与桌面层级
+
+- 胶囊展开方向新增“自动”“向下”和“向上”三种选择。固定方向会保持标题边缘作为锚点，F7 隐藏再显示后也不会发生位置漂移。
+- 切换模式、隐藏或重新显示格子后，悬停自动展开会重新挂接。隐藏格子时也会清理旧的悬停状态和临时拖动遮罩。
+- 固定在桌面层的格子，点击标题或空白区域后仍会留在桌面层。动态层级继续保留原有的临时前置交互。
+- 优化格子展开、收起和尺寸变化时的动画衔接，连续操作时更少出现卡顿、中断或残留动画。
+- 格子组快速滚动不再出现切不动或一次跳过两个成员的情况。一次有效滚轮输入只切换一个格子，并只播放一次背景提示。
+- 保留首尾循环，持续向同一方向滚动可以一直循环切换格子组成员。
+- 新的切换请求会接替尚未完成的旧请求，不会把已经显示的成员切回去。收起后的格子组还会显示简洁的位置指示。
+- 操作格子、切换显示器或按下 Win+D 后，格子会更可靠地回到正确桌面层级，减少意外压在其他窗口上方的情况。
 
 #### 音乐与界面细节
 
@@ -58,14 +94,6 @@
 - 待办、随记、新手引导、桌面整理和更新日志的操作区加入更清楚的磨砂层，并统一边距与紧凑控件尺寸。
 - 悬浮搜索窗口顶部拖动手势条改为适配浅色与深色主题的纯色，避免半透明图层重叠造成中间发灰。
 - 功能格子设置改用标题栏同款彩色图标，卡片间距与其他设置页保持一致，多项难以理解的说明也已缩短。
-
-#### 格子组与动画
-
-- 优化格子展开、收起和尺寸变化时的动画衔接，连续操作时更少出现卡顿、中断或残留动画。
-- 格子组快速滚动不再出现切不动或一次跳过两个成员的情况。一次有效滚轮输入只切换一个格子，并只播放一次背景提示。
-- 保留首尾循环，持续向同一方向滚动可以一直循环切换格子组成员。
-- 新的切换请求会接替尚未完成的旧请求，不会把已经显示的成员切回去。收起后的格子组还会显示简洁的位置指示。
-- 操作格子、切换显示器或按下 Win+D 后，格子会更可靠地回到正确桌面层级，减少意外压在其他窗口上方的情况。
 
 #### 新手引导、搜索与其他细节
 

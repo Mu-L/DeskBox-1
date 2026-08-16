@@ -106,14 +106,14 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 
 ## Coming in 1.4.2
 
-- **Smoother widget motion.** Expanding, collapsing, resizing, and rapidly switching grouped widgets are more responsive, with fewer interrupted or repeated visual effects.
-- **Reliable Todo completion.** Checkmarks stay with the intended task under custom sorting and filtering. Unchecking a task in Completed removes only that task.
-- **More visual Todo and Quick Capture workspaces.** Clipboard images show thumbnails and copy back as images. Attachments use scrollable tiles with image previews, file icons, and hover removal.
+- **More controllable file stacks.** Manual stacks remain available without automatic stacking. Files can be dragged in from Explorer, browsers, and other widgets, then removed or reordered without changing the whole widget's sorting.
+- **More predictable capsules.** Choose automatic, downward, or upward expansion. Fixed directions keep the title edge anchored, while hover recovery and F7 restore no longer leave shifted widgets or stale drag masks.
+- **Desktop-compatible file launching.** Items opened from file widgets receive the same user environment as desktop launches. QuickLook navigation can continue into an adjacent visible file widget.
+- **Reliable Todo and Quick Capture.** Todo checkmarks stay with the intended task. Clipboard images show thumbnails and copy back as images, attachments use scrollable tiles, and Quick Capture search stays in the tab row.
+- **Smoother widget groups.** One wheel step changes one member and plays one highlight, rapid input remains responsive, and first-to-last circular navigation stays available.
 - **Windows-style music controls.** Play, pause, previous, and next use matching filled transport icons. Cover mode receives a clearer single-line frosted control bar.
-- **Continuous group navigation.** One effective wheel step changes one member and plays one highlight animation, while first-to-last circular navigation remains available.
-- **Clearer first use.** Todo and Quick Capture can start with localized editable examples, and resetting their data restores those guides. Onboarding uses a calmer logo transition and a more focused flow.
-- **Improved reading and editing.** Markdown colors remain readable in light and dark themes, while tables, code, links, task lists, and pasted images render more consistently.
-- **Refined interface details.** Empty states, detail headers, frosted action areas, feature-widget icons, settings spacing, search-result refreshes, and several compact controls are more consistent.
+- **Clearer first use and editing.** Localized Todo and Quick Capture guides return after a reset, onboarding uses a calmer transition, and Markdown remains readable in light and dark themes.
+- **Refined interface details.** Desktop-layer widgets remain behind other apps when clicked, while empty states, feature-widget icons, settings spacing, search refreshes, and compact controls are more consistent.
 
 Read the complete [unreleased changelog](CHANGELOG.md) or the [1.4.2 preview notes](docs/releases/v1.4.2.md).
 
