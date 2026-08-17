@@ -15,8 +15,8 @@ public static class WidgetGroupNavigationInteractionPolicy
     public const double GestureCommitDistance = 56;
     public const double GestureCommitVelocity = 520;
     public const double WheelStep = 120;
-    public static readonly TimeSpan WheelRepeatCoalescingInterval =
-        TimeSpan.FromMilliseconds(120);
+    public static readonly TimeSpan WheelGestureQuietPeriod =
+        TimeSpan.FromMilliseconds(220);
 
     public static string ResolveEffectiveStyle(
         string? requestedStyle,
@@ -124,14 +124,13 @@ public static class WidgetGroupNavigationInteractionPolicy
     }
 
     /// <summary>
-    /// Coalesces duplicate wheel impulses reported by some mouse wheels for a
-    /// single detent. Rejected impulses deliberately do not refresh the
-    /// accepted timestamp, so a sustained scroll remains responsive instead
-    /// of extending a sliding cooldown indefinitely.
+    /// Observes effective wheel input and identifies gesture boundaries. A
+    /// same-direction burst remains one gesture until input has been quiet for
+    /// long enough; reversing direction always starts a new explicit gesture.
     /// </summary>
-    public static bool TryAcceptCoalescedWheelStep(
-        ref DateTimeOffset lastAcceptedAt,
-        ref int lastAcceptedDirection,
+    public static bool ObserveWheelGesture(
+        ref DateTimeOffset lastObservedAt,
+        ref int lastObservedDirection,
         DateTimeOffset observedAt,
         int direction)
     {
@@ -140,18 +139,57 @@ public static class WidgetGroupNavigationInteractionPolicy
             return false;
         }
 
-        TimeSpan sinceAccepted = observedAt - lastAcceptedAt;
-        bool accept = lastAcceptedAt == default ||
-                      direction != lastAcceptedDirection ||
-                      sinceAccepted < TimeSpan.Zero ||
-                      sinceAccepted >= WheelRepeatCoalescingInterval;
-        if (!accept)
+        TimeSpan sinceObserved = observedAt - lastObservedAt;
+        bool startsNewGesture = lastObservedAt == default ||
+                                direction != lastObservedDirection ||
+                                sinceObserved < TimeSpan.Zero ||
+                                sinceObserved >= WheelGestureQuietPeriod;
+        lastObservedAt = observedAt;
+        lastObservedDirection = direction;
+        return startsNewGesture;
+    }
+
+    /// <summary>
+    /// Commits at most one page step for a continuous wheel gesture, regardless
+    /// of the number or magnitude of same-direction deltas in that gesture.
+    /// </summary>
+    public static bool TryConsumeWheelGestureStep(
+        ref double accumulator,
+        ref DateTimeOffset lastObservedAt,
+        ref int lastObservedDirection,
+        ref bool gestureCommitted,
+        double wheelDelta,
+        DateTimeOffset observedAt,
+        out int direction)
+    {
+        direction = 0;
+        if (wheelDelta == 0)
         {
             return false;
         }
 
-        lastAcceptedAt = observedAt;
-        lastAcceptedDirection = direction;
+        int inputDirection = wheelDelta < 0 ? 1 : -1;
+        if (ObserveWheelGesture(
+                ref lastObservedAt,
+                ref lastObservedDirection,
+                observedAt,
+                inputDirection))
+        {
+            accumulator = 0;
+            gestureCommitted = false;
+        }
+
+        if (gestureCommitted ||
+            !TryConsumeWheelStep(
+                ref accumulator,
+                wheelDelta,
+                out direction))
+        {
+            direction = 0;
+            return false;
+        }
+
+        gestureCommitted = true;
         return true;
     }
 

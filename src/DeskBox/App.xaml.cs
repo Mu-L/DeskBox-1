@@ -99,6 +99,7 @@ public partial class App : Application
     private NativeAppNotificationService? _nativeNotificationService;
     private TodoReminderService? _todoReminderService;
     private DisplayAreaWatcherService? _displayAreaWatcher;
+    private DisplayTopologyTransitionCoordinator? _displayTopologyTransitionCoordinator;
     private AppLifecycleRecoveryWatcher? _lifecycleRecoveryWatcher;
     private SearchIndexService? _searchIndexService;
     private SearchEngineService? _searchEngineService;
@@ -943,6 +944,12 @@ public partial class App : Application
             }
             WidgetManager = new WidgetManager(SettingsService, FileService, OrganizerService, themeService, quickCaptureService, localizationService);
             WidgetManager.TrayLayerStateChanged += UpdateTrayLayerStateText;
+            _displayTopologyTransitionCoordinator = new DisplayTopologyTransitionCoordinator(
+                UiDispatcherQueue,
+                DisplayAreaWatcherService.CaptureCurrentSignature,
+                async (generation, reasons) =>
+                    WidgetManager is null ||
+                    await WidgetManager.RestoreWidgetPositionsAsync(generation, reasons));
 
             // Phase 3: Restore widgets
             int recoveredDesktopItems = await new DesktopOrganizationTransaction(
@@ -1027,25 +1034,26 @@ public partial class App : Application
     /// Called when the set of displays changes (hot-plug, resolution change, etc.).
     /// Invalidates caches and triggers widget repositioning.
     /// </summary>
-    private async void OnDisplaysChanged()
+    private void OnDisplaysChanged()
     {
         try
         {
-            Log($"[DisplayAreaWatcher] Displays changed, triggering widget reposition");
+            Log("[DisplayAreaWatcher] Displays changed, queueing stable widget reposition");
 
             // Invalidate the desktop icon view cache since work areas may have changed
             WidgetLayerService.InvalidateDesktopIconViewCache();
 
-            // Reposition all widgets to ensure they're on visible screens
-            if (WidgetManager is not null)
-            {
-                await WidgetManager.RestoreWidgetPositionsAsync();
-            }
+            RequestDisplayTopologyRestore("display-area-watcher");
         }
         catch (Exception ex)
         {
             Log($"[DisplayAreaWatcher] OnDisplaysChanged failed: {ex}");
         }
+    }
+
+    internal void RequestDisplayTopologyRestore(string reason)
+    {
+        _displayTopologyTransitionCoordinator?.RequestRestore(reason);
     }
 
     private AppDiagnosticsService? _diagnosticsService;
@@ -1081,6 +1089,7 @@ public partial class App : Application
         _diagnosticsService?.RecordLifecycleEvent(reason, _searchIndexService);
         WidgetLayerService.InvalidateDesktopIconViewCache();
         _displayAreaWatcher?.RefreshNow();
+        RequestDisplayTopologyRestore("lifecycle-" + reason);
 
         bool requiresExternalRecovery =
             reason.Contains("resume", StringComparison.OrdinalIgnoreCase) ||
@@ -2896,6 +2905,8 @@ public partial class App : Application
         // and access half-closed window objects.
         _displayAreaWatcher?.Dispose();
         _displayAreaWatcher = null;
+        _displayTopologyTransitionCoordinator?.Dispose();
+        _displayTopologyTransitionCoordinator = null;
         _lifecycleRecoveryWatcher?.Dispose();
         _lifecycleRecoveryWatcher = null;
 

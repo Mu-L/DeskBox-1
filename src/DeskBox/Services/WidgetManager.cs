@@ -61,6 +61,7 @@ internal interface IDesktopWidgetWindow
     Windows.Foundation.Rect RestingAnimationBounds { get; }
     void ApplyAppearancePreview();
     void RestoreBoundsForCurrentTopology();
+    bool TryRestoreBoundsForDisplayTopology();
     void ApplyCompactArrangement(Windows.Graphics.RectInt32 bounds, bool constrainSize);
     void ClearCompactArrangementConstraint();
     void PreviewCompactArrangement(Windows.Graphics.RectInt32 bounds);
@@ -1094,25 +1095,31 @@ public sealed partial class WidgetManager
     /// the current display topology.  Called when displays are added,
     /// removed, or reconfigured (hot-plug, resolution change, DPI change).
     /// </summary>
-    public async Task RestoreWidgetPositionsAsync()
+    public async Task<bool> RestoreWidgetPositionsAsync(long generation, string reasons)
     {
         using var perfScope = PerformanceLogger.Measure("WidgetManager.RestoreWidgetPositions");
-        App.Log("[WidgetManager] Restoring widget positions for current display topology");
+        App.Log(
+            $"[WidgetManager] Restoring widget positions for current display topology " +
+            $"generation={generation} reasons={reasons}");
+
+        bool allRestored = true;
 
         foreach (IDesktopWidgetWindow window in GetLoadedDesktopWindows())
         {
             try
             {
-                window.RestoreBoundsForCurrentTopology();
+                allRestored &= window.TryRestoreBoundsForDisplayTopology();
             }
             catch (Exception ex)
             {
+                allRestored = false;
                 App.Log($"[WidgetManager] Failed to restore position for widget '{window.Identity.WidgetId}': {ex.Message}");
             }
         }
 
         await Task.Yield();
         QueueIdleWidgetZOrderNormalization("display-topology-restored");
+        return allRestored;
     }
 
     /// <summary>

@@ -59,7 +59,7 @@ public sealed class DisplayAreaWatcherService : IDisposable
         }
 
         _displayCount = CountDisplays();
-        _displaySignature = GetDisplaySignature();
+        _displaySignature = CaptureCurrentSignature();
         App.Log($"[DisplayAreaWatcher] Started, initial display count: {_displayCount}, signature: {_displaySignature}");
         _pollTimer.Start();
     }
@@ -91,7 +91,7 @@ public sealed class DisplayAreaWatcherService : IDisposable
         }
 
         int newCount = CountDisplays();
-        string newSignature = GetDisplaySignature();
+        string newSignature = CaptureCurrentSignature();
 
         if (newCount != _displayCount || !string.Equals(newSignature, _displaySignature, StringComparison.Ordinal))
         {
@@ -118,7 +118,7 @@ public sealed class DisplayAreaWatcherService : IDisposable
     /// Creates a string signature of the current display topology
     /// (monitor bounds + work areas) to detect any geometry changes.
     /// </summary>
-    private static string GetDisplaySignature()
+    internal static string CaptureCurrentSignature()
     {
         try
         {

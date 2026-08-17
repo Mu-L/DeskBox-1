@@ -162,7 +162,7 @@ public sealed partial class WidgetShell : UserControl
     private WidgetGroupPresentation? _groupPresentation;
     private IWidgetContent? _hostedContent;
     private IWidgetResponsiveLayoutContent? _responsiveLayoutContent;
-    private readonly RectangleGeometry _contentTransitionClip = new();
+    private readonly InsetClip _contentTransitionClip;
     private bool _isContentSnapshotTransitionActive;
     private bool _isResponsiveLayoutTransitionActive;
     private double _responsiveTargetContentWidth;
@@ -258,7 +258,12 @@ public sealed partial class WidgetShell : UserControl
     public WidgetShell()
     {
         InitializeComponent();
-        ContentTransitionViewport.Clip = _contentTransitionClip;
+        Visual contentTransitionVisual =
+            ElementCompositionPreview.GetElementVisual(
+                ContentTransitionViewport);
+        _contentTransitionClip =
+            contentTransitionVisual.Compositor.CreateInsetClip();
+        contentTransitionVisual.Clip = _contentTransitionClip;
         GroupTitleSwitcher.MemberInvoked += (_, e) => GroupMemberInvoked?.Invoke(this, e);
         GroupTitleSwitcher.RemoveMemberRequested += (_, e) => GroupMemberRemoveRequested?.Invoke(this, e);
         GroupTitleSwitcher.DetachMemberRequested += (_, e) => GroupMemberDetachRequested?.Invoke(this, e);
@@ -871,6 +876,7 @@ public sealed partial class WidgetShell : UserControl
                 "A snapshot transition must finish before starting a live content transition.");
         }
 
+        EnsureContentTransitionViewportClip();
         EndInteractiveNeighborPreview();
         ShellContent = null;
         OutgoingContentPresenter.Content = outgoingContent.View;
@@ -941,6 +947,7 @@ public sealed partial class WidgetShell : UserControl
         double progress)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        EnsureContentTransitionViewportClip();
         if (_isInteractiveNeighborPreviewActive &&
             !ReferenceEquals(_interactiveNeighborSnapshot, snapshot))
         {
@@ -1014,6 +1021,7 @@ public sealed partial class WidgetShell : UserControl
         bool forward,
         CancellationToken cancellationToken = default)
     {
+        EnsureContentTransitionViewportClip();
         if (OutgoingContentPresenter.Content is null)
         {
             return Task.CompletedTask;
@@ -1215,15 +1223,24 @@ public sealed partial class WidgetShell : UserControl
         object sender,
         SizeChangedEventArgs e)
     {
-        _contentTransitionClip.Rect = new Windows.Foundation.Rect(
-            0,
-            0,
-            Math.Max(0, e.NewSize.Width),
-            Math.Max(0, e.NewSize.Height));
+        EnsureContentTransitionViewportClip();
 
         if (!_isResponsiveLayoutTransitionActive)
         {
             NotifyHostedContentViewportSize(e.NewSize.Width, e.NewSize.Height);
+        }
+    }
+
+    private void EnsureContentTransitionViewportClip()
+    {
+        Visual contentTransitionVisual =
+            ElementCompositionPreview.GetElementVisual(
+                ContentTransitionViewport);
+        if (!ReferenceEquals(
+                contentTransitionVisual.Clip,
+                _contentTransitionClip))
+        {
+            contentTransitionVisual.Clip = _contentTransitionClip;
         }
     }
 

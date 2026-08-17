@@ -164,6 +164,7 @@
         <Grid
             x:Name="ContentTransitionViewport"
             Grid.Row="1"
+            Background="Transparent"
             SizeChanged="ContentTransitionViewport_SizeChanged">
             <ContentPresenter
                 x:Name="ShellContentPresenter"

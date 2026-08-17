@@ -17,8 +17,9 @@ public sealed partial class WidgetGroupTitleSwitcher
     private DateTimeOffset _pointerEnteredAt;
     private string? _pendingWheelTargetId;
     private double _wheelAccumulator;
-    private DateTimeOffset _lastAcceptedWheelStepAt;
-    private int _lastAcceptedWheelDirection;
+    private DateTimeOffset _lastObservedWheelInputAt;
+    private int _wheelGestureDirection;
+    private bool _wheelGestureCommitted;
     private bool _pickerOpen;
     private bool _isPointerOverSelector;
     private bool _isSelectorPressed;
@@ -98,7 +99,7 @@ public sealed partial class WidgetGroupTitleSwitcher
     {
         _isPointerOverSelector = true;
         _pointerEnteredAt = DateTimeOffset.UtcNow;
-        _wheelAccumulator = 0;
+        ResetWheelGesture();
         UpdateInteractionChrome();
     }
 
@@ -108,7 +109,7 @@ public sealed partial class WidgetGroupTitleSwitcher
     {
         _isPointerOverSelector = false;
         _isSelectorPressed = false;
-        _wheelAccumulator = 0;
+        ResetWheelGesture();
         CancelWheelFeedback();
         UpdateInteractionChrome();
     }
@@ -148,14 +149,14 @@ public sealed partial class WidgetGroupTitleSwitcher
         PointerRoutedEventArgs e)
     {
         _pointerEnteredAt = DateTimeOffset.UtcNow;
-        _wheelAccumulator = 0;
+        ResetWheelGesture();
     }
 
     private void TabsPanel_PointerExited(
         object sender,
         PointerRoutedEventArgs e)
     {
-        _wheelAccumulator = 0;
+        ResetWheelGesture();
         CancelWheelFeedback();
     }
 
@@ -188,21 +189,15 @@ public sealed partial class WidgetGroupTitleSwitcher
         }
 
         bool consumedStep =
-            WidgetGroupNavigationInteractionPolicy.TryConsumeWheelStep(
+            WidgetGroupNavigationInteractionPolicy.TryConsumeWheelGestureStep(
                 ref _wheelAccumulator,
+                ref _lastObservedWheelInputAt,
+                ref _wheelGestureDirection,
+                ref _wheelGestureCommitted,
                 delta,
+                DateTimeOffset.UtcNow,
                 out int direction);
         if (!consumedStep)
-        {
-            return true;
-        }
-
-        if (!WidgetGroupNavigationInteractionPolicy
-                .TryAcceptCoalescedWheelStep(
-                    ref _lastAcceptedWheelStepAt,
-                    ref _lastAcceptedWheelDirection,
-                    DateTimeOffset.UtcNow,
-                    direction))
         {
             return true;
         }
@@ -240,6 +235,14 @@ public sealed partial class WidgetGroupTitleSwitcher
         // The pointer is over the explicit switcher hot zone. Consume even an
         // edge attempt so it cannot accidentally scroll member content.
         return true;
+    }
+
+    private void ResetWheelGesture()
+    {
+        _wheelAccumulator = 0;
+        _lastObservedWheelInputAt = default;
+        _wheelGestureDirection = 0;
+        _wheelGestureCommitted = false;
     }
 
     private void AnimateWheelDirectionFeedback(bool scrollsUp)

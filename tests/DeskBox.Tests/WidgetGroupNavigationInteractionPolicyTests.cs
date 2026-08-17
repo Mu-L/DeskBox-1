@@ -196,63 +196,124 @@ public sealed class WidgetGroupNavigationInteractionPolicyTests
     }
 
     [Fact]
-    public void Wheel_DuplicateImpulseIsCoalescedWithoutExtendingTheGuard()
+    public void WheelGesture_ContinuousBurstRemainsOneGestureUntilQuiet()
     {
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
-        DateTimeOffset lastAcceptedAt = default;
-        int lastAcceptedDirection = 0;
+        DateTimeOffset lastObservedAt = default;
+        int lastObservedDirection = 0;
 
         Assert.True(
             WidgetGroupNavigationInteractionPolicy
-                .TryAcceptCoalescedWheelStep(
-                    ref lastAcceptedAt,
-                    ref lastAcceptedDirection,
+                .ObserveWheelGesture(
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
                     startedAt,
                     direction: 1));
         Assert.False(
             WidgetGroupNavigationInteractionPolicy
-                .TryAcceptCoalescedWheelStep(
-                    ref lastAcceptedAt,
-                    ref lastAcceptedDirection,
-                    startedAt.AddMilliseconds(30),
+                .ObserveWheelGesture(
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
+                    startedAt.AddMilliseconds(150),
                     direction: 1));
-        Assert.Equal(startedAt, lastAcceptedAt);
+        Assert.False(
+            WidgetGroupNavigationInteractionPolicy
+                .ObserveWheelGesture(
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
+                    startedAt.AddMilliseconds(300),
+                    direction: 1));
+        Assert.Equal(startedAt.AddMilliseconds(300), lastObservedAt);
 
         Assert.True(
             WidgetGroupNavigationInteractionPolicy
-                .TryAcceptCoalescedWheelStep(
-                    ref lastAcceptedAt,
-                    ref lastAcceptedDirection,
-                    startedAt.Add(
-                        WidgetGroupNavigationInteractionPolicy
-                            .WheelRepeatCoalescingInterval),
+                .ObserveWheelGesture(
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
+                    startedAt.AddMilliseconds(520),
                     direction: 1));
     }
 
     [Fact]
-    public void Wheel_CoalescingUsesOneStandardDetentWindow()
-    {
-        Assert.Equal(
-            TimeSpan.FromMilliseconds(120),
-            WidgetGroupNavigationInteractionPolicy
-                .WheelRepeatCoalescingInterval);
-    }
-
-    [Fact]
-    public void Wheel_DirectionReversalBypassesRepeatCoalescing()
+    public void WheelGesture_LargeRepeatedDeltasCommitOnlyOnePageUntilQuiet()
     {
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
-        DateTimeOffset lastAcceptedAt = startedAt;
-        int lastAcceptedDirection = 1;
+        double accumulator = 0;
+        DateTimeOffset lastObservedAt = default;
+        int lastObservedDirection = 0;
+        bool gestureCommitted = false;
 
         Assert.True(
             WidgetGroupNavigationInteractionPolicy
-                .TryAcceptCoalescedWheelStep(
-                    ref lastAcceptedAt,
-                    ref lastAcceptedDirection,
+                .TryConsumeWheelGestureStep(
+                    ref accumulator,
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
+                    ref gestureCommitted,
+                    wheelDelta: -480,
+                    startedAt,
+                    out int firstDirection));
+        Assert.Equal(1, firstDirection);
+        Assert.Equal(0, accumulator);
+
+        Assert.False(
+            WidgetGroupNavigationInteractionPolicy
+                .TryConsumeWheelGestureStep(
+                    ref accumulator,
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
+                    ref gestureCommitted,
+                    wheelDelta: -480,
+                    startedAt.AddMilliseconds(150),
+                    out _));
+        Assert.False(
+            WidgetGroupNavigationInteractionPolicy
+                .TryConsumeWheelGestureStep(
+                    ref accumulator,
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
+                    ref gestureCommitted,
+                    wheelDelta: -480,
+                    startedAt.AddMilliseconds(300),
+                    out _));
+
+        Assert.True(
+            WidgetGroupNavigationInteractionPolicy
+                .TryConsumeWheelGestureStep(
+                    ref accumulator,
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
+                    ref gestureCommitted,
+                    wheelDelta: -480,
+                    startedAt.AddMilliseconds(520),
+                    out int nextGestureDirection));
+        Assert.Equal(1, nextGestureDirection);
+    }
+
+    [Fact]
+    public void WheelGesture_UsesTheDocumentedQuietPeriod()
+    {
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(220),
+            WidgetGroupNavigationInteractionPolicy
+                .WheelGestureQuietPeriod);
+    }
+
+    [Fact]
+    public void WheelGesture_DirectionReversalStartsANewGestureImmediately()
+    {
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
+        DateTimeOffset lastObservedAt = startedAt;
+        int lastObservedDirection = 1;
+
+        Assert.True(
+            WidgetGroupNavigationInteractionPolicy
+                .ObserveWheelGesture(
+                    ref lastObservedAt,
+                    ref lastObservedDirection,
                     startedAt.AddMilliseconds(20),
                     direction: -1));
-        Assert.Equal(-1, lastAcceptedDirection);
+        Assert.Equal(-1, lastObservedDirection);
     }
 
     [Fact]

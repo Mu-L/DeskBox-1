@@ -338,7 +338,7 @@ public abstract partial class WidgetWindowBase
 
     // ── Display change restoration ─────────────────────────────
 
-    protected bool TryRestoreBoundsForCurrentTopology(bool allowHidden)
+    protected bool TryRestoreBoundsForCurrentTopology(bool allowHidden, bool updateConfig = true)
     {
         if (IsClosing || IsHideAnimationRunning)
         {
@@ -365,39 +365,38 @@ public abstract partial class WidgetWindowBase
             return true;
         }
 
-        ApplyWindowBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height, persist: false, updateConfig: true);
+        ApplyWindowBounds(
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            persist: false,
+            updateConfig: updateConfig);
         return true;
     }
 
-    protected bool RestoreBoundsAfterDisplayChange()
+    protected void RestoreBoundsAfterDisplayChange()
     {
-        InvalidateStableCompactBounds();
-        if (!Visible)
-        {
-            var bounds = WidgetPositioningService.ResolveBoundsForCurrentTopology(Config);
-            // Use center point for consistent monitor determination.
-            var center = new PointInt32(
-                bounds.X + Math.Max(1, bounds.Width) / 2,
-                bounds.Y + Math.Max(1, bounds.Height) / 2);
-            var workArea = DisplayArea.GetFromPoint(center, DisplayAreaFallback.Nearest).WorkArea;
-            WidgetPositioningService.CaptureAnchor(Config, bounds, workArea);
-            WidgetPositioningService.UpdateConfigFromPhysicalBounds(Config, bounds, workArea);
-            SettingsService.SaveDebounced();
-            return true;
-        }
-
-        bool restored = TryRestoreBoundsForCurrentTopology(allowHidden: false);
-        if (restored)
-        {
-            RestoreDesktopLayer(force: true);
-        }
-
-        return restored;
+        App.Current?.RequestDisplayTopologyRestore("widget-window-message");
     }
 
     public void RestoreBoundsForCurrentTopology()
     {
         _ = TryRestoreBoundsForCurrentTopology(allowHidden: true);
+    }
+
+    public bool TryRestoreBoundsForDisplayTopology()
+    {
+        InvalidateStableCompactBounds();
+        bool restored = TryRestoreBoundsForCurrentTopology(
+            allowHidden: true,
+            updateConfig: false);
+        if (restored && Visible)
+        {
+            RestoreDesktopLayer(force: true);
+        }
+
+        return restored;
     }
 
     // ── AppWindow change handling ──────────────────────────────

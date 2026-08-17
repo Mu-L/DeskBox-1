@@ -11,26 +11,22 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
     private const uint WmDpiChanged = 0x02E0;
     private const uint WmNcDestroy = 0x0082;
     private const uint SpiSetWorkArea = 0x002F;
-    private const int MaxRestoreRetryCount = 8;
     private static readonly uint s_taskbarCreatedMessage = Win32Helper.RegisterWindowMessage("TaskbarCreated");
     private static readonly TimeSpan RestoreDelay = TimeSpan.FromMilliseconds(280);
-    private static readonly TimeSpan RestoreRetryDelay = TimeSpan.FromMilliseconds(180);
     private static readonly UIntPtr SubclassId = new(0xDDB2);
 
     private readonly IntPtr _hWnd;
-    private readonly Func<bool> _restoreAction;
+    private readonly Action _displayChangeAction;
     private readonly Win32Helper.SubclassProc _subclassProc;
     private readonly DispatcherQueueTimer _timer;
     private bool _isDisposed;
     private bool _isSubclassInstalled;
-    private int _restoreRetryCount;
     private bool _isSuppressed;
-    private bool _hasPendingRestore;
 
-    public WidgetDisplayChangeWatcher(IntPtr hWnd, DispatcherQueue dispatcherQueue, Func<bool> restoreAction)
+    public WidgetDisplayChangeWatcher(IntPtr hWnd, DispatcherQueue dispatcherQueue, Action displayChangeAction)
     {
         _hWnd = hWnd;
-        _restoreAction = restoreAction;
+        _displayChangeAction = displayChangeAction;
         _subclassProc = WindowSubclassProc;
         _timer = dispatcherQueue.CreateTimer();
         _timer.Interval = RestoreDelay;
@@ -41,7 +37,9 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
 
     /// <summary>
     /// Temporarily suppress restore operations during drag/resize.
-    /// Pending restores are deferred until <see cref="ResumeRestore"/> is called.
+    /// Display signals are ignored while the user controls the window. The
+    /// application-wide topology coordinator receives the same native change
+    /// from other windows or the global polling fallback.
     /// </summary>
     public void SuppressRestore()
     {
@@ -63,7 +61,6 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
         }
 
         _isSuppressed = false;
-        _hasPendingRestore = false;
     }
 
     public void Dispose()
@@ -94,8 +91,7 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
             WidgetLayerService.InvalidateDesktopIconViewCache();
             if (_isSuppressed)
             {
-                // Defer the restore until ResumeRestore is called
-                _hasPendingRestore = true;
+                // The user's final drag/resize bounds remain authoritative.
             }
             else
             {
@@ -142,7 +138,6 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
             return;
         }
 
-        _restoreRetryCount = 0;
         ScheduleRestore(RestoreDelay);
     }
 
@@ -161,26 +156,13 @@ internal sealed class WidgetDisplayChangeWatcher : IDisposable
             return;
         }
 
-        bool completed;
         try
         {
-            completed = _restoreAction();
+            _displayChangeAction();
         }
         catch (Exception ex)
         {
-            App.Log($"[WidgetDisplayChangeWatcher] Restore failed: {ex}");
-            completed = true;
-        }
-
-        if (completed)
-        {
-            return;
-        }
-
-        _restoreRetryCount++;
-        if (_restoreRetryCount <= MaxRestoreRetryCount)
-        {
-            ScheduleRestore(RestoreRetryDelay);
+            App.Log($"[WidgetDisplayChangeWatcher] Display change callback failed: {ex}");
         }
     }
 

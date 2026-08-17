@@ -3313,7 +3313,11 @@ public abstract partial class WidgetWindowBase
 
     private RectInt32 GetCompactBounds(RectInt32 expandedOrCurrent)
     {
-        double scale = Win32Helper.GetDpiScaleForWindow(HWnd, RootElement.XamlRoot);
+        // During WM_DPICHANGED, XamlRoot.RasterizationScale can still describe
+        // the previous monitor. Resolve the scale from the target bounds so the
+        // expanded and compact calculations use the same stable display DPI.
+        RectInt32 targetWorkArea = ResolveCompactWorkArea(expandedOrCurrent);
+        double scale = WidgetPositioningService.GetDpiScale(targetWorkArea);
         string contentMode = ResolveEffectiveCompactContentMode();
 
         RectInt32 resolved = WidgetCompactBoundsCalculator.Resolve(

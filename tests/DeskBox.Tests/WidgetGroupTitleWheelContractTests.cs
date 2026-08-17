@@ -3,7 +3,7 @@ namespace DeskBox.Tests;
 public sealed class WidgetGroupTitleWheelContractTests
 {
     [Fact]
-    public void WheelNavigation_KeepsCircularNavigationWithoutTimeGates()
+    public void WheelNavigation_CommitsAtMostOncePerGesture()
     {
         string root = FindRepositoryRoot();
         string interaction = File.ReadAllText(Path.Combine(
@@ -41,11 +41,12 @@ public sealed class WidgetGroupTitleWheelContractTests
         Assert.DoesNotContain("valleyOpacity", interaction, StringComparison.Ordinal);
         Assert.DoesNotContain("echoOpacity", interaction, StringComparison.Ordinal);
         Assert.DoesNotContain("_wheelFeedbackBurst", interaction, StringComparison.Ordinal);
+        Assert.Contains(
+            "TryConsumeWheelGestureStep",
+            interaction,
+            StringComparison.Ordinal);
         Assert.True(
-            interaction.IndexOf("TryConsumeWheelStep", StringComparison.Ordinal) <
-            interaction.IndexOf("TryAcceptCoalescedWheelStep", StringComparison.Ordinal));
-        Assert.True(
-            interaction.IndexOf("TryAcceptCoalescedWheelStep", StringComparison.Ordinal) <
+            interaction.IndexOf("TryConsumeWheelGestureStep", StringComparison.Ordinal) <
             interaction.IndexOf("AnimateWheelDirectionFeedback", StringComparison.Ordinal));
         Assert.Contains(
             "NotifyMemberInvocationCompleted",
