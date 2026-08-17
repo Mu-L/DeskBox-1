@@ -56,6 +56,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private int _transientEmptyInfoGeneration;
     private bool _fullRefreshPending;
     private bool _isWindowVisible;
+    private bool _isWindowRevealCompleted;
     private bool _isCompactCollapsed;
     private bool _isSeeking;
     private bool _isChangingPlaybackMode;
@@ -618,12 +619,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private void ScheduleDebouncedMediaRefresh()
     {
-        if (_isDisposed) return;
-
         // SMTC commonly publishes old, partial, and final metadata snapshots while
         // changing tracks. Wait for that burst to settle and let the newest request
         // supersede every earlier one, including the fallback queued by the button.
         int gen = Interlocked.Increment(ref _mediaPropertiesPendingGeneration);
+        if (!CanRunWindowMediaRefresh()) return;
+
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
             _dispatcherQueue.TryEnqueue(() => _ = RunDebouncedMediaRefreshAsync(gen));
@@ -636,7 +637,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private async Task RunDebouncedMediaRefreshAsync(int generation)
     {
         await Task.Delay(MediaPropertiesSettleDelayMs);
-        if (_isDisposed || generation != _mediaPropertiesPendingGeneration)
+        if (!CanRunWindowMediaRefresh() || generation != _mediaPropertiesPendingGeneration)
         {
             return;
         }
@@ -649,7 +650,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     /// </summary>
     private void OnTimelineChanged(object? sender, EventArgs e)
     {
-        if (_isDisposed) return;
+        if (!CanRunWindowMediaRefresh()) return;
 
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
@@ -665,7 +666,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     /// </summary>
     private void OnPlaybackInfoChanged(object? sender, EventArgs e)
     {
-        if (_isDisposed) return;
+        if (!CanRunWindowMediaRefresh()) return;
 
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
@@ -678,7 +679,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private void ScheduleFullRefresh()
     {
-        if (_isDisposed) return;
+        if (!CanRunWindowMediaRefresh()) return;
 
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
@@ -695,13 +696,13 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     /// </summary>
     private async Task RefreshTimelineAsync()
     {
-        if (_isDisposed) return;
+        if (!CanRunWindowMediaRefresh()) return;
 
         int gen = ++_timelineRefreshGeneration;
         try
         {
             var info = await _musicSessionService.GetCurrentTimelineAsync(_preferredSessionId);
-            if (_isDisposed || gen != _timelineRefreshGeneration || info is null) return;
+            if (!CanRunWindowMediaRefresh() || gen != _timelineRefreshGeneration || info is null) return;
 
             Position = info.Position;
             Duration = info.Duration;
@@ -721,13 +722,13 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     /// </summary>
     private async Task RefreshPlaybackAsync()
     {
-        if (_isDisposed) return;
+        if (!CanRunWindowMediaRefresh()) return;
 
         int gen = ++_playbackRefreshGeneration;
         try
         {
             var info = await _musicSessionService.GetCurrentPlaybackAsync(_preferredSessionId);
-            if (_isDisposed || gen != _playbackRefreshGeneration || info is null) return;
+            if (!CanRunWindowMediaRefresh() || gen != _playbackRefreshGeneration || info is null) return;
 
             PlaybackState = info.PlaybackState;
             CanPlay = info.CanPlay;
@@ -751,6 +752,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     {
         if (_isDisposed ||
             !_isWindowVisible ||
+            !_isWindowRevealCompleted ||
             PlaybackState is not (MusicPlaybackState.Playing or MusicPlaybackState.Unknown))
         {
             sender.Stop();
@@ -769,6 +771,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
             Position = TimeSpan.FromSeconds(newPosition);
         }
     }
+
+    private bool CanRunWindowMediaRefresh() =>
+        !_isDisposed && _isWindowVisible && _isWindowRevealCompleted;
 
     private void UpdateMusicTimerDiagnostics()
     {
@@ -792,6 +797,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
         if (!_isDisposed &&
             _isWindowVisible &&
+            _isWindowRevealCompleted &&
             PlaybackState is (MusicPlaybackState.Playing or MusicPlaybackState.Unknown))
         {
             _progressTimer.Start();

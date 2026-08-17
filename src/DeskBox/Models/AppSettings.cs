@@ -508,6 +508,11 @@ public class AppSettings
     public double FileNameWidthScale { get; set; } = 0.36;
 
     /// <summary>
+    /// Maximum number of lines used by file names in icon view.
+    /// </summary>
+    public int FileNameLineCount { get; set; } = 2;
+
+    /// <summary>
     /// Whether widget item labels should include file extensions.
     /// </summary>
     public bool ShowFileExtensions { get; set; }

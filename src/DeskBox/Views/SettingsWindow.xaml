@@ -629,6 +629,13 @@ Text="DeskBox" />
                                         <Slider Maximum="1" Minimum="0" StepFrequency="0.02" Style="{StaticResource InlineMetricSliderStyle}" Value="{Binding FileNameWidthScale, Mode=TwoWay}" ManipulationMode="TranslateX" ManipulationStarted="AppearanceSlider_ManipulationStarted" ManipulationCompleted="AppearanceSlider_ManipulationCompleted" ValueChanged="AppearanceSlider_ValueChanged" PointerPressed="AppearanceSlider_PointerPressed" PointerReleased="AppearanceSlider_PointerReleased" LostFocus="AppearanceSlider_LostFocus" />
                                     </StackPanel>
                                 </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.FileNameLines.Description" svc:Localized.HeaderKey="Settings.FileNameLines.Title">
+                                    <ComboBox
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailableFileNameLineCountOptions}"
+                                        controls:SettingsComboBox.Value="{Binding FileNameLineCount, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
 

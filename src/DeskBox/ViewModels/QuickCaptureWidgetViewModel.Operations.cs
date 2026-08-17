@@ -46,7 +46,21 @@ public sealed partial class QuickCaptureWidgetViewModel
             return;
         }
 
+        _isWindowRefreshEnabled = true;
         RefreshVisibleItemsFromCacheOrService();
+    }
+
+    public void SuspendWindowRefresh()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isWindowRefreshEnabled = false;
+        Interlocked.Increment(ref _visibleItemsRefreshGeneration);
+        _searchRefreshTimer.Stop();
+        _viewSwitchRefreshTimer.Stop();
     }
 
     public Task RefreshItemsAsync()

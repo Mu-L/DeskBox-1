@@ -1186,6 +1186,23 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    [InlineData(0, 2)]
+    [InlineData(3, 2)]
+    public void NormalizeFileNameLineCount_AllowsOneOrTwoAndDefaultsToTwo(int value, int expected)
+    {
+        Assert.Equal(expected, SettingsService.NormalizeFileNameLineCount(value));
+    }
+
+    [Fact]
+    public void AppSettings_FileNameLineCount_DefaultsToTwo()
+    {
+        Assert.Equal(SettingsService.DefaultFileNameLineCount, new AppSettings().FileNameLineCount);
+        Assert.Equal(2, SettingsService.DefaultFileNameLineCount);
+    }
+
+    [Theory]
     [InlineData(null, "Add,More")]
     [InlineData("", "Add,More")]
     [InlineData("Unknown", "Add,More")]

@@ -35,6 +35,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     private readonly ContentWidgetTitleViewModel _titleViewModel;
     private readonly Task _contentLoadTask;
     private const int CachedGroupContentCapacity = 2;
+    private const int RevealCompletedBackgroundDelayMs = 240;
     private readonly Dictionary<string, IWidgetContent> _cachedGroupContents =
         new(StringComparer.Ordinal);
     private readonly LinkedList<string> _cachedGroupContentOrder = [];
@@ -50,6 +51,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
     private bool _isVisibleOnDesktop;
     private int _contentVisibilityGeneration;
+    private int _queuedContentRevealGeneration = -1;
     private SearchHistoryService? _subscribedSearchHistoryService;
 
     public ContentWidgetWindow(
@@ -686,6 +688,7 @@ IsHideAnimationRunning = false;
         TrayAnimation.RestoreVisualState();
         TrayAnimation.RestoreWindowPosition();
         TrayAnimation.RevealWindowForTrayShow();
+        NotifyVisibleContentRevealCompleted();
     }
 
     public void RevealFromTray(bool autoRestore = true)
@@ -845,6 +848,7 @@ IsHideAnimationRunning = true;
         WidgetLayerService.ClearTopMost(HWnd);
         Win32Helper.ShowWindow(HWnd, Win32Helper.SW_HIDE);
         AppWindow.Hide();
+        WidgetShellControl.SuspendVisualActivity();
         NotifyCompactHostVisibilityChanged(false);
         TrayAnimation.RestoreVisualState();
         TrayAnimation.RestoreWindowPosition();

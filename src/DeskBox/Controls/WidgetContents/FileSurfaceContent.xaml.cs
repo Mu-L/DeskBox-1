@@ -73,6 +73,8 @@ public sealed partial class FileSurfaceContent :
     private bool _isDisposed;
     private bool _isReadyForReuse;
     private bool _hasBeenWindowVisible;
+    private bool _isWindowVisible;
+    private bool _isWindowRevealCompleted;
     private DateTime _lastDiskReconciliationUtc = DateTime.MinValue;
     private int _diskReconciliationQueued;
 
@@ -255,7 +257,10 @@ public sealed partial class FileSurfaceContent :
             Root.Focus(FocusState.Programmatic);
         }
 
-        QueueDiskReconciliationIfStale("activated");
+        if (_isWindowRevealCompleted)
+        {
+            QueueDiskReconciliationIfStale("activated");
+        }
     }
 
     public void PrepareForReuse()
@@ -307,14 +312,15 @@ public sealed partial class FileSurfaceContent :
 
     public void OnWindowVisibilityChanged(bool visible)
     {
+        _isWindowVisible = visible;
         if (visible)
         {
             _hasBeenWindowVisible = true;
-            ViewModel.ResumeBackgroundActivity();
             UpdateEmptyState();
-            QueueDiskReconciliationIfStale("visible");
             return;
         }
+
+        _isWindowRevealCompleted = false;
 
         // Content is attached before its host is shown, and the host reports its
         // initial hidden state during that attach. Do not cancel the initial
@@ -340,7 +346,7 @@ public sealed partial class FileSurfaceContent :
             {
                 try
                 {
-                    if (_isDisposed)
+                    if (_isDisposed || !_isWindowVisible || !_isWindowRevealCompleted)
                     {
                         return;
                     }
@@ -483,6 +489,18 @@ public sealed partial class FileSurfaceContent :
         {
             ViewModel.OpenItem(item);
         }
+    }
+
+    public void OnWindowRevealCompleted()
+    {
+        if (_isDisposed || !_isWindowVisible || _isWindowRevealCompleted)
+        {
+            return;
+        }
+
+        _isWindowRevealCompleted = true;
+        ViewModel.ResumeBackgroundActivity();
+        QueueDiskReconciliationIfStale("reveal-completed");
     }
 
     private void ToggleStackFromInput(WidgetStackItem stack)

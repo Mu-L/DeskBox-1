@@ -25,6 +25,8 @@ public sealed class WidgetShellContentHost
     private int _contentVersion;
     private bool _isDisposed;
     private bool _isWindowVisible;
+    private bool _isWindowRevealCompleted;
+    private int _windowRevealGeneration;
     private bool _isActivated;
 
     public WidgetShellContentHost(
@@ -202,6 +204,10 @@ public sealed class WidgetShellContentHost
 
             content.ApplyAppearance();
             content.OnWindowVisibilityChanged(_isWindowVisible);
+            if (_isWindowVisible && _isWindowRevealCompleted)
+            {
+                content.OnWindowRevealCompleted();
+            }
             if (_isActivated)
             {
                 content.OnActivated();
@@ -215,6 +221,10 @@ public sealed class WidgetShellContentHost
             {
                 _rollbackTransition(outgoingContent);
                 outgoingContent.OnWindowVisibilityChanged(_isWindowVisible);
+                if (_isWindowVisible && _isWindowRevealCompleted)
+                {
+                    outgoingContent.OnWindowRevealCompleted();
+                }
                 if (_isActivated)
                 {
                     outgoingContent.OnActivated();
@@ -266,9 +276,28 @@ public sealed class WidgetShellContentHost
 
     public void OnWindowVisibilityChanged(bool visible)
     {
+        if (_isWindowVisible != visible)
+        {
+            _windowRevealGeneration++;
+            _isWindowRevealCompleted = false;
+        }
+
         _isWindowVisible = visible;
         CurrentContent?.OnWindowVisibilityChanged(visible);
     }
+
+    public void OnWindowRevealCompleted()
+    {
+        if (_isDisposed || !_isWindowVisible || _isWindowRevealCompleted)
+        {
+            return;
+        }
+
+        _isWindowRevealCompleted = true;
+        CurrentContent?.OnWindowRevealCompleted();
+    }
+
+    internal int WindowRevealGeneration => _windowRevealGeneration;
 
     public void DisposeContent()
     {
@@ -379,6 +408,10 @@ public sealed class WidgetShellContentHost
             CurrentContent = outgoingContent;
             outgoingContent.ApplyAppearance();
             outgoingContent.OnWindowVisibilityChanged(_isWindowVisible);
+            if (_isWindowVisible && _isWindowRevealCompleted)
+            {
+                outgoingContent.OnWindowRevealCompleted();
+            }
             if (_isActivated)
             {
                 outgoingContent.OnActivated();

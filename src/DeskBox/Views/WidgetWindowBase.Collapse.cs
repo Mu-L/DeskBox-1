@@ -1315,6 +1315,8 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
+        WidgetShellControl.ResumeVisualActivity();
+
         // Visibility notifications can be coalesced when AppWindow.Show and
         // ShowWindow(SW_SHOWNOACTIVATE) are used together. Always rebuild the
         // pointer state from the real cursor instead of trusting routed state

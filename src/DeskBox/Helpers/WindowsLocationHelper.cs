@@ -12,17 +12,82 @@ namespace DeskBox.Helpers;
 /// </summary>
 public static class WindowsLocationHelper
 {
+    internal static readonly TimeSpan SuccessfulResultReuseDuration = TimeSpan.FromSeconds(5);
+    private static readonly object s_locationGate = new();
     private static readonly HttpClient s_httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(6)
     };
+    private static Task<(double Lat, double Lon, string Name)?>? s_inFlightLocationTask;
+    private static (double Lat, double Lon, string Name)? s_cachedLocation;
+    private static DateTimeOffset s_cachedLocationAtUtc;
 
     /// <summary>
     /// Gets the current location using the Windows Geolocation API.
     /// Returns (latitude, longitude, displayName) or null if all methods fail.
     /// </summary>
-    public static async Task<(double Lat, double Lon, string Name)?> GetLocationAsync(
+    public static Task<(double Lat, double Lon, string Name)?> GetLocationAsync(
         Services.LocalizationService? localizationService = null)
+    {
+        lock (s_locationGate)
+        {
+            if (s_cachedLocation is { } cached &&
+                DateTimeOffset.UtcNow - s_cachedLocationAtUtc <= SuccessfulResultReuseDuration)
+            {
+                return Task.FromResult<(double Lat, double Lon, string Name)?>(cached);
+            }
+
+            if (s_inFlightLocationTask is not null)
+            {
+                return s_inFlightLocationTask;
+            }
+
+            var completion = new TaskCompletionSource<
+                (double Lat, double Lon, string Name)?>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+            s_inFlightLocationTask = completion.Task;
+            _ = ResolveAndCacheLocationAsync(localizationService, completion);
+            return completion.Task;
+        }
+    }
+
+    private static async Task ResolveAndCacheLocationAsync(
+        Services.LocalizationService? localizationService,
+        TaskCompletionSource<(double Lat, double Lon, string Name)?> completion)
+    {
+        try
+        {
+            (double Lat, double Lon, string Name)? result =
+                await ResolveLocationAsync(localizationService);
+            if (result is not null)
+            {
+                lock (s_locationGate)
+                {
+                    s_cachedLocation = result;
+                    s_cachedLocationAtUtc = DateTimeOffset.UtcNow;
+                }
+            }
+
+            completion.TrySetResult(result);
+        }
+        catch (Exception ex)
+        {
+            completion.TrySetException(ex);
+        }
+        finally
+        {
+            lock (s_locationGate)
+            {
+                if (ReferenceEquals(s_inFlightLocationTask, completion.Task))
+                {
+                    s_inFlightLocationTask = null;
+                }
+            }
+        }
+    }
+
+    private static async Task<(double Lat, double Lon, string Name)?> ResolveLocationAsync(
+        Services.LocalizationService? localizationService)
     {
         // 1. Try Windows Geolocation API (requires user permission)
         try
@@ -44,7 +109,9 @@ public static class WindowsLocationHelper
                 double lon = position.Coordinate.Point.Position.Longitude;
 
                 bool isEnglish = localizationService?.IsEnglish ?? false;
-                string name = isEnglish ? "Current Location" : localizationService?.T("Weather.CurrentLocation");
+                string name = isEnglish
+                    ? "Current Location"
+                    : localizationService?.T("Weather.CurrentLocation") ?? "Current Location";
 
                 App.Log($"[WindowsLocation] Got GPS location lat={lat:F4} lon={lon:F4}");
                 return (lat, lon, name);

@@ -98,6 +98,77 @@ public sealed class WidgetShellContentHostTests
     }
 
     [Fact]
+    public async Task RevealLifecycle_ForwardsFirstFrameThenCompletionExactlyOnce()
+    {
+        var calls = new List<string>();
+        var content = new LifecycleWidgetContent("weather", calls);
+        var host = new WidgetShellContentHost(setContent: _ => { });
+        await host.SetContentAsync(content);
+        calls.Clear();
+
+        host.OnWindowVisibilityChanged(true);
+        host.OnWindowRevealCompleted();
+        host.OnWindowRevealCompleted();
+
+        Assert.Equal(
+        [
+            "visible:weather:true",
+            "reveal:weather"
+        ], calls);
+    }
+
+    [Fact]
+    public async Task RevealLifecycle_HideInvalidatesLateCompletionAndNextShowGetsNewGeneration()
+    {
+        var calls = new List<string>();
+        var content = new LifecycleWidgetContent("music", calls);
+        var host = new WidgetShellContentHost(setContent: _ => { });
+        await host.SetContentAsync(content);
+        int initialGeneration = host.WindowRevealGeneration;
+        calls.Clear();
+
+        host.OnWindowVisibilityChanged(true);
+        int firstRevealGeneration = host.WindowRevealGeneration;
+        host.OnWindowVisibilityChanged(false);
+        int hiddenGeneration = host.WindowRevealGeneration;
+        host.OnWindowRevealCompleted();
+        host.OnWindowVisibilityChanged(true);
+        int secondRevealGeneration = host.WindowRevealGeneration;
+        host.OnWindowRevealCompleted();
+
+        Assert.True(firstRevealGeneration > initialGeneration);
+        Assert.True(hiddenGeneration > firstRevealGeneration);
+        Assert.True(secondRevealGeneration > hiddenGeneration);
+        Assert.Equal(
+        [
+            "visible:music:true",
+            "visible:music:false",
+            "visible:music:true",
+            "reveal:music"
+        ], calls);
+    }
+
+    [Fact]
+    public async Task RevealLifecycle_ContentReplacementReceivesCompletedVisibleState()
+    {
+        var calls = new List<string>();
+        var first = new LifecycleWidgetContent("first", calls);
+        var second = new LifecycleWidgetContent("second", calls);
+        var host = new WidgetShellContentHost(setContent: _ => { });
+        await host.SetContentAsync(first);
+        host.OnWindowVisibilityChanged(true);
+        host.OnWindowRevealCompleted();
+        calls.Clear();
+
+        await host.SetContentAsync(second);
+
+        Assert.Contains("visible:second:true", calls);
+        Assert.Contains("reveal:second", calls);
+        Assert.True(
+            calls.IndexOf("visible:second:true") < calls.IndexOf("reveal:second"));
+    }
+
+    [Fact]
     public async Task ReusableContent_PreparesProjectionInsteadOfReinitializing()
     {
         var calls = new List<string>();
@@ -414,6 +485,51 @@ public sealed class WidgetShellContentHostTests
                 throw new InvalidOperationException(
                     $"dispose failed for {WidgetId}");
             }
+        }
+    }
+
+    private sealed class LifecycleWidgetContent(
+        string id,
+        List<string> calls) : IWidgetContent
+    {
+        public WidgetConfig Config { get; } = new()
+        {
+            Id = id,
+            Name = id,
+            WidgetKind = WidgetKind.Weather
+        };
+
+        public string WidgetId => Config.Id;
+
+        public WidgetKind WidgetKind => Config.WidgetKind;
+
+        public FrameworkElement View =>
+            throw new NotSupportedException("Tests do not instantiate WinUI views.");
+
+        public Task InitializeAsync() => Task.CompletedTask;
+
+        public Task RefreshAsync() => Task.CompletedTask;
+
+        public void ApplyAppearance()
+        {
+        }
+
+        public void OnActivated()
+        {
+        }
+
+        public void OnDeactivated()
+        {
+        }
+
+        public void OnWindowVisibilityChanged(bool visible)
+        {
+            calls.Add($"visible:{id}:{visible.ToString().ToLowerInvariant()}");
+        }
+
+        public void OnWindowRevealCompleted()
+        {
+            calls.Add($"reveal:{id}");
         }
     }
 

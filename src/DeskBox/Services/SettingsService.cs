@@ -253,6 +253,9 @@ public sealed class SettingsService
     public const double DefaultHorizontalSpacingScale = 0.40;
     public const double DefaultVerticalSpacingScale = 0.60;
     public const double DefaultFileNameWidthScale = 0.36;
+    public const int DefaultFileNameLineCount = 2;
+    public const int MinFileNameLineCount = 1;
+    public const int MaxFileNameLineCount = 2;
     public const double MinSpacingScale = 0.0;
     public const double MaxSpacingScale = 1.0;
     public const string LayoutDensityCompact = "Compact";
@@ -424,6 +427,7 @@ public const int DefaultSearchMaxResults = 100;
         settings.HorizontalSpacingScale = DefaultHorizontalSpacingScale;
         settings.VerticalSpacingScale = DefaultVerticalSpacingScale;
         settings.FileNameWidthScale = DefaultFileNameWidthScale;
+        settings.FileNameLineCount = DefaultFileNameLineCount;
         settings.ShowFileExtensions = false;
         settings.ShowImageFilesAsIcons = false;
         settings.FileStacksEnabled = false;
@@ -1424,6 +1428,13 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
+        int normalizedFileNameLineCount = NormalizeFileNameLineCount(settings.FileNameLineCount);
+        if (settings.FileNameLineCount != normalizedFileNameLineCount)
+        {
+            settings.FileNameLineCount = normalizedFileNameLineCount;
+            changed = true;
+        }
+
         string resolvedLayoutDensity = settings.LayoutDensity == LayoutDensityCustom
             ? LayoutDensityCustom
             : ResolveLayoutDensityPreset(settings);
@@ -1566,6 +1577,11 @@ settings.FocusClickedWidgetOnRaise = false;
 
     private static bool NearlyEqual(double left, double right) =>
         Math.Abs(left - right) <= 0.0001;
+
+    public static int NormalizeFileNameLineCount(int value) =>
+        value is MinFileNameLineCount or MaxFileNameLineCount
+            ? value
+            : DefaultFileNameLineCount;
 
     public static string NormalizeWidgetChromeModeSetting(string? value, WidgetChromeMode fallback)
     {

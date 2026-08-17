@@ -239,4 +239,5 @@ public partial class SettingsViewModel
             nameof(FileNameWidthPercent),
             nameof(FileNameWidthPercentInput));
     }
+
 }

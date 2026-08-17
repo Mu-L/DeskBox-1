@@ -85,7 +85,7 @@
                 Margin="2,0"
                 HorizontalAlignment="Center"
                 FontSize="{Binding LayoutContext.IconLabelFontSize, ElementName=SurfaceRoot}"
-                MaxLines="2"
+                MaxLines="{Binding LayoutContext.IconLabelMaxLines, ElementName=SurfaceRoot}"
                 Text="{Binding Name}"
                 TextAlignment="Center"
                 TextTrimming="CharacterEllipsis"

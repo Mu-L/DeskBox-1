@@ -123,6 +123,7 @@ public partial class SettingsViewModel
             HorizontalSpacingScale = settings.HorizontalSpacingScale;
             VerticalSpacingScale = settings.VerticalSpacingScale;
             FileNameWidthScale = settings.FileNameWidthScale;
+            FileNameLineCount = SettingsService.NormalizeFileNameLineCount(settings.FileNameLineCount);
             SelectedLayoutDensity = SettingsService.ResolveLayoutDensityPreset(settings);
             ShowFileExtensions = settings.ShowFileExtensions;
             HideShortcutExtensionWhenShowingFileExtensions = settings.HideShortcutExtensionWhenShowingFileExtensions;

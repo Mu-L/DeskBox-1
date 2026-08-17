@@ -2432,7 +2432,14 @@ public partial class App : Application
             }
 
             process.Refresh();
-            Log(
+            bool releasedIdleCaches =
+                cacheRelease.ReleasedThumbnails > 0 ||
+                cacheRelease.ReleasedDecodedBitmaps > 0 ||
+                cacheRelease.ReleasedIconByteEntries > 0;
+            Action<string> writeMaintenanceLog = shouldCollectManagedMemory || releasedIdleCaches
+                ? Log
+                : LogVerbose;
+            writeMaintenanceLog(
                 $"[Memory] Visible idle cleanup completed idleSeconds={VisibleIdleMemoryRequiredSeconds} " +
                 $"workingSetBeforeMB={workingSetBefore / (1024.0 * 1024):F1} " +
                 $"workingSetAfterMB={process.WorkingSet64 / (1024.0 * 1024):F1} " +

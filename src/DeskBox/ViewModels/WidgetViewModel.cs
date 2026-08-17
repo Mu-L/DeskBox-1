@@ -72,6 +72,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private double _iconImageSize;
     private double _iconLabelMaxWidth;
     private double _iconLabelFontSize;
+    private int _iconLabelMaxLines = SettingsService.DefaultFileNameLineCount;
     private Thickness _listItemMargin;
     private Thickness _listItemPadding;
     private double _listIconSize;
@@ -322,6 +323,12 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(ListItemDetailFontSize));
             }
         }
+    }
+
+    public int IconLabelMaxLines
+    {
+        get => _iconLabelMaxLines;
+        set => SetProperty(ref _iconLabelMaxLines, value);
     }
 
     public double ListItemDetailFontSize =>

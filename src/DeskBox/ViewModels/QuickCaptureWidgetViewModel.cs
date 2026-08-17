@@ -47,6 +47,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     private bool _isSwitchingView;
     private int _itemsViewTransitionToken;
     private bool _isDisposed;
+    private bool _isWindowRefreshEnabled;
     private int _visibleItemsRefreshGeneration;
     private QuickCaptureStoreData? _cachedData;
     private readonly Dictionary<string, QuickCaptureItemViewModel> _itemViewModelCache = new(StringComparer.Ordinal);

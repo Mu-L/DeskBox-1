@@ -373,6 +373,27 @@ public partial class SettingsViewModel
 
     public string SelectedLayoutDensityText => GetLayoutDensityDisplayName(SelectedLayoutDensity);
 
+    public int FileNameLineCount
+    {
+        get => _fileNameLineCount;
+        set
+        {
+            int normalizedValue = SettingsService.NormalizeFileNameLineCount(value);
+            if (!SetProperty(ref _fileNameLineCount, normalizedValue))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.FileNameLineCount = normalizedValue;
+            SaveAppearanceChange();
+        }
+    }
+
     public string SelectedAnimationPreset
     {
         get => _selectedAnimationPreset;

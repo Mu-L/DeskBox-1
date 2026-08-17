@@ -77,6 +77,7 @@ public partial class WidgetViewModel
             settings.FileNameWidthScale,
             SettingsService.MinSpacingScale,
             SettingsService.MaxSpacingScale);
+        int fileNameLineCount = SettingsService.NormalizeFileNameLineCount(settings.FileNameLineCount);
 
         double horizontalT = NormalizeScale(horizontalScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
         double verticalT = NormalizeScale(verticalScale, SettingsService.MinSpacingScale, SettingsService.MaxSpacingScale);
@@ -89,7 +90,10 @@ public partial class WidgetViewModel
         double labelMaxWidth = Math.Max(iconSize, Lerp(iconSize, textSize * 10.5, nameWidthT));
         IconLabelMaxWidth = labelMaxWidth;
         IconTileWidth = Math.Max(iconSize + Lerp(6, 28, horizontalT), labelMaxWidth + Lerp(4, 16, horizontalT));
-        IconTileHeight = iconSize + Lerp(24, 70, verticalT);
+        double twoLineTileHeight = iconSize + Lerp(24, 70, verticalT);
+        IconTileHeight = fileNameLineCount == SettingsService.MinFileNameLineCount
+            ? Math.Max(iconSize + textSize + 8, twoLineTileHeight - textSize - 3)
+            : twoLineTileHeight;
         IconTileMargin = new Thickness(
             Lerp(0, 2, horizontalT),
             Lerp(0, 2, verticalT),
@@ -103,6 +107,7 @@ public partial class WidgetViewModel
         IconContentSpacing = Lerp(1, 7, verticalT);
         IconImageSize = iconSize;
         IconLabelFontSize = textSize;
+        IconLabelMaxLines = fileNameLineCount;
         _iconDecodePixelWidth = ResolveIconDecodePixelWidth(iconSize);
 
         double listScale = Lerp(0.68, 0.90, densityT);

@@ -34,8 +34,11 @@ public sealed partial class MusicWidgetViewModel
             return;
         }
 
-        UpdateProgressTimerState();
-        _ = RefreshAsync();
+        if (_isWindowRevealCompleted)
+        {
+            UpdateProgressTimerState();
+            _ = RefreshAsync();
+        }
     }
 
     public void OnDeactivated()
@@ -54,12 +57,31 @@ public sealed partial class MusicWidgetViewModel
             return;
         }
 
+        bool visibilityChanged = _isWindowVisible != visible;
         _isWindowVisible = visible;
-        if (visible)
+        if (!visible)
         {
-            _ = RefreshAsync();
+            _isWindowRevealCompleted = false;
+            if (visibilityChanged)
+            {
+                Interlocked.Increment(ref _mediaPropertiesPendingGeneration);
+                _timelineRefreshGeneration++;
+                _playbackRefreshGeneration++;
+            }
         }
         UpdateProgressTimerState();
+    }
+
+    public void OnWindowRevealCompleted()
+    {
+        if (_isDisposed || !_isWindowVisible || _isWindowRevealCompleted)
+        {
+            return;
+        }
+
+        _isWindowRevealCompleted = true;
+        UpdateProgressTimerState();
+        _ = RefreshAsync();
     }
 
     /// <summary>
@@ -75,7 +97,7 @@ public sealed partial class MusicWidgetViewModel
 
         _isCompactCollapsed = collapsed;
         UpdateProgressTimerState();
-        if (!collapsed && _isWindowVisible)
+        if (!collapsed && _isWindowVisible && _isWindowRevealCompleted)
         {
             _ = RefreshTimelineAsync();
         }

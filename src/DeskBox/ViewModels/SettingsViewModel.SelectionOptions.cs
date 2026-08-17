@@ -1,4 +1,5 @@
 using DeskBox.Models;
+using DeskBox.Services;
 
 namespace DeskBox.ViewModels;
 
@@ -67,6 +68,12 @@ public partial class SettingsViewModel
 
     public IReadOnlyList<SettingsOption> AvailableLayoutDensityOptions =>
         CreateSelectionOptions(AvailableLayoutDensities, AvailableLayoutDensityDisplayNames);
+
+    public IReadOnlyList<SettingsOption> AvailableFileNameLineCountOptions =>
+    [
+        new(SettingsService.MinFileNameLineCount, _localizationService.T("Settings.FileNameLines.Single")),
+        new(SettingsService.MaxFileNameLineCount, _localizationService.T("Settings.FileNameLines.Double"))
+    ];
 
     public IReadOnlyList<SettingsOption> AvailableAnimationPresetOptions =>
         CreateSelectionOptions(AvailableAnimationPresets, AvailableAnimationPresetDisplayNames);
@@ -213,6 +220,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableWidgetCompactHoverResponseOptions));
         OnPropertyChanged(nameof(AvailableWidgetCompactMediaCornerOptions));
         OnPropertyChanged(nameof(AvailableLayoutDensityOptions));
+        OnPropertyChanged(nameof(AvailableFileNameLineCountOptions));
         OnPropertyChanged(nameof(AvailableAnimationPresetOptions));
         OnPropertyChanged(nameof(AvailableWidgetAnimationEffectOptions));
         OnPropertyChanged(nameof(AvailableWidgetAnimationSpeedOptions));

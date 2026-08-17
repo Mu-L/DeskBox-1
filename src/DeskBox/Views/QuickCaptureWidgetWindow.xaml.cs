@@ -52,6 +52,7 @@ public sealed partial class QuickCaptureWidgetWindow :
     private const int ItemsViewTransitionMs = 280;
     private const int ItemsViewTransitionOffsetPx = 6;
     private const int DetailAutoSaveDelayMs = 600;
+    private const int RevealCompletedBackgroundDelayMs = 240;
     private const string MasterPaneWidthMetadataKey = "QuickCaptureMasterPaneWidth";
     private static readonly string QuickCaptureTextPreviewDirectory = Path.Combine(
         DeskBoxDataPathService.Current.RootPath,
@@ -144,6 +145,8 @@ public sealed partial class QuickCaptureWidgetWindow :
     private long _detailTransitionGeneration;
     private long _statusToastGeneration;
     private long _visibleContentResumeGeneration;
+    private long _queuedVisibleContentResumeGeneration = -1;
+    private bool _isVisibleContentRevealCompleted;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoRestoreTimer;
     private QuickCaptureDeletedItemSnapshot? _pendingDeletedItemSnapshot;
     private string? _copySelectionAnchorId;
@@ -266,7 +269,10 @@ public sealed partial class QuickCaptureWidgetWindow :
             // WidgetManager.InitializeAsync may have already loaded data
             // before the view was ready. Refresh the view from cache to
             // ensure items are visible.
-            ViewModel.RefreshAfterViewReady();
+            if (_isVisibleContentRevealCompleted)
+            {
+                ViewModel.RefreshAfterViewReady();
+            }
             ReconcileDetailSelection(autoSelectFirst: true);
         });
     }
@@ -340,18 +346,38 @@ public sealed partial class QuickCaptureWidgetWindow :
         _settingsService.SaveDebounced();
         NotifyCompactHostVisibilityChanged(true);
         QueueVisibleContentResume();
+        NotifyVisibleContentRevealCompleted();
     }
 
     private void QueueVisibleContentResume()
     {
-        long generation = ++_visibleContentResumeGeneration;
-        RunAfterCompactExpansionReady(() =>
+        _isVisibleContentRevealCompleted = false;
+        ++_visibleContentResumeGeneration;
+    }
+
+    private void NotifyVisibleContentRevealCompleted()
+    {
+        if (!Visible || IsClosing || _isVisibleContentRevealCompleted)
         {
+            return;
+        }
+
+        long generation = _visibleContentResumeGeneration;
+        if (_queuedVisibleContentResumeGeneration == generation)
+        {
+            return;
+        }
+
+        _queuedVisibleContentResumeGeneration = generation;
+        RunAfterCompactExpansionReady(async () =>
+        {
+            await Task.Delay(RevealCompletedBackgroundDelayMs);
             if (!Visible || IsClosing || generation != _visibleContentResumeGeneration)
             {
                 return;
             }
 
+            _isVisibleContentRevealCompleted = true;
             ViewModel.RefreshAfterViewReady();
             QueueBackdropRefresh();
         });
@@ -373,7 +399,6 @@ public sealed partial class QuickCaptureWidgetWindow :
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
         _appWindow.Show();
         _trayAnimation.PrepareHiddenState();
-        _trayAnimation.RevealWindowForTrayShow();
         Visible = true;
         ViewModel.Config.IsVisible = true;
         if (persistVisibility)
@@ -383,6 +408,7 @@ public sealed partial class QuickCaptureWidgetWindow :
 
         NotifyCompactHostVisibilityChanged(true);
         QueueVisibleContentResume();
+        _trayAnimation.RevealWindowForTrayShow();
         PushToBottom();
     }
 
@@ -416,8 +442,6 @@ public sealed partial class QuickCaptureWidgetWindow :
         _appWindow.Show();
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
         _trayAnimation.PrepareHiddenState();
-        _trayAnimation.RevealWindowForTrayShow();
-        HoldTemporaryTopMost();
         Visible = true;
         ViewModel.Config.IsVisible = true;
         if (persistVisibility)
@@ -427,6 +451,8 @@ public sealed partial class QuickCaptureWidgetWindow :
 
         NotifyCompactHostVisibilityChanged(true);
         QueueVisibleContentResume();
+        _trayAnimation.RevealWindowForTrayShow();
+        HoldTemporaryTopMost();
 
         DispatcherQueue.TryEnqueue(async () =>
         {
@@ -509,6 +535,7 @@ _isHideAnimationRunning = false;
         _trayAnimation.RestoreVisualState();
         _trayAnimation.RestoreWindowPosition();
         _trayAnimation.RevealWindowForTrayShow();
+        NotifyVisibleContentRevealCompleted();
     }
 
     public bool PrepareTrayHideAnimation(bool persistVisibility = true)
@@ -534,6 +561,8 @@ else
 }
 _isHideAnimationRunning = true;
         Visible = false;
+        _isVisibleContentRevealCompleted = false;
+        ViewModel.SuspendWindowRefresh();
         NotifyCompactHostVisibilityChanged(false);
         ViewModel.Config.IsVisible = false;
         if (persistVisibility)
@@ -564,12 +593,12 @@ _isHideAnimationRunning = true;
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_SHOWNOACTIVATE);
         base.Activate();
         _trayAnimation.PrepareHiddenState();
-        _trayAnimation.RevealWindowForTrayShow();
         Visible = true;
         ViewModel.Config.IsVisible = true;
         _settingsService.SaveDebounced();
         NotifyCompactHostVisibilityChanged(true);
         QueueVisibleContentResume();
+        _trayAnimation.RevealWindowForTrayShow();
         PlayTrayRaiseAnimationAfterFirstFrame();
 
         if (!autoRestore)
@@ -912,6 +941,7 @@ _isHideAnimationRunning = true;
             {
                 _trayAnimation.RestoreVisualState();
                 _trayAnimation.RestoreWindowPosition();
+                NotifyVisibleContentRevealCompleted();
             });
     }
 
@@ -986,6 +1016,7 @@ _isHideAnimationRunning = true;
             {
                 _trayAnimation.RestoreVisualState();
                 _trayAnimation.RestoreWindowPosition();
+                NotifyVisibleContentRevealCompleted();
             });
     }
 
@@ -1044,6 +1075,7 @@ _isHideAnimationRunning = true;
         WidgetLayerService.ClearTopMost(_hWnd);
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
         _appWindow.Hide();
+        WidgetShellControl.SuspendVisualActivity();
         _visibleContentResumeGeneration++;
         NotifyCompactHostVisibilityChanged(false);
         _trayAnimation.RevealWindowForTrayShow();

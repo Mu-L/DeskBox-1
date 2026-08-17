@@ -87,6 +87,11 @@ public sealed class MusicWidgetContentAdapter : IWidgetContent, IWidgetResponsiv
         }
     }
 
+    public void OnWindowRevealCompleted()
+    {
+        ViewModel.OnWindowRevealCompleted();
+    }
+
     public void OnCompactStateChanged(bool collapsed)
     {
         ViewModel.OnCompactStateChanged(collapsed);

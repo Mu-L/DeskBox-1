@@ -24,7 +24,10 @@ public sealed partial class WeatherWidgetViewModel
             return;
         }
 
-        _refreshTimer?.Start();
+        if (_isWindowRevealCompleted)
+        {
+            _refreshTimer?.Start();
+        }
     }
 
     public async Task RefreshAsync(bool userTriggered = false, bool forceRefresh = false)
@@ -136,7 +139,10 @@ public sealed partial class WeatherWidgetViewModel
 
         // Refresh on user interaction, but don't change IsWidgetActive —
         // that is now driven by window visibility (OnWindowVisibilityChanged).
-        _ = RefreshAsync();
+        if (_isWindowRevealCompleted)
+        {
+            _ = RefreshAsync();
+        }
     }
 
     public void OnDeactivated()
@@ -159,15 +165,27 @@ public sealed partial class WeatherWidgetViewModel
 
         IsWidgetActive = visible;
 
-        if (visible)
+        if (!visible)
         {
-            _refreshTimer?.Start();
-            _ = RefreshAsync();
-        }
-        else
-        {
+            _isWindowRevealCompleted = false;
+            Interlocked.Increment(ref _refreshRequestVersion);
+            _refreshPending = false;
+            _pendingForceRefresh = false;
+            _pendingUserTriggeredRefresh = false;
             _refreshTimer?.Stop();
         }
+    }
+
+    public void OnWindowRevealCompleted()
+    {
+        if (_isDisposed || !IsWidgetActive || _isWindowRevealCompleted)
+        {
+            return;
+        }
+
+        _isWindowRevealCompleted = true;
+        _refreshTimer?.Start();
+        _ = RefreshAsync();
     }
 
     public void ToggleViewMode()

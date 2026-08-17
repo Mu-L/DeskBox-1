@@ -24,6 +24,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     private bool _isDisposed;
     private bool _isRefreshing;
     private bool _isWidgetActive;
+    private bool _isWindowRevealCompleted;
     private bool _refreshWasUserTriggered;
     private bool _refreshPending;
     private bool _pendingForceRefresh;
@@ -720,7 +721,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 
     private void RefreshTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
-        if (_isDisposed)
+        if (_isDisposed || !_isWindowRevealCompleted)
         {
             return;
         }
@@ -755,7 +756,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 
             CacheLocationSettings(s);
 
-            if (locationChanged)
+            if (locationChanged && _isWindowRevealCompleted)
             {
                 _ = RefreshAsync(forceRefresh: true);
             }

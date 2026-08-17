@@ -28,6 +28,13 @@ public interface IWidgetContent
     void OnWindowVisibilityChanged(bool visible) { }
 
     /// <summary>
+    /// Called once the host's reveal animation has completed. Expensive refresh,
+    /// watcher, and device work should resume here so it cannot contend with the
+    /// first visible frame.
+    /// </summary>
+    void OnWindowRevealCompleted() { }
+
+    /// <summary>
     /// Called when the host switches between its expanded content and capsule
     /// presentation. Content that owns purely visual animations can suspend them
     /// while the expanded surface is covered without suspending its live data.

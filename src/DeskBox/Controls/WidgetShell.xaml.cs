@@ -32,6 +32,8 @@ public sealed partial class WidgetShell : UserControl
     private const double CompactReorderHandleWidth = 18;
     private const double CompactParticleCanvasWidth = 400;
     private const double CompactParticleCanvasHeight = 40;
+    internal const double CompactLiveIndeterminateDurationSeconds = 1.0 / 0.875;
+    internal const double EdgeGlowPulseDurationSeconds = Math.PI * 2 / 0.8;
     private WidgetCompactTransitionVisualProfile _compactTransitionProfile =
         WidgetCompactTransitionVisualProfile.Resolve(
             SettingsService.WidgetCompactAnimationSmooth,
@@ -168,6 +170,7 @@ public sealed partial class WidgetShell : UserControl
     private bool _isTransitionContentLayoutFrozen;
     private WidgetCompactWidthTier _compactWidthTier = WidgetCompactWidthTier.Standard;
     private bool _isPointerOverShell;
+    private bool _isHostVisualActivityEnabled;
     private bool _isCollapsed;
     private bool _isCollapseActionAvailable;
     private bool _isMinimalCompactStyle;
@@ -279,13 +282,17 @@ public sealed partial class WidgetShell : UserControl
         {
             _rightButtonsTransform = RightActionButtons.RenderTransform as TranslateTransform;
         };
+        CompactLiveTrack.SizeChanged += (_, _) => RestartCompactLiveIndeterminateForTrackSize();
         Loaded += (_, _) =>
         {
             ApplyChromeMode();
             ApplyCompactAdaptiveLayout();
             ApplyFullBleedOverlayTheme();
-            QueueCompactMarquee();
-            RestartCompactVisualTimers();
+            if (_isHostVisualActivityEnabled)
+            {
+                QueueCompactMarquee();
+                RestartCompactVisualTimers();
+            }
         };
         ActualThemeChanged += (_, _) => ApplyFullBleedOverlayTheme();
         Unloaded += (_, _) =>
@@ -299,6 +306,38 @@ public sealed partial class WidgetShell : UserControl
             StopGroupDropPreviewBreathing();
             StopContentDropHighlight();
         };
+    }
+
+    internal void ResumeVisualActivity()
+    {
+        if (_isHostVisualActivityEnabled)
+        {
+            return;
+        }
+
+        _isHostVisualActivityEnabled = true;
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        QueueCompactMarquee();
+        RestartCompactVisualTimers();
+    }
+
+    internal void SuspendVisualActivity()
+    {
+        if (!_isHostVisualActivityEnabled)
+        {
+            return;
+        }
+
+        _isHostVisualActivityEnabled = false;
+        StopCompactMarquee();
+        StopCompactVisualTimers();
+        StopCompactVinylRotation();
+        _compactLiveStoryboard?.Stop();
+        _compactUpdateStoryboard?.Stop();
     }
 
     public bool ShowHoverButtons
@@ -2077,7 +2116,12 @@ public sealed partial class WidgetShell : UserControl
         // Idempotent: ApplyCompactPresentation is invoked on every progress/state tick,
         // so calling Begin() each time would restart the rotation from 0 and make it
         // stutter. Only start/stop when the desired rotating state actually changes.
-        bool shouldRotate = CompactVinylHost.Visibility == Visibility.Visible && isPlaying;
+        bool shouldRotate = _isHostVisualActivityEnabled &&
+            IsLoaded &&
+            _isCollapsed &&
+            CompactVinylHost.Visibility == Visibility.Visible &&
+            isPlaying &&
+            SystemAnimationsEnabled();
         if (shouldRotate == _isCompactVinylRotating)
         {
             return;
@@ -2355,7 +2399,7 @@ public sealed partial class WidgetShell : UserControl
                 CompactLiveProgress.Opacity = 0.7;
             }
 
-            if (_compactLiveIndeterminateTimer is null)
+            if (_compactLiveTranslationAnimation is null)
             {
                 StartCompactLiveIndeterminate(isFullBleed);
             }
@@ -2410,7 +2454,6 @@ public sealed partial class WidgetShell : UserControl
 
     private void StartCompactLiveIndeterminate(bool isFullBleed)
     {
-        _compactLiveIndeterminatePhase = 0;
         _compactLiveIndeterminateSegment = isFullBleed ? 0.22 : 0.30;
 
         // Show the segment right away so the bar is visible from the very first
@@ -2418,7 +2461,10 @@ public sealed partial class WidgetShell : UserControl
         CompactLiveProgressTransform.ScaleX = _compactLiveIndeterminateSegment;
         CompactLiveProgressTransform.TranslateX = 0;
 
-        if (!SystemAnimationsEnabled())
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
+            !SystemAnimationsEnabled())
         {
             StopCompactLiveIndeterminate();
             CompactLiveProgressTransform.ScaleX = 1;
@@ -2427,66 +2473,74 @@ public sealed partial class WidgetShell : UserControl
             return;
         }
 
-        if (_compactLiveIndeterminateTimer is not null)
+        if (_compactLiveTranslationAnimation is not null)
         {
             return;
         }
 
-        // The timer is only used while system animations are enabled. Reduced
-        // motion gets a static full-width progress treatment above.
-        _compactLiveIndeterminateTimer = DispatcherQueue.CreateTimer();
-        _compactLiveIndeterminateTimer.Interval = TimeSpan.FromMilliseconds(40);
-        _compactLiveIndeterminateTimer.Tick += CompactLiveIndeterminateTimer_Tick;
-        PerformanceLogger.RecordTransientUiTimerCreated();
-        _compactLiveIndeterminateTimer.Start();
+        double maxTranslate = Math.Max(
+            0,
+            CompactLiveTrack.ActualWidth * (1 - _compactLiveIndeterminateSegment));
+        ElementCompositionPreview.SetIsTranslationEnabled(CompactLiveProgress, true);
+        Visual visual = ElementCompositionPreview.GetElementVisual(CompactLiveProgress);
+        ScalarKeyFrameAnimation translation = visual.Compositor.CreateScalarKeyFrameAnimation();
+        translation.InsertKeyFrame(0, 0);
+        translation.InsertKeyFrame(1, (float)maxTranslate);
+        translation.Duration = TimeSpan.FromSeconds(CompactLiveIndeterminateDurationSeconds);
+        translation.IterationBehavior = AnimationIterationBehavior.Forever;
+
+        ScalarKeyFrameAnimation opacity = visual.Compositor.CreateScalarKeyFrameAnimation();
+        InsertSineKeyFrames(opacity, midpoint: 0.6f, amplitude: 0.2f);
+        opacity.Duration = translation.Duration;
+        opacity.IterationBehavior = AnimationIterationBehavior.Forever;
+
+        _compactLiveTranslationAnimation = translation;
+        _compactLiveOpacityAnimation = opacity;
+        visual.StartAnimation("Translation.X", translation);
+        visual.StartAnimation(nameof(Visual.Opacity), opacity);
     }
 
     private void StopCompactLiveIndeterminate()
     {
-        if (_compactLiveIndeterminateTimer is not { } timer)
+        if (_compactLiveTranslationAnimation is null && _compactLiveOpacityAnimation is null)
         {
             return;
         }
 
-        _compactLiveIndeterminateTimer = null;
-        timer.Stop();
-        timer.Tick -= CompactLiveIndeterminateTimer_Tick;
-        PerformanceLogger.RecordTransientUiTimerReleased();
+        Visual visual = ElementCompositionPreview.GetElementVisual(CompactLiveProgress);
+        visual.StopAnimation("Translation.X");
+        visual.StopAnimation(nameof(Visual.Opacity));
+        CompactLiveProgress.Translation = Vector3.Zero;
+        _compactLiveTranslationAnimation = null;
+        _compactLiveOpacityAnimation = null;
     }
 
-    private void CompactLiveIndeterminateTimer_Tick(DispatcherQueueTimer sender, object args)
+    private void RestartCompactLiveIndeterminateForTrackSize()
     {
-        _compactLiveIndeterminatePhase += 0.035;
-        if (_compactLiveIndeterminatePhase > 1)
+        if (_compactLiveTranslationAnimation is null ||
+            _compactPresentation?.IsProgressIndeterminate != true)
         {
-            _compactLiveIndeterminatePhase -= 1;
+            return;
         }
 
-        double trackWidth = CompactLiveTrack.ActualWidth;
-        double maxTranslate = Math.Max(
-            0,
-            trackWidth * (1 - _compactLiveIndeterminateSegment));
-        CompactLiveProgressTransform.ScaleX = _compactLiveIndeterminateSegment;
-        CompactLiveProgressTransform.TranslateX =
-            _compactLiveIndeterminatePhase * maxTranslate;
-
-        // Opacity pulse guarantees visible "live" motion even if the track has
-        // not been laid out yet (ActualWidth == 0 → TranslateX stays 0).
-        CompactLiveProgress.Opacity =
-            0.4 +
-            0.4 *
-            (0.5 + 0.5 * Math.Sin(_compactLiveIndeterminatePhase * Math.PI * 2));
+        bool isFullBleed = _compactPresentation.UseFullBleedBackground &&
+            _compactPresentation.Thumbnail is not null;
+        StopCompactLiveIndeterminate();
+        StartCompactLiveIndeterminate(isFullBleed);
     }
 
     private DispatcherQueueTimer? _compactLiveBreathingTimer;
-    private DispatcherQueueTimer? _compactLiveIndeterminateTimer;
-    private double _compactLiveIndeterminatePhase;
+    private ScalarKeyFrameAnimation? _compactLiveTranslationAnimation;
+    private ScalarKeyFrameAnimation? _compactLiveOpacityAnimation;
     private double _compactLiveIndeterminateSegment;
     private double _compactLiveBreathingPhase;
 
     private void StartCompactLiveBreathing()
     {
-        if (!SystemAnimationsEnabled())
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
+            !SystemAnimationsEnabled())
         {
             StopCompactLiveBreathing();
             return;
@@ -2631,58 +2685,94 @@ public sealed partial class WidgetShell : UserControl
         }
     }
 
-    private DispatcherQueueTimer? _edgeGlowPulseTimer;
-    private double _edgeGlowPulsePhase;
+    private ScalarKeyFrameAnimation? _edgeGlowPulseAnimation;
 
     private void StartEdgeGlowPulse()
     {
-        if (!SystemAnimationsEnabled())
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
+            !SystemAnimationsEnabled())
         {
             StopEdgeGlowPulse();
             return;
         }
 
-        if (_edgeGlowPulseTimer is not null)
+        if (_edgeGlowPulseAnimation is not null)
         {
             return;
         }
 
-        _edgeGlowPulsePhase = 0;
-        _edgeGlowPulseTimer = DispatcherQueue.CreateTimer();
-        _edgeGlowPulseTimer.Interval = TimeSpan.FromMilliseconds(50);
-        _edgeGlowPulseTimer.Tick += EdgeGlowPulseTimer_Tick;
-        PerformanceLogger.RecordTransientUiTimerCreated();
-        _edgeGlowPulseTimer.Start();
+        Visual visual = ElementCompositionPreview.GetElementVisual(CompactEdgeGlow);
+        ScalarKeyFrameAnimation animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+        InsertSineKeyFrames(animation, midpoint: 0.48f, amplitude: 0.1f);
+        animation.Duration = TimeSpan.FromSeconds(EdgeGlowPulseDurationSeconds);
+        animation.IterationBehavior = AnimationIterationBehavior.Forever;
+        _edgeGlowPulseAnimation = animation;
+        visual.StartAnimation(nameof(Visual.Opacity), animation);
     }
 
     private void StopEdgeGlowPulse()
     {
-        if (_edgeGlowPulseTimer is not { } timer)
+        if (_edgeGlowPulseAnimation is null)
         {
             return;
         }
 
-        _edgeGlowPulseTimer = null;
-        timer.Stop();
-        timer.Tick -= EdgeGlowPulseTimer_Tick;
-        PerformanceLogger.RecordTransientUiTimerReleased();
-    }
-
-    private void EdgeGlowPulseTimer_Tick(DispatcherQueueTimer sender, object args)
-    {
-        _edgeGlowPulsePhase += 0.04;
-        CompactEdgeGlow.Opacity =
-            0.48 + 0.1 * Math.Sin(_edgeGlowPulsePhase);
+        ElementCompositionPreview
+            .GetElementVisual(CompactEdgeGlow)
+            .StopAnimation(nameof(Visual.Opacity));
+        _edgeGlowPulseAnimation = null;
     }
 
     // ── Particles (rain / snow) ────────────────────────────────
 
-    private DispatcherQueueTimer? _particleTimer;
-    private readonly List<(Microsoft.UI.Xaml.Shapes.Shape Shape, double Speed, double Drift)> _particles = [];
+    private static void InsertSineKeyFrames(
+        ScalarKeyFrameAnimation animation,
+        float midpoint,
+        float amplitude)
+    {
+        const int sampleCount = 16;
+        for (int i = 0; i <= sampleCount; i++)
+        {
+            float progress = (float)i / sampleCount;
+            float value = midpoint + amplitude * MathF.Sin(progress * MathF.PI * 2);
+            animation.InsertKeyFrame(progress, value);
+        }
+    }
+
+    private sealed class CompactParticleAnimationState
+    {
+        internal CompactParticleAnimationState(
+            Microsoft.UI.Xaml.Shapes.Shape shape,
+            double speed,
+            double drift)
+        {
+            Shape = shape;
+            Speed = speed;
+            Drift = drift;
+        }
+
+        internal Microsoft.UI.Xaml.Shapes.Shape Shape { get; }
+        internal double Speed { get; }
+        internal double Drift { get; }
+        internal CompositionScopedBatch? Batch { get; set; }
+        internal Vector3KeyFrameAnimation? Animation { get; set; }
+        internal int Generation { get; set; }
+    }
+
+    private readonly List<CompactParticleAnimationState> _particles = [];
     private CompactParticleKind _activeParticleKind = CompactParticleKind.None;
+    private int _particleAnimationGeneration;
 
     private void ApplyParticles(WidgetCompactPresentation p)
     {
+        if (!_isHostVisualActivityEnabled || !IsLoaded || !_isCollapsed)
+        {
+            StopParticles();
+            return;
+        }
+
         if (p.ParticleKind == _activeParticleKind && p.ParticleKind != CompactParticleKind.None)
         {
             return; // already running same kind
@@ -2710,7 +2800,10 @@ public sealed partial class WidgetShell : UserControl
                 Canvas.SetLeft(line, rng.NextDouble() * CompactParticleCanvasWidth);
                 Canvas.SetTop(line, rng.NextDouble() * CompactParticleCanvasHeight);
                 CompactParticleCanvas.Children.Add(line);
-                _particles.Add((line, 0.5 + rng.NextDouble() * 0.4, -0.2));
+                _particles.Add(new CompactParticleAnimationState(
+                    line,
+                    0.5 + rng.NextDouble() * 0.4,
+                    -0.2));
             }
         }
         else // Snow
@@ -2725,25 +2818,35 @@ public sealed partial class WidgetShell : UserControl
                 Canvas.SetLeft(dot, rng.NextDouble() * CompactParticleCanvasWidth);
                 Canvas.SetTop(dot, rng.NextDouble() * CompactParticleCanvasHeight);
                 CompactParticleCanvas.Children.Add(dot);
-                _particles.Add((dot, 0.15 + rng.NextDouble() * 0.15, 0.08 + rng.NextDouble() * 0.06));
+                _particles.Add(new CompactParticleAnimationState(
+                    dot,
+                    0.15 + rng.NextDouble() * 0.15,
+                    0.08 + rng.NextDouble() * 0.06));
             }
         }
 
-        _particleTimer = DispatcherQueue.CreateTimer();
-        _particleTimer.Interval = TimeSpan.FromMilliseconds(50);
-        _particleTimer.Tick += ParticleTimer_Tick;
-        PerformanceLogger.RecordTransientUiTimerCreated();
-        _particleTimer.Start();
+        int generation = ++_particleAnimationGeneration;
+        foreach (CompactParticleAnimationState particle in _particles)
+        {
+            StartParticleAnimation(particle, generation);
+        }
     }
 
     private void StopParticles()
     {
-        if (_particleTimer is { } timer)
+        ++_particleAnimationGeneration;
+        foreach (CompactParticleAnimationState particle in _particles)
         {
-            _particleTimer = null;
-            timer.Stop();
-            timer.Tick -= ParticleTimer_Tick;
-            PerformanceLogger.RecordTransientUiTimerReleased();
+            if (particle.Batch is { } batch)
+            {
+                batch.Completed -= ParticleAnimationBatch_Completed;
+                particle.Batch = null;
+            }
+
+            Visual visual = ElementCompositionPreview.GetElementVisual(particle.Shape);
+            visual.StopAnimation("Translation");
+            particle.Shape.Translation = Vector3.Zero;
+            particle.Animation = null;
         }
 
         CompactParticleCanvas.Children.Clear();
@@ -2751,28 +2854,146 @@ public sealed partial class WidgetShell : UserControl
         _activeParticleKind = CompactParticleKind.None;
     }
 
-    private void ParticleTimer_Tick(DispatcherQueueTimer sender, object args)
+    private void StartParticleAnimation(CompactParticleAnimationState particle, int generation)
     {
-        foreach (var (shape, speed, drift) in _particles)
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
+            !SystemAnimationsEnabled() ||
+            generation != _particleAnimationGeneration)
         {
-            double top = Canvas.GetTop(shape) + speed;
-            double left = Canvas.GetLeft(shape) + drift;
-            if (top > CompactParticleCanvasHeight + 10)
-            {
-                top = -10;
-                left = Random.Shared.NextDouble() * CompactParticleCanvasWidth;
-            }
-            if (left < -10)
-            {
-                left = CompactParticleCanvasWidth + 5;
-            }
-            if (left > CompactParticleCanvasWidth + 10)
-            {
-                left = -5;
-            }
-            Canvas.SetTop(shape, top);
-            Canvas.SetLeft(shape, left);
+            return;
         }
+
+        double startTop = Canvas.GetTop(particle.Shape);
+        if (!double.IsFinite(startTop))
+        {
+            startTop = -10;
+            Canvas.SetTop(particle.Shape, startTop);
+        }
+
+        double travel = Math.Max(1, CompactParticleCanvasHeight + 10 - startTop);
+        double durationSeconds = Math.Max(0.05, travel / particle.Speed * 0.05);
+        double horizontalTravel = particle.Drift * durationSeconds / 0.05;
+        double startLeft = Canvas.GetLeft(particle.Shape);
+        if (!double.IsFinite(startLeft))
+        {
+            startLeft = Random.Shared.NextDouble() * CompactParticleCanvasWidth;
+            Canvas.SetLeft(particle.Shape, startLeft);
+        }
+
+        ElementCompositionPreview.SetIsTranslationEnabled(particle.Shape, true);
+        Visual visual = ElementCompositionPreview.GetElementVisual(particle.Shape);
+        visual.StopAnimation("Translation");
+        particle.Shape.Translation = Vector3.Zero;
+
+        Vector3KeyFrameAnimation animation = visual.Compositor.CreateVector3KeyFrameAnimation();
+        animation.InsertKeyFrame(0, Vector3.Zero);
+        if (horizontalTravel < 0 && startLeft + horizontalTravel < -10)
+        {
+            InsertParticleWrapKeyFrames(
+                animation,
+                startLeft,
+                horizontalTravel,
+                travel,
+                boundary: -10,
+                wrappedPosition: CompactParticleCanvasWidth + 5);
+            horizontalTravel =
+                CompactParticleCanvasWidth + 5 - startLeft +
+                horizontalTravel * (1 - (-10 - startLeft) / horizontalTravel);
+        }
+        else if (horizontalTravel > 0 &&
+                 startLeft + horizontalTravel > CompactParticleCanvasWidth + 10)
+        {
+            InsertParticleWrapKeyFrames(
+                animation,
+                startLeft,
+                horizontalTravel,
+                travel,
+                boundary: CompactParticleCanvasWidth + 10,
+                wrappedPosition: -5);
+            horizontalTravel =
+                -5 - startLeft +
+                horizontalTravel *
+                (1 - (CompactParticleCanvasWidth + 10 - startLeft) / horizontalTravel);
+        }
+        animation.InsertKeyFrame(
+            1,
+            new Vector3((float)horizontalTravel, (float)travel, 0));
+        animation.Duration = TimeSpan.FromSeconds(durationSeconds);
+
+        CompositionScopedBatch batch = visual.Compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+        particle.Generation = generation;
+        particle.Animation = animation;
+        particle.Batch = batch;
+        batch.Completed += ParticleAnimationBatch_Completed;
+        visual.StartAnimation("Translation", animation);
+        batch.End();
+    }
+
+    private static void InsertParticleWrapKeyFrames(
+        Vector3KeyFrameAnimation animation,
+        double startLeft,
+        double horizontalTravel,
+        double verticalTravel,
+        double boundary,
+        double wrappedPosition)
+    {
+        float wrapProgress = (float)Math.Clamp(
+            (boundary - startLeft) / horizontalTravel,
+            0,
+            1);
+        float afterWrapProgress = Math.Min(1, wrapProgress + 0.0001f);
+        animation.InsertKeyFrame(
+            wrapProgress,
+            new Vector3(
+                (float)(boundary - startLeft),
+                (float)(verticalTravel * wrapProgress),
+                0));
+        animation.InsertKeyFrame(
+            afterWrapProgress,
+            new Vector3(
+                (float)(wrappedPosition - startLeft +
+                    horizontalTravel * (afterWrapProgress - wrapProgress)),
+                (float)(verticalTravel * afterWrapProgress),
+                0));
+    }
+
+    private void ParticleAnimationBatch_Completed(
+        object sender,
+        CompositionBatchCompletedEventArgs args)
+    {
+        if (sender is not CompositionScopedBatch completedBatch)
+        {
+            return;
+        }
+
+        CompactParticleAnimationState? particle = _particles.FirstOrDefault(
+            candidate => ReferenceEquals(candidate.Batch, completedBatch));
+        completedBatch.Completed -= ParticleAnimationBatch_Completed;
+        if (particle is null)
+        {
+            return;
+        }
+
+        particle.Batch = null;
+        particle.Animation = null;
+        if (!_isHostVisualActivityEnabled ||
+            !SystemAnimationsEnabled() ||
+            particle.Generation != _particleAnimationGeneration ||
+            _activeParticleKind == CompactParticleKind.None)
+        {
+            return;
+        }
+
+        Visual visual = ElementCompositionPreview.GetElementVisual(particle.Shape);
+        visual.StopAnimation("Translation");
+        particle.Shape.Translation = Vector3.Zero;
+        Canvas.SetTop(particle.Shape, -10);
+        Canvas.SetLeft(
+            particle.Shape,
+            Random.Shared.NextDouble() * CompactParticleCanvasWidth);
+        StartParticleAnimation(particle, particle.Generation);
     }
 
     // ── Bottom glow (music playback) ─────────────────────────
@@ -2789,7 +3010,10 @@ public sealed partial class WidgetShell : UserControl
 
     private void StartBottomGlow()
     {
-        if (!SystemAnimationsEnabled())
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
+            !SystemAnimationsEnabled())
         {
             StopBottomGlow();
             CompactBottomGlow.Opacity = 0.6;
@@ -2842,7 +3066,10 @@ public sealed partial class WidgetShell : UserControl
 
     private void StartBreathBorder()
     {
-        if (!SystemAnimationsEnabled())
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
+            !SystemAnimationsEnabled())
         {
             StopBreathBorder();
             CompactEdgeGlow.Opacity = 0.35;
@@ -3047,7 +3274,9 @@ public sealed partial class WidgetShell : UserControl
     private void QueueCompactMarquee(int delayMs = 300)
     {
         _compactMarqueeDelayTimer?.Stop();
-        if (!_isCollapsed ||
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
             _compactPresentation?.EnableMarquee != true ||
             ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
@@ -3079,7 +3308,9 @@ public sealed partial class WidgetShell : UserControl
     private void StartCompactMarqueeIfNeeded()
     {
         StopCompactMarquee(resetDelayTimer: false);
-        if (!_isCollapsed ||
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
             _compactPresentation?.EnableMarquee != true ||
             ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
@@ -3225,7 +3456,10 @@ public sealed partial class WidgetShell : UserControl
 
     private void RestartCompactVisualTimers()
     {
-        if (!IsLoaded || !_isCollapsed || _compactPresentation is not { } presentation)
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
+            _compactPresentation is not { } presentation)
         {
             return;
         }
@@ -3764,7 +3998,7 @@ public sealed partial class WidgetShell : UserControl
     private void AnimateDragGripIndicator(bool show)
     {
         show = show && _groupPresentation is null;
-        if (!SystemAnimationsEnabled())
+        if (!_isHostVisualActivityEnabled || !SystemAnimationsEnabled())
         {
             CompactDragGripIndicator.Opacity = show ? 0.7 : 0;
             return;

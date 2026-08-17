@@ -86,6 +86,8 @@ public sealed partial class QuickCaptureSurfaceContent :
     private bool _deferDetailReaderUntilTransitionCompletes;
     private bool _isDisposed;
     private bool _isInitialized;
+    private bool _isWindowVisible;
+    private bool _isWindowRevealCompleted;
 
     public QuickCaptureSurfaceContent(
         WidgetConfig config,
@@ -236,13 +238,26 @@ public sealed partial class QuickCaptureSurfaceContent :
 
     public async void OnWindowVisibilityChanged(bool visible)
     {
-        if (visible && IsLoaded)
+        _isWindowVisible = visible;
+        if (!visible)
+        {
+            _isWindowRevealCompleted = false;
+            ViewModel.SuspendWindowRefresh();
+            await FlushPendingDetailSaveAsync();
+        }
+    }
+
+    public void OnWindowRevealCompleted()
+    {
+        if (!_isWindowVisible || _isWindowRevealCompleted)
+        {
+            return;
+        }
+
+        _isWindowRevealCompleted = true;
+        if (IsLoaded)
         {
             ViewModel.RefreshAfterViewReady();
-        }
-        else if (!visible)
-        {
-            await FlushPendingDetailSaveAsync();
         }
     }
 
@@ -352,7 +367,10 @@ public sealed partial class QuickCaptureSurfaceContent :
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        ViewModel.RefreshAfterViewReady();
+        if (_isWindowRevealCompleted)
+        {
+            ViewModel.RefreshAfterViewReady();
+        }
         UpdateSelectedViewVisual();
         ApplyPendingFocus();
         ApplyResponsiveLayout();

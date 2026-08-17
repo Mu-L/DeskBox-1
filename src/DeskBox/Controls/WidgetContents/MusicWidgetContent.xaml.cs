@@ -3,6 +3,7 @@ using System.ComponentModel;
 using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.ViewModels;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -34,8 +35,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private bool _isProgressDragging;
     private bool _isProgressHovering;
     private bool _isInlineVolumeRefreshing;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _titleMarqueeTimer;
-    private DateTimeOffset _titleMarqueeStartedAt;
+    private ScalarKeyFrameAnimation? _titleMarqueeAnimation;
+    private Canvas? _titleMarqueeAnimatedCanvas;
     private double _titleMarqueeDistance;
     private int _titleMarqueeMeasureVersion;
     private int _artworkTransitionVersion;
@@ -177,7 +178,6 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private void MusicWidgetContent_Loaded(object sender, RoutedEventArgs e)
     {
-        EnsureTitleMarqueeTimer();
         ApplyResponsiveLayout();
         UpdateProgressVisuals();
         QueueTitleMarqueeUpdate();
@@ -211,13 +211,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         Loaded -= MusicWidgetContent_Loaded;
         Unloaded -= MusicWidgetContent_Unloaded;
         SizeChanged -= MusicWidgetContent_SizeChanged;
-        if (_titleMarqueeTimer is not null)
-        {
-            _titleMarqueeTimer.Stop();
-            _titleMarqueeTimer.Tick -= TitleMarqueeTimer_Tick;
-            _titleMarqueeTimer = null;
-            PerformanceLogger.RecordTransientUiTimerReleased();
-        }
+        StopTitleMarquee();
 
         StopRecordVinylRotation();
         StopRecordHorizontalVinylRotation();
@@ -626,7 +620,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private void UpdateRecordVinylRotation()
     {
-        bool shouldRotate = _isHostWindowVisible &&
+        bool shouldRotate = IsLoaded &&
+            _isHostWindowVisible &&
             !_isHostCompactCollapsed &&
             RecordLayout.Visibility == Visibility.Visible &&
             ViewModel?.IsPlaying == true &&
@@ -726,7 +721,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
     private void UpdateRecordHorizontalVinylRotation()
     {
-        bool shouldRotate = _isHostWindowVisible &&
+        bool shouldRotate = IsLoaded &&
+            _isHostWindowVisible &&
             !_isHostCompactCollapsed &&
             RecordHorizontalLayout.Visibility == Visibility.Visible &&
             ViewModel?.IsPlaying == true &&
@@ -1035,20 +1031,6 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         visual.Scale = Vector3.One;
     }
 
-    private void EnsureTitleMarqueeTimer()
-    {
-        if (_titleMarqueeTimer is not null)
-        {
-            return;
-        }
-
-        _titleMarqueeTimer = DispatcherQueue.CreateTimer();
-        _titleMarqueeTimer.Interval = TimeSpan.FromMilliseconds(33);
-        _titleMarqueeTimer.IsRepeating = true;
-        _titleMarqueeTimer.Tick += TitleMarqueeTimer_Tick;
-        PerformanceLogger.RecordTransientUiTimerCreated();
-    }
-
     private void QueueTitleMarqueeUpdate()
     {
         if (!IsLoaded ||
@@ -1121,15 +1103,35 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         Canvas.SetLeft(elements.Primary, 0);
         Canvas.SetLeft(elements.Clone, titleWidth + TitleMarqueeGap);
         _titleMarqueeDistance = titleWidth + TitleMarqueeGap;
-        _titleMarqueeStartedAt = DateTimeOffset.UtcNow;
         elements.Canvas.Translation = Vector3.Zero;
-        EnsureTitleMarqueeTimer();
-        _titleMarqueeTimer?.Start();
+
+        double movingDurationSeconds = _titleMarqueeDistance / TitleMarqueeSpeedPixelsPerSecond;
+        double totalDurationSeconds = TitleMarqueeStartDelayMs / 1000.0 + movingDurationSeconds;
+        float movementStartProgress = (float)(TitleMarqueeStartDelayMs / 1000.0 / totalDurationSeconds);
+        ElementCompositionPreview.SetIsTranslationEnabled(elements.Canvas, true);
+        Visual visual = ElementCompositionPreview.GetElementVisual(elements.Canvas);
+        ScalarKeyFrameAnimation animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+        animation.InsertKeyFrame(0, 0);
+        animation.InsertKeyFrame(movementStartProgress, 0);
+        animation.InsertKeyFrame(1, (float)-_titleMarqueeDistance);
+        animation.Duration = TimeSpan.FromSeconds(totalDurationSeconds);
+        animation.IterationBehavior = AnimationIterationBehavior.Forever;
+        _titleMarqueeAnimation = animation;
+        _titleMarqueeAnimatedCanvas = elements.Canvas;
+        visual.StartAnimation("Translation.X", animation);
     }
 
     private void StopTitleMarquee()
     {
-        _titleMarqueeTimer?.Stop();
+        if (_titleMarqueeAnimatedCanvas is { } animatedCanvas)
+        {
+            Visual visual = ElementCompositionPreview.GetElementVisual(animatedCanvas);
+            visual.StopAnimation("Translation.X");
+            animatedCanvas.Translation = Vector3.Zero;
+        }
+
+        _titleMarqueeAnimation = null;
+        _titleMarqueeAnimatedCanvas = null;
         _titleMarqueeDistance = 0;
         ResetTitleMarqueeElements(TitleStaticText, TitleMarqueeCanvas, TitleTextPrimary, TitleTextClone);
         ResetTitleMarqueeElements(
@@ -1137,32 +1139,6 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             MinimalTitleMarqueeCanvas,
             MinimalTitleTextPrimary,
             MinimalTitleTextClone);
-    }
-
-    private void TitleMarqueeTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
-    {
-        var elements = GetActiveTitleMarqueeElements();
-        if (_titleMarqueeDistance <= 0 ||
-            !_isHostWindowVisible ||
-            _isHostCompactCollapsed ||
-            ViewModel?.IsPlaying != true ||
-            elements.Host.ActualWidth <= 0)
-        {
-            StopTitleMarquee();
-            return;
-        }
-
-        double elapsedMs = (DateTimeOffset.UtcNow - _titleMarqueeStartedAt).TotalMilliseconds;
-        double movingMs = Math.Max(0, elapsedMs - TitleMarqueeStartDelayMs);
-        double offset = movingMs * TitleMarqueeSpeedPixelsPerSecond / 1000.0;
-
-        if (offset >= _titleMarqueeDistance)
-        {
-            _titleMarqueeStartedAt = DateTimeOffset.UtcNow;
-            offset = 0;
-        }
-
-        elements.Canvas.Translation = new Vector3((float)-offset, 0, 0);
     }
 
     private static bool AreSystemAnimationsEnabled()

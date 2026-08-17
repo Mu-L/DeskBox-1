@@ -13,14 +13,14 @@ public sealed partial class QuickCaptureWidgetViewModel
 {
     private void OnQuickCaptureChanged()
     {
-        if (_isDisposed)
+        if (_isDisposed || !_isWindowRefreshEnabled)
         {
             return;
         }
 
         if (!_dispatcherQueue.HasThreadAccess)
         {
-            _dispatcherQueue.TryEnqueue(RefreshVisibleItemsImmediately);
+            _dispatcherQueue.TryEnqueue(OnQuickCaptureChanged);
             return;
         }
 

@@ -214,7 +214,7 @@
                         Margin="2,0"
                         HorizontalAlignment="Center"
                         FontSize="{Binding LabelFontSize}"
-                        MaxLines="2"
+                        MaxLines="{Binding DataContext.IconLabelMaxLines, ElementName=ItemsGrid}"
                         Tag="StackName"
                         Text="{Binding Name}"
                         TextAlignment="Center"

@@ -371,18 +371,49 @@ public sealed partial class ContentWidgetWindow
     private void QueueVisibleContentResume()
     {
         int generation = ++_contentVisibilityGeneration;
-        RunAfterCompactExpansionReady(() =>
+        if (!Visible || generation != _contentVisibilityGeneration || IsClosing)
         {
-            if (!Visible || generation != _contentVisibilityGeneration || IsClosing)
-            {
-                return;
-            }
+            return;
+        }
 
-            _contentHost.OnWindowVisibilityChanged(true);
-            PerformanceLogger.Mark(
-                "WidgetVisibleContentResumed",
-                $"kind={_config.WidgetKind} id={_config.Id}");
-        });
+        _contentHost.OnWindowVisibilityChanged(true);
+        PerformanceLogger.Mark(
+            "WidgetVisibleContentFirstFrameReady",
+            $"kind={_config.WidgetKind} id={_config.Id}");
+    }
+
+    private void NotifyVisibleContentRevealCompleted()
+    {
+        if (!Visible || IsClosing)
+        {
+            return;
+        }
+
+        int generation = _contentVisibilityGeneration;
+        if (_queuedContentRevealGeneration == generation)
+        {
+            return;
+        }
+
+        _queuedContentRevealGeneration = generation;
+        if (!DispatcherQueue.TryEnqueue(async () =>
+            {
+                await Task.Delay(RevealCompletedBackgroundDelayMs);
+                if (!Visible ||
+                    IsClosing ||
+                    generation != _contentVisibilityGeneration)
+                {
+                    return;
+                }
+
+                _contentHost.OnWindowRevealCompleted();
+                PerformanceLogger.Mark(
+                    "WidgetVisibleContentResumed",
+                    $"kind={_config.WidgetKind} id={_config.Id}");
+            }))
+        {
+            _queuedContentRevealGeneration = -1;
+        }
     }
 
     private void NotifyVisibleContentSuspended()

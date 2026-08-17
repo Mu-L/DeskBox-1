@@ -106,6 +106,11 @@ public sealed class WeatherWidgetContentAdapter :
         ViewModel.OnWindowVisibilityChanged(visible);
     }
 
+    public void OnWindowRevealCompleted()
+    {
+        ViewModel.OnWindowRevealCompleted();
+    }
+
     public void BeginResponsiveLayoutTransition(
         double targetContentWidth,
         double targetContentHeight,

@@ -55,6 +55,7 @@ public sealed partial class ContentWidgetWindow
             {
                 TrayAnimation.RestoreVisualState();
                 TrayAnimation.RestoreWindowPosition();
+                NotifyVisibleContentRevealCompleted();
             });
     }
 
@@ -130,6 +131,7 @@ public sealed partial class ContentWidgetWindow
             {
                 TrayAnimation.RestoreVisualState();
                 TrayAnimation.RestoreWindowPosition();
+                NotifyVisibleContentRevealCompleted();
             });
     }
 
@@ -189,6 +191,7 @@ public sealed partial class ContentWidgetWindow
         WidgetLayerService.ClearTopMost(HWnd);
         Win32Helper.ShowWindow(HWnd, Win32Helper.SW_HIDE);
         AppWindow.Hide();
+        WidgetShellControl.SuspendVisualActivity();
         NotifyCompactHostVisibilityChanged(false);
         TrayAnimation.RevealWindowForTrayShow();
         TrayAnimation.RestoreVisualState();
