@@ -1073,11 +1073,12 @@ public static class IconHelper
             return new IconSource(path);
         }
 
-        var shortcut = ShortcutHelper.Resolve(path);
         if (!hideShortcutArrowOverlay)
         {
             return new IconSource(path);
         }
+
+        var shortcut = ShortcutHelper.ReadStoredMetadata(path);
 
         if (shortcut is null)
         {

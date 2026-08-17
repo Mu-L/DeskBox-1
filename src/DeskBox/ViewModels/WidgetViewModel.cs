@@ -24,6 +24,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         TimeSpan.FromMilliseconds(2600)
     ];
     private const int FolderCountHydrationBatchSize = 8;
+    private const int ShortcutTargetHydrationBatchSize = 4;
     private const int ShellKindHydrationBatchSize = 8;
     private const int FolderCountHydrationYieldMs = 24;
 
@@ -360,6 +361,7 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         _name = config.Name;
         _viewMode = config.ViewMode;
         _mappedFolderPath = config.MappedFolderPath;
+        _currentFolderPath = config.MappedFolderPath;
         _widgetOpacity = Math.Clamp(
             _settingsService.Settings.WidgetOpacity,
             SettingsService.MinWidgetOpacity,
@@ -408,6 +410,9 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         }
 
         _isDisposed = true;
+        Interlocked.Exchange(
+            ref _folderNavigationCancellation,
+            null)?.Cancel();
         Interlocked.Increment(ref _itemHydrationGeneration);
         CleanupStacks();
         _folderWatcher.FolderChanged -= OnFolderChanged;
@@ -439,13 +444,13 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     public void ResumeBackgroundActivity()
     {
         if (_isDisposed || !_isSurfaceBackgroundSuspended ||
-            string.IsNullOrWhiteSpace(MappedFolderPath))
+            string.IsNullOrWhiteSpace(CurrentFolderPath))
         {
             return;
         }
 
         _isSurfaceBackgroundSuspended = false;
-        string folderPath = MappedFolderPath;
+        string folderPath = CurrentFolderPath;
         _ = ResumeBackgroundActivityAsync(folderPath);
     }
 

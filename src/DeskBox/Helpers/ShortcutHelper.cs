@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
@@ -11,6 +12,14 @@ namespace DeskBox.Helpers;
 public static class ShortcutHelper
 {
     private const int MAX_PATH = 260;
+    private const int MaxStoredMetadataCacheEntries = 512;
+    private static readonly ConcurrentDictionary<string, StoredShortcutCacheEntry>
+        s_storedMetadataCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed record StoredShortcutCacheEntry(
+        long Length,
+        long LastWriteTimeUtcTicks,
+        ShortcutInfo? Metadata);
 
     public static bool IsShortcutPath(string? path)
     {
@@ -39,7 +48,7 @@ public static class ShortcutHelper
 
         if (Path.GetExtension(shortcutPath).Equals(".url", StringComparison.OrdinalIgnoreCase))
         {
-            return ResolveInternetShortcut(shortcutPath);
+            return ReadStoredMetadata(shortcutPath);
         }
 
         if (!IsShellLinkPath(shortcutPath))
@@ -62,34 +71,102 @@ public static class ShortcutHelper
                 // Keep reading the stored shortcut metadata even if the target is unavailable.
             }
 
-            var targetBuilder = new StringBuilder(MAX_PATH);
-            var findData = new WIN32_FIND_DATAW();
-            link.GetPath(targetBuilder, MAX_PATH, ref findData, SLGP_FLAGS.SLGP_RAWPATH);
-
-            var descriptionBuilder = new StringBuilder(MAX_PATH);
-            link.GetDescription(descriptionBuilder, MAX_PATH);
-
-            var argsBuilder = new StringBuilder(MAX_PATH);
-            link.GetArguments(argsBuilder, MAX_PATH);
-
-            var workDirBuilder = new StringBuilder(MAX_PATH);
-            link.GetWorkingDirectory(workDirBuilder, MAX_PATH);
-
-            var iconBuilder = new StringBuilder(MAX_PATH);
-            link.GetIconLocation(iconBuilder, MAX_PATH, out var iconIndex);
-
-            return new ShortcutInfo(
-                TargetPath: targetBuilder.ToString(),
-                Description: descriptionBuilder.ToString(),
-                Arguments: argsBuilder.ToString(),
-                WorkingDirectory: workDirBuilder.ToString(),
-                IconLocation: iconBuilder.ToString(),
-                IconIndex: iconIndex);
+            return ReadShellLinkMetadata(link);
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Reads metadata already stored in a shortcut without asking Windows to
+    /// resolve or search for its target. This is safe for list hydration: a
+    /// missing target cannot stall the first frame for several seconds.
+    /// </summary>
+    public static ShortcutInfo? ReadStoredMetadata(string shortcutPath)
+    {
+        if (string.IsNullOrWhiteSpace(shortcutPath) || !File.Exists(shortcutPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            string normalizedPath = Path.GetFullPath(shortcutPath);
+            var fileInfo = new FileInfo(normalizedPath);
+            long length = fileInfo.Length;
+            long lastWriteTimeUtcTicks = fileInfo.LastWriteTimeUtc.Ticks;
+            if (s_storedMetadataCache.TryGetValue(
+                    normalizedPath,
+                    out StoredShortcutCacheEntry? cached) &&
+                cached.Length == length &&
+                cached.LastWriteTimeUtcTicks == lastWriteTimeUtcTicks)
+            {
+                return cached.Metadata;
+            }
+
+            ShortcutInfo? metadata = ReadStoredMetadataUncached(normalizedPath);
+            if (s_storedMetadataCache.Count >= MaxStoredMetadataCacheEntries)
+            {
+                s_storedMetadataCache.Clear();
+            }
+
+            s_storedMetadataCache[normalizedPath] = new StoredShortcutCacheEntry(
+                length,
+                lastWriteTimeUtcTicks,
+                metadata);
+            return metadata;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static ShortcutInfo? ReadStoredMetadataUncached(string shortcutPath)
+    {
+        if (Path.GetExtension(shortcutPath).Equals(".url", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveInternetShortcut(shortcutPath);
+        }
+
+        if (!IsShellLinkPath(shortcutPath))
+        {
+            return null;
+        }
+
+        var link = (IShellLinkW)new ShellLink();
+        var file = (IPersistFile)link;
+        file.Load(shortcutPath, 0); // STGM_READ
+        return ReadShellLinkMetadata(link);
+    }
+
+    private static ShortcutInfo ReadShellLinkMetadata(IShellLinkW link)
+    {
+        var targetBuilder = new StringBuilder(MAX_PATH);
+        var findData = new WIN32_FIND_DATAW();
+        link.GetPath(targetBuilder, MAX_PATH, ref findData, SLGP_FLAGS.SLGP_RAWPATH);
+
+        var descriptionBuilder = new StringBuilder(MAX_PATH);
+        link.GetDescription(descriptionBuilder, MAX_PATH);
+
+        var argsBuilder = new StringBuilder(MAX_PATH);
+        link.GetArguments(argsBuilder, MAX_PATH);
+
+        var workDirBuilder = new StringBuilder(MAX_PATH);
+        link.GetWorkingDirectory(workDirBuilder, MAX_PATH);
+
+        var iconBuilder = new StringBuilder(MAX_PATH);
+        link.GetIconLocation(iconBuilder, MAX_PATH, out var iconIndex);
+
+        return new ShortcutInfo(
+            TargetPath: targetBuilder.ToString(),
+            Description: descriptionBuilder.ToString(),
+            Arguments: argsBuilder.ToString(),
+            WorkingDirectory: workDirBuilder.ToString(),
+            IconLocation: iconBuilder.ToString(),
+            IconIndex: iconIndex);
     }
 
     private static ShortcutInfo? ResolveInternetShortcut(string shortcutPath)
@@ -215,6 +292,7 @@ public static class ShortcutHelper
         link.SetWorkingDirectory(normalizedTargetPath);
         link.SetDescription(description);
         file.Save(normalizedShortcutPath, true);
+        s_storedMetadataCache.TryRemove(normalizedShortcutPath, out _);
     }
 
     /// <summary>Shell Link CoClass (CLSID_ShellLink).</summary>

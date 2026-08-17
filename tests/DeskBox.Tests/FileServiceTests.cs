@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DeskBox.Helpers;
 using DeskBox.Services;
 
 namespace DeskBox.Tests;
@@ -82,6 +83,28 @@ public sealed class FileServiceTests : IDisposable
         Assert.True(FileService.PathsOverlap(root, child));
         Assert.True(FileService.PathsOverlap(child, root));
         Assert.False(FileService.PathsOverlap(root, sibling));
+    }
+
+    [Fact]
+    public void TryIsPathUnderDirectoryResolved_VerifiesExistingChild()
+    {
+        string root = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "resolved-root")).FullName;
+        string child = Directory.CreateDirectory(
+            Path.Combine(root, "child")).FullName;
+        string sibling = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "resolved-sibling")).FullName;
+
+        Assert.True(FileService.TryIsPathUnderDirectoryResolved(
+            child,
+            root,
+            out bool childIsUnderRoot));
+        Assert.True(childIsUnderRoot);
+        Assert.True(FileService.TryIsPathUnderDirectoryResolved(
+            sibling,
+            root,
+            out bool siblingIsUnderRoot));
+        Assert.False(siblingIsUnderRoot);
     }
 
     [Theory]
@@ -780,6 +803,53 @@ public sealed class FileServiceTests : IDisposable
         Assert.True(item.IsShortcut);
         Assert.Equal("Steam", item.Name);
         Assert.Equal("steam://rungameid/123", item.TargetPath);
+    }
+
+    [Fact]
+    public async Task CreateWidgetItemAsync_CanDeferBrokenShortcutTargetHydration()
+    {
+        var service = new FileService();
+        string shortcutPath = Path.Combine(_tempRoot, "missing-target.lnk");
+        string missingTargetPath = Path.Combine(_tempRoot, "missing", "app.exe");
+        ShortcutHelper.CreateOrUpdateFolderShortcut(
+            shortcutPath,
+            missingTargetPath,
+            "test shortcut");
+
+        var item = await service.CreateWidgetItemAsync(
+            shortcutPath,
+            loadIcon: false,
+            loadFolderItemCount: false,
+            loadShortcutTarget: false);
+
+        Assert.True(item.IsShortcut);
+        Assert.Equal(string.Empty, item.TargetPath);
+        Assert.Equal(
+            Path.GetFullPath(missingTargetPath),
+            await service.GetStoredShortcutTargetAsync(shortcutPath));
+    }
+
+    [Fact]
+    public void ReadStoredMetadata_InvalidatesCacheWhenShortcutIsUpdated()
+    {
+        string shortcutPath = Path.Combine(_tempRoot, "cached.lnk");
+        string firstTargetPath = Path.Combine(_tempRoot, "first", "app.exe");
+        string secondTargetPath = Path.Combine(_tempRoot, "second", "app.exe");
+        ShortcutHelper.CreateOrUpdateFolderShortcut(
+            shortcutPath,
+            firstTargetPath,
+            "first");
+
+        ShortcutInfo? first = ShortcutHelper.ReadStoredMetadata(shortcutPath);
+        ShortcutHelper.CreateOrUpdateFolderShortcut(
+            shortcutPath,
+            secondTargetPath,
+            "second");
+        ShortcutInfo? second = ShortcutHelper.ReadStoredMetadata(shortcutPath);
+
+        Assert.Equal(Path.GetFullPath(firstTargetPath), first?.TargetPath);
+        Assert.Equal(Path.GetFullPath(secondTargetPath), second?.TargetPath);
+        Assert.Equal("second", second?.Description);
     }
 
     [Fact]

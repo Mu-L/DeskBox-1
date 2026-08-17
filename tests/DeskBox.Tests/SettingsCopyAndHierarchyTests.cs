@@ -119,6 +119,10 @@ public sealed class SettingsCopyAndHierarchyTests
 
         Assert.Contains("SelectedFileStackMode", windowXaml, StringComparison.Ordinal);
         Assert.Contains("SelectedFileStackMode", fileWidgetXaml, StringComparison.Ordinal);
+        Assert.Contains(
+            "SelectedFileWidgetFolderOpenBehavior",
+            fileWidgetXaml,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("IsOn=\"{Binding FileStacksEnabled", windowXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("IsOn=\"{Binding FileStacksEnabled", fileWidgetXaml, StringComparison.Ordinal);
 
@@ -306,7 +310,7 @@ public sealed class SettingsCopyAndHierarchyTests
                 appearanceXaml,
                 "Style=\"{StaticResource SettingCardIdentityGridStyle}\""));
         Assert.Equal(
-            3,
+            4,
             CountOccurrences(
                 fileWidgetXaml,
                 "Style=\"{StaticResource SettingCardIdentityGridStyle}\""));
@@ -352,6 +356,17 @@ public sealed class SettingsCopyAndHierarchyTests
             fileWidgetXaml.IndexOf("Tag=\"FileDisplaySettings\"", StringComparison.Ordinal));
         Assert.Contains("Click=\"OrganizeDesktopButton_Click\"", fileWidgetXaml, StringComparison.Ordinal);
         Assert.Contains("DesktopOrganization.Settings.StartAction", fileWidgetXaml, StringComparison.Ordinal);
+        Assert.True(
+            fileWidgetXaml.IndexOf("Tag=\"FileStackSettings\"", StringComparison.Ordinal) <
+            fileWidgetXaml.IndexOf("SelectedFileWidgetFolderOpenBehavior", StringComparison.Ordinal));
+        Assert.Contains(
+            "MinHeight=\"{StaticResource SettingsRowMinHeight}\"",
+            fileWidgetXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Padding=\"{StaticResource SettingsRowPadding}\"",
+            fileWidgetXaml,
+            StringComparison.Ordinal);
 
         int interactionSection = windowXaml.IndexOf(
             "x:Name=\"InteractionSection\"",

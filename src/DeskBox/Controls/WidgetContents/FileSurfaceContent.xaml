@@ -393,6 +393,75 @@
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border
+                x:Name="FolderNavigationBar"
+                Grid.Row="0"
+                Height="34"
+                Margin="3,0"
+                Background="Transparent"
+                CornerRadius="7"
+                Visibility="{Binding FolderNavigationVisibility}">
+                <Grid>
+                    <Border
+                        Background="{ThemeResource SystemControlAcrylicElementBrush}"
+                        CornerRadius="7"
+                        IsHitTestVisible="False"
+                        Opacity="0.24" />
+                    <Grid
+                        Margin="2,1"
+                        ColumnDefinitions="*,Auto"
+                        ColumnSpacing="5">
+                        <Button
+                            x:Name="FolderNavigationUpButton"
+                            Grid.Column="0"
+                            Width="Auto"
+                            Height="28"
+                            MinWidth="0"
+                            Padding="0"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            Click="FolderNavigationUpButton_Click"
+                            Style="{StaticResource WidgetTitleActionButtonStyle}">
+                            <Grid ColumnDefinitions="28,*" ColumnSpacing="5">
+                                <FontIcon
+                                    Grid.Column="0"
+                                    FontSize="12"
+                                    Glyph="&#xE74A;" />
+                                <TextBlock
+                                    x:Name="FolderNavigationText"
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    FontSize="{Binding ListLabelFontSize}"
+                                    Text="{Binding CurrentFolderDisplayName}"
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTipService.ToolTip="{Binding CurrentFolderRelativePath}" />
+                            </Grid>
+                        </Button>
+                        <Button
+                            x:Name="FolderNavigationRootButton"
+                            Grid.Column="1"
+                            Width="28"
+                            Height="28"
+                            Margin="0,0,4,0"
+                            Padding="0"
+                            Click="FolderNavigationRootButton_Click"
+                            Style="{StaticResource WidgetTitleActionButtonStyle}">
+                            <PathIcon
+                                Width="16"
+                                Height="16"
+                                Data="M6 15.5c0 .28.22.5.5.5H11c1.64 0 2.9-.62 3.75-1.57A5.2 5.2 0 0 0 16 11c0-1.23-.41-2.48-1.25-3.43A4.9 4.9 0 0 0 11 6H5.7l2.65-2.65a.5.5 0 1 0-.7-.7l-3.5 3.5a.5.5 0 0 0 0 .7l3.5 3.5a.5.5 0 0 0 .7-.7L5.71 7H11c1.36 0 2.35.5 3 1.24.66.74 1 1.74 1 2.76s-.34 2.02-1 2.76A3.9 3.9 0 0 1 11 15H6.5a.5.5 0 0 0-.5.5" />
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Grid x:Name="FileItemsViewport" Grid.Row="1">
+
             <ProgressRing
                 Width="24"
                 Height="24"
@@ -462,6 +531,30 @@
                     </TransitionCollection>
                 </ListView.ItemContainerTransitions>
             </ListView>
+
+            <Grid
+                x:Name="FolderNavigationLoadingOverlay"
+                Canvas.ZIndex="40"
+                Background="Transparent"
+                Visibility="Collapsed">
+                <Border
+                    Width="44"
+                    Height="44"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10">
+                    <ProgressRing
+                        x:Name="FolderNavigationLoadingRing"
+                        Width="22"
+                        Height="22"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsActive="False" />
+                </Border>
+            </Grid>
 
             <Canvas
                 x:Name="SelectionOverlay"
@@ -681,6 +774,7 @@
                         TextWrapping="NoWrap" />
                 </Grid>
             </Border>
+            </Grid>
         </Grid>
 
         <CommandBar

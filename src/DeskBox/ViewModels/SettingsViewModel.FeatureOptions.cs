@@ -122,6 +122,43 @@ public partial class SettingsViewModel
         }
     }
 
+    public string SelectedFileWidgetFolderOpenBehavior
+    {
+        get => _selectedFileWidgetFolderOpenBehavior;
+        set
+        {
+            string normalized =
+                FileWidgetFolderOpenBehaviorNames.NormalizeGlobal(value);
+            if (!SetProperty(
+                    ref _selectedFileWidgetFolderOpenBehavior,
+                    normalized))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults)
+            {
+                return;
+            }
+
+            _settingsService.Settings.FileWidgetFolderOpenBehavior = normalized;
+            _settingsService.SaveDebounced();
+        }
+    }
+
+    public IReadOnlyList<SettingsOption>
+        AvailableFileWidgetFolderOpenBehaviorOptions =>
+    [
+        new(
+            FileWidgetFolderOpenBehaviorNames.Explorer,
+            _localizationService.T(
+                "Settings.FileWidget.FolderOpenBehavior.Explorer")),
+        new(
+            FileWidgetFolderOpenBehaviorNames.Embedded,
+            _localizationService.T(
+                "Settings.FileWidget.FolderOpenBehavior.Embedded"))
+    ];
+
 
     public string SelectedQuickCaptureDefaultView
     {

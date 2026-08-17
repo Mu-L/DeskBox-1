@@ -10,7 +10,7 @@ namespace DeskBox.Controls;
 /// </summary>
 public sealed record FileItemMenuActions(
     Func<string, string, MenuFlyoutItem> CreateMenuItem,
-    Action<WidgetItem> OpenItem,
+    Func<WidgetItem, Task> OpenItemAsync,
     Func<bool, Task> CopySelectionToClipboardAsync,
     Func<WidgetItem, Task> RenameItemAsync,
     Action CopySelectedPathsToClipboard,
@@ -37,10 +37,10 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem open = actions.CreateMenuItem(
             "Widget.Open",
             "\uE8E5");
-        open.Click += (_, _) =>
+        open.Click += async (_, _) =>
         {
             flyout.Hide();
-            actions.OpenItem(item);
+            await actions.OpenItemAsync(item);
         };
         flyout.Items.Add(open);
         flyout.Items.Add(new MenuFlyoutSeparator());

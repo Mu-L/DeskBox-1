@@ -328,7 +328,7 @@ public sealed partial class FileSurfaceContent
     {
         return new FileItemMenuActions(
             CreateMenuItem,
-            item => ViewModel.OpenItem(item),
+            ActivateItemAsync,
             cut => RunAsync(
                 () => CopySelectionToClipboardAsync(cut)),
             RenameItemAsync,
@@ -371,7 +371,7 @@ public sealed partial class FileSurfaceContent
     private MenuFlyout CreateContentAreaFlyout()
     {
         var flyout = new MenuFlyout();
-        string? mappedFolderPath = ViewModel.MappedFolderPath;
+        string? mappedFolderPath = ViewModel.CurrentFolderPath;
         bool hasMappedFolder =
             !string.IsNullOrWhiteSpace(mappedFolderPath);
 
@@ -492,7 +492,7 @@ public sealed partial class FileSurfaceContent
     private async Task CreateFolderInMappedLocationAsync()
     {
         if (string.IsNullOrWhiteSpace(
-                ViewModel.MappedFolderPath))
+                ViewModel.CurrentFolderPath))
         {
             return;
         }
@@ -501,7 +501,7 @@ public sealed partial class FileSurfaceContent
         {
             string folderPath = FileService.GetAvailablePath(
                 Path.Combine(
-                    ViewModel.MappedFolderPath,
+                    ViewModel.CurrentFolderPath!,
                     T("Widget.NewFolderName")));
             Directory.CreateDirectory(folderPath);
             await ViewModel.RefreshFolderContentsAsync();

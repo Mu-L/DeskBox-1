@@ -59,7 +59,7 @@ public partial class WidgetViewModel
     /// </summary>
     public bool TryReorderItem(WidgetItem item, int targetIndex)
     {
-        if (Config.SortMode != WidgetSortMode.Manual)
+        if (Config.SortMode != WidgetSortMode.Manual || !IsAtMappedRoot)
         {
             return false;
         }
@@ -118,7 +118,7 @@ public partial class WidgetViewModel
     /// </summary>
     public void PersistManualOrder()
     {
-        if (Config.SortMode != WidgetSortMode.Manual)
+        if (Config.SortMode != WidgetSortMode.Manual || !IsAtMappedRoot)
         {
             return;
         }
@@ -134,6 +134,11 @@ public partial class WidgetViewModel
     /// </summary>
     private bool SyncConfigItemsOrder()
     {
+        if (!IsAtMappedRoot)
+        {
+            return false;
+        }
+
         bool changed = Config.Items.Count != Items.Count;
         if (!changed)
         {
@@ -255,8 +260,8 @@ public partial class WidgetViewModel
     private async Task ProcessFolderChangedAsync(FolderChangeBatch changeBatch)
     {
         if (_isDisposed ||
-            string.IsNullOrEmpty(MappedFolderPath) ||
-            !IsCurrentWatcherBatch(changeBatch, MappedFolderPath) ||
+            string.IsNullOrEmpty(CurrentFolderPath) ||
+            !IsCurrentWatcherBatch(changeBatch, CurrentFolderPath) ||
             !IsCurrentWatcherGeneration(changeBatch))
         {
             return;
@@ -270,16 +275,16 @@ public partial class WidgetViewModel
         try
         {
             if (_isDisposed ||
-                string.IsNullOrEmpty(MappedFolderPath) ||
-                !IsCurrentWatcherBatch(changeBatch, MappedFolderPath) ||
+                string.IsNullOrEmpty(CurrentFolderPath) ||
+                !IsCurrentWatcherBatch(changeBatch, CurrentFolderPath) ||
                 !IsCurrentWatcherGeneration(changeBatch))
             {
                 return;
             }
 
-            if (ShouldUseFullReload(changeBatch, MappedFolderPath))
+            if (ShouldUseFullReload(changeBatch, CurrentFolderPath))
             {
-                await LoadFolderContentsAsync(MappedFolderPath);
+                await LoadFolderContentsAsync(CurrentFolderPath);
                 return;
             }
 
@@ -300,18 +305,18 @@ public partial class WidgetViewModel
         }
         catch (Exception ex)
         {
-            App.Log($"[FolderRefresh] Incremental refresh failed for '{MappedFolderPath}': {ex}");
-            if (!_isDisposed && !string.IsNullOrEmpty(MappedFolderPath))
+            App.Log($"[FolderRefresh] Incremental refresh failed for '{CurrentFolderPath}': {ex}");
+            if (!_isDisposed && !string.IsNullOrEmpty(CurrentFolderPath))
             {
                 try
                 {
-                    await LoadFolderContentsAsync(MappedFolderPath);
+                    await LoadFolderContentsAsync(CurrentFolderPath);
                 }
                 catch (Exception fallbackEx)
                 {
                     // A transient network/ACL failure must not escape to the
                     // dispatcher or fault an unobserved refresh task.
-                    App.Log($"[FolderRefresh] Fallback refresh failed for '{MappedFolderPath}': {fallbackEx}");
+                    App.Log($"[FolderRefresh] Fallback refresh failed for '{CurrentFolderPath}': {fallbackEx}");
                 }
             }
         }
@@ -387,7 +392,7 @@ public partial class WidgetViewModel
         FolderWatcherService watcher =
             string.Equals(
                 changeBatch.WatchedPath,
-                MappedFolderPath,
+                CurrentFolderPath,
                 StringComparison.OrdinalIgnoreCase)
                 ? _folderWatcher
                 : _publicFolderWatcher;
@@ -473,7 +478,8 @@ public partial class WidgetViewModel
             showFileExtensions: _showFileExtensions,
             hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
             loadIcon: false,
-            loadFolderItemCount: false);
+            loadFolderItemCount: false,
+            loadShortcutTarget: false);
         if (item is null)
         {
             // A null result can also mean an ACL/provider race. Incremental

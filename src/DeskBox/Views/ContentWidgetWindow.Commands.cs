@@ -301,6 +301,15 @@ public sealed partial class ContentWidgetWindow
             SetPositionLocked,
             SetSizeLocked));
 
+        if (_config.WidgetKind is WidgetKind.File)
+        {
+            flyout.Items.Add(
+                FileWidgetFolderOpenBehaviorMenuBuilder.Create(
+                    _config,
+                    App.Current.LocalizationService,
+                    SetFileWidgetFolderOpenBehaviorOverride));
+        }
+
         WidgetGroupMenuBuilder.Append(
             flyout,
             _config,
@@ -323,6 +332,19 @@ public sealed partial class ContentWidgetWindow
         flyout.Items.Add(disableWidget);
 
         return flyout;
+    }
+
+    private void SetFileWidgetFolderOpenBehaviorOverride(
+        string? behavior)
+    {
+        FileWidgetFolderOpenBehaviorNames.SetOverride(
+            _config,
+            behavior);
+        SettingsService.UpdateWidget(_config);
+        if (CurrentContent is FileSurfaceContent fileSurface)
+        {
+            _ = fileSurface.ApplyFolderOpenBehaviorChangeAsync();
+        }
     }
 
     private void ProvideWidgetActionsForContentMenu(

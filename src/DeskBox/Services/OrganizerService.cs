@@ -42,14 +42,28 @@ public sealed class OrganizerService
         bool useShellProgress = false,
         IntPtr ownerWindowHandle = default,
         IProgress<FileService.FileTransferProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? destinationFolderPath = null)
     {
         if (string.IsNullOrWhiteSpace(widget.MappedFolderPath))
         {
             throw new InvalidOperationException("This widget does not have a managed folder path.");
         }
 
-        string rootPath = Path.GetFullPath(widget.MappedFolderPath);
+        string mappedRootPath = Path.GetFullPath(widget.MappedFolderPath);
+        string rootPath = string.IsNullOrWhiteSpace(destinationFolderPath)
+            ? mappedRootPath
+            : Path.GetFullPath(destinationFolderPath);
+        if (!Directory.Exists(rootPath) ||
+            !FileService.TryIsPathUnderDirectoryResolved(
+                rootPath,
+                mappedRootPath,
+                out bool isUnderMappedRoot) ||
+            !isUnderMappedRoot)
+        {
+            throw new InvalidOperationException(
+                "The requested destination is outside the widget's mapped folder.");
+        }
         var normalizedSourcePaths = sourcePaths
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(Path.GetFullPath)

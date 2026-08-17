@@ -586,7 +586,7 @@ public sealed partial class FileSurfaceContent
         string[] synchronousPaths = GetPackagePaths(e.DataView);
         if (IsUnsafeFolderDrop(
                 synchronousPaths,
-                ViewModel.MappedFolderPath))
+                ViewModel.CurrentFolderPath))
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;

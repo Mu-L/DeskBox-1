@@ -119,7 +119,8 @@ public sealed partial class FileService
                 showImageFilesAsIcons,
                 showFileExtensions,
                 hideShortcutExtensionWhenShowingFileExtensions,
-                loadIcons);
+                loadIcons,
+                loadShortcutTarget: true);
             item.SortOrder = sortOrder++;
             items.Add(item);
         }
@@ -191,7 +192,8 @@ public sealed partial class FileService
                 showImageFilesAsIcons,
                 showFileExtensions,
                 hideShortcutExtensionWhenShowingFileExtensions,
-                loadIcons);
+                loadIcons,
+                loadShortcutTarget: false);
             item.SortOrder = sortOrder++;
             items.Add(item);
         }
@@ -307,7 +309,8 @@ public sealed partial class FileService
         bool showFileExtensions = false,
         bool hideShortcutExtensionWhenShowingFileExtensions = true,
         bool loadIcon = true,
-        bool loadFolderItemCount = true)
+        bool loadFolderItemCount = true,
+        bool loadShortcutTarget = true)
     {
         using var perfScope = PerformanceLogger.Measure("FileService.CreateWidgetItem", $"path={path}");
         var item = new WidgetItem
@@ -322,9 +325,9 @@ public sealed partial class FileService
             IsShortcut = ShortcutHelper.IsShortcutPath(path)
         };
 
-        if (item.IsShortcut)
+        if (item.IsShortcut && loadShortcutTarget)
         {
-            var info = ShortcutHelper.Resolve(path);
+            var info = ShortcutHelper.ReadStoredMetadata(path);
             if (info is not null)
             {
                 item.TargetPath = info.TargetPath;
@@ -335,7 +338,7 @@ public sealed partial class FileService
                     hideShortcutExtensionWhenShowingFileExtensions);
             }
         }
-        else
+        else if (!item.IsShortcut)
         {
             item.TargetPath = path;
         }
@@ -394,7 +397,8 @@ public sealed partial class FileService
         bool showImageFilesAsIcons = false,
         bool showFileExtensions = false,
         bool hideShortcutExtensionWhenShowingFileExtensions = true,
-        bool loadIcon = true)
+        bool loadIcon = true,
+        bool loadShortcutTarget = true)
     {
         using var perfScope = PerformanceLogger.Measure("FileService.CreateWidgetItem", $"path={entry.Path}");
         var item = new WidgetItem
@@ -412,12 +416,12 @@ public sealed partial class FileService
             LastModified = entry.LastModified ?? default,
             FolderItemCount = entry.FolderItemCount ?? 0,
             IsFolderItemCountLoaded = !entry.IsFolder || entry.FolderItemCount.HasValue,
-            TargetPath = entry.Path
+            TargetPath = entry.IsShortcut ? string.Empty : entry.Path
         };
 
-        if (item.IsShortcut)
+        if (item.IsShortcut && loadShortcutTarget)
         {
-            var info = ShortcutHelper.Resolve(entry.Path);
+            var info = ShortcutHelper.ReadStoredMetadata(entry.Path);
             if (info is not null)
             {
                 item.TargetPath = info.TargetPath;
@@ -439,7 +443,8 @@ public sealed partial class FileService
         bool showFileExtensions = false,
         bool hideShortcutExtensionWhenShowingFileExtensions = true,
         bool loadIcon = true,
-        bool loadFolderItemCount = true)
+        bool loadFolderItemCount = true,
+        bool loadShortcutTarget = true)
     {
         if (!ShouldDisplayEntry(path))
         {
@@ -453,7 +458,8 @@ public sealed partial class FileService
             showFileExtensions,
             hideShortcutExtensionWhenShowingFileExtensions,
             loadIcon,
-            loadFolderItemCount);
+            loadFolderItemCount,
+            loadShortcutTarget);
     }
 
     public static bool ShouldDisplayEntry(string path)
@@ -603,6 +609,12 @@ public sealed partial class FileService
         bool showImageFilesAsIcons = false)
     {
         IconHelper.ClearIconCache(path, hideShortcutArrowOverlay, showImageFilesAsIcons);
+    }
+
+    public Task<string> GetStoredShortcutTargetAsync(string shortcutPath)
+    {
+        return Task.Run(() =>
+            ShortcutHelper.ReadStoredMetadata(shortcutPath)?.TargetPath ?? string.Empty);
     }
 
     public async Task<string> GetShellKindAsync(WidgetItem item)
@@ -1541,6 +1553,22 @@ public sealed partial class FileService
             directory);
     }
 
+    public static bool TryIsPathUnderDirectoryResolved(
+        string candidatePath,
+        string directoryPath,
+        out bool isUnderDirectory)
+    {
+        isUnderDirectory = false;
+        if (!TryResolvePathIdentity(candidatePath, out string candidate) ||
+            !TryResolvePathIdentity(directoryPath, out string directory))
+        {
+            return false;
+        }
+
+        isUnderDirectory = IsPathUnderDirectory(candidate, directory);
+        return true;
+    }
+
     /// <summary>
     /// Resolves existing junctions and symbolic-link directories before doing
     /// overlap checks.  A lexical comparison alone treats a junction target as
@@ -1835,6 +1863,13 @@ public sealed partial class FileService
     {
         try
         {
+            if (ShortcutHelper.IsShellLinkPath(item.Path) &&
+                string.IsNullOrWhiteSpace(item.TargetPath))
+            {
+                item.TargetPath = ShortcutHelper.ReadStoredMetadata(item.Path)?.TargetPath ??
+                    string.Empty;
+            }
+
             if (ShortcutHelper.IsShellLinkPath(item.Path) && IsBrokenShortcut(item))
             {
                 var resolution = ShortcutHelper.ResolveBrokenShortcutWithShellUi(item.Path, ownerHwnd);

@@ -51,6 +51,9 @@ public partial class SettingsViewModel
 
             AutoCheckForUpdates = settings.AutoCheckForUpdates;
             DoubleClickToOpen = settings.DoubleClickToOpen;
+            SelectedFileWidgetFolderOpenBehavior =
+                FileWidgetFolderOpenBehaviorNames.NormalizeGlobal(
+                    settings.FileWidgetFolderOpenBehavior);
             DefaultWidth = settings.DefaultWidgetWidth;
             DefaultHeight = settings.DefaultWidgetHeight;
             HideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;

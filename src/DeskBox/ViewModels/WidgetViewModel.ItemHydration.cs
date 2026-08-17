@@ -59,10 +59,11 @@ public partial class WidgetViewModel
         return candidate;
     }
 
-    private async Task LoadFolderContentsAsync(
+    private async Task<bool> LoadFolderContentsAsync(
         string folderPath,
         bool clearIconCacheBeforeHydration = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action? beforeItemsReplaced = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var perfScope = PerformanceLogger.Measure(
@@ -73,23 +74,27 @@ public partial class WidgetViewModel
         var (userDesktop, publicDesktop) = FileService.GetDesktopPaths();
         if (folderPath.Equals(userDesktop, StringComparison.OrdinalIgnoreCase))
         {
-            FolderEnumerationResult userResult = await _fileService.EnumerateDirectoryForRefreshAsync(
-                userDesktop,
-                hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
-                showImageFilesAsIcons: _showImageFilesAsIcons,
-                showFileExtensions: _showFileExtensions,
-                hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
-                loadIcons: false,
-                loadFolderItemCounts: false).WaitAsync(cancellationToken);
+            FolderEnumerationResult userResult = await Task.Run(
+                () => _fileService.EnumerateDirectoryForRefreshAsync(
+                    userDesktop,
+                    hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
+                    showImageFilesAsIcons: _showImageFilesAsIcons,
+                    showFileExtensions: _showFileExtensions,
+                    hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
+                    loadIcons: false,
+                    loadFolderItemCounts: false),
+                cancellationToken).WaitAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            FolderEnumerationResult publicResult = await _fileService.EnumerateDirectoryForRefreshAsync(
-                publicDesktop,
-                hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
-                showImageFilesAsIcons: _showImageFilesAsIcons,
-                showFileExtensions: _showFileExtensions,
-                hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
-                loadIcons: false,
-                loadFolderItemCounts: false).WaitAsync(cancellationToken);
+            FolderEnumerationResult publicResult = await Task.Run(
+                () => _fileService.EnumerateDirectoryForRefreshAsync(
+                    publicDesktop,
+                    hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
+                    showImageFilesAsIcons: _showImageFilesAsIcons,
+                    showFileExtensions: _showFileExtensions,
+                    hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
+                    loadIcons: false,
+                    loadFolderItemCounts: false),
+                cancellationToken).WaitAsync(cancellationToken);
 
             if (!FolderSnapshotStatusPolicy.IsSuccessful(userResult.Status) ||
                 !FolderSnapshotStatusPolicy.IsSuccessful(publicResult.Status))
@@ -97,7 +102,7 @@ public partial class WidgetViewModel
                 App.Log(
                     $"[FolderRefresh] Desktop snapshot incomplete; retaining existing items " +
                     $"user={userResult.Status} public={publicResult.Status}");
-                return;
+                return false;
             }
 
             items = userResult.Items.Concat(publicResult.Items)
@@ -109,19 +114,21 @@ public partial class WidgetViewModel
         }
         else
         {
-            FolderEnumerationResult result = await _fileService.EnumerateDirectoryForRefreshAsync(
-                folderPath,
-                hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
-                showImageFilesAsIcons: _showImageFilesAsIcons,
-                showFileExtensions: _showFileExtensions,
-                hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
-                loadIcons: false,
-                loadFolderItemCounts: false).WaitAsync(cancellationToken);
+            FolderEnumerationResult result = await Task.Run(
+                () => _fileService.EnumerateDirectoryForRefreshAsync(
+                    folderPath,
+                    hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
+                    showImageFilesAsIcons: _showImageFilesAsIcons,
+                    showFileExtensions: _showFileExtensions,
+                    hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
+                    loadIcons: false,
+                    loadFolderItemCounts: false),
+                cancellationToken).WaitAsync(cancellationToken);
             if (!FolderSnapshotStatusPolicy.IsSuccessful(result.Status))
             {
                 App.Log(
                     $"[FolderRefresh] Snapshot {result.Status}; retaining existing items for '{folderPath}'");
-                return;
+                return false;
             }
 
             items = result.Items;
@@ -129,6 +136,8 @@ public partial class WidgetViewModel
 
         cancellationToken.ThrowIfCancellationRequested();
         ApplyPersistedAddedTimes(items);
+        cancellationToken.ThrowIfCancellationRequested();
+        beforeItemsReplaced?.Invoke();
         SyncFolderItems(items);
         SortItems();
         if (clearIconCacheBeforeHydration)
@@ -137,6 +146,7 @@ public partial class WidgetViewModel
         }
 
         StartItemHydration();
+        return true;
     }
 
     private void SyncFolderItems(IReadOnlyList<WidgetItem> refreshedItems)
@@ -238,7 +248,7 @@ public partial class WidgetViewModel
         int generation = Interlocked.Increment(ref _itemHydrationGeneration);
         _ = HydrateIconsWithRetryAsync(generation);
         _ = HydrateFolderItemCountsAsync(generation);
-        _ = HydrateShellKindsAsync(generation);
+        _ = HydrateShortcutTargetsThenShellKindsAsync(generation);
     }
 
     private void ClearCurrentItemIconCache()
@@ -388,6 +398,52 @@ public partial class WidgetViewModel
         }
     }
 
+    private async Task HydrateShortcutTargetsThenShellKindsAsync(int generation)
+    {
+        await HydrateShortcutTargetsAsync(generation);
+        await HydrateShellKindsAsync(generation);
+    }
+
+    private async Task HydrateShortcutTargetsAsync(int generation)
+    {
+        var shortcuts = Items
+            .Where(item => item.IsShortcut)
+            .OrderBy(item => item.SortOrder)
+            .ToList();
+
+        for (int start = 0; start < shortcuts.Count; start += ShortcutTargetHydrationBatchSize)
+        {
+            if (generation != Volatile.Read(ref _itemHydrationGeneration))
+            {
+                return;
+            }
+
+            var batch = shortcuts
+                .Skip(start)
+                .Take(ShortcutTargetHydrationBatchSize)
+                .Where(item => Items.Contains(item) && !string.IsNullOrWhiteSpace(item.Path))
+                .Select(async item =>
+                {
+                    string expectedPath = item.Path;
+                    string targetPath = await _fileService.GetStoredShortcutTargetAsync(expectedPath);
+                    return (Item: item, ExpectedPath: expectedPath, TargetPath: targetPath);
+                })
+                .ToArray();
+            var results = await Task.WhenAll(batch);
+
+            foreach (var result in results)
+            {
+                SetShortcutTarget(
+                    result.Item,
+                    result.TargetPath,
+                    result.ExpectedPath,
+                    generation);
+            }
+
+            await Task.Yield();
+        }
+    }
+
     private async Task HydrateShellKindsAsync(int generation)
     {
         var items = Items
@@ -474,6 +530,30 @@ public partial class WidgetViewModel
                 item.IsFolderItemCountLoaded = true;
             }
         });
+    }
+
+    private void SetShortcutTarget(
+        WidgetItem item,
+        string targetPath,
+        string expectedPath,
+        int generation)
+    {
+        void Apply()
+        {
+            if (CanApplyHydrationResult(item, expectedPath, generation))
+            {
+                item.TargetPath = targetPath;
+            }
+        }
+
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            Apply();
+        }
+        else
+        {
+            _dispatcherQueue.TryEnqueue(Apply);
+        }
     }
 
     private void MarkFolderItemCountUnavailable(

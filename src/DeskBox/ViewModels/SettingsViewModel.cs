@@ -97,6 +97,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _selectedTodoLayoutMode = SettingsService.TodoLayoutModeAuto;
     private string _selectedAttachmentStorageMode = SettingsService.AttachmentStorageModeLink;
     private string _selectedManagedDropAction = SettingsService.ManagedDropActionMove;
+    private string _selectedFileWidgetFolderOpenBehavior =
+        FileWidgetFolderOpenBehaviorNames.Explorer;
     private string _selectedTodoDefaultFilter = SettingsService.TodoDefaultFilterAll;
     private string _selectedTodoTabStyle = SettingsService.WidgetTabStyleButton;
     private int _selectedTodoReminderOffsetMinutes = SettingsService.DefaultTodoReminderOffsetMinutes;
@@ -263,6 +265,9 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _autoStart = StartupService.IsEnabled();
         _autoCheckForUpdates = settings.AutoCheckForUpdates;
         _doubleClickToOpen = settings.DoubleClickToOpen;
+        _selectedFileWidgetFolderOpenBehavior =
+            FileWidgetFolderOpenBehaviorNames.NormalizeGlobal(
+                settings.FileWidgetFolderOpenBehavior);
         _defaultWidth = settings.DefaultWidgetWidth;
         _defaultHeight = settings.DefaultWidgetHeight;
         _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;

@@ -39,6 +39,7 @@ public partial class WidgetViewModel
             ? _localizationService.Format("Widget.Empty.ManagedText", managedAction, mappedFolderName)
             : _localizationService.Format("Widget.Empty.MappedText", mappedFolderName);
         OnPropertyChanged(nameof(SortModeLabel));
+        UpdateFolderNavigationPresentation();
     }
 
     private string GetManagedActionText()
@@ -192,6 +193,7 @@ public partial class WidgetViewModel
 
     private async Task ApplySettingsChangesAsync()
     {
+        await RefreshFolderOpenBehaviorAsync();
         int previousIconDecodePixelWidth = _iconDecodePixelWidth;
         WidgetOpacity = Math.Clamp(
             _settingsService.Settings.WidgetOpacity,

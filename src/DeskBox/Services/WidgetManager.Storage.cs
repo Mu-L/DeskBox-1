@@ -520,7 +520,7 @@ public sealed partial class WidgetManager
 
     private static string? GetDeskBoxMappedWidgetShortcutId(string shortcutPath)
     {
-        var shortcut = ShortcutHelper.Resolve(shortcutPath);
+        var shortcut = ShortcutHelper.ReadStoredMetadata(shortcutPath);
         if (shortcut?.Description.StartsWith(ManagedShortcutDescriptionPrefix, StringComparison.Ordinal) != true)
         {
             return null;

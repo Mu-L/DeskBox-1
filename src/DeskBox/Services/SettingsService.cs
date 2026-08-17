@@ -520,6 +520,7 @@ settings.WeatherRefreshIntervalMinutes = 60;
         settings.GlobalHotkeyModifiers = DefaultGlobalHotkeyModifiers;
         settings.GlobalHotkeyKey = DefaultGlobalHotkeyKey;
         settings.DoubleClickToOpen = true;
+        settings.FileWidgetFolderOpenBehavior = FileWidgetFolderOpenBehaviorNames.Explorer;
         settings.HideShortcutArrowOverlay = true;
         settings.ResizeSnapEnabled = true;
 settings.ShowListItemDetails = false;
@@ -1895,6 +1896,18 @@ settings.FocusClickedWidgetOnRaise = false;
     {
         bool changed = false;
 
+        string normalizedFolderOpenBehavior =
+            FileWidgetFolderOpenBehaviorNames.NormalizeGlobal(
+                settings.FileWidgetFolderOpenBehavior);
+        if (!string.Equals(
+                settings.FileWidgetFolderOpenBehavior,
+                normalizedFolderOpenBehavior,
+                StringComparison.Ordinal))
+        {
+            settings.FileWidgetFolderOpenBehavior = normalizedFolderOpenBehavior;
+            changed = true;
+        }
+
         changed |= WidgetGroupSettings.Normalize(settings);
         if (!settings.WidgetGroupsEnabled)
         {
@@ -1982,6 +1995,11 @@ settings.FocusClickedWidgetOnRaise = false;
             }
 
             if (WidgetFileStackSettings.NormalizeOverrides(widget))
+            {
+                changed = true;
+            }
+
+            if (FileWidgetFolderOpenBehaviorNames.NormalizeOverride(widget))
             {
                 changed = true;
             }

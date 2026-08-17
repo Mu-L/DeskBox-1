@@ -121,6 +121,7 @@ public sealed partial class FileSurfaceContent :
         ToolTipService.SetToolTip(CutSelectionButton, CutSelectionButton.Label);
         ToolTipService.SetToolTip(DeleteSelectionButton, DeleteSelectionButton.Label);
         ToolTipService.SetToolTip(RenameSelectionButton, RenameSelectionButton.Label);
+        InitializeFolderNavigationPresentation();
         ViewModel.Items.CollectionChanged += Items_CollectionChanged;
         ActualThemeChanged += FileSurfaceContent_ActualThemeChanged;
         Loaded += OnLoaded;
@@ -465,7 +466,7 @@ public sealed partial class FileSurfaceContent :
         await RunAsync(PickAndImportFilesAsync);
     }
 
-    private void Items_ItemClick(object sender, ItemClickEventArgs e)
+    private async void Items_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is WidgetStackItem stack)
         {
@@ -487,7 +488,7 @@ public sealed partial class FileSurfaceContent :
             !controlPressed &&
             !shiftPressed)
         {
-            ViewModel.OpenItem(item);
+            await ActivateItemAsync(item);
         }
     }
 
@@ -523,7 +524,7 @@ public sealed partial class FileSurfaceContent :
     }
 
 
-    private void Items_DoubleTapped(
+    private async void Items_DoubleTapped(
         object sender,
         DoubleTappedRoutedEventArgs e)
     {
@@ -539,7 +540,7 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        ViewModel.OpenItem(item);
+        await ActivateItemAsync(item);
         e.Handled = true;
     }
 
@@ -1527,7 +1528,7 @@ public sealed partial class FileSurfaceContent :
         if (HasSurfacePathDropData(e.DataView))
         {
             string[] synchronousPaths = GetPackagePaths(e.DataView);
-            if (IsUnsafeFolderDrop(synchronousPaths, ViewModel.MappedFolderPath))
+            if (IsUnsafeFolderDrop(synchronousPaths, ViewModel.CurrentFolderPath))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 e.DragUIOverride.IsGlyphVisible = false;
@@ -2338,6 +2339,16 @@ public sealed partial class FileSurfaceContent :
         CoreVirtualKeyStates shiftState =
             InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
         bool shift = shiftState.HasFlag(CoreVirtualKeyStates.Down);
+        CoreVirtualKeyStates menuState =
+            InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu);
+        bool alt = menuState.HasFlag(CoreVirtualKeyStates.Down);
+        if (alt && e.Key == VirtualKey.Up && ViewModel.CanNavigateUp)
+        {
+            e.Handled = true;
+            await NavigateUpFromSurfaceAsync();
+            return;
+        }
+
         if (control && e.Key == VirtualKey.A)
         {
             e.Handled = true;
@@ -2408,7 +2419,7 @@ public sealed partial class FileSurfaceContent :
             GetSelectedItems().FirstOrDefault() is { } openTarget)
         {
             e.Handled = true;
-            ViewModel.OpenItem(openTarget);
+            await ActivateItemAsync(openTarget);
             return;
         }
 
@@ -2661,11 +2672,11 @@ public sealed partial class FileSurfaceContent :
         SelectionCommandBar.Visibility = Visibility.Collapsed;
     }
 
-    private void OpenSelectionButton_Click(object sender, RoutedEventArgs e)
+    private async void OpenSelectionButton_Click(object sender, RoutedEventArgs e)
     {
         if (GetSelectedItems().SingleOrDefault() is { } item)
         {
-            ViewModel.OpenItem(item);
+            await ActivateItemAsync(item);
         }
     }
 

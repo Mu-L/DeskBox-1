@@ -30,9 +30,10 @@ public partial class WidgetViewModel
             EnsureFolderBackedConfig();
             cancellationToken.ThrowIfCancellationRequested();
             MappedFolderPath = Config.MappedFolderPath;
-            await ConfigureFolderWatchersAsync(MappedFolderPath, cancellationToken);
+            SetCurrentFolderPath(MappedFolderPath);
+            await ConfigureFolderWatchersAsync(CurrentFolderPath, cancellationToken);
             await ReloadFolderContentsAsync(
-                MappedFolderPath!,
+                CurrentFolderPath!,
                 cancellationToken: cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             IsInitialized = !_isDisposed;
@@ -72,6 +73,12 @@ public partial class WidgetViewModel
 
         EnsureFolderBackedConfig();
         MappedFolderPath = Config.MappedFolderPath;
+        if (string.IsNullOrWhiteSpace(CurrentFolderPath))
+        {
+            SetCurrentFolderPath(MappedFolderPath);
+        }
+
+        string destinationFolderPath = CurrentFolderPath!;
         bool shouldMove = moveWhenMapped ?? ShouldMoveManagedItems();
         var historyEntry = await _organizerService.OrganizeDropAsync(
             Config,
@@ -81,13 +88,14 @@ public partial class WidgetViewModel
             useShellProgress,
             ownerWindowHandle,
             progress,
-            cancellationToken);
+            cancellationToken,
+            destinationFolderPath);
 
         if (shouldMove)
         {
             foreach (var sourcePath in historyEntry.Items.Select(item => item.SourcePath))
             {
-                if (Path.GetDirectoryName(sourcePath)?.Equals(MappedFolderPath, StringComparison.OrdinalIgnoreCase) == true)
+                if (Path.GetDirectoryName(sourcePath)?.Equals(destinationFolderPath, StringComparison.OrdinalIgnoreCase) == true)
                 {
                     RemoveItemByPath(sourcePath);
                 }
@@ -234,11 +242,12 @@ public partial class WidgetViewModel
         EnsureFolderBackedConfig();
 
         MappedFolderPath = Config.MappedFolderPath;
+        SetCurrentFolderPath(ResolveCurrentFolderForMappedRoot());
         OnPropertyChanged(nameof(FollowsDefaultStoragePath));
 
-        await ConfigureFolderWatchersAsync(MappedFolderPath);
+        await ConfigureFolderWatchersAsync(CurrentFolderPath);
         await ReloadFolderContentsAsync(
-            MappedFolderPath!,
+            CurrentFolderPath!,
             clearIconCacheBeforeHydration: true);
         UpdateDependentProperties();
     }
@@ -253,26 +262,28 @@ public partial class WidgetViewModel
     /// </summary>
     public async Task RefreshFolderContentsAsync()
     {
-        if (_isDisposed || string.IsNullOrEmpty(MappedFolderPath))
+        if (_isDisposed || string.IsNullOrEmpty(CurrentFolderPath))
         {
             return;
         }
 
-        await ReloadFolderContentsAsync(MappedFolderPath);
+        await ReloadFolderContentsAsync(CurrentFolderPath);
         if (!_isDisposed)
         {
             UpdateDependentProperties();
         }
     }
 
-    private async Task ReloadFolderContentsAsync(
+    private async Task<bool> ReloadFolderContentsAsync(
         string expectedFolderPath,
         bool clearIconCacheBeforeHydration = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action? beforeItemsReplaced = null,
+        bool allowFolderPathTransition = false)
     {
         if (_isDisposed)
         {
-            return;
+            return false;
         }
 
         await _folderRefreshGate.WaitAsync(cancellationToken);
@@ -280,19 +291,20 @@ public partial class WidgetViewModel
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (_isDisposed ||
-                string.IsNullOrEmpty(MappedFolderPath) ||
-                !string.Equals(
-                    Path.GetFullPath(MappedFolderPath),
+                string.IsNullOrEmpty(CurrentFolderPath) ||
+                (!allowFolderPathTransition && !string.Equals(
+                    Path.GetFullPath(CurrentFolderPath),
                     Path.GetFullPath(expectedFolderPath),
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase)))
             {
-                return;
+                return false;
             }
 
-            await LoadFolderContentsAsync(
-                MappedFolderPath,
+            return await LoadFolderContentsAsync(
+                expectedFolderPath,
                 clearIconCacheBeforeHydration,
-                cancellationToken);
+                cancellationToken,
+                beforeItemsReplaced);
         }
         finally
         {
@@ -337,6 +349,7 @@ public partial class WidgetViewModel
         Config.Items.Clear();
         ResetAddedAtTracking();
         MappedFolderPath = normalizedPath;
+        SetCurrentFolderPath(normalizedPath);
         OnPropertyChanged(nameof(FollowsDefaultStoragePath));
 
         if (App.Current?.WidgetManager is { } widgetManager)
@@ -411,7 +424,8 @@ public partial class WidgetViewModel
             showFileExtensions: _showFileExtensions,
             hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
             loadIcon: false,
-            loadFolderItemCount: false);
+            loadFolderItemCount: false,
+            loadShortcutTarget: false);
         ApplyRuntimeItemData(item, refreshedItem);
         UpdateStackMemberOverridePath(
             sourcePath,
@@ -497,6 +511,7 @@ public partial class WidgetViewModel
             await widgetManager.RenameWidgetAsync(Config.Id, newName);
             Name = Config.Name;
             MappedFolderPath = Config.MappedFolderPath;
+            SetCurrentFolderPath(ResolveCurrentFolderForMappedRoot());
             OnPropertyChanged(nameof(FollowsDefaultStoragePath));
             return;
         }

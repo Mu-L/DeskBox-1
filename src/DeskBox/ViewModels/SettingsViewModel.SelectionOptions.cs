@@ -200,6 +200,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableThemeOptions));
         OnPropertyChanged(nameof(AvailableAccentColorSourceOptions));
         OnPropertyChanged(nameof(AvailableFileOpenMethodOptions));
+        OnPropertyChanged(nameof(AvailableFileWidgetFolderOpenBehaviorOptions));
         OnPropertyChanged(nameof(AvailableShowDesktopBehaviorOptions));
         OnPropertyChanged(nameof(AvailableWeatherLocationModeOptions));
         OnPropertyChanged(nameof(AvailableFileStackModeOptions));

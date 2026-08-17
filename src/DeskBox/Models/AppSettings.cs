@@ -377,6 +377,12 @@ public class AppSettings
     public bool DoubleClickToOpen { get; set; } = true;
 
     /// <summary>
+    /// How child folders are opened from file widgets.
+    /// Valid values: <c>"Explorer"</c>, <c>"Embedded"</c>.
+    /// </summary>
+    public string FileWidgetFolderOpenBehavior { get; set; } = "Explorer";
+
+    /// <summary>
     /// Whether shortcut icons should hide the arrow overlay inside DeskBox.
     /// </summary>
     public bool HideShortcutArrowOverlay { get; set; } = true;

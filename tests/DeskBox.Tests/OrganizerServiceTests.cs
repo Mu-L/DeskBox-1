@@ -81,6 +81,55 @@ public sealed class OrganizerServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task OrganizeDropAsync_UsesCurrentChildFolderDestination()
+    {
+        string sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "source-child-target")).FullName;
+        string mappedRoot = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "widget-child-target")).FullName;
+        string childFolder = Directory.CreateDirectory(
+            Path.Combine(mappedRoot, "child")).FullName;
+        string sourcePath = Path.Combine(sourceDirectory, "note.txt");
+        File.WriteAllText(sourcePath, "content");
+        WidgetConfig widget = CreateWidget(mappedRoot);
+
+        OrganizationHistoryEntry history =
+            await _organizerService.OrganizeDropAsync(
+                widget,
+                "Widget",
+                [sourcePath],
+                move: false,
+                destinationFolderPath: childFolder);
+
+        Assert.True(File.Exists(Path.Combine(childFolder, "note.txt")));
+        Assert.Equal(
+            childFolder,
+            Path.GetDirectoryName(history.Items.Single().DestinationPath));
+    }
+
+    [Fact]
+    public async Task OrganizeDropAsync_RejectsDestinationOutsideMappedRoot()
+    {
+        string sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "source-outside-target")).FullName;
+        string mappedRoot = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "widget-outside-target")).FullName;
+        string outsideFolder = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "outside-target")).FullName;
+        string sourcePath = Path.Combine(sourceDirectory, "note.txt");
+        File.WriteAllText(sourcePath, "content");
+        WidgetConfig widget = CreateWidget(mappedRoot);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _organizerService.OrganizeDropAsync(
+                widget,
+                "Widget",
+                [sourcePath],
+                move: false,
+                destinationFolderPath: outsideFolder));
+    }
+
+    [Fact]
     public async Task UndoLatestAsync_RestoresMovedFileAndMarksHistoryUndone()
     {
         string sourceDirectory = Directory.CreateDirectory(Path.Combine(_tempRoot, "source")).FullName;

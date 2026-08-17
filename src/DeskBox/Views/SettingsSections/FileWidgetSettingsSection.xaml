@@ -83,6 +83,28 @@
                 </Grid>
             </Border>
 
+            <Border Style="{StaticResource SettingsGroupStyle}">
+                <Grid
+                    MinHeight="{StaticResource SettingsRowMinHeight}"
+                    Padding="{StaticResource SettingsRowPadding}"
+                    ColumnDefinitions="*,Auto"
+                    ColumnSpacing="12">
+                    <Grid Grid.Column="0" ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
+                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE838;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.FileWidget.FolderOpenBehavior.Title" />
+                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.FileWidget.FolderOpenBehavior.Description" />
+                        </StackPanel>
+                    </Grid>
+                    <ComboBox
+                        Grid.Column="1"
+                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                        VerticalAlignment="Center"
+                        ItemsSource="{Binding AvailableFileWidgetFolderOpenBehaviorOptions}"
+                        controls:SettingsComboBox.Value="{Binding SelectedFileWidgetFolderOpenBehavior, Mode=TwoWay}" />
+                </Grid>
+            </Border>
+
         </StackPanel>
     </StackPanel>
 </UserControl>
