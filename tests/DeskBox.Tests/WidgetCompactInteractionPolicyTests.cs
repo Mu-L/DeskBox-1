@@ -183,6 +183,9 @@ public sealed class WidgetCompactInteractionPolicyTests
             snapshot with { InteractionDepth = 1 }));
         Assert.False(WidgetCompactInteractionPolicy.CanAutoCollapse(
             WidgetCollapseBehavior.Smart,
+            snapshot with { HasBlockingSurface = true }));
+        Assert.False(WidgetCompactInteractionPolicy.CanAutoCollapse(
+            WidgetCollapseBehavior.Smart,
             snapshot with { IsDropInside = true }));
         Assert.False(WidgetCompactInteractionPolicy.CanAutoCollapse(
             WidgetCollapseBehavior.Smart,

@@ -134,6 +134,8 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             FileSurfaceContent file =>
                 CreateFileCompactPresentation(file, contentMode),
             TodoWidgetContentAdapter todo => CreateTodoCompactPresentation(todo, contentMode, localization),
+            GlanceWidgetContentAdapter glance =>
+                CreateGlanceCompactPresentation(glance),
             MusicWidgetContentAdapter music =>
                 CreateMusicCompactPresentation(music, contentMode),
             QuickCaptureSurfaceContent quickCapture =>
@@ -148,6 +150,64 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
                 EnableMarquee: true,
                 LiveStateKey: _titleViewModel.DisplayName)
         };
+    }
+
+    private WidgetCompactPresentation CreateGlanceCompactPresentation(
+        GlanceWidgetContentAdapter glance)
+    {
+        GlanceWidgetViewModel viewModel = glance.ViewModel;
+        string title = viewModel.ShowTime && !string.IsNullOrWhiteSpace(viewModel.TimeText)
+            ? viewModel.TimeText
+            : viewModel.ShowDate && !string.IsNullOrWhiteSpace(viewModel.DateText)
+                ? viewModel.DateText
+                : viewModel.ShowWeekday && !string.IsNullOrWhiteSpace(viewModel.WeekdayText)
+                    ? viewModel.WeekdayText
+                    : viewModel.HasTraditionalCalendar
+                        ? viewModel.TraditionalCalendarTitle
+                        : string.Empty;
+
+        var summaryParts = new List<string>(3);
+        if (viewModel.ShowDate &&
+            !string.IsNullOrWhiteSpace(viewModel.DateText) &&
+            !string.Equals(title, viewModel.DateText, StringComparison.Ordinal))
+        {
+            summaryParts.Add(viewModel.DateText);
+        }
+        if (viewModel.ShowWeekday && !string.IsNullOrWhiteSpace(viewModel.WeekdayText))
+        {
+            if (!string.Equals(title, viewModel.WeekdayText, StringComparison.Ordinal))
+            {
+                summaryParts.Add(viewModel.WeekdayText);
+            }
+        }
+        if (viewModel.HasTraditionalCalendar &&
+            !string.IsNullOrWhiteSpace(viewModel.TraditionalCalendarTitle) &&
+            !string.Equals(title, viewModel.TraditionalCalendarTitle, StringComparison.Ordinal))
+        {
+            summaryParts.Add(viewModel.TraditionalCalendarTitle);
+        }
+
+        string summary = string.Join(" · ", summaryParts);
+        bool hasText = !string.IsNullOrWhiteSpace(title) || !string.IsNullOrWhiteSpace(summary);
+        ImageSource? backgroundImage = glance.GetCompactBackgroundImage();
+        return new WidgetCompactPresentation(
+            title,
+            summary,
+            _descriptor.DefaultGlyph,
+            string.Empty,
+            Thumbnail: backgroundImage,
+            UseStackedText: true,
+            EnableMarquee: true,
+            UseFullBleedBackground: backgroundImage is not null,
+            LiveStateKey: string.Join(
+                "|",
+                viewModel.TimeText,
+                viewModel.DateText,
+                viewModel.WeekdayText,
+                viewModel.TraditionalCalendarTitle,
+                viewModel.CurrentImagePath),
+            FullBleedOverlayOpacity: hasText ? viewModel.ReadabilityStrengthOpacity : 0,
+            UseUniformFullBleedOverlay: true);
     }
 
     private WidgetCompactPresentation CreateSearchCompactPresentation(
@@ -517,16 +577,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     {
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
-        var baseColor = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
-            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-
-        return BuildAccentSurfaceColor(
-            isDark,
-            accentColor,
-            baseColor,
-            accentMix: isDark ? 0.08 : 0.16,
-            overlayMix: isDark ? 0.04 : 0.08);
+        return WidgetMaterialVisualCalculator.BuildContentTintColor(isDark, accentColor);
     }
 
     // ── Virtual hooks ──────────────────────────────────────────
@@ -542,7 +593,10 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         // Simplified layering: only apply surface color overlay for Solid mode.
         if (materialType is SettingsService.WidgetMaterialTypeSolid)
         {
-            var surfaceColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
+            var surfaceColor = WidgetMaterialVisualCalculator.BuildContentSolidSurfaceColor(
+                isDark,
+                accentColor,
+                surfaceOpacity);
             ContentWidgetShell.BackgroundSurface.Background = GetOrUpdateSolidColorBrush(
                 ContentWidgetShell.BackgroundSurface.Background,
                 surfaceColor);
@@ -962,6 +1016,7 @@ IsHideAnimationRunning = true;
         {
             FileSurfaceContent file => file.ViewModel,
             TodoWidgetContentAdapter todo => todo.ViewModel,
+            GlanceWidgetContentAdapter glance => glance.ViewModel,
             MusicWidgetContentAdapter music => music.ViewModel,
             WeatherWidgetContentAdapter weather => weather.ViewModel,
             QuickCaptureSurfaceContent quickCapture => quickCapture.ViewModel,
@@ -1070,6 +1125,18 @@ IsHideAnimationRunning = true;
                 nameof(MusicWidgetViewModel.Duration) or
                 nameof(MusicWidgetViewModel.SeekMaximum) or
                 nameof(MusicWidgetViewModel.SeekValue),
+            WidgetKind.Glance => propertyName is
+                nameof(GlanceWidgetViewModel.TimeText) or
+                nameof(GlanceWidgetViewModel.DateText) or
+                nameof(GlanceWidgetViewModel.WeekdayText) or
+                nameof(GlanceWidgetViewModel.TraditionalCalendarTitle) or
+                nameof(GlanceWidgetViewModel.HasTraditionalCalendar) or
+                nameof(GlanceWidgetViewModel.CurrentImagePath) or
+                nameof(GlanceWidgetViewModel.ReadabilityStrengthOpacity) or
+                nameof(GlanceWidgetViewModel.ReadabilityOpacity) or
+                nameof(GlanceWidgetViewModel.ShowTime) or
+                nameof(GlanceWidgetViewModel.ShowDate) or
+                nameof(GlanceWidgetViewModel.ShowWeekday),
             _ => true
         };
     }
@@ -1168,60 +1235,6 @@ IsHideAnimationRunning = true;
 
     // ── Drag handlers (delegate to base) ───────────────────────
 
-    private static Windows.UI.Color BuildFrostedSurfaceColor(
-        bool isDark,
-        Windows.UI.Color accentColor,
-        double surfaceOpacity)
-    {
-        double materialOpacity = isDark
-            ? Math.Clamp(surfaceOpacity * 0.78, 0.10, 0.82)
-            : Math.Clamp(surfaceOpacity * 0.78, 0.0, 0.78);
-
-        return ApplySurfaceOpacity(
-            BuildAccentSurfaceColor(
-                isDark,
-                accentColor,
-                isDark
-                    ? ColorHelper.FromArgb(0xFF, 0x21, 0x24, 0x2A)
-                    : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
-                accentMix: isDark ? 0.18 : 0.18,
-                overlayMix: isDark ? 0.15 : 0.04),
-            materialOpacity);
-    }
-
-    private static Windows.UI.Color BuildAccentSurfaceColor(
-        bool isDark,
-        Windows.UI.Color accentColor,
-        Windows.UI.Color baseColor,
-        double accentMix,
-        double overlayMix)
-    {
-        var mixed = BlendColors(baseColor, accentColor, accentMix);
-        var overlay = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x2B, 0x2F, 0x36)
-            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        return BlendColors(mixed, overlay, overlayMix);
-    }
-
-    private static Windows.UI.Color ApplySurfaceOpacity(Windows.UI.Color color, double opacity)
-    {
-        return Windows.UI.Color.FromArgb(
-            (byte)Math.Clamp(Math.Round(opacity * 255), 0, 255),
-            color.R,
-            color.G,
-            color.B);
-    }
-
-    private static Windows.UI.Color BlendColors(Windows.UI.Color from, Windows.UI.Color to, double amount)
-    {
-        amount = Math.Clamp(amount, 0.0, 1.0);
-        return Windows.UI.Color.FromArgb(
-            0xFF,
-            (byte)Math.Round(from.R + ((to.R - from.R) * amount)),
-            (byte)Math.Round(from.G + ((to.G - from.G) * amount)),
-            (byte)Math.Round(from.B + ((to.B - from.B) * amount)));
-    }
-
     private static Windows.UI.Color WithAlpha(Windows.UI.Color color, byte alpha)
     {
         return Windows.UI.Color.FromArgb(alpha, color.R, color.G, color.B);
@@ -1256,6 +1269,7 @@ IsHideAnimationRunning = true;
                         WidgetKind.Weather => "Weather.Title",
                         WidgetKind.Tags => "Tags.Title",
                         WidgetKind.Music => "Music.Title",
+                        WidgetKind.Glance => "Glance.Title",
                         WidgetKind.Search => "Search.Title",
                         WidgetKind.SystemMonitor => "SystemMonitor.Title",
                         _ => ""

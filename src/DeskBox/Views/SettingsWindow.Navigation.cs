@@ -1,3 +1,4 @@
+using DeskBox.Controls;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -56,9 +57,9 @@ public sealed partial class SettingsWindow
             ["TodoSettings"] = TodoSettingsSection,
             ["MusicSettings"] = MusicSettingsSection,
             ["WeatherSettings"] = WeatherSettingsSection,
+            ["GlanceSettings"] = GlanceSettingsSection,
             ["SearchSettings"] = SearchSettingsSection,
             ["Interaction"] = InteractionSection,
-            ["InteractionHotkeySettings"] = InteractionHotkeySettingsSection,
             ["InteractionWindowSettings"] = InteractionWindowSettingsSection,
             ["ManagedStorage"] = ManagedStorageSection,
             ["Maintenance"] = MaintenanceSection,
@@ -515,6 +516,10 @@ public sealed partial class SettingsWindow
         {
             SearchSettingsSection.RefreshFromSettings();
         }
+        if (sectionTag == "GlanceSettings")
+        {
+            _ = GlanceSettingsSection.RefreshFromStoreAsync();
+        }
         if (sectionTag == "ManagedStorage")
         {
             RefreshManagedStorageFolderList();
@@ -531,10 +536,6 @@ public sealed partial class SettingsWindow
         if (sectionTag == "BackupRestoreSettings")
         {
             _ = RefreshBackupSnapshotInventoryAsync();
-        }
-        if (sectionTag == "InteractionHotkeySettings")
-        {
-            RefreshSearchHotkeyControls();
         }
         SettingsNavigationView.IsBackButtonVisible = isNestedSection
             ? NavigationViewBackButtonVisible.Visible
@@ -991,7 +992,7 @@ public sealed partial class SettingsWindow
             return;
         }
 
-        ShowFeatureMultiSelectMenu(
+        SettingsMultiSelectMenu.Show(
             button,
             ViewModel.AvailableQuickCaptureDefaultViews,
             ViewModel.GetQuickCaptureTabDisplayName,
@@ -1007,7 +1008,7 @@ public sealed partial class SettingsWindow
             return;
         }
 
-        ShowFeatureMultiSelectMenu(
+        SettingsMultiSelectMenu.Show(
             button,
             ViewModel.AvailableTodoDefaultFilters,
             ViewModel.GetTodoTabDisplayName,
@@ -1023,7 +1024,7 @@ public sealed partial class SettingsWindow
             return;
         }
 
-        ShowFeatureMultiSelectMenu(
+        SettingsMultiSelectMenu.Show(
             button,
             ["Stats", "ClearCompleted"],
             ViewModel.GetTodoFooterDisplayOptionName,
@@ -1032,48 +1033,20 @@ public sealed partial class SettingsWindow
             ViewModel.ToggleTodoFooterDisplayOption);
     }
 
-    private static void ShowFeatureMultiSelectMenu(
-        DropDownButton button,
-        IReadOnlyList<string> values,
-        Func<string, string> displayValue,
-        Func<string, bool> isSelected,
-        Func<string, bool> canToggle,
-        Action<string> toggle)
+    private void WeatherDisplayOptionsDropDown_Click(object sender, RoutedEventArgs e)
     {
-        double flyoutWidth = Math.Max(220, Math.Max(button.ActualWidth, button.MinWidth));
-        var flyout = new MenuFlyout
+        if (sender is not DropDownButton button)
         {
-            ShouldConstrainToRootBounds = false
-        };
-
-        foreach (string value in values)
-        {
-            var item = new ToggleMenuFlyoutItem
-            {
-                Tag = value,
-                Text = displayValue(value),
-                IsChecked = isSelected(value),
-                IsEnabled = canToggle(value),
-                MinWidth = flyoutWidth
-            };
-            item.Click += (_, _) =>
-            {
-                toggle(value);
-                foreach (ToggleMenuFlyoutItem menuItem in flyout.Items.OfType<ToggleMenuFlyoutItem>())
-                {
-                    if (menuItem.Tag is not string itemValue)
-                    {
-                        continue;
-                    }
-
-                    menuItem.IsChecked = isSelected(itemValue);
-                    menuItem.IsEnabled = canToggle(itemValue);
-                }
-            };
-            flyout.Items.Add(item);
+            return;
         }
 
-        flyout.ShowAt(button);
+        SettingsMultiSelectMenu.Show(
+            button,
+            ViewModel.AvailableWeatherDisplayOptions,
+            ViewModel.GetWeatherDisplayOptionName,
+            ViewModel.IsWeatherDisplayOptionSelected,
+            _ => true,
+            ViewModel.ToggleWeatherDisplayOption);
     }
 
     private void HoverButtonActionsDropDown_Click(object sender, RoutedEventArgs e)

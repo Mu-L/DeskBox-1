@@ -220,7 +220,10 @@ public enum WidgetKind
     Search,
 
     /// <summary>Legacy value kept only for migrating old settings files.</summary>
-    Productivity
+    Productivity,
+
+    /// <summary>At-a-glance background, time and date widget.</summary>
+    Glance
 }
 
 public sealed class WidgetKindJsonConverter : JsonConverter<WidgetKind>

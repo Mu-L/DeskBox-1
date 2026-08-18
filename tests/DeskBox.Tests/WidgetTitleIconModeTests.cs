@@ -35,4 +35,19 @@ public sealed class WidgetTitleIconModeTests
         Assert.DoesNotContain("#B3E0FF", quickCapture, StringComparison.Ordinal);
         Assert.DoesNotContain("#8CD0FF", quickCapture, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void GlanceColorIcon_UsesFluentCalendarColorAsset()
+    {
+        string glance = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Assets/WidgetTitleIcons/glance.svg"));
+
+        Assert.Equal(WidgetTitleIconKindNames.Glance, WidgetTitleIconKindNames.FromWidgetKind(WidgetKind.Glance));
+        Assert.Equal("glance", WidgetTitleIconKindNames.GetColorAssetName(WidgetTitleIconKind.Glance));
+        Assert.Contains("width=\"20\" height=\"20\" viewBox=\"0 0 20 20\"", glance, StringComparison.Ordinal);
+        Assert.Contains("ic_fluent_calendar_20_color__a", glance, StringComparison.Ordinal);
+        Assert.Contains("#0094F0", glance, StringComparison.Ordinal);
+        Assert.Contains("#2764E7", glance, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"sky\"", glance, StringComparison.Ordinal);
+    }
 }

@@ -318,9 +318,9 @@ public sealed class SettingsCopyAndHierarchyTests
         string interaction = SliceSection(
             windowXaml,
             "x:Name=\"InteractionSection\"",
-            "x:Name=\"InteractionHotkeySettingsSection\"");
+            "x:Name=\"InteractionWindowSettingsSection\"");
         Assert.Equal(
-            1,
+            0,
             CountOccurrences(
                 interaction,
                 "Style=\"{StaticResource SettingCardIdentityGridStyle}\""));
@@ -375,22 +375,116 @@ public sealed class SettingsCopyAndHierarchyTests
             "svc:Localized.HeaderKey=\"Settings.WidgetLayerMode.Title\"",
             interactionSection,
             StringComparison.Ordinal);
-        int globalHotkey = windowXaml.IndexOf(
-            "Tag=\"InteractionHotkeySettings\"",
+        int hoverActions = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.Interaction.Hover.Title\"",
             interactionSection,
             StringComparison.Ordinal);
         int interactionDetail = windowXaml.IndexOf(
-            "x:Name=\"InteractionHotkeySettingsSection\"",
+            "x:Name=\"InteractionWindowSettingsSection\"",
             interactionSection,
+            StringComparison.Ordinal);
+        int openMethod = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.OpenMethod.Title\"",
+            interactionDetail,
+            StringComparison.Ordinal);
+        int showDesktopBehavior = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.ShowDesktopBehavior.Title\"",
+            interactionDetail,
+            StringComparison.Ordinal);
+        int globalHotkey = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.GlobalHotkey.Title\"",
+            interactionDetail,
+            StringComparison.Ordinal);
+        int resizeSnap = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.ResizeSnap.Title\"",
+            interactionDetail,
+            StringComparison.Ordinal);
+
+        int generalSection = windowXaml.IndexOf(
+            "x:Name=\"GeneralSection\"",
+            StringComparison.Ordinal);
+        int language = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.Language.Title\"",
+            generalSection,
+            StringComparison.Ordinal);
+        int attachmentStorage = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.AttachmentStorageMode.Title\"",
+            generalSection,
+            StringComparison.Ordinal);
+        int autoStart = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.AutoStart.Title\"",
+            generalSection,
+            StringComparison.Ordinal);
+        int onboarding = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.Onboarding.Title\"",
+            generalSection,
             StringComparison.Ordinal);
 
         Assert.True(interactionSection >= 0);
         Assert.True(widgetLayer > interactionSection);
-        Assert.True(widgetLayer < globalHotkey);
-        Assert.True(globalHotkey < interactionDetail);
+        Assert.True(widgetLayer < hoverActions);
+        Assert.True(hoverActions < interactionDetail);
+        Assert.True(interactionDetail < openMethod);
+        Assert.True(openMethod < showDesktopBehavior);
+        Assert.True(showDesktopBehavior < globalHotkey);
+        Assert.True(globalHotkey < resizeSnap);
+        Assert.True(generalSection >= 0);
+        Assert.True(generalSection < language);
+        Assert.True(language < attachmentStorage);
+        Assert.True(attachmentStorage < autoStart);
+        Assert.True(autoStart < onboarding);
+        Assert.DoesNotContain("InteractionHotkeySettings", windowXaml, StringComparison.Ordinal);
         Assert.Equal(
             1,
             windowXaml.Split("Settings.WidgetLayerMode.Title", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void WeatherDisplayOptions_UseSharedMultiSelectCard()
+    {
+        string root = FindRepositoryRoot();
+        string windowXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.xaml"));
+        string navigation = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.Navigation.cs"));
+
+        string weather = SliceSection(
+            windowXaml,
+            "x:Name=\"WeatherSettingsSection\"",
+            "x:Name=\"GeneralSection\"");
+
+        Assert.Contains("Click=\"WeatherDisplayOptionsDropDown_Click\"", weather, StringComparison.Ordinal);
+        Assert.Contains("Content=\"{Binding WeatherDisplayOptionsSummaryText}\"", weather, StringComparison.Ordinal);
+        Assert.Equal(1, CountOccurrences(weather, "Settings.Weather.Group.Display.Title"));
+        Assert.DoesNotContain("IsOn=\"{Binding WeatherShowForecast", weather, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsOn=\"{Binding WeatherShowPressure", weather, StringComparison.Ordinal);
+        Assert.Contains("SettingsMultiSelectMenu.Show(", navigation, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.AvailableWeatherDisplayOptions", navigation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SearchHotkey_IsOwnedBySearchSettingsWithoutDuplicateTopHeading()
+    {
+        string root = FindRepositoryRoot();
+        string windowXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.xaml"));
+        string searchXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsSections/SearchSettingsSection.xaml"));
+        string searchCodeBehind = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsSections/SearchSettingsSection.xaml.cs"));
+
+        Assert.DoesNotContain("SearchHotkeyToggle2", windowXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Settings.Search.Hotkey.Title", windowXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"SearchHotkeyExpander\"", searchXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"SearchHotkeyToggle\"", searchXaml, StringComparison.Ordinal);
+        Assert.Contains("Settings.Search.Hotkey.Title", searchXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Settings.Search.Scope.Title", searchXaml, StringComparison.Ordinal);
+        Assert.Contains("FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Search)", searchCodeBehind, StringComparison.Ordinal);
     }
 
     [Fact]

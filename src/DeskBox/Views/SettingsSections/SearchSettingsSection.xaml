@@ -17,10 +17,71 @@
     <StackPanel Style="{StaticResource SectionPanelStyle}">
         <StackPanel Margin="0,8,0,0" Spacing="4">
 
-            <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
-                <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Search.Scope.Title" />
-                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Search.Scope.Description" />
-            </StackPanel>
+            <!-- The search hotkey depends on the search widget service, so keep it with search. -->
+            <toolkit:SettingsExpander
+                x:Name="SearchHotkeyExpander"
+                HorizontalContentAlignment="Stretch"
+                svc:Localized.DescriptionKey="Settings.Search.Hotkey.Description"
+                svc:Localized.HeaderKey="Settings.Search.Hotkey.Title">
+                <toolkit:SettingsExpander.HeaderIcon>
+                    <FontIcon Glyph="&#xE721;" />
+                </toolkit:SettingsExpander.HeaderIcon>
+                <ToggleSwitch
+                    x:Name="SearchHotkeyToggle"
+                    MinWidth="0"
+                    OffContent=""
+                    OnContent=""
+                    Toggled="SearchHotkeyToggle_Toggled" />
+                <toolkit:SettingsExpander.Items>
+                    <toolkit:SettingsCard
+                        ContentAlignment="Vertical"
+                        HorizontalContentAlignment="Stretch"
+                        svc:Localized.HeaderKey="Settings.Search.Hotkey.CustomTitle">
+                        <Grid RowSpacing="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Name="SearchHotkeyStatusText"
+                                Grid.Row="0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SettingDescriptionTextStyle}" />
+                            <Grid
+                                Grid.Row="1"
+                                MinWidth="252"
+                                HorizontalAlignment="Right"
+                                ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button
+                                    x:Name="SearchHotkeyCaptureButton"
+                                    Grid.Column="0"
+                                    MinWidth="132"
+                                    HorizontalAlignment="Stretch"
+                                    Click="SearchHotkeyCaptureButton_Click"
+                                    KeyDown="SearchHotkeyCaptureButton_KeyDown"
+                                    LostFocus="SearchHotkeyCaptureButton_LostFocus"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    svc:Localized.ToolTipKey="Settings.Search.Hotkey.ChangeTooltip" />
+                                <Button
+                                    x:Name="ResetSearchHotkeyButton"
+                                    Grid.Column="1"
+                                    Click="ResetSearchHotkeyButton_Click"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    svc:Localized.ToolTipKey="Settings.Search.Hotkey.ResetTooltip">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <SymbolIcon Symbol="Refresh" />
+                                        <TextBlock svc:Localized.Key="Common.Restore" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </Grid>
+                    </toolkit:SettingsCard>
+                </toolkit:SettingsExpander.Items>
+            </toolkit:SettingsExpander>
 
             <!-- Scope: DeskBox content -->
             <toolkit:SettingsCard

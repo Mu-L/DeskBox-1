@@ -17,6 +17,7 @@ public sealed partial class SearchSettingsSection : UserControl
     private long _lastProgressRefreshMs;
     private long _lastStorageRefreshMs;
     private string _lastStorageText = string.Empty;
+    private bool _isRecordingSearchHotkey;
 
     public SearchSettingsSection()
     {
@@ -81,6 +82,7 @@ public sealed partial class SearchSettingsSection : UserControl
                     item.Tag as string,
                     settings.SearchAppIconAnimation.ToString(),
                     StringComparison.Ordinal));
+            RefreshSearchHotkeyControls();
         }
         finally
         {
@@ -320,6 +322,147 @@ public sealed partial class SearchSettingsSection : UserControl
     {
         App.Current.SearchEngineService?.RebuildIndex();
         RefreshIndexStatus();
+    }
+
+    private void RefreshSearchHotkeyControls()
+    {
+        var settings = Settings.Settings;
+        var gesture = GlobalHotkeyService.NormalizeGesture(
+            settings.SearchHotkeyModifiers,
+            settings.SearchHotkeyKey);
+        bool searchWidgetEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Search);
+        bool hotkeyAvailable = searchWidgetEnabled && App.Current.SearchHotkeyService is not null;
+
+        SearchHotkeyExpander.IsEnabled = hotkeyAvailable;
+        SearchHotkeyToggle.IsOn = settings.SearchHotkeyEnabled && hotkeyAvailable;
+
+        if (!_isRecordingSearchHotkey)
+        {
+            SearchHotkeyCaptureButton.Content = GlobalHotkeyService.FormatGesture(gesture, Localization);
+        }
+
+        SearchHotkeyStatusText.Text = settings.SearchHotkeyEnabled && hotkeyAvailable
+            ? Localization.T("Settings.Search.Hotkey.Status.Active")
+            : Localization.T("Settings.Search.Hotkey.Status.Disabled");
+    }
+
+    private void SearchHotkeyToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        if (App.Current.SearchHotkeyService is not { } service)
+        {
+            RefreshSearchHotkeyControls();
+            return;
+        }
+
+        service.SetEnabled(SearchHotkeyToggle.IsOn);
+        RefreshSearchHotkeyControls();
+    }
+
+    private void SearchHotkeyCaptureButton_Click(object sender, RoutedEventArgs e)
+    {
+        _isRecordingSearchHotkey = true;
+        SearchHotkeyCaptureButton.Content = Localization.T("Settings.Search.Hotkey.Recording");
+        SearchHotkeyCaptureButton.Focus(FocusState.Programmatic);
+    }
+
+    private void SearchHotkeyCaptureButton_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (!_isRecordingSearchHotkey)
+        {
+            return;
+        }
+
+        if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            EndSearchHotkeyRecording();
+            e.Handled = true;
+            return;
+        }
+
+        if (IsModifierKey(e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var gesture = new GlobalHotkeyGesture(GetPressedHotkeyModifiers(), (int)e.Key);
+        EndSearchHotkeyRecording();
+
+        if (App.Current.SearchHotkeyService is not { } service || !service.TryApplyGesture(gesture))
+        {
+            SearchHotkeyStatusText.Text = Localization.T("Settings.Search.Hotkey.Status.Failed");
+            e.Handled = true;
+            return;
+        }
+
+        RefreshSearchHotkeyControls();
+        e.Handled = true;
+    }
+
+    private void SearchHotkeyCaptureButton_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_isRecordingSearchHotkey)
+        {
+            EndSearchHotkeyRecording();
+        }
+    }
+
+    private void ResetSearchHotkeyButton_Click(object sender, RoutedEventArgs e)
+    {
+        var settings = Settings.Settings;
+        settings.SearchHotkeyModifiers = (int)HotkeyModifierKeys.Alt;
+        settings.SearchHotkeyKey = 0x44; // Alt+D default
+        Settings.SaveDebounced();
+        App.Current.SearchHotkeyService?.RefreshRegistration();
+        RefreshSearchHotkeyControls();
+    }
+
+    private void EndSearchHotkeyRecording()
+    {
+        _isRecordingSearchHotkey = false;
+        RefreshSearchHotkeyControls();
+    }
+
+    private static HotkeyModifierKeys GetPressedHotkeyModifiers()
+    {
+        var modifiers = HotkeyModifierKeys.None;
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
+        {
+            modifiers |= HotkeyModifierKeys.Control;
+        }
+
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Menu))
+        {
+            modifiers |= HotkeyModifierKeys.Alt;
+        }
+
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift))
+        {
+            modifiers |= HotkeyModifierKeys.Shift;
+        }
+
+        return modifiers;
+    }
+
+    private static bool IsModifierKey(Windows.System.VirtualKey key)
+    {
+        return key is
+            Windows.System.VirtualKey.Control or
+            Windows.System.VirtualKey.LeftControl or
+            Windows.System.VirtualKey.RightControl or
+            Windows.System.VirtualKey.Menu or
+            Windows.System.VirtualKey.LeftMenu or
+            Windows.System.VirtualKey.RightMenu or
+            Windows.System.VirtualKey.Shift or
+            Windows.System.VirtualKey.LeftShift or
+            Windows.System.VirtualKey.RightShift or
+            Windows.System.VirtualKey.LeftWindows or
+            Windows.System.VirtualKey.RightWindows;
     }
 
     private static string FormatBytes(long bytes)

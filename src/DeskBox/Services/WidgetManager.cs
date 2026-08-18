@@ -410,7 +410,12 @@ public sealed partial class WidgetManager
                 WidgetKind.Search,
                 async _ => await CreateSingletonContentFeatureWidgetAsync(WidgetKind.Search),
                 SetSearchFeatureWidgetEnabledAsync,
-                () => HideAndCloseFeatureWidgetAsync(WidgetKind.Search))
+                () => HideAndCloseFeatureWidgetAsync(WidgetKind.Search)),
+            new(
+                WidgetKind.Glance,
+                async _ => await CreateSingletonContentFeatureWidgetAsync(WidgetKind.Glance),
+                SetGlanceFeatureWidgetEnabledAsync,
+                () => HideAndCloseFeatureWidgetAsync(WidgetKind.Glance))
         ];
 
         return handlers.ToDictionary(handler => handler.WidgetKind);
@@ -462,6 +467,14 @@ public sealed partial class WidgetManager
                     request.CancellationToken)),
             new(
                 WidgetKind.Search,
+                async request => await CreateContentWidgetFromConfigAsync(
+                    request.Config,
+                    request.KeepPreparedForAnimation,
+                    request.RevealAfterCreate,
+                    request.ShowRaisedWhileInitializing,
+                    request.CancellationToken)),
+            new(
+                WidgetKind.Glance,
                 async request => await CreateContentWidgetFromConfigAsync(
                     request.Config,
                     request.KeepPreparedForAnimation,
@@ -1769,6 +1782,7 @@ public sealed partial class WidgetManager
                 Math.Max(_settingsService.Settings.DefaultWidgetHeight, 420)),
             WidgetKind.Music => (380, 190),
             WidgetKind.Weather => (200, 200),
+            WidgetKind.Glance => (360, 260),
             _ => (
                 _settingsService.Settings.DefaultWidgetWidth,
                 _settingsService.Settings.DefaultWidgetHeight)

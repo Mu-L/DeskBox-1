@@ -1335,18 +1335,6 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 controls:SettingsComboBox.Value="{Binding SelectedWidgetLayerMode, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <Button Click="NestedSettingsButton_Click" Style="{StaticResource DrillDownRowStyle}" Tag="InteractionHotkeySettings">
-                                <Grid ColumnDefinitions="Auto,*,Auto" Style="{StaticResource SettingCardIdentityGridStyle}">
-                                    <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE765;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                    <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
-                                        <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Interaction.Hotkeys.Title" />
-                                        <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding GlobalHotkeyText}" />
-                                    </StackPanel>
-                                    <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                </Grid>
-                            </Button>
-                        </Border>
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.Interaction.Hover.Description"
@@ -1364,52 +1352,6 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                     </StackPanel>
                 </StackPanel>
 
-                <StackPanel x:Name="InteractionHotkeySettingsSection" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
-                    <StackPanel Margin="0,8,0,0" Spacing="4">
-                        <!-- Global Hotkey (F7) -->
-                        <toolkit:SettingsExpander HorizontalContentAlignment="Stretch" Description="{Binding GlobalHotkeyDescription}" svc:Localized.HeaderKey="Settings.GlobalHotkey.Title">
-                            <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsExpander.HeaderIcon>
-                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}" />
-                            <toolkit:SettingsExpander.Items>
-                                <toolkit:SettingsCard ContentAlignment="Vertical" HorizontalContentAlignment="Stretch" svc:Localized.HeaderKey="Settings.GlobalHotkey.CustomTitle">
-                                    <Grid RowSpacing="10">
-                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" VerticalAlignment="Center" Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding GlobalHotkeyStatusText}" />
-                                        <Grid x:Name="GlobalHotkeyActionsPanel" Grid.Row="1" MinWidth="252" HorizontalAlignment="Right" ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                            <Button x:Name="GlobalHotkeyCaptureButton" Grid.Column="0" MinWidth="132" HorizontalAlignment="Stretch" Click="ChangeGlobalHotkeyButton_Click" KeyDown="GlobalHotkeyCaptureButton_KeyDown" LostFocus="GlobalHotkeyCaptureButton_LostFocus" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.GlobalHotkey.ChangeTooltip" />
-                                            <Button x:Name="ResetGlobalHotkeyButton" Grid.Column="1" Click="ResetGlobalHotkeyButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.GlobalHotkey.ResetTooltip">
-                                                <StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Refresh" /><TextBlock svc:Localized.Key="Common.Restore" /></StackPanel>
-                                            </Button>
-                                        </Grid>
-                                    </Grid>
-                                </toolkit:SettingsCard>
-                            </toolkit:SettingsExpander.Items>
-                        </toolkit:SettingsExpander>
-
-                        <!-- Search Hotkey -->
-                        <toolkit:SettingsExpander HorizontalContentAlignment="Stretch" svc:Localized.DescriptionKey="Settings.Search.Hotkey.Description" svc:Localized.HeaderKey="Settings.Search.Hotkey.Title">
-                            <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE721;" /></toolkit:SettingsExpander.HeaderIcon>
-                            <ToggleSwitch x:Name="SearchHotkeyToggle2" OnContent="" OffContent="" MinWidth="0" Toggled="SearchHotkeyToggle2_Toggled" />
-                            <toolkit:SettingsExpander.Items>
-                                <toolkit:SettingsCard ContentAlignment="Vertical" HorizontalContentAlignment="Stretch" svc:Localized.HeaderKey="Settings.Search.Hotkey.CustomTitle">
-                                    <Grid RowSpacing="10">
-                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                                        <TextBlock x:Name="SearchHotkeyStatusText2" Grid.Row="0" VerticalAlignment="Center" Style="{StaticResource SettingDescriptionTextStyle}" />
-                                        <Grid Grid.Row="1" MinWidth="252" HorizontalAlignment="Right" ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                            <Button x:Name="SearchHotkeyCaptureButton2" Grid.Column="0" MinWidth="132" HorizontalAlignment="Stretch" Click="SearchHotkeyCaptureButton2_Click" KeyDown="SearchHotkeyCaptureButton2_KeyDown" LostFocus="SearchHotkeyCaptureButton2_LostFocus" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.Search.Hotkey.ChangeTooltip" />
-                                            <Button x:Name="ResetSearchHotkeyButton2" Grid.Column="1" Click="ResetSearchHotkeyButton2_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.Search.Hotkey.ResetTooltip">
-                                                <StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Refresh" /><TextBlock svc:Localized.Key="Common.Restore" /></StackPanel>
-                                            </Button>
-                                        </Grid>
-                                    </Grid>
-                                </toolkit:SettingsCard>
-                            </toolkit:SettingsExpander.Items>
-                        </toolkit:SettingsExpander>
-                    </StackPanel>
-                </StackPanel>
-
                 <StackPanel x:Name="InteractionWindowSettingsSection" Margin="0,-12,0,0" Visibility="Collapsed" Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Spacing="4">
                         <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.OpenMethod.Description" svc:Localized.HeaderKey="Settings.OpenMethod.Title">
@@ -1419,16 +1361,79 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 ItemsSource="{Binding AvailableFileOpenMethodOptions}"
                                 controls:SettingsComboBox.Value="{Binding SelectedFileOpenMethod, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.ResizeSnap.Description" svc:Localized.HeaderKey="Settings.ResizeSnap.Title">
-                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE742;" /></toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding ResizeSnapEnabled, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
                         <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.ShowDesktopBehavior.Description" svc:Localized.HeaderKey="Settings.ShowDesktopBehavior.Title">
                             <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7F4;" /></toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
                                 MinWidth="{StaticResource SettingsControlMinWidth}"
                                 ItemsSource="{Binding AvailableShowDesktopBehaviorOptions}"
                                 controls:SettingsComboBox.Value="{Binding SelectedShowDesktopBehavior, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsExpander
+                            HorizontalContentAlignment="Stretch"
+                            Description="{Binding GlobalHotkeyDescription}"
+                            svc:Localized.HeaderKey="Settings.GlobalHotkey.Title">
+                            <toolkit:SettingsExpander.HeaderIcon>
+                                <FontIcon Glyph="&#xE765;" />
+                            </toolkit:SettingsExpander.HeaderIcon>
+                            <ToggleSwitch
+                                MinWidth="0"
+                                IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}"
+                                OffContent=""
+                                OnContent="" />
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard
+                                    ContentAlignment="Vertical"
+                                    HorizontalContentAlignment="Stretch"
+                                    svc:Localized.HeaderKey="Settings.GlobalHotkey.CustomTitle">
+                                    <Grid RowSpacing="10">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock
+                                            Grid.Row="0"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource SettingDescriptionTextStyle}"
+                                            Text="{Binding GlobalHotkeyStatusText}" />
+                                        <Grid
+                                            x:Name="GlobalHotkeyActionsPanel"
+                                            Grid.Row="1"
+                                            MinWidth="252"
+                                            HorizontalAlignment="Right"
+                                            ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button
+                                                x:Name="GlobalHotkeyCaptureButton"
+                                                Grid.Column="0"
+                                                MinWidth="132"
+                                                HorizontalAlignment="Stretch"
+                                                Click="ChangeGlobalHotkeyButton_Click"
+                                                KeyDown="GlobalHotkeyCaptureButton_KeyDown"
+                                                LostFocus="GlobalHotkeyCaptureButton_LostFocus"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                svc:Localized.ToolTipKey="Settings.GlobalHotkey.ChangeTooltip" />
+                                            <Button
+                                                x:Name="ResetGlobalHotkeyButton"
+                                                Grid.Column="1"
+                                                Click="ResetGlobalHotkeyButton_Click"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                svc:Localized.ToolTipKey="Settings.GlobalHotkey.ResetTooltip">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <SymbolIcon Symbol="Refresh" />
+                                                    <TextBlock svc:Localized.Key="Common.Restore" />
+                                                </StackPanel>
+                                            </Button>
+                                        </Grid>
+                                    </Grid>
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
+                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.ResizeSnap.Description" svc:Localized.HeaderKey="Settings.ResizeSnap.Title">
+                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE742;" /></toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding ResizeSnapEnabled, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
@@ -2001,89 +2006,25 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 controls:SettingsComboBox.Value="{Binding SelectedWeatherRefreshInterval, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
-                        <StackPanel Style="{StaticResource SettingsSubsectionHeaderStyle}">
-                            <TextBlock Style="{StaticResource SettingsSubsectionTitleTextStyle}" svc:Localized.Key="Settings.Weather.Group.Display.Title" />
-                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" svc:Localized.Key="Settings.Weather.Group.Display.Description" />
-                        </StackPanel>
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Weather.ShowForecast.Description"
-                                    svc:Localized.HeaderKey="Settings.Weather.ShowForecast.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding WeatherShowForecast, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Weather.ShowSunrise.Description"
-                                    svc:Localized.HeaderKey="Settings.Weather.ShowSunrise.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding WeatherShowSunrise, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Weather.ShowUvIndex.Description"
-                                    svc:Localized.HeaderKey="Settings.Weather.ShowUvIndex.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding WeatherShowUvIndex, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Weather.ShowPrecipitation.Description"
-                                    svc:Localized.HeaderKey="Settings.Weather.ShowPrecipitation.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding WeatherShowPrecipitation, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Weather.ShowHumidity.Description"
-                                    svc:Localized.HeaderKey="Settings.Weather.ShowHumidity.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding WeatherShowHumidity, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Weather.ShowWind.Description"
-                                    svc:Localized.HeaderKey="Settings.Weather.ShowWind.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding WeatherShowWind, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.Weather.ShowPressure.Description"
-                                    svc:Localized.HeaderKey="Settings.Weather.ShowPressure.Title">
-                                    <ToggleSwitch
-                                        OnContent=""
-                                        OffContent=""
-                                        MinWidth="0"
-                                        IsOn="{Binding WeatherShowPressure, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Weather.Group.Display.Description"
+                            svc:Localized.HeaderKey="Settings.Weather.Group.Display.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE890;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <DropDownButton
+                                MinWidth="220"
+                                MaxWidth="280"
+                                HorizontalAlignment="Right"
+                                Click="WeatherDisplayOptionsDropDown_Click"
+                                Content="{Binding WeatherDisplayOptionsSummaryText}" />
+                        </toolkit:SettingsCard>
 
                     </StackPanel>
                 </StackPanel>
+
+                <sections:GlanceWidgetSettingsSection x:Name="GlanceSettingsSection" Visibility="Collapsed" />
 
                 <sections:SearchSettingsSection x:Name="SearchSettingsSection" Visibility="Collapsed" />
 
@@ -2107,6 +2048,19 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.AttachmentStorageMode.Description"
+                            svc:Localized.HeaderKey="Settings.AttachmentStorageMode.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE723;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableAttachmentStorageModeOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedAttachmentStorageMode, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.AutoStart.Description"
                             svc:Localized.HeaderKey="Settings.AutoStart.Title">
                             <toolkit:SettingsCard.HeaderIcon>
@@ -2117,19 +2071,6 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding AutoStart, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
-
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.AttachmentStorageMode.Description"
-                            svc:Localized.HeaderKey="Settings.AttachmentStorageMode.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE723;" />
-                            </toolkit:SettingsCard.HeaderIcon>
-                            <ComboBox
-                                MinWidth="{StaticResource SettingsControlMinWidth}"
-                                ItemsSource="{Binding AvailableAttachmentStorageModeOptions}"
-                                controls:SettingsComboBox.Value="{Binding SelectedAttachmentStorageMode, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard

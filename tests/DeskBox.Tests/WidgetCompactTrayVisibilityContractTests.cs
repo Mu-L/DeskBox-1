@@ -71,6 +71,29 @@ public sealed class WidgetCompactTrayVisibilityContractTests
     }
 
     [Fact]
+    public void OpenXamlPopups_BlockCapsuleCollapseAcrossHostedContent()
+    {
+        string baseSource = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.cs"));
+        string popupGuard = ExtractSection(
+            baseSource,
+            "protected virtual bool HasBlockingFlyoutOpen()",
+            "/// <summary>Allows hosts with custom title bars to update collapse actions.</summary>");
+        string collapseSource = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.Collapse.cs"));
+
+        Assert.Contains("RootElement.XamlRoot", popupGuard, StringComparison.Ordinal);
+        Assert.Contains(
+            "VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count > 0",
+            popupGuard,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HasBlockingSurface: HasBlockingFlyoutOpen()",
+            collapseSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void HostVisibilityReset_ClearsShellHoverVisualsBeforeRebuildingNativePointerState()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(

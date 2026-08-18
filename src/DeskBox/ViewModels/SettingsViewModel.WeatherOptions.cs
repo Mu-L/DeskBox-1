@@ -14,6 +14,69 @@ namespace DeskBox.ViewModels;
 
 public partial class SettingsViewModel
 {
+public string[] AvailableWeatherDisplayOptions { get; } =
+[
+    "Forecast",
+    "Sunrise",
+    "UvIndex",
+    "Precipitation",
+    "Humidity",
+    "Wind",
+    "Pressure"
+];
+
+public string WeatherDisplayOptionsSummaryText
+{
+    get
+    {
+        string[] selected = AvailableWeatherDisplayOptions
+            .Where(IsWeatherDisplayOptionSelected)
+            .Select(GetWeatherDisplayOptionName)
+            .ToArray();
+        return selected.Length == 0
+            ? _localizationService.T("Settings.Toggle.Off")
+            : string.Join(" · ", selected);
+    }
+}
+
+public string GetWeatherDisplayOptionName(string option) => option switch
+{
+    "Forecast" => _localizationService.T("Settings.Weather.ShowForecast.Title"),
+    "Sunrise" => _localizationService.T("Settings.Weather.ShowSunrise.Title"),
+    "UvIndex" => _localizationService.T("Settings.Weather.ShowUvIndex.Title"),
+    "Precipitation" => _localizationService.T("Settings.Weather.ShowPrecipitation.Title"),
+    "Humidity" => _localizationService.T("Settings.Weather.ShowHumidity.Title"),
+    "Wind" => _localizationService.T("Settings.Weather.ShowWind.Title"),
+    "Pressure" => _localizationService.T("Settings.Weather.ShowPressure.Title"),
+    _ => string.Empty
+};
+
+public bool IsWeatherDisplayOptionSelected(string option) => option switch
+{
+    "Forecast" => WeatherShowForecast,
+    "Sunrise" => WeatherShowSunrise,
+    "UvIndex" => WeatherShowUvIndex,
+    "Precipitation" => WeatherShowPrecipitation,
+    "Humidity" => WeatherShowHumidity,
+    "Wind" => WeatherShowWind,
+    "Pressure" => WeatherShowPressure,
+    _ => false
+};
+
+public void ToggleWeatherDisplayOption(string option)
+{
+    switch (option)
+    {
+        case "Forecast": WeatherShowForecast = !WeatherShowForecast; break;
+        case "Sunrise": WeatherShowSunrise = !WeatherShowSunrise; break;
+        case "UvIndex": WeatherShowUvIndex = !WeatherShowUvIndex; break;
+        case "Precipitation": WeatherShowPrecipitation = !WeatherShowPrecipitation; break;
+        case "Humidity": WeatherShowHumidity = !WeatherShowHumidity; break;
+        case "Wind": WeatherShowWind = !WeatherShowWind; break;
+        case "Pressure": WeatherShowPressure = !WeatherShowPressure; break;
+    }
+}
+
 public string[] AvailableWeatherTemperatureUnits { get; } =
 [
     SettingsService.WeatherTemperatureUnitCelsius,
@@ -605,6 +668,7 @@ public void RestoreWeatherCitySearchText()
 
 partial void OnWeatherShowForecastChanged(bool value)
 {
+    OnPropertyChanged(nameof(WeatherDisplayOptionsSummaryText));
     if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
     {
         return;
@@ -616,6 +680,7 @@ partial void OnWeatherShowForecastChanged(bool value)
 
 partial void OnWeatherShowSunriseChanged(bool value)
 {
+    OnPropertyChanged(nameof(WeatherDisplayOptionsSummaryText));
     if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
     {
         return;
@@ -627,6 +692,7 @@ partial void OnWeatherShowSunriseChanged(bool value)
 
 partial void OnWeatherShowUvIndexChanged(bool value)
 {
+    OnPropertyChanged(nameof(WeatherDisplayOptionsSummaryText));
     if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
     {
         return;
@@ -638,6 +704,7 @@ partial void OnWeatherShowUvIndexChanged(bool value)
 
 partial void OnWeatherShowPrecipitationChanged(bool value)
 {
+    OnPropertyChanged(nameof(WeatherDisplayOptionsSummaryText));
     if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
     {
         return;
@@ -649,6 +716,7 @@ partial void OnWeatherShowPrecipitationChanged(bool value)
 
 partial void OnWeatherShowHumidityChanged(bool value)
 {
+    OnPropertyChanged(nameof(WeatherDisplayOptionsSummaryText));
     if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
     {
         return;
@@ -660,6 +728,7 @@ partial void OnWeatherShowHumidityChanged(bool value)
 
 partial void OnWeatherShowWindChanged(bool value)
 {
+    OnPropertyChanged(nameof(WeatherDisplayOptionsSummaryText));
     if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
     {
         return;
@@ -671,6 +740,7 @@ partial void OnWeatherShowWindChanged(bool value)
 
 partial void OnWeatherShowPressureChanged(bool value)
 {
+    OnPropertyChanged(nameof(WeatherDisplayOptionsSummaryText));
     if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
     {
         return;

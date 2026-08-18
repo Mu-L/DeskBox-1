@@ -439,5 +439,6 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(TodoReminderSummaryText));
         OnPropertyChanged(nameof(TodoFooterDisplaySummaryText));
         OnPropertyChanged(nameof(SelectedMusicDisplayModeText));
+        OnPropertyChanged(nameof(WeatherDisplayOptionsSummaryText));
     }
 }

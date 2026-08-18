@@ -47,4 +47,11 @@ public sealed record WidgetCompactPresentation(
     double? MusicProgress = null,
     // Null inherits the app theme. Weather Rich uses an explicit foreground
     // theme so its text remains readable over condition-aware gradients.
-    bool? UseLightForeground = null);
+    bool? UseLightForeground = null,
+    // Multiplies the standard full-bleed readability scrim. Glance feeds its
+    // own None/Soft/Strong readability setting here; the default preserves
+    // existing full-bleed presentations such as Music.
+    double FullBleedOverlayOpacity = 1.0,
+    // Glance uses the same even readability mask as its expanded image view.
+    // Other full-bleed presentations retain the directional text scrim.
+    bool UseUniformFullBleedOverlay = false);

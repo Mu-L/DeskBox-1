@@ -14,6 +14,7 @@ public sealed class WidgetContentFactoryTests
     [InlineData(WidgetKind.Music, "Music", WidgetContentStage.Implemented, false, WidgetContentAvailability.Available)]
     [InlineData(WidgetKind.SystemMonitor, "System Monitor", WidgetContentStage.Placeholder, false, WidgetContentAvailability.Planned)]
     [InlineData(WidgetKind.Search, "Search", WidgetContentStage.Implemented, false, WidgetContentAvailability.Available)]
+    [InlineData(WidgetKind.Glance, "Glance", WidgetContentStage.Implemented, false, WidgetContentAvailability.Available)]
     public void GetDescriptor_ReturnsContentMetadata(
         WidgetKind widgetKind,
         string title,
@@ -51,7 +52,8 @@ public sealed class WidgetContentFactoryTests
             WidgetKind.Weather,
             WidgetKind.Tags,
             WidgetKind.SystemMonitor,
-            WidgetKind.Search
+            WidgetKind.Search,
+            WidgetKind.Glance
         ], descriptors.Select(descriptor => descriptor.WidgetKind));
     }
 
@@ -64,6 +66,7 @@ public sealed class WidgetContentFactoryTests
     [InlineData(WidgetKind.Weather, WidgetChromeCategory.Display, WidgetChromeMode.Overlay)]
     [InlineData(WidgetKind.SystemMonitor, WidgetChromeCategory.Display, WidgetChromeMode.Overlay)]
     [InlineData(WidgetKind.Search, WidgetChromeCategory.Interactive, WidgetChromeMode.Standard)]
+    [InlineData(WidgetKind.Glance, WidgetChromeCategory.Display, WidgetChromeMode.Overlay)]
     public void GetDescriptor_ReturnsChromeDefaults(
         WidgetKind widgetKind,
         WidgetChromeCategory expectedCategory,
@@ -118,7 +121,8 @@ public sealed class WidgetContentFactoryTests
             WidgetKind.Todo,
             WidgetKind.Music,
             WidgetKind.Weather,
-            WidgetKind.Search
+            WidgetKind.Search,
+            WidgetKind.Glance
         ], descriptors.Select(descriptor => descriptor.WidgetKind));
         Assert.DoesNotContain(descriptors, descriptor => descriptor.WidgetKind == WidgetKind.File);
         Assert.DoesNotContain(descriptors, descriptor => descriptor.IsPlanned);
@@ -136,6 +140,7 @@ public sealed class WidgetContentFactoryTests
     [InlineData(WidgetKind.Music, true, false, false, true, false)]
     [InlineData(WidgetKind.SystemMonitor, false, true, false, false, true)]
     [InlineData(WidgetKind.Search, true, false, false, true, false)]
+    [InlineData(WidgetKind.Glance, true, false, false, true, false)]
     [InlineData(WidgetKind.Productivity, false, false, false, false, false)]
     public void ContentCapabilityQueries_ReturnExpectedReadOnlyState(
         WidgetKind widgetKind,

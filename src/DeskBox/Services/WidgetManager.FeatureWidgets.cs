@@ -215,6 +215,7 @@ public sealed partial class WidgetManager
             WidgetKind.Music => "Music.Title",
             WidgetKind.Weather => "Weather.Title",
             WidgetKind.Search => "Search.Title",
+            WidgetKind.Glance => "Glance.Title",
             WidgetKind.Tags => "Tags.Title",
             WidgetKind.SystemMonitor => "SystemMonitor.Title",
             _ => string.Empty
@@ -263,6 +264,7 @@ public sealed partial class WidgetManager
                 WidgetKind.Music => 380,
                 WidgetKind.Weather => 200,
                 WidgetKind.Search => 280,
+                WidgetKind.Glance => 360,
                 _ => Math.Max(_settingsService.Settings.DefaultWidgetWidth, 320)
             },
             Height = kind switch
@@ -270,6 +272,7 @@ public sealed partial class WidgetManager
                 WidgetKind.Music => 190,
                 WidgetKind.Weather => 200,
                 WidgetKind.Search => 90,
+                WidgetKind.Glance => 260,
                 _ => Math.Max(_settingsService.Settings.DefaultWidgetHeight, 360)
             }
         };
@@ -712,6 +715,11 @@ public sealed partial class WidgetManager
                     await new TodoWidgetStore(todoConfig.Id).ClearAsync();
                 }
             }
+            else if (kind == WidgetKind.Glance)
+            {
+                await GlanceWidgetStore.Shared.ResetAsync();
+                await new GlanceImageService().ClearCacheAsync();
+            }
 
             SetFeatureWidgetEnabledState(kind, false);
             var config = configs.FirstOrDefault(widget => !IsDeleted(widget.Id)) ??
@@ -934,6 +942,11 @@ public sealed partial class WidgetManager
     private Task SetSearchFeatureWidgetEnabledAsync(bool enabled, bool reveal)
     {
         return SetContentFeatureWidgetEnabledAsync(WidgetKind.Search, enabled, reveal);
+    }
+
+    private Task SetGlanceFeatureWidgetEnabledAsync(bool enabled, bool reveal)
+    {
+        return SetContentFeatureWidgetEnabledAsync(WidgetKind.Glance, enabled, reveal);
     }
 
     private bool GetFeatureWidgetEnabledState(WidgetKind? kind)

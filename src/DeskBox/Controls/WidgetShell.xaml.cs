@@ -24,6 +24,8 @@ namespace DeskBox.Controls;
 
 public sealed partial class WidgetShell : UserControl
 {
+    private static readonly ExclusiveDropHighlightCoordinator<WidgetShell>
+        ContentDropHighlightCoordinator = new();
     private const double CompactMarqueeGap = 32;
     private const double CompactMarqueeStartDelayMs = 900;
     private const double CompactMarqueeSpeedPixelsPerSecond = 50;
@@ -163,6 +165,8 @@ public sealed partial class WidgetShell : UserControl
     private IWidgetContent? _hostedContent;
     private IWidgetResponsiveLayoutContent? _responsiveLayoutContent;
     private readonly InsetClip _contentTransitionClip;
+    private FileSurfaceContent? _transitionOutgoingFileSurface;
+    private FileSurfaceContent? _transitionIncomingFileSurface;
     private bool _isContentSnapshotTransitionActive;
     private bool _isResponsiveLayoutTransitionActive;
     private double _responsiveTargetContentWidth;
@@ -876,6 +880,7 @@ public sealed partial class WidgetShell : UserControl
                 "A snapshot transition must finish before starting a live content transition.");
         }
 
+        SuspendFileSurfaceItemTransitions(outgoingContent, incomingContent);
         EnsureContentTransitionViewportClip();
         EndInteractiveNeighborPreview();
         ShellContent = null;
@@ -901,10 +906,50 @@ public sealed partial class WidgetShell : UserControl
 
     public void CompleteContentTransition()
     {
-        ResetContentTransitionVisuals();
-        _isContentSnapshotTransitionActive = false;
-        OutgoingContentPresenter.Content = null;
-        OutgoingContentPresenter.Visibility = Visibility.Collapsed;
+        try
+        {
+            ResetContentTransitionVisuals();
+            _isContentSnapshotTransitionActive = false;
+            OutgoingContentPresenter.Content = null;
+            OutgoingContentPresenter.Visibility = Visibility.Collapsed;
+        }
+        finally
+        {
+            ResumeFileSurfaceItemTransitions();
+        }
+    }
+
+    private void SuspendFileSurfaceItemTransitions(
+        IWidgetContent outgoingContent,
+        IWidgetContent incomingContent)
+    {
+        ResumeFileSurfaceItemTransitions();
+        _transitionOutgoingFileSurface = outgoingContent as FileSurfaceContent;
+        _transitionIncomingFileSurface = incomingContent as FileSurfaceContent;
+
+        _transitionOutgoingFileSurface?
+            .SuspendItemContainerTransitionsForHostSwitch();
+        if (!ReferenceEquals(
+                _transitionIncomingFileSurface,
+                _transitionOutgoingFileSurface))
+        {
+            _transitionIncomingFileSurface?
+                .SuspendItemContainerTransitionsForHostSwitch();
+        }
+    }
+
+    private void ResumeFileSurfaceItemTransitions()
+    {
+        FileSurfaceContent? outgoing = _transitionOutgoingFileSurface;
+        FileSurfaceContent? incoming = _transitionIncomingFileSurface;
+        _transitionOutgoingFileSurface = null;
+        _transitionIncomingFileSurface = null;
+
+        outgoing?.ResumeItemContainerTransitionsAfterHostSwitch();
+        if (!ReferenceEquals(incoming, outgoing))
+        {
+            incoming?.ResumeItemContainerTransitionsAfterHostSwitch();
+        }
     }
 
     public async Task<RenderTargetBitmap?> CaptureOutgoingContentSnapshotAsync(
@@ -1664,7 +1709,8 @@ public sealed partial class WidgetShell : UserControl
             }
 
             CompactFullBleedBackground.Opacity = fullBleedOpacity;
-            CompactFullBleedOverlay.Opacity = fullBleedOpacity;
+            CompactFullBleedOverlay.Opacity =
+                fullBleedOpacity * ResolveFullBleedOverlayOpacity();
             if (!_isCompactCompositionTransitionActive)
             {
                 FullBleedScaleTransform.ScaleX = fullBleedScale;
@@ -1892,7 +1938,10 @@ public sealed partial class WidgetShell : UserControl
         ApplyFullBleedVisibility(useFullBleed);
 
         // Paused dim overlay: show when full-bleed but not playing
-        CompactPausedDim.Visibility = useFullBleed && !presentation.IsPlaying
+        bool showPausedDim = useFullBleed &&
+            (presentation.ShowMediaControls || presentation.ShowVinyl) &&
+            !presentation.IsPlaying;
+        CompactPausedDim.Visibility = showPausedDim
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -2599,7 +2648,7 @@ public sealed partial class WidgetShell : UserControl
     private void ApplyFullBleedVisibility(bool visible)
     {
         double targetBgOpacity = visible ? 1 : 0;
-        double targetOverlayOpacity = visible ? 1 : 0;
+        double targetOverlayOpacity = visible ? ResolveFullBleedOverlayOpacity() : 0;
 
         if (!SystemAnimationsEnabled())
         {
@@ -2635,6 +2684,11 @@ public sealed partial class WidgetShell : UserControl
         storyboard.Begin();
     }
 
+    private double ResolveFullBleedOverlayOpacity() => Math.Clamp(
+        _compactPresentation?.FullBleedOverlayOpacity ?? 1.0,
+        0.0,
+        1.0);
+
     private static readonly Brush s_fullBleedTitleBrush = new SolidColorBrush(Microsoft.UI.Colors.White);
     private static readonly Brush s_fullBleedSummaryBrush = new SolidColorBrush(
         Windows.UI.Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
@@ -2649,9 +2703,22 @@ public sealed partial class WidgetShell : UserControl
             (ActualTheme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark);
 
         byte channel = isDark ? (byte)0x00 : (byte)0xFF;
-        CompactFullBleedStop0.Color = Color.FromArgb(0xD9, channel, channel, channel);
-        CompactFullBleedStop1.Color = Color.FromArgb(0x8C, channel, channel, channel);
-        CompactFullBleedStop2.Color = Color.FromArgb(0x40, channel, channel, channel);
+        bool useUniformOverlay = _compactPresentation?.UseUniformFullBleedOverlay == true;
+        CompactFullBleedStop0.Color = Color.FromArgb(
+            useUniformOverlay ? (byte)0xFF : (byte)0xD9,
+            channel,
+            channel,
+            channel);
+        CompactFullBleedStop1.Color = Color.FromArgb(
+            useUniformOverlay ? (byte)0xFF : (byte)0x8C,
+            channel,
+            channel,
+            channel);
+        CompactFullBleedStop2.Color = Color.FromArgb(
+            useUniformOverlay ? (byte)0xFF : (byte)0x40,
+            channel,
+            channel,
+            channel);
 
         // Paused dim overlay: darken in dark theme, lighten (brighten) in light theme.
         CompactPausedDim.Background = new SolidColorBrush(isDark
@@ -4299,6 +4366,7 @@ public sealed partial class WidgetShell : UserControl
     private void ShellRoot_Drop(object sender, DragEventArgs e)
     {
         StopContentDropHighlight();
+        ClearActiveContentDropHighlight();
         CompactDropCompleted?.Invoke(this, EventArgs.Empty);
     }
 
@@ -4312,6 +4380,13 @@ public sealed partial class WidgetShell : UserControl
 
     private void StartContentDropHighlight()
     {
+        WidgetShell? previousOwner =
+            ContentDropHighlightCoordinator.Activate(this);
+        if (previousOwner is not null)
+        {
+            StopContentDropHighlight(previousOwner);
+        }
+
         if (_isContentDropHighlightActive)
         {
             return;
@@ -4355,6 +4430,7 @@ public sealed partial class WidgetShell : UserControl
 
     private void StopContentDropHighlight()
     {
+        ContentDropHighlightCoordinator.Deactivate(this);
         if (!_isContentDropHighlightActive)
         {
             return;
@@ -4369,6 +4445,32 @@ public sealed partial class WidgetShell : UserControl
         ContentDropHighlightBorder.BorderBrush =
             new SolidColorBrush(Colors.Transparent);
         _contentDropHighlightAnimation = null;
+    }
+
+    internal void ClearContentDropHighlight()
+    {
+        StopContentDropHighlight();
+    }
+
+    internal static void ClearActiveContentDropHighlight()
+    {
+        WidgetShell? activeOwner =
+            ContentDropHighlightCoordinator.DeactivateActive();
+        if (activeOwner is not null)
+        {
+            StopContentDropHighlight(activeOwner);
+        }
+    }
+
+    private static void StopContentDropHighlight(WidgetShell owner)
+    {
+        if (owner.DispatcherQueue.HasThreadAccess)
+        {
+            owner.StopContentDropHighlight();
+            return;
+        }
+
+        owner.DispatcherQueue.TryEnqueue(owner.StopContentDropHighlight);
     }
 
     private Brush CreateOpaqueOverlayButtonBackground()

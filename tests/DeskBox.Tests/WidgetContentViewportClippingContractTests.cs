@@ -12,6 +12,9 @@ public sealed class WidgetContentViewportClippingContractTests
         string code = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Controls/WidgetShell.xaml.cs"));
+        string fileSurfaceCode = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
 
         int viewport = xaml.IndexOf(
             "x:Name=\"ContentTransitionViewport\"",
@@ -71,6 +74,41 @@ public sealed class WidgetContentViewportClippingContractTests
             ensureBeforeAnimation,
             animateTransition + 1,
             animationGuard - 1);
+
+        int suspendLiftedItemTransitions = code.IndexOf(
+            "SuspendFileSurfaceItemTransitions(outgoingContent, incomingContent);",
+            beginTransition,
+            StringComparison.Ordinal);
+        Assert.InRange(
+            suspendLiftedItemTransitions,
+            beginTransition + 1,
+            reparentOutgoing - 1);
+
+        int completeTransition = code.IndexOf(
+            "public void CompleteContentTransition()",
+            StringComparison.Ordinal);
+        int resumeLiftedItemTransitions = code.IndexOf(
+            "ResumeFileSurfaceItemTransitions();",
+            completeTransition,
+            StringComparison.Ordinal);
+        Assert.True(resumeLiftedItemTransitions > completeTransition);
+
+        Assert.Contains(
+            "ItemsGrid.ItemContainerTransitions = null;",
+            fileSurfaceCode,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ItemsList.ItemContainerTransitions = null;",
+            fileSurfaceCode,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ItemsGrid.ItemContainerTransitions =\n            _suspendedGridItemContainerTransitions;",
+            fileSurfaceCode.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ItemsList.ItemContainerTransitions =\n            _suspendedListItemContainerTransitions;",
+            fileSurfaceCode.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

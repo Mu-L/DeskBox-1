@@ -112,7 +112,20 @@ public sealed class WidgetContentFactory
             "WidgetContent.Search.StatusDescription",
             HasSettingsPage: true,
             SettingsSectionTag: "SearchSettings",
-            DefaultChromeMode: WidgetChromeMode.Standard)
+            DefaultChromeMode: WidgetChromeMode.Standard),
+        new(
+            WidgetKind.Glance,
+            "Glance",
+            "\uE787",
+            WidgetContentStage.Implemented,
+            CanShowInCreateEntry: false,
+            WidgetContentAvailability.Available,
+            "WidgetContent.Glance.StatusLabel",
+            "WidgetContent.Glance.StatusDescription",
+            HasSettingsPage: true,
+            SettingsSectionTag: "GlanceSettings",
+            ChromeCategory: WidgetChromeCategory.Display,
+            DefaultChromeMode: WidgetChromeMode.Overlay)
     ];
 
     private static readonly IReadOnlyDictionary<WidgetKind, WidgetContentDescriptor> Descriptors =
@@ -253,6 +266,7 @@ public sealed class WidgetContentFactory
             new TodoWidgetContentProvider(),
             new MusicWidgetContentProvider(),
             new WeatherWidgetContentProvider(),
+            new GlanceWidgetContentProvider(),
             new SearchWidgetContentProvider(),
             new PlaceholderWidgetContentProvider(WidgetKind.Tags),
             new PlaceholderWidgetContentProvider(WidgetKind.SystemMonitor)

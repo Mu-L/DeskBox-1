@@ -1,3 +1,4 @@
+using DeskBox.Controls;
 using DeskBox.Controls.WidgetContents;
 using DeskBox.Helpers;
 using DeskBox.Services;
@@ -16,6 +17,7 @@ public sealed partial class ContentWidgetWindow
     private bool _isNativeFileDropSubclassInstalled;
     private DragEventHandler? _groupFileDropDragEnterHandler;
     private DragEventHandler? _groupFileDropDragOverHandler;
+    private DragEventHandler? _groupFileDropDragLeaveHandler;
     private DragEventHandler? _groupFileDropDropHandler;
     private CancellationTokenSource? _groupFileDropPollCts;
     private Task? _groupFileDropCacheTask;
@@ -59,6 +61,8 @@ public sealed partial class ContentWidgetWindow
         try
         {
             _nativeFileDropTarget = new NativeDropTarget(HWnd);
+            _nativeFileDropTarget.DragLeaveEvent +=
+                NativeFileDropTarget_DragLeaveEvent;
             _nativeFileDropTarget.DropEvent += NativeFileDropTarget_DropEvent;
             _nativeFileDropTarget.Register();
         }
@@ -84,6 +88,7 @@ public sealed partial class ContentWidgetWindow
 
         _groupFileDropDragEnterHandler = GroupFileDrop_DragEnter;
         _groupFileDropDragOverHandler = GroupFileDrop_DragOver;
+        _groupFileDropDragLeaveHandler = GroupFileDrop_DragLeave;
         _groupFileDropDropHandler = GroupFileDrop_Drop;
         RootGrid.AddHandler(
             UIElement.DragEnterEvent,
@@ -92,6 +97,10 @@ public sealed partial class ContentWidgetWindow
         RootGrid.AddHandler(
             UIElement.DragOverEvent,
             _groupFileDropDragOverHandler,
+            handledEventsToo: true);
+        RootGrid.AddHandler(
+            UIElement.DragLeaveEvent,
+            _groupFileDropDragLeaveHandler,
             handledEventsToo: true);
         RootGrid.AddHandler(
             UIElement.DropEvent,
@@ -114,10 +123,14 @@ public sealed partial class ContentWidgetWindow
             UIElement.DragOverEvent,
             _groupFileDropDragOverHandler!);
         RootGrid.RemoveHandler(
+            UIElement.DragLeaveEvent,
+            _groupFileDropDragLeaveHandler!);
+        RootGrid.RemoveHandler(
             UIElement.DropEvent,
             _groupFileDropDropHandler!);
         _groupFileDropDragEnterHandler = null;
         _groupFileDropDragOverHandler = null;
+        _groupFileDropDragLeaveHandler = null;
         _groupFileDropDropHandler = null;
     }
 
@@ -131,11 +144,33 @@ public sealed partial class ContentWidgetWindow
         BeginGroupFileDropTracking(e.DataView);
     }
 
+    private void GroupFileDrop_DragLeave(object sender, DragEventArgs e)
+    {
+        // DragLeave is routed from nested elements too. Defer one dispatcher
+        // turn and inspect the real pointer HWND so moving between children in
+        // the same group does not cancel a valid drop target.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsClosing || IsPointerOverContentWindow())
+            {
+                return;
+            }
+
+            StopGroupFileDropTracking(disposeCachedBatch: true);
+            ContentWidgetShell.ClearContentDropHighlight();
+            App.Log(
+                $"[DropDiagnostic] Group drag leave cleared highlight " +
+                $"id={_config.Id} hwnd=0x{HWnd.ToInt64():X}");
+        });
+    }
+
     private void GroupFileDrop_Drop(object sender, DragEventArgs e)
     {
         // The nested FileSurfaceContent received a normal Drop event, so the
         // fallback must not import the cached source a second time.
         StopGroupFileDropTracking(disposeCachedBatch: true);
+        ContentWidgetShell.ClearContentDropHighlight();
+        WidgetShell.ClearActiveContentDropHighlight();
     }
 
     private void BeginGroupFileDropTracking(DataPackageView dataView)
@@ -356,6 +391,8 @@ public sealed partial class ContentWidgetWindow
 
         if (_nativeFileDropTarget is not null)
         {
+            _nativeFileDropTarget.DragLeaveEvent -=
+                NativeFileDropTarget_DragLeaveEvent;
             _nativeFileDropTarget.DropEvent -= NativeFileDropTarget_DropEvent;
             _nativeFileDropTarget.Dispose();
             _nativeFileDropTarget = null;
@@ -390,10 +427,37 @@ public sealed partial class ContentWidgetWindow
         int screenY,
         bool containsTemporaryFiles)
     {
+        ClearNativeFileDropHighlight(clearActiveHighlight: true);
         App.Log(
             $"[DropDiagnostic] content id={_config.Id} stage=NativeIDropTargetDrop " +
             $"count={paths.Count} temporary={containsTemporaryFiles}");
         QueueNativeFileDropImport(paths, containsTemporaryFiles);
+    }
+
+    private void NativeFileDropTarget_DragLeaveEvent()
+    {
+        ClearNativeFileDropHighlight(clearActiveHighlight: false);
+    }
+
+    private void ClearNativeFileDropHighlight(bool clearActiveHighlight)
+    {
+        void Clear()
+        {
+            ContentWidgetShell.ClearContentDropHighlight();
+            if (clearActiveHighlight)
+            {
+                WidgetShell.ClearActiveContentDropHighlight();
+            }
+        }
+
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            Clear();
+        }
+        else
+        {
+            DispatcherQueue.TryEnqueue(Clear);
+        }
     }
 
     private void QueueNativeFileDropImport(

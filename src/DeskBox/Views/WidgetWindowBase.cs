@@ -180,7 +180,12 @@ public abstract partial class WidgetWindowBase : Window
     protected virtual void ApplySurfaceStyle() { }
 
     /// <summary>Extra guards that block RestoreDesktopLayer (e.g. open flyouts).</summary>
-    protected virtual bool HasBlockingFlyoutOpen() => false;
+    protected virtual bool HasBlockingFlyoutOpen()
+    {
+        XamlRoot? xamlRoot = RootElement.XamlRoot;
+        return xamlRoot is not null &&
+            VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count > 0;
+    }
 
     /// <summary>Allows hosts with custom title bars to update collapse actions.</summary>
     protected virtual void OnCollapseBehaviorChanged(WidgetCollapseBehavior behavior) { }

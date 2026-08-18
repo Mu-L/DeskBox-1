@@ -56,6 +56,30 @@ public sealed class CompactPresentationRefreshTests
             nameof(MusicWidgetViewModel.PositionText)));
     }
 
+    [Theory]
+    [InlineData(nameof(GlanceWidgetViewModel.TimeText))]
+    [InlineData(nameof(GlanceWidgetViewModel.DateText))]
+    [InlineData(nameof(GlanceWidgetViewModel.WeekdayText))]
+    [InlineData(nameof(GlanceWidgetViewModel.TraditionalCalendarTitle))]
+    [InlineData(nameof(GlanceWidgetViewModel.CurrentImagePath))]
+    [InlineData(nameof(GlanceWidgetViewModel.ReadabilityOpacity))]
+    [InlineData(nameof(GlanceWidgetViewModel.ReadabilityStrengthOpacity))]
+    public void GlanceCompactPresentation_RefreshesForVisibleClockAndImageProperties(
+        string propertyName)
+    {
+        Assert.True(ContentWidgetWindow.IsCompactPresentationPropertyRelevant(
+            WidgetKind.Glance,
+            propertyName));
+    }
+
+    [Fact]
+    public void GlanceCompactPresentation_IgnoresExpandedOnlyLoadingStatus()
+    {
+        Assert.False(ContentWidgetWindow.IsCompactPresentationPropertyRelevant(
+            WidgetKind.Glance,
+            nameof(GlanceWidgetViewModel.StatusText)));
+    }
+
     [Fact]
     public void UnknownPropertyNotification_AlwaysRefreshes()
     {

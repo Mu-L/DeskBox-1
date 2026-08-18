@@ -54,6 +54,7 @@ public enum WidgetTitleIconKind
     Todo,
     Music,
     Weather,
+    Glance,
     Tags,
     Search,
     SystemMonitor
@@ -68,6 +69,7 @@ public static class WidgetTitleIconKindNames
     public const string Todo = nameof(WidgetTitleIconKind.Todo);
     public const string Music = nameof(WidgetTitleIconKind.Music);
     public const string Weather = nameof(WidgetTitleIconKind.Weather);
+    public const string Glance = nameof(WidgetTitleIconKind.Glance);
     public const string Tags = nameof(WidgetTitleIconKind.Tags);
     public const string Search = nameof(WidgetTitleIconKind.Search);
     public const string SystemMonitor = nameof(WidgetTitleIconKind.SystemMonitor);
@@ -89,6 +91,7 @@ public static class WidgetTitleIconKindNames
             WidgetTitleIconKind.Todo => Todo,
             WidgetTitleIconKind.Music => Music,
             WidgetTitleIconKind.Weather => Weather,
+            WidgetTitleIconKind.Glance => Glance,
             WidgetTitleIconKind.Tags => Tags,
             WidgetTitleIconKind.Search => Search,
             WidgetTitleIconKind.SystemMonitor => SystemMonitor,
@@ -110,6 +113,7 @@ public static class WidgetTitleIconKindNames
             WidgetKind.Todo => Todo,
             WidgetKind.Music => Music,
             WidgetKind.Weather => Weather,
+            WidgetKind.Glance => Glance,
             WidgetKind.Tags => Tags,
             WidgetKind.Search => Search,
             WidgetKind.SystemMonitor => SystemMonitor,
@@ -144,6 +148,7 @@ public static class WidgetTitleIconKindNames
             WidgetTitleIconKind.Todo => "WidgetTitleIcon.Label.Todo",
             WidgetTitleIconKind.Music => "WidgetTitleIcon.Label.Music",
             WidgetTitleIconKind.Weather => "WidgetTitleIcon.Label.Weather",
+            WidgetTitleIconKind.Glance => "Glance.Title",
             WidgetTitleIconKind.Tags => "WidgetTitleIcon.Label.Tags",
             WidgetTitleIconKind.Search => "WidgetTitleIcon.Label.Search",
             WidgetTitleIconKind.SystemMonitor => "WidgetTitleIcon.Label.SystemMonitor",
@@ -161,6 +166,7 @@ public static class WidgetTitleIconKindNames
             WidgetTitleIconKind.Todo => "todo",
             WidgetTitleIconKind.Music => "music",
             WidgetTitleIconKind.Weather => "weather",
+            WidgetTitleIconKind.Glance => "glance",
             WidgetTitleIconKind.Tags => "tags",
             WidgetTitleIconKind.Search => "search",
             WidgetTitleIconKind.SystemMonitor => "system-monitor",

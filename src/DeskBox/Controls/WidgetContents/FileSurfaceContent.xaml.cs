@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -77,6 +78,9 @@ public sealed partial class FileSurfaceContent :
     private bool _isWindowRevealCompleted;
     private DateTime _lastDiskReconciliationUtc = DateTime.MinValue;
     private int _diskReconciliationQueued;
+    private TransitionCollection? _suspendedGridItemContainerTransitions;
+    private TransitionCollection? _suspendedListItemContainerTransitions;
+    private bool _itemContainerTransitionsSuspendedForHostSwitch;
 
     public FileSurfaceContent(
         WidgetConfig config,
@@ -152,6 +156,38 @@ public sealed partial class FileSurfaceContent :
     internal void SetHostWindowHandle(IntPtr windowHandle)
     {
         _hostWindowHandle = windowHandle;
+    }
+
+    internal void SuspendItemContainerTransitionsForHostSwitch()
+    {
+        if (_itemContainerTransitionsSuspendedForHostSwitch)
+        {
+            return;
+        }
+
+        _suspendedGridItemContainerTransitions =
+            ItemsGrid.ItemContainerTransitions;
+        _suspendedListItemContainerTransitions =
+            ItemsList.ItemContainerTransitions;
+        ItemsGrid.ItemContainerTransitions = null;
+        ItemsList.ItemContainerTransitions = null;
+        _itemContainerTransitionsSuspendedForHostSwitch = true;
+    }
+
+    internal void ResumeItemContainerTransitionsAfterHostSwitch()
+    {
+        if (!_itemContainerTransitionsSuspendedForHostSwitch)
+        {
+            return;
+        }
+
+        ItemsGrid.ItemContainerTransitions =
+            _suspendedGridItemContainerTransitions;
+        ItemsList.ItemContainerTransitions =
+            _suspendedListItemContainerTransitions;
+        _suspendedGridItemContainerTransitions = null;
+        _suspendedListItemContainerTransitions = null;
+        _itemContainerTransitionsSuspendedForHostSwitch = false;
     }
 
     public WidgetConfig Config => ViewModel.Config;

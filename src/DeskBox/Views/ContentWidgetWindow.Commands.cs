@@ -261,6 +261,14 @@ public sealed partial class ContentWidgetWindow
     {
         var flyout = new MenuFlyout();
 
+        if (CurrentContent is GlanceWidgetContentAdapter glance)
+        {
+            GlanceWidgetContextMenuBuilder.Append(
+                flyout,
+                glance.ViewModel,
+                App.Current.LocalizationService);
+        }
+
         var rename = new MenuFlyoutItem
         {
             Text = App.Current.LocalizationService.T("Common.Rename"),

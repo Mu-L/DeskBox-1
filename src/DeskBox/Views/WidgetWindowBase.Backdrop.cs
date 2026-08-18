@@ -289,17 +289,6 @@ public abstract partial class WidgetWindowBase
         }
     }
 
-    private static double NormalizeMaterialIntensity(double value) =>
-        double.IsFinite(value)
-            ? Math.Clamp(
-                value,
-                SettingsService.MinWidgetMaterialIntensity,
-                SettingsService.MaxWidgetMaterialIntensity)
-            : SettingsService.DefaultWidgetMaterialIntensity;
-
-    private static double LerpMaterialValue(double start, double end, double progress) =>
-        start + ((end - start) * Math.Clamp(progress, 0.0, 1.0));
-
     protected bool ApplyMicaController(
         bool isDark,
         Windows.UI.Color tintColor,
@@ -354,17 +343,12 @@ public abstract partial class WidgetWindowBase
                 ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
                 : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
 
-        double intensity = NormalizeMaterialIntensity(
+        WidgetMaterialOpacityProfile profile = WidgetMaterialVisualCalculator.CalculateMica(
+            isDark,
+            useAlt,
             SettingsService.Settings.WidgetMaterialIntensity);
-        double tintOpacity = useAlt
-            ? LerpMaterialValue(0.28, 0.82, intensity)
-            : LerpMaterialValue(0.04, 0.46, intensity);
-        double luminosityOpacity = useAlt
-            ? LerpMaterialValue(isDark ? 0.34 : 0.42, isDark ? 0.72 : 0.76, intensity)
-            : LerpMaterialValue(isDark ? 0.78 : 0.82, isDark ? 0.94 : 0.96, intensity);
-
-        MicaController.TintOpacity = (float)tintOpacity;
-        MicaController.LuminosityOpacity = (float)luminosityOpacity;
+        MicaController.TintOpacity = (float)profile.TintOpacity;
+        MicaController.LuminosityOpacity = (float)profile.LuminosityOpacity;
         return true;
     }
 
@@ -466,21 +450,13 @@ public abstract partial class WidgetWindowBase
         AcrylicController.TintColor = tintColor;
         AcrylicController.FallbackColor = tintColor;
 
-        double intensity = NormalizeMaterialIntensity(
+        WidgetMaterialOpacityProfile profile = WidgetMaterialVisualCalculator.CalculateAcrylic(
+            isDark,
+            useBase,
+            surfaceOpacity,
             SettingsService.Settings.WidgetMaterialIntensity);
-        double surfaceStrength = LerpMaterialValue(0.08, 1.0, Math.Clamp(surfaceOpacity, 0.0, 1.0));
-        double tintOpacity = useBase
-            ? LerpMaterialValue(isDark ? 0.18 : 0.12, isDark ? 0.72 : 0.62, intensity)
-            : LerpMaterialValue(isDark ? 0.04 : 0.02, isDark ? 0.42 : 0.34, intensity);
-        double luminosityOpacity = useBase
-            ? LerpMaterialValue(isDark ? 0.38 : 0.46, isDark ? 0.82 : 0.90, intensity)
-            : LerpMaterialValue(isDark ? 0.16 : 0.22, isDark ? 0.56 : 0.64, intensity);
-
-        AcrylicController.TintOpacity = (float)Math.Clamp(tintOpacity * surfaceStrength, 0.0, 1.0);
-        AcrylicController.LuminosityOpacity = (float)Math.Clamp(
-            luminosityOpacity * surfaceStrength,
-            0.0,
-            1.0);
+        AcrylicController.TintOpacity = (float)profile.TintOpacity;
+        AcrylicController.LuminosityOpacity = (float)profile.LuminosityOpacity;
         return true;
     }
 
