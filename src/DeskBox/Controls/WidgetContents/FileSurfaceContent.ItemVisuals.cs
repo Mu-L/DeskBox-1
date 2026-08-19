@@ -1042,7 +1042,8 @@ public sealed partial class FileSurfaceContent
             Root.ActualTheme,
             accent,
             isSelected,
-            item?.IsCut == true);
+            item?.IsCut == true,
+            isStackChild: item?.IsStackChild == true);
     }
 
     private void ApplyStackSurfaceVisual(

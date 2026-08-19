@@ -92,12 +92,7 @@ public partial class WidgetItem : ObservableObject
 
     /// <summary>Temporary membership marker while a stack is expanded.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StackChildMarkerVisibility))]
     public partial bool IsStackChild { get; set; }
-
-    public Visibility StackChildMarkerVisibility => IsStackChild
-        ? Visibility.Visible
-        : Visibility.Collapsed;
 
     public string SecondaryInfo
     {
