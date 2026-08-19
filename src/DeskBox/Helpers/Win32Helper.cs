@@ -476,15 +476,97 @@ public static partial class Win32Helper
         {
             if (IsKeyDown(vk))
             {
-                keybd_event((byte)vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                _ = TrySendKeyboardEvent((ushort)vk, KEYEVENTF_KEYUP, UIntPtr.Zero, out _);
             }
         }
     }
 
     private const uint KEYEVENTF_KEYUP = 0x0002;
 
-    [LibraryImport("user32.dll")]
-    private static partial void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    /// <summary>
+    /// Sends a short, tagged keyboard press and verifies that both input
+    /// records reached the Win32 input queue. The tag lets a low-level hook
+    /// ignore its own synthetic events.
+    /// </summary>
+    public static unsafe bool TrySendTaggedKeyPress(
+        ushort virtualKey,
+        IntPtr extraInfo,
+        out int errorCode)
+    {
+        var tag = new UIntPtr(unchecked((ulong)extraInfo.ToInt64()));
+        INPUT* inputs = stackalloc INPUT[2];
+        inputs[0] = CreateKeyboardInput(virtualKey, 0, tag);
+        inputs[1] = CreateKeyboardInput(virtualKey, KEYEVENTF_KEYUP, tag);
+
+        uint sent = SendInput(2, inputs, sizeof(INPUT));
+        if (sent == 2)
+        {
+            errorCode = 0;
+            return true;
+        }
+
+        errorCode = Marshal.GetLastWin32Error();
+        if (errorCode == 0)
+        {
+            errorCode = 31; // ERROR_GEN_FAILURE
+        }
+
+        // If only the key-down record was accepted, make a best-effort key-up
+        // call so a partial SendInput result cannot leave the synthetic key
+        // logically pressed.
+        if (sent == 1)
+        {
+            INPUT release = CreateKeyboardInput(virtualKey, KEYEVENTF_KEYUP, tag);
+            _ = SendInput(1, &release, sizeof(INPUT));
+        }
+
+        return false;
+    }
+
+    private static unsafe bool TrySendKeyboardEvent(
+        ushort virtualKey,
+        uint flags,
+        UIntPtr extraInfo,
+        out int errorCode)
+    {
+        INPUT input = CreateKeyboardInput(virtualKey, flags, extraInfo);
+        uint sent = SendInput(1, &input, sizeof(INPUT));
+        if (sent == 1)
+        {
+            errorCode = 0;
+            return true;
+        }
+
+        errorCode = Marshal.GetLastWin32Error();
+        if (errorCode == 0)
+        {
+            errorCode = 31; // ERROR_GEN_FAILURE
+        }
+
+        return false;
+    }
+
+    private static INPUT CreateKeyboardInput(
+        ushort virtualKey,
+        uint flags,
+        UIntPtr extraInfo)
+    {
+        return new INPUT
+        {
+            Type = 1, // INPUT_KEYBOARD
+            Data = new INPUTUNION
+            {
+                Keyboard = new KEYBDINPUT
+                {
+                    VirtualKey = virtualKey,
+                    ScanCode = 0,
+                    Flags = flags,
+                    Time = 0,
+                    ExtraInfo = extraInfo
+                }
+            }
+        };
+    }
 
     public static bool HasMouseButtonActivity()
     {
@@ -546,6 +628,9 @@ public static partial class Win32Helper
     public const int WM_KEYUP = 0x0101;
     public const int WM_SYSKEYDOWN = 0x0104;
     public const int WM_SYSKEYUP = 0x0105;
+    public const uint LLKHF_INJECTED = 0x00000010;
+    public const uint WM_QUIT = 0x0012;
+    public const uint PM_NOREMOVE = 0x0000;
     public const int WM_MOUSEACTIVATE = 0x0021;
     public const int WM_LBUTTONDOWN = 0x0201;
     public const int WM_MOUSEWHEEL = 0x020A;
@@ -596,6 +681,73 @@ public static partial class Win32Helper
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct INPUT
+    {
+        public uint Type;
+        public INPUTUNION Data;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct INPUTUNION
+    {
+        [FieldOffset(0)]
+        public MOUSEINPUT Mouse;
+
+        [FieldOffset(0)]
+        public KEYBDINPUT Keyboard;
+
+        [FieldOffset(0)]
+        public HARDWAREINPUT Hardware;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HARDWAREINPUT
+    {
+        public uint Message;
+        public ushort ParameterLow;
+        public ushort ParameterHigh;
+    }
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    private static unsafe partial uint SendInput(
+        uint inputCount,
+        INPUT* inputs,
+        int inputSize);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public UIntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+        public uint lPrivate;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct MSLLHOOKSTRUCT
     {
         public POINT pt;
@@ -629,6 +781,48 @@ public static partial class Win32Helper
         int nCode,
         IntPtr wParam,
         IntPtr lParam);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMessageW")]
+    public static partial int GetMessage(
+        out MSG lpMsg,
+        IntPtr hWnd,
+        uint wMsgFilterMin,
+        uint wMsgFilterMax);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool TranslateMessage(in MSG lpMsg);
+
+    [LibraryImport("user32.dll", EntryPoint = "DispatchMessageW")]
+    public static partial IntPtr DispatchMessage(in MSG lpMsg);
+
+    [LibraryImport("user32.dll", EntryPoint = "PeekMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PeekMessage(
+        out MSG lpMsg,
+        IntPtr hWnd,
+        uint wMsgFilterMin,
+        uint wMsgFilterMax,
+        uint wRemoveMsg);
+
+    [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "PostThreadMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PostThreadMessage(
+        uint idThread,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam);
+
+    [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "PostMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PostMessage(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam);
+
+    [LibraryImport("kernel32.dll")]
+    public static partial uint GetCurrentThreadId();
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr GetModuleHandle(string? lpModuleName);

@@ -2413,7 +2413,10 @@ settings.FocusClickedWidgetOnRaise = false;
     {
         bool changed = false;
         int normalizedModifiers = (int)((Models.HotkeyModifierKeys)settings.GlobalHotkeyModifiers &
-            (Models.HotkeyModifierKeys.Alt | Models.HotkeyModifierKeys.Control | Models.HotkeyModifierKeys.Shift));
+            (Models.HotkeyModifierKeys.Alt |
+             Models.HotkeyModifierKeys.Control |
+             Models.HotkeyModifierKeys.Shift |
+             Models.HotkeyModifierKeys.Windows));
 
         if (settings.GlobalHotkeyModifiers != normalizedModifiers)
         {

@@ -29,6 +29,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(GlobalHotkeyEnabled));
         OnPropertyChanged(nameof(CanShowGlobalHotkeyWarning));
         OnPropertyChanged(nameof(GlobalHotkeyDescription));
+        OnPropertyChanged(nameof(GlobalHotkeyWarningText));
         OnPropertyChanged(nameof(GlobalHotkeyText));
         OnPropertyChanged(nameof(GlobalHotkeyStatusText));
         OnPropertyChanged(nameof(GlobalHotkeyStatusKind));

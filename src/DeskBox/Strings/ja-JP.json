@@ -675,6 +675,7 @@
     "Settings.GlobalHotkey.Title": "グローバルホットキー",
     "Settings.GlobalHotkey.CustomTitle": "カスタムショートカット",
     "Settings.GlobalHotkey.Description": "ショートカットを押すとトレイアイコンの左クリックと同じアクションを実行します",
+    "Settings.GlobalHotkey.ReservedWarning": "有効にすると、DeskBox の実行中は Win + Space が DeskBox に割り当てられ、Windows の入力言語とキーボード レイアウトの切り替えは一時的に使用できなくなります。DeskBox は標準ユーザー権限のまま実行されます。",
     "Settings.GlobalHotkey.ChangeTooltip": "グローバルホットキーを変更",
     "Settings.GlobalHotkey.ResetTooltip": "デフォルトのホットキーを復元",
     "Settings.GlobalHotkey.Recording": "ショートカットを押してください...",

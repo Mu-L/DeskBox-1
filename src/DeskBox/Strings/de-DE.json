@@ -675,6 +675,7 @@
     "Settings.GlobalHotkey.Title": "Globale Tastenkombination",
     "Settings.GlobalHotkey.CustomTitle": "Benutzerdefinierte Verknüpfung",
     "Settings.GlobalHotkey.Description": "Tastenkombination drücken, um dieselbe Aktion wie beim Linksklick auf das Tray-Symbol auszuführen",
+    "Settings.GlobalHotkey.ReservedWarning": "Solange DeskBox ausgeführt wird, ersetzt dies die Windows-Tastenkombination Win + Leertaste zum Wechseln der Eingabesprache und des Tastaturlayouts. DeskBox wird weiterhin ohne Administratorrechte ausgeführt.",
     "Settings.GlobalHotkey.ChangeTooltip": "Globale Tastenkombination ändern",
     "Settings.GlobalHotkey.ResetTooltip": "Standard-Tastenkombination wiederherstellen",
     "Settings.GlobalHotkey.Recording": "Tastenkombination drücken...",

@@ -689,6 +689,7 @@
   "Settings.GlobalHotkey.Title": "Tecla de acceso rápido global",
   "Settings.GlobalHotkey.CustomTitle": "Acceso directo personalizado",
   "Settings.GlobalHotkey.Description": "Presione el acceso directo para ejecutar la misma acción que hacer clic izquierdo en el icono de la bandeja",
+  "Settings.GlobalHotkey.ReservedWarning": "Mientras DeskBox esté en ejecución, esto sustituirá el atajo Win + Espacio de Windows para cambiar el idioma de entrada y la distribución del teclado. DeskBox seguirá ejecutándose sin privilegios de administrador.",
   "Settings.GlobalHotkey.ChangeTooltip": "Cambiar tecla de acceso rápido global",
   "Settings.GlobalHotkey.ResetTooltip": "Restaurar tecla de acceso rápido predeterminada",
   "Settings.GlobalHotkey.Recording": "Presione el acceso directo...",

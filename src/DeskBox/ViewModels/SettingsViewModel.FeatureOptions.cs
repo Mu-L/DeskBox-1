@@ -458,6 +458,7 @@ public partial class SettingsViewModel
 
             App.Current?.GlobalHotkeyService?.SetEnabled(value);
             RefreshGlobalHotkeyStatus();
+            OnPropertyChanged(nameof(CanShowGlobalHotkeyWarning));
         }
     }
 
@@ -586,7 +587,9 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
         : _localizationService.T("Settings.Accent.CustomDescription");
 
     public string GlobalHotkeyDescription => _localizationService.T("Settings.GlobalHotkey.Description");
-    public bool CanShowGlobalHotkeyWarning => GlobalHotkeyEnabled && GlobalHotkeyService.IsRiskyGesture(GetCurrentGlobalHotkeyGesture());
+    public string GlobalHotkeyWarningText => _localizationService.T("Settings.GlobalHotkey.ReservedWarning");
+    public bool CanShowGlobalHotkeyWarning => GlobalHotkeyEnabled &&
+        GlobalHotkeyService.IsReservedSystemGesture(GetCurrentGlobalHotkeyGesture());
     public IEnumerable<FeatureWidgetEntry> FeatureWidgetEntries
     {
         get

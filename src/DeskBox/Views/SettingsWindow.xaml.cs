@@ -51,6 +51,7 @@ public sealed partial class SettingsWindow : Window
     private static readonly TimeSpan SectionLayoutSettleDelay = TimeSpan.FromMilliseconds(90);
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcDestroy = 0x0082;
+    private const uint WmReservedHotkeyCapture = 0x8443;
     private static readonly UIntPtr SettingsWindowSubclassId = new(1);
 
     private readonly ThemeService _themeService;
@@ -66,6 +67,7 @@ public sealed partial class SettingsWindow : Window
     private readonly DispatcherTimer _sectionLayoutSettleTimer = new() { Interval = SectionLayoutSettleDelay };
     private readonly PointerEventHandler _settingsRootPointerPressedHandler;
     private readonly PointerEventHandler _settingsRootPointerReleasedHandler;
+    private readonly ReservedHotkeyHookService _hotkeyRecordingHook = new();
     private bool _isSubclassInstalled;
     private bool _isClosed;
     private bool _isAppearanceSliderDragging;
@@ -243,6 +245,8 @@ public sealed partial class SettingsWindow : Window
         _resizeSettleTimer.Tick -= ResizeSettleTimer_Tick;
         _sectionLayoutSettleTimer.Stop();
         _sectionLayoutSettleTimer.Tick -= SectionLayoutSettleTimer_Tick;
+        _isRecordingHotkey = false;
+        _hotkeyRecordingHook.Dispose();
         ClearSettingsSearchHighlight();
         Win32Helper.ClearWindowTopMost(_hWnd);
         RemoveMinimumSizeHook();
@@ -609,6 +613,18 @@ public sealed partial class SettingsWindow : Window
         UIntPtr subclassId,
         UIntPtr refData)
     {
+        if (message == WmReservedHotkeyCapture)
+        {
+            if (_isRecordingHotkey)
+            {
+                _ = ApplyRecordedHotkeyAsync(new GlobalHotkeyGesture(
+                    HotkeyModifierKeys.Windows,
+                    (int)VirtualKey.Space));
+            }
+
+            return IntPtr.Zero;
+        }
+
         if (message == WmGetMinMaxInfo)
         {
             var minMaxInfo = Marshal.PtrToStructure<MinMaxInfo>(lParam);

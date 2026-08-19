@@ -78,7 +78,8 @@ public sealed class SearchHotkeyService : IDisposable
         }
 
         var gesture = CurrentGesture;
-        if (!GlobalHotkeyService.IsValidGesture(gesture))
+        if (gesture.Modifiers.HasFlag(HotkeyModifierKeys.Windows) ||
+            !GlobalHotkeyService.IsValidGesture(gesture))
         {
             return;
         }
@@ -97,7 +98,8 @@ public sealed class SearchHotkeyService : IDisposable
     public bool TryApplyGesture(GlobalHotkeyGesture gesture)
     {
         gesture = GlobalHotkeyService.NormalizeGesture((int)gesture.Modifiers, gesture.VirtualKey);
-        if (!GlobalHotkeyService.IsValidGesture(gesture))
+        if (gesture.Modifiers.HasFlag(HotkeyModifierKeys.Windows) ||
+            !GlobalHotkeyService.IsValidGesture(gesture))
         {
             return false;
         }

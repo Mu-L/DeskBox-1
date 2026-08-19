@@ -8,11 +8,12 @@ namespace DeskBox.Services;
 public sealed class GlobalHotkeyService : IDisposable
 {
     public const uint WmHotkey = 0x0312;
+    private const uint WmReservedHotkey = 0x8442;
     private const int MainHotkeyId = 0x4442;
-    private const int ProbeHotkeyId = 0x4443;
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
+    private const uint ModWin = 0x0008;
     private const uint ModNoRepeat = 0x4000;
     private static readonly UIntPtr SubclassId = new(0x4442);
 
@@ -20,10 +21,14 @@ public sealed class GlobalHotkeyService : IDisposable
     private readonly LocalizationService _localizationService;
     private readonly Func<Task> _invokeAsync;
     private readonly Win32Helper.SubclassProc _subclassProc;
+    private readonly ReservedHotkeyHookService _reservedHotkeyHook = new();
     private IntPtr _windowHandle;
     private bool _isSubclassInstalled;
     private bool _isRegistered;
+    private bool _usesReservedHook;
+    private long _receivedSequence;
     private long _invocationSequence;
+    private long _dispatchFailureSequence;
 
     public GlobalHotkeyService(
         SettingsService settingsService,
@@ -38,8 +43,17 @@ public sealed class GlobalHotkeyService : IDisposable
 
     public event Action? RegistrationChanged;
 
-    public bool IsRegistered => _isRegistered;
+    public bool IsRegistered => _isRegistered &&
+        (!_usesReservedHook || _reservedHotkeyHook.IsActive);
+    public bool UsesReservedHook => _usesReservedHook && IsRegistered;
+    public long ReceivedCount => Interlocked.Read(ref _receivedSequence);
     public long InvocationCount => Interlocked.Read(ref _invocationSequence);
+    public long DispatchFailureCount => Interlocked.Read(ref _dispatchFailureSequence);
+    public uint ReservedHookThreadId => _reservedHotkeyHook.ThreadId;
+    public int ReservedHookLastErrorCode => _reservedHotkeyHook.LastErrorCode;
+    public long ReservedHookTriggerCount => _reservedHotkeyHook.TriggerCount;
+    public long ReservedHookPostFailureCount => _reservedHotkeyHook.PostFailureCount;
+    public long ReservedHookInputFailureCount => _reservedHotkeyHook.InputFailureCount;
     public string? LastError { get; private set; }
 
     public GlobalHotkeyGesture CurrentGesture => NormalizeGesture(
@@ -60,7 +74,15 @@ public sealed class GlobalHotkeyService : IDisposable
         Detach();
         _windowHandle = windowHandle;
         _isSubclassInstalled = Win32Helper.SetWindowSubclass(_windowHandle, _subclassProc, SubclassId, UIntPtr.Zero);
-        App.Log($"[GlobalHotkey] Subclass installed={_isSubclassInstalled} error={Marshal.GetLastWin32Error()}");
+        int subclassError = _isSubclassInstalled ? 0 : Marshal.GetLastWin32Error();
+        App.Log($"[GlobalHotkey] Subclass installed={_isSubclassInstalled} error={subclassError}");
+        if (!_isSubclassInstalled)
+        {
+            LastError = _localizationService.T("Settings.GlobalHotkey.Status.Unavailable");
+            NotifyRegistrationChanged();
+            return;
+        }
+
         RefreshRegistration();
     }
 
@@ -99,7 +121,60 @@ public sealed class GlobalHotkeyService : IDisposable
             return;
         }
 
-        if (Register(_windowHandle, MainHotkeyId, gesture))
+        if (!_isSubclassInstalled)
+        {
+            App.Log("[GlobalHotkey] RefreshRegistration skipped: window subclass unavailable");
+            LastError = _localizationService.T("Settings.GlobalHotkey.Status.Unavailable");
+            NotifyRegistrationChanged();
+            return;
+        }
+
+        if (IsReservedSystemGesture(gesture))
+        {
+            if (IsReservedHookDisabledByEnvironment())
+            {
+                App.Log("[GlobalHotkey] Reserved hotkey hook disabled by environment");
+                LastError = _localizationService.T("Settings.GlobalHotkey.Status.Unavailable");
+                NotifyRegistrationChanged();
+                return;
+            }
+
+            bool hookStarted;
+            int hookError;
+            try
+            {
+                hookStarted = _reservedHotkeyHook.TryStart(
+                    _windowHandle,
+                    WmReservedHotkey,
+                    out hookError);
+            }
+            catch (Exception ex)
+            {
+                hookStarted = false;
+                hookError = Marshal.GetHRForException(ex);
+                App.Log($"[GlobalHotkey] Reserved hook startup threw: {ex}");
+            }
+
+            if (hookStarted)
+            {
+                _isRegistered = true;
+                _usesReservedHook = true;
+                App.Log(
+                    $"[GlobalHotkey] Registered reserved gesture={CurrentGestureText} " +
+                    $"mode=hook hwnd=0x{_windowHandle.ToInt64():X}");
+                NotifyRegistrationChanged();
+                return;
+            }
+
+            App.Log(
+                $"[GlobalHotkey] Reserved hook registration failed gesture={CurrentGestureText} " +
+                $"error={hookError}");
+            LastError = _localizationService.T("Settings.GlobalHotkey.Status.Unavailable");
+            NotifyRegistrationChanged();
+            return;
+        }
+
+        if (Register(_windowHandle, MainHotkeyId, gesture, out int registerError))
         {
             _isRegistered = true;
             App.Log($"[GlobalHotkey] Registered gesture={CurrentGestureText} hwnd=0x{_windowHandle.ToInt64():X}");
@@ -107,7 +182,7 @@ public sealed class GlobalHotkeyService : IDisposable
             return;
         }
 
-        App.Log($"[GlobalHotkey] RegisterHotKey failed gesture={CurrentGestureText} error={Marshal.GetLastWin32Error()}");
+        App.Log($"[GlobalHotkey] RegisterHotKey failed gesture={CurrentGestureText} error={registerError}");
         LastError = _localizationService.T("Settings.GlobalHotkey.Status.Conflict");
         NotifyRegistrationChanged();
     }
@@ -122,21 +197,61 @@ public sealed class GlobalHotkeyService : IDisposable
             return false;
         }
 
-        bool isCurrentGesture = gesture.Equals(CurrentGesture);
-        if (_windowHandle != IntPtr.Zero &&
-            !(isCurrentGesture && _isRegistered) &&
-            !CanRegister(_windowHandle, gesture))
+        var settings = _settingsService.Settings;
+        int previousModifiers = settings.GlobalHotkeyModifiers;
+        int previousVirtualKey = settings.GlobalHotkeyKey;
+        var previousGesture = NormalizeGesture(previousModifiers, previousVirtualKey);
+        bool isCurrentGesture = gesture.Equals(previousGesture);
+        bool shouldBeActive = _windowHandle != IntPtr.Zero && settings.GlobalHotkeyEnabled;
+
+        if (isCurrentGesture)
         {
-            error = _localizationService.T("Settings.GlobalHotkey.Status.Conflict");
-            return false;
+            if (shouldBeActive && !IsRegistered)
+            {
+                RefreshRegistration();
+                if (!IsRegistered)
+                {
+                    error = LastError ?? _localizationService.T("Settings.GlobalHotkey.Status.Unavailable");
+                    return false;
+                }
+            }
+
+            return true;
         }
 
-        var settings = _settingsService.Settings;
         settings.GlobalHotkeyModifiers = (int)gesture.Modifiers;
         settings.GlobalHotkeyKey = gesture.VirtualKey;
-        _settingsService.SaveDebounced();
+
+        if (!shouldBeActive)
+        {
+            _settingsService.SaveDebounced();
+            return true;
+        }
+
+        // The real registration is the commit point. A probe can become stale
+        // before the subsequent RegisterHotKey call, so register the requested
+        // gesture first and roll back both settings and registration on failure.
         RefreshRegistration();
-        return true;
+        if (IsRegistered)
+        {
+            _settingsService.SaveDebounced();
+            return true;
+        }
+
+        string registrationError = LastError ??
+            _localizationService.T("Settings.GlobalHotkey.Status.Unavailable");
+        settings.GlobalHotkeyModifiers = previousModifiers;
+        settings.GlobalHotkeyKey = previousVirtualKey;
+        RefreshRegistration();
+        if (!IsRegistered)
+        {
+            App.Log(
+                $"[GlobalHotkey] Rollback registration failed previousGesture=" +
+                $"{FormatGesture(previousGesture, _localizationService)}");
+        }
+
+        error = registrationError;
+        return false;
     }
 
     public void SetEnabled(bool enabled)
@@ -162,13 +277,23 @@ public sealed class GlobalHotkeyService : IDisposable
     public void Dispose()
     {
         Detach();
+        _reservedHotkeyHook.Dispose();
     }
 
     public static GlobalHotkeyGesture NormalizeGesture(int modifiers, int virtualKey)
     {
         var normalizedModifiers = (HotkeyModifierKeys)modifiers &
-            (HotkeyModifierKeys.Alt | HotkeyModifierKeys.Control | HotkeyModifierKeys.Shift);
+            (HotkeyModifierKeys.Alt |
+             HotkeyModifierKeys.Control |
+             HotkeyModifierKeys.Shift |
+             HotkeyModifierKeys.Windows);
         return new GlobalHotkeyGesture(normalizedModifiers, virtualKey);
+    }
+
+    public static bool IsReservedSystemGesture(GlobalHotkeyGesture gesture)
+    {
+        return gesture.Modifiers == HotkeyModifierKeys.Windows &&
+               gesture.VirtualKey == (int)VirtualKey.Space;
     }
 
     public static bool IsValidGesture(GlobalHotkeyGesture gesture)
@@ -188,7 +313,8 @@ public sealed class GlobalHotkeyService : IDisposable
 
     public static bool IsRiskyGesture(GlobalHotkeyGesture gesture)
     {
-        return gesture.Modifiers == HotkeyModifierKeys.None ||
+        return IsReservedSystemGesture(gesture) ||
+               gesture.Modifiers == HotkeyModifierKeys.None ||
                gesture.VirtualKey is
                    (int)VirtualKey.F1 or
                    (int)VirtualKey.F2 or
@@ -205,6 +331,11 @@ public sealed class GlobalHotkeyService : IDisposable
         }
 
         var parts = new List<string>();
+        if (gesture.Modifiers.HasFlag(HotkeyModifierKeys.Windows))
+        {
+            parts.Add("Win");
+        }
+
         if (gesture.Modifiers.HasFlag(HotkeyModifierKeys.Control))
         {
             parts.Add("Ctrl");
@@ -234,18 +365,44 @@ public sealed class GlobalHotkeyService : IDisposable
     {
         if (message == WmHotkey && wParam == (UIntPtr)MainHotkeyId)
         {
-            // Immediately release all modifier keys to clear any stuck state.
-            // See SearchHotkeyService for the full explanation.
-            Win32Helper.ReleaseAllModifiers();
+            QueueHotkeyInvocation("registered", releaseStandardModifiers: true);
+            return IntPtr.Zero;
+        }
 
-            App.UiDispatcherQueue.TryEnqueue(() =>
-            {
-                _ = InvokeHotkeyAsync("registered");
-            });
+        if (message == WmReservedHotkey && _usesReservedHook)
+        {
+            QueueHotkeyInvocation("reserved-hook", releaseStandardModifiers: false);
             return IntPtr.Zero;
         }
 
         return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
+    }
+
+    private void QueueHotkeyInvocation(string source, bool releaseStandardModifiers)
+    {
+        long receivedId = Interlocked.Increment(ref _receivedSequence);
+        App.LogVerbose(
+            $"[GlobalHotkey] Received id={receivedId} source={source} " +
+            $"gesture={CurrentGestureText}");
+
+        if (releaseStandardModifiers)
+        {
+            // Clear Ctrl/Alt/Shift states that can become stuck in RDP. The
+            // reserved Win+Space path owns its key-up state and never uses this.
+            Win32Helper.ReleaseAllModifiers();
+        }
+
+        if (App.UiDispatcherQueue.TryEnqueue(() =>
+            {
+                _ = InvokeHotkeyAsync(source);
+            }))
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _dispatchFailureSequence);
+        App.Log(
+            $"[GlobalHotkey] UI dispatch rejected id={receivedId} source={source}");
     }
 
     private async Task InvokeHotkeyAsync(string source)
@@ -266,38 +423,40 @@ public sealed class GlobalHotkeyService : IDisposable
 
     private void Unregister()
     {
-        if (_isRegistered && _windowHandle != IntPtr.Zero)
+        if (_usesReservedHook || _reservedHotkeyHook.IsActive)
+        {
+            try
+            {
+                _reservedHotkeyHook.Stop();
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[GlobalHotkey] Reserved hook removal failed: {ex}");
+            }
+            App.Log($"[GlobalHotkey] Reserved hook removed gesture={CurrentGestureText}");
+        }
+        else if (_isRegistered && _windowHandle != IntPtr.Zero)
         {
             Win32Helper.UnregisterHotKey(_windowHandle, MainHotkeyId);
             App.Log($"[GlobalHotkey] Unregistered gesture={CurrentGestureText}");
         }
 
         _isRegistered = false;
+        _usesReservedHook = false;
     }
 
-    private static bool CanRegister(IntPtr windowHandle, GlobalHotkeyGesture gesture)
-    {
-        if (!Register(windowHandle, ProbeHotkeyId, gesture))
-        {
-            return false;
-        }
-
-        Win32Helper.UnregisterHotKey(windowHandle, ProbeHotkeyId);
-        return true;
-    }
-
-    private static bool Register(IntPtr windowHandle, int id, GlobalHotkeyGesture gesture)
+    private static bool Register(
+        IntPtr windowHandle,
+        int id,
+        GlobalHotkeyGesture gesture,
+        out int errorCode)
     {
         bool registered = Win32Helper.RegisterHotKey(
             windowHandle,
             id,
             ToWin32Modifiers(gesture.Modifiers) | ModNoRepeat,
             (uint)gesture.VirtualKey);
-        if (!registered)
-        {
-            _ = Marshal.GetLastWin32Error();
-        }
-
+        errorCode = registered ? 0 : Marshal.GetLastWin32Error();
         return registered;
     }
 
@@ -319,6 +478,11 @@ public sealed class GlobalHotkeyService : IDisposable
             value |= ModShift;
         }
 
+        if (modifiers.HasFlag(HotkeyModifierKeys.Windows))
+        {
+            value |= ModWin;
+        }
+
         return value;
     }
 
@@ -333,10 +497,20 @@ public sealed class GlobalHotkeyService : IDisposable
         bool shift = Win32Helper.IsKeyDown((int)VirtualKey.Shift) ||
                      Win32Helper.IsKeyDown((int)VirtualKey.LeftShift) ||
                      Win32Helper.IsKeyDown((int)VirtualKey.RightShift);
+        bool windows = Win32Helper.IsKeyDown((int)VirtualKey.LeftWindows) ||
+                       Win32Helper.IsKeyDown((int)VirtualKey.RightWindows);
 
         return ctrl == modifiers.HasFlag(HotkeyModifierKeys.Control) &&
                alt == modifiers.HasFlag(HotkeyModifierKeys.Alt) &&
-               shift == modifiers.HasFlag(HotkeyModifierKeys.Shift);
+               shift == modifiers.HasFlag(HotkeyModifierKeys.Shift) &&
+               windows == modifiers.HasFlag(HotkeyModifierKeys.Windows);
+    }
+
+    private static bool IsReservedHookDisabledByEnvironment()
+    {
+        string? value = Environment.GetEnvironmentVariable("DESKBOX_DISABLE_RESERVED_HOTKEY_HOOK");
+        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsAllowedPrimaryKey(int virtualKey)

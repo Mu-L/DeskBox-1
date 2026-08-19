@@ -48,7 +48,9 @@ public sealed class DeskBoxDiagnosticsBundleServiceTests : IDisposable
         Assert.Contains("<REDACTED>", log, StringComparison.Ordinal);
 
         string diagnostics = await ReadEntryAsync(archive, "diagnostics.json");
-        Assert.Contains("\"schemaVersion\": 2", diagnostics, StringComparison.Ordinal);
+        Assert.Contains("\"schemaVersion\": 4", diagnostics, StringComparison.Ordinal);
+        Assert.Contains("\"toggleReservedHookThreadId\"", diagnostics, StringComparison.Ordinal);
+        Assert.Contains("\"toggleReservedHookInputFailureCount\"", diagnostics, StringComparison.Ordinal);
         Assert.Contains("\"widgetManager\"", diagnostics, StringComparison.Ordinal);
         Assert.Contains("\"fileHosts\"", diagnostics, StringComparison.Ordinal);
         Assert.Contains("\"strategy\": \"Unavailable\"", diagnostics, StringComparison.Ordinal);
@@ -72,7 +74,7 @@ public sealed class DeskBoxDiagnosticsBundleServiceTests : IDisposable
     private static DeskBoxDiagnosticSnapshot CreateSnapshot()
     {
         return new DeskBoxDiagnosticSnapshot(
-            2,
+            4,
             new DateTimeOffset(2026, 8, 5, 12, 30, 0, TimeSpan.Zero),
             "1.3.6",
             "Direct",
@@ -86,6 +88,14 @@ public sealed class DeskBoxDiagnosticsBundleServiceTests : IDisposable
                 3,
                 68,
                 4,
+                4,
+                0,
+                false,
+                0,
+                0,
+                0,
+                0,
+                0,
                 false,
                 false,
                 false,

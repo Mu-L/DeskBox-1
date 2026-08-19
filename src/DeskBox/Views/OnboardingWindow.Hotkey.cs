@@ -82,7 +82,24 @@ public sealed partial class OnboardingWindow
 
     private void BeginHotkeyRecording()
     {
+        if (_isRecordingHotkey)
+        {
+            return;
+        }
+
         _isRecordingHotkey = true;
+        int captureError = 0;
+        if (!_isSubclassInstalled ||
+            !_hotkeyRecordingHook.TryStart(
+                _hWnd,
+                WmReservedHotkeyCapture,
+                out captureError))
+        {
+            App.Log(
+                $"[GlobalHotkey] Onboarding recording hook unavailable; " +
+                $"ordinary gestures remain available error={captureError}");
+        }
+
         Step4HotkeyChangeButton.Content = _localizationService.T("Onboarding.Step4.HotkeyRecording");
         Step4HotkeyChangeButton.Focus(FocusState.Programmatic);
     }
@@ -90,6 +107,7 @@ public sealed partial class OnboardingWindow
     private void EndHotkeyRecording()
     {
         _isRecordingHotkey = false;
+        _hotkeyRecordingHook.Stop();
         RefreshHotkeyChangeButton();
     }
 
@@ -98,6 +116,14 @@ public sealed partial class OnboardingWindow
         EndHotkeyRecording();
         if (App.Current.GlobalHotkeyService is not { } hotkeyService)
         {
+            return;
+        }
+
+        if (GlobalHotkeyService.IsReservedSystemGesture(gesture) &&
+            !gesture.Equals(hotkeyService.CurrentGesture) &&
+            !await ConfirmReservedHotkeyOverrideAsync())
+        {
+            RefreshHotkeyChangeButton();
             return;
         }
 
@@ -124,6 +150,30 @@ public sealed partial class OnboardingWindow
         RefreshHotkeyChangeButton();
     }
 
+    private async Task<bool> ConfirmReservedHotkeyOverrideAsync()
+    {
+        if (RootGrid.XamlRoot is null)
+        {
+            return false;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "Win + Space",
+            PrimaryButtonText = _localizationService.T("Common.Enable"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+            Content = new TextBlock
+            {
+                Text = _localizationService.T("Settings.GlobalHotkey.ReservedWarning"),
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
     private static HotkeyModifierKeys GetPressedHotkeyModifiers()
     {
         var modifiers = HotkeyModifierKeys.None;
@@ -139,6 +189,11 @@ public sealed partial class OnboardingWindow
         {
             modifiers |= HotkeyModifierKeys.Shift;
         }
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.LeftWindows) ||
+            Win32Helper.IsKeyPressed(Windows.System.VirtualKey.RightWindows))
+        {
+            modifiers |= HotkeyModifierKeys.Windows;
+        }
         return modifiers;
     }
 
@@ -153,7 +208,9 @@ public sealed partial class OnboardingWindow
             Windows.System.VirtualKey.RightMenu or
             Windows.System.VirtualKey.Shift or
             Windows.System.VirtualKey.LeftShift or
-            Windows.System.VirtualKey.RightShift;
+            Windows.System.VirtualKey.RightShift or
+            Windows.System.VirtualKey.LeftWindows or
+            Windows.System.VirtualKey.RightWindows;
     }
 
     private void OnHotkeyKeyDown(Windows.System.VirtualKey key)
@@ -166,6 +223,11 @@ public sealed partial class OnboardingWindow
         if (key == Windows.System.VirtualKey.Escape)
         {
             EndHotkeyRecording();
+            return;
+        }
+
+        if (ReservedHotkeyHookService.IsInternalMaskKey((int)key))
+        {
             return;
         }
 

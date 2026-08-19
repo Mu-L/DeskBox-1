@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
+using Windows.System;
 using Windows.UI;
 using WinRT.Interop;
 
@@ -25,6 +26,7 @@ public sealed partial class OnboardingWindow : Window
     private const int MinWindowHeight = 540;
     private const int WindowWorkAreaMargin = 96;
     private const int CompactLayoutThreshold = 880;
+    private const uint WmReservedHotkeyCapture = 0x8443;
     private static readonly UIntPtr OnboardingWindowSubclassId = new(0xD05C0B01);
 
     private readonly SettingsService _settingsService;
@@ -49,6 +51,7 @@ public sealed partial class OnboardingWindow : Window
     private bool _isSynchronizingFeatureToggles;
     private Task _featureWidgetSelectionUpdateTask = Task.CompletedTask;
     private readonly Win32Helper.SubclassProc _windowSubclassProc;
+    private readonly ReservedHotkeyHookService _hotkeyRecordingHook = new();
 
     // Accent color preset list
     private static readonly string[] PresetAccentColors = { "#0078D4", "#E81123", "#107C10", "#5D2E9B", "#FF8C00", "#0099BC" };
@@ -135,6 +138,8 @@ public sealed partial class OnboardingWindow : Window
             _hotkeyDemoCts?.Cancel();
             _hotkeyDemoCts?.Dispose();
             _hotkeyDemoCts = null;
+            _isRecordingHotkey = false;
+            _hotkeyRecordingHook.Dispose();
             ReleaseFilePracticeWidget();
             DetachDesktopOrganizationWindow();
             IntroMarkHost.Children.Clear();
@@ -367,6 +372,11 @@ public sealed partial class OnboardingWindow : Window
             _isAnimating)
         {
             return;
+        }
+
+        if (_isRecordingHotkey)
+        {
+            EndHotkeyRecording();
         }
 
         if (_stepIndex == 0 && newStep != 0)
@@ -961,6 +971,18 @@ public sealed partial class OnboardingWindow : Window
     {
         const uint WmGetMinMaxInfo = 0x0024;
         const uint WmNcDestroy = 0x0082;
+
+        if (message == WmReservedHotkeyCapture)
+        {
+            if (_isRecordingHotkey)
+            {
+                _ = ApplyRecordedHotkeyAsync(new GlobalHotkeyGesture(
+                    HotkeyModifierKeys.Windows,
+                    (int)VirtualKey.Space));
+            }
+
+            return IntPtr.Zero;
+        }
 
         if (message == WmGetMinMaxInfo)
         {

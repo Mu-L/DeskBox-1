@@ -256,6 +256,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(PinQuickAccessButtonText));
         OnPropertyChanged(nameof(PinQuickAccessToolTipText));
         OnPropertyChanged(nameof(GlobalHotkeyDescription));
+        OnPropertyChanged(nameof(GlobalHotkeyWarningText));
         OnPropertyChanged(nameof(GlobalHotkeyText));
         OnPropertyChanged(nameof(GlobalHotkeyStatusText));
         OnPropertyChanged(nameof(GlobalHotkeyStatusKind));

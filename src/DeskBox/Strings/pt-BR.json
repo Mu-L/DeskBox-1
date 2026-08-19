@@ -675,6 +675,7 @@
     "Settings.GlobalHotkey.Title": "Atalho global",
     "Settings.GlobalHotkey.CustomTitle": "Atalho personalizado",
     "Settings.GlobalHotkey.Description": "Pressione o atalho para executar a mesma ação de clicar com o botão esquerdo no ícone da bandeja",
+    "Settings.GlobalHotkey.ReservedWarning": "Enquanto o DeskBox estiver em execução, isso substituirá o atalho Win + Espaço do Windows para alternar o idioma de entrada e o layout do teclado. O DeskBox continuará sendo executado sem privilégios de administrador.",
     "Settings.GlobalHotkey.ChangeTooltip": "Alterar atalho global",
     "Settings.GlobalHotkey.ResetTooltip": "Restaurar atalho padrão",
     "Settings.GlobalHotkey.Recording": "Pressione o atalho...",

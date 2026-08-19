@@ -689,6 +689,7 @@
   "Settings.GlobalHotkey.Title": "গ্লোবাল হটকি",
   "Settings.GlobalHotkey.CustomTitle": "কাস্টম শর্টকাট",
   "Settings.GlobalHotkey.Description": "ট্রে আইকনে বাম-ক্লিক করার মতো একই অ্যাকশন চালানোর জন্য শর্টকাট টিপুন",
+  "Settings.GlobalHotkey.ReservedWarning": "DeskBox চলাকালীন এটি ইনপুট ভাষা ও কীবোর্ড বিন্যাস বদলানোর Windows-এর Win + Space শর্টকাটটি প্রতিস্থাপন করবে। DeskBox সাধারণ ব্যবহারকারীর অনুমতিতেই চলবে।",
   "Settings.GlobalHotkey.ChangeTooltip": "গ্লোবাল হটকি পরিবর্তন করুন",
   "Settings.GlobalHotkey.ResetTooltip": "ডিফল্ট হটকি পুনরুদ্ধার করুন",
   "Settings.GlobalHotkey.Recording": "শর্টকাট টিপুন...",

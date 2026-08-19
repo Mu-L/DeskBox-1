@@ -112,6 +112,15 @@ public sealed partial class SettingsWindow
             return;
         }
 
+        // Win+Space capture injects an unassigned key so Windows treats the
+        // Windows key as part of a chord instead of opening Start. It is an
+        // implementation detail, not the shortcut the user is recording.
+        if (ReservedHotkeyHookService.IsInternalMaskKey((int)e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (IsModifierKey(e.Key))
         {
             e.Handled = true;
@@ -267,7 +276,24 @@ public sealed partial class SettingsWindow
 
     private void BeginHotkeyRecording()
     {
+        if (_isRecordingHotkey)
+        {
+            return;
+        }
+
         _isRecordingHotkey = true;
+        int captureError = 0;
+        if (!_isSubclassInstalled ||
+            !_hotkeyRecordingHook.TryStart(
+                _hWnd,
+                WmReservedHotkeyCapture,
+                out captureError))
+        {
+            App.Log(
+                $"[GlobalHotkey] Recording hook unavailable; ordinary gestures remain available " +
+                $"error={captureError}");
+        }
+
         GlobalHotkeyCaptureButton.Content = _localizationService.T("Settings.GlobalHotkey.Recording");
         GlobalHotkeyCaptureButton.Focus(FocusState.Programmatic);
     }
@@ -275,6 +301,7 @@ public sealed partial class SettingsWindow
     private void EndHotkeyRecording()
     {
         _isRecordingHotkey = false;
+        _hotkeyRecordingHook.Stop();
         RefreshGlobalHotkeyControls();
     }
 
@@ -294,6 +321,14 @@ public sealed partial class SettingsWindow
             return;
         }
 
+        if (GlobalHotkeyService.IsReservedSystemGesture(gesture) &&
+            !gesture.Equals(hotkeyService.CurrentGesture) &&
+            !await ConfirmReservedHotkeyOverrideAsync())
+        {
+            ViewModel.RefreshGlobalHotkeyState();
+            return;
+        }
+
         if (!hotkeyService.TryApplyGesture(gesture, out string? error))
         {
             await ShowInfoDialogAsync(
@@ -302,6 +337,30 @@ public sealed partial class SettingsWindow
         }
 
         ViewModel.RefreshGlobalHotkeyState();
+    }
+
+    private async Task<bool> ConfirmReservedHotkeyOverrideAsync()
+    {
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return false;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = "Win + Space",
+            PrimaryButtonText = _localizationService.T("Common.Enable"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+            Content = new TextBlock
+            {
+                Text = _localizationService.T("Settings.GlobalHotkey.ReservedWarning"),
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
     private DeskBox.Models.HotkeyModifierKeys GetPressedHotkeyModifiers()
@@ -320,6 +379,12 @@ public sealed partial class SettingsWindow
         if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift))
         {
             modifiers |= DeskBox.Models.HotkeyModifierKeys.Shift;
+        }
+
+        if (Win32Helper.IsKeyPressed(Windows.System.VirtualKey.LeftWindows) ||
+            Win32Helper.IsKeyPressed(Windows.System.VirtualKey.RightWindows))
+        {
+            modifiers |= DeskBox.Models.HotkeyModifierKeys.Windows;
         }
 
         return modifiers;

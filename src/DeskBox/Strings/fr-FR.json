@@ -689,6 +689,7 @@
   "Settings.GlobalHotkey.Title": "Raccourci global",
   "Settings.GlobalHotkey.CustomTitle": "Raccourci personnalisé",
   "Settings.GlobalHotkey.Description": "Appuyez sur le raccourci pour exécuter la même action qu'en cliquant avec le bouton gauche sur l'icône de la barre d'état.",
+  "Settings.GlobalHotkey.ReservedWarning": "Lorsque DeskBox est en cours d'exécution, ce réglage remplace le raccourci Windows Win + Espace utilisé pour changer la langue de saisie et la disposition du clavier. DeskBox continue de s'exécuter sans privilèges d'administrateur.",
   "Settings.GlobalHotkey.ChangeTooltip": "Changer le raccourci clavier global",
   "Settings.GlobalHotkey.ResetTooltip": "Restaurer le raccourci clavier par défaut",
   "Settings.GlobalHotkey.Recording": "Appuyez sur le raccourci...",

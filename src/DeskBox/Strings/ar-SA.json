@@ -689,6 +689,7 @@
   "Settings.GlobalHotkey.Title": "مفتاح التشغيل السريع العالمي",
   "Settings.GlobalHotkey.CustomTitle": "اختصار مخصص",
   "Settings.GlobalHotkey.Description": "اضغط على الاختصار لتشغيل نفس الإجراء عند النقر بزر الماوس الأيسر على أيقونة الدرج",
+  "Settings.GlobalHotkey.ReservedWarning": "أثناء تشغيل DeskBox، سيحل هذا محل اختصار Win + Space في Windows لتبديل لغة الإدخال وتخطيط لوحة المفاتيح. سيستمر DeskBox في العمل بدون صلاحيات المسؤول.",
   "Settings.GlobalHotkey.ChangeTooltip": "تغيير مفتاح التشغيل السريع العالمي",
   "Settings.GlobalHotkey.ResetTooltip": "استعادة مفتاح التشغيل السريع الافتراضي",
   "Settings.GlobalHotkey.Recording": "اضغط على الاختصار...",

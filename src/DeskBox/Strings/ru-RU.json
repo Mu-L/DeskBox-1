@@ -689,6 +689,7 @@
   "Settings.GlobalHotkey.Title": "Глобальная горячая клавиша",
   "Settings.GlobalHotkey.CustomTitle": "Пользовательский ярлык",
   "Settings.GlobalHotkey.Description": "Нажмите ярлык, чтобы выполнить то же действие, что и щелчок левой кнопкой мыши по значку на панели задач.",
+  "Settings.GlobalHotkey.ReservedWarning": "Пока DeskBox запущен, это заменяет сочетание Windows Win + Пробел для переключения языка ввода и раскладки клавиатуры. DeskBox продолжит работать без прав администратора.",
   "Settings.GlobalHotkey.ChangeTooltip": "Изменить глобальную горячую клавишу",
   "Settings.GlobalHotkey.ResetTooltip": "Восстановить горячую клавишу по умолчанию",
   "Settings.GlobalHotkey.Recording": "Нажмите ярлык...",

@@ -1389,6 +1389,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <TextBlock
                                             Grid.Row="0"
@@ -1427,6 +1428,14 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                                 </StackPanel>
                                             </Button>
                                         </Grid>
+                                        <InfoBar
+                                            x:Name="GlobalHotkeyReservedWarning"
+                                            Grid.Row="2"
+                                            IsClosable="False"
+                                            IsOpen="{Binding CanShowGlobalHotkeyWarning, Mode=OneWay}"
+                                            Message="{Binding GlobalHotkeyWarningText}"
+                                            Severity="Warning"
+                                            Title="{Binding GlobalHotkeyText}" />
                                     </Grid>
                                 </toolkit:SettingsCard>
                             </toolkit:SettingsExpander.Items>

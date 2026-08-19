@@ -917,7 +917,10 @@ public partial class App : Application
             {
                 try
                 {
-                    GlobalHotkeyService = new GlobalHotkeyService(SettingsService, localizationService, ToggleTrayWidgetsAsync);
+                    GlobalHotkeyService = new GlobalHotkeyService(
+                        SettingsService,
+                        localizationService,
+                        () => ToggleTrayWidgetsAsync("global-hotkey"));
                     Log("[Init] GlobalHotkeyService created");
                 }
                 catch (Exception ex)
@@ -1097,6 +1100,15 @@ public partial class App : Application
             reason.Contains("explorer-restart", StringComparison.OrdinalIgnoreCase);
         if (requiresExternalRecovery)
         {
+            try
+            {
+                GlobalHotkeyService?.RefreshRegistration();
+            }
+            catch (Exception ex)
+            {
+                Log($"[Lifecycle] Global hotkey recovery failed for {reason}: {ex.Message}");
+            }
+
             ScheduleExternalStateRecovery();
             _searchIndexService?.RecoverAfterLifecycleChange(reason);
         }
@@ -3628,7 +3640,7 @@ public partial class App : Application
                 break;
 
             case "toggle-widgets":
-                await ToggleTrayWidgetsAsync();
+                await ToggleTrayWidgetsAsync("action-command");
                 break;
 
             case "toggle-theme":

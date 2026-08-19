@@ -136,7 +136,7 @@ public partial class App
             {
                 if (WidgetManager is not null)
                 {
-                    SafeFireAndForget(ToggleTrayWidgetsAsync);
+                    SafeFireAndForget(() => ToggleTrayWidgetsAsync("tray-icon"));
                 }
             })
         };
@@ -359,7 +359,7 @@ public partial class App
 
     internal async Task<bool> ToggleWidgetsForOnboardingAsync()
     {
-        await ToggleTrayWidgetsAsync();
+        await ToggleTrayWidgetsAsync("onboarding");
         return WidgetManager?.HasVisibleWidgets == true;
     }
 
@@ -593,14 +593,14 @@ public partial class App
         }
     }
 
-    private async Task ToggleTrayWidgetsAsync()
+    private async Task ToggleTrayWidgetsAsync(string source = "tray-toggle")
     {
         if (WidgetManager is null)
         {
             return;
         }
 
-        await WidgetManager.ToggleWidgetsFromTrayAsync("tray-toggle");
+        await WidgetManager.ToggleWidgetsFromTrayAsync(source);
         UpdateTrayLayerStateText(WidgetManager.WidgetsRaisedFromTray);
         if (_onboardingWindow is not null)
         {

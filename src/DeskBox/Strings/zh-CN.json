@@ -1184,6 +1184,7 @@
     "Settings.AttachmentStorageMode.Description": "关联使用原文件；复制会在 DeskBox 中保存副本",
     "Widget.CreateFolderFailed": "新建文件夹失败",
     "Settings.GlobalHotkey.Description": "按下快捷键后，执行和左键点击托盘图标相同的唤起操作",
+    "Settings.GlobalHotkey.ReservedWarning": "启用后，DeskBox 运行期间将接管 Win + Space，Windows 的输入语言和键盘布局切换将暂时不可用。DeskBox 会继续以普通用户权限运行。",
     "Onboarding.Reconfigure": "重新配置",
     "Settings.Nav.Appearance": "外观",
     "Widget.Tooltip.Add": "新建",

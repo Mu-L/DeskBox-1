@@ -689,6 +689,7 @@
     "Settings.GlobalHotkey.Title": "Global hotkey",
     "Settings.GlobalHotkey.CustomTitle": "Custom shortcut",
     "Settings.GlobalHotkey.Description": "Press the shortcut to run the same action as left-clicking the tray icon",
+    "Settings.GlobalHotkey.ReservedWarning": "While DeskBox is running, this replaces Windows' Win + Space input-language and keyboard-layout shortcut. DeskBox continues to run without administrator privileges.",
     "Settings.GlobalHotkey.ChangeTooltip": "Change global hotkey",
     "Settings.GlobalHotkey.ResetTooltip": "Restore default hotkey",
     "Settings.GlobalHotkey.Recording": "Press shortcut...",

@@ -31,7 +31,7 @@ public partial class App
                 SettingsService.Settings.SearchHotkeyKey);
 
         return new DeskBoxDiagnosticSnapshot(
-            SchemaVersion: 2,
+            SchemaVersion: 4,
             GeneratedAtUtc: DateTimeOffset.UtcNow,
             AppVersion: GetDiagnosticVersion(),
             DistributionChannel: DistributionService.ChannelName,
@@ -44,7 +44,15 @@ public partial class App
                 GlobalHotkeyService?.IsRegistered == true,
                 (int)toggleGesture.Modifiers,
                 toggleGesture.VirtualKey,
+                GlobalHotkeyService?.ReceivedCount ?? 0,
                 GlobalHotkeyService?.InvocationCount ?? 0,
+                GlobalHotkeyService?.DispatchFailureCount ?? 0,
+                GlobalHotkeyService?.UsesReservedHook == true,
+                GlobalHotkeyService?.ReservedHookThreadId ?? 0,
+                GlobalHotkeyService?.ReservedHookLastErrorCode ?? 0,
+                GlobalHotkeyService?.ReservedHookTriggerCount ?? 0,
+                GlobalHotkeyService?.ReservedHookPostFailureCount ?? 0,
+                GlobalHotkeyService?.ReservedHookInputFailureCount ?? 0,
                 !string.IsNullOrWhiteSpace(GlobalHotkeyService?.LastError),
                 SettingsService.Settings.SearchHotkeyEnabled,
                 SearchHotkeyService?.IsRegistered == true,

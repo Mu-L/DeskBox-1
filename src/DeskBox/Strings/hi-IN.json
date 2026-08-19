@@ -689,6 +689,7 @@
   "Settings.GlobalHotkey.Title": "वैश्विक हॉटकी",
   "Settings.GlobalHotkey.CustomTitle": "कस्टम शॉर्टकट",
   "Settings.GlobalHotkey.Description": "ट्रे आइकन पर बायाँ-क्लिक करने जैसी ही क्रिया चलाने के लिए शॉर्टकट दबाएँ",
+  "Settings.GlobalHotkey.ReservedWarning": "DeskBox के चलने के दौरान यह Windows के इनपुट भाषा और कीबोर्ड लेआउट बदलने वाले Win + Space शॉर्टकट को बदल देगा। DeskBox सामान्य उपयोगकर्ता अनुमतियों के साथ चलता रहेगा।",
   "Settings.GlobalHotkey.ChangeTooltip": "वैश्विक हॉटकी बदलें",
   "Settings.GlobalHotkey.ResetTooltip": "डिफ़ॉल्ट हॉटकी पुनर्स्थापित करें",
   "Settings.GlobalHotkey.Recording": "शॉर्टकट दबाएँ...",
