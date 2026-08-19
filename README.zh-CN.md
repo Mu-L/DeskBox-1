@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.4.2-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)
+[![最新版本](https://img.shields.io/badge/release-1.4.3-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.3)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -29,21 +29,23 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 | **支持平台** | Windows 10/11，x64 与 ARM64 |
 | **技术栈** | C#、WinUI 3、.NET 10、Windows App SDK 2.2 |
 | **数据方式** | 本地优先；文件、随记、待办、设置与布局保存在电脑上 |
-| **界面语言** | 简体中文、English、日本語、Deutsch、Português do Brasil、हिन्दी、Español、Français、العربية、বাংলা、Русский |
+| **界面语言** | 简体中文、繁體中文、English、日本語、Deutsch、Português do Brasil、हिन्दी、Español、Français、العربية、বাংলা、Русский |
 | **开源协议** | GPL-3.0-only |
 
-新增的 6 种语言优先覆盖文件格子和新手流程等主要体验；少量详细设置仍在持续翻译，暂时使用英文显示。
+12 种可选语言使用一致的资源键和格式化占位符覆盖范围。
 
 ## 下载
 
-当前线上稳定版为 DeskBox 1.4.2，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2) 下载。
+当前线上稳定版为 DeskBox 1.4.3，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.3) 下载。
 
-- [DeskBox 1.4.2 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_x64.exe)，适用于大多数 Intel 和 AMD 电脑。
-- [DeskBox 1.4.2 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_arm64.exe)，适用于骁龙、Surface Pro X 等 Windows on ARM 电脑。
+- [DeskBox 1.4.3 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.3/DeskBox_Setup_1.4.3_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
+- [DeskBox 1.4.3 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.3/DeskBox_Setup_1.4.3_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
+- [DeskBox 1.4.3 x64 完整包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.3/DeskBox_Setup_1.4.3_x64_Full.exe)，内置专用 .NET 和 Windows App Runtime，可离线安装。
+- [DeskBox 1.4.3 ARM64 完整包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.3/DeskBox_Setup_1.4.3_arm64_Full.exe)，适用于需要离线安装的 Windows on ARM 电脑。
 
-安装包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
+推荐的小包采用框架依赖方式，不会把一整套运行时打进安装包。安装程序会检测对应架构的 .NET 10 Runtime 和 Windows App Runtime 2.2：电脑里已有兼容版本就直接复用，缺少时才联网下载并安装。
 
-> 只有缺少运行时依赖时，安装阶段才需要联网下载。Windows 可能为依赖安装弹出管理员权限确认；DeskBox 本体默认安装到当前用户目录。
+> 推荐的小包只在缺少运行时时联网下载；需要完全离线安装时请选择完整包。DeskBox 本体默认安装到当前用户目录。
 
 ## 核心功能
 
@@ -102,18 +104,15 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.4.2 更新亮点
+## 1.4.3 更新亮点
 
-- **文件叠放更容易控制。** 关闭自动叠放后仍会保留手动叠放，支持从资源管理器、浏览器和其他格子拖入文件，移出或调整成员时不会改乱整个格子的排序。
-- **胶囊位置更稳定。** 展开方向可选自动、向下或向上。固定方向会保持标题边缘不动，悬停恢复和 F7 显示也不会留下位置漂移或拖动遮罩。
-- **文件启动更接近桌面。** 从文件格子打开的内容会获得与桌面启动一致的用户环境，QuickLook 也能继续切换到相邻的可见文件格子。
-- **待办与随记更可靠。** 待办勾选始终对应实际任务，剪贴板图片会显示缩略图并按图片复制，附件使用可横向滚动的方块，随记搜索也会留在标签栏内。
-- **格子组切换更顺滑。** 一次滚轮输入只切换一个成员并播放一次提示，快速操作不会轻易卡住，同时保留首尾循环。
-- **音乐控制更接近 Windows。** 播放、暂停、上一首和下一首使用统一尺寸的面性图标，封面模式采用更清楚的单行磨砂控制条。
-- **首次使用与内容编辑更清楚。** 待办和随记的本地化说明会在重置后恢复，新手引导过渡更从容，Markdown 在浅色与深色主题下都保持清晰。
-- **界面细节更统一。** 固定桌面层的格子点击后不会跑到其他应用上方。标题栏添加按钮统一打开格子创建菜单，空状态、设置间距、搜索刷新和紧凑控件也完成统一。
+- **Windows 10 启动更可靠。** 托盘初始化不再让整个进程进入 Efficiency Mode，避免部分设备启动不完整、格子管理器和桌面整理不可用。
+- **Windows 10 真实窗口动画更顺滑。** 调整尺寸、胶囊切换、展开和收起减少 UI 线程与窗口位置的重复工作，同时继续移动真实格子窗口。
+- **Windows 10 材质行为更清楚。** 设置会提示云母和系统圆角仅适用于 Windows 11，并保留亚克力、纯色和全透明兼容路径。
+- **新增繁體中文。** 应用、安装器、天气、城市搜索、农历、待办、随记、桌面整理和更新说明均支持 `zh-TW`。
+- **提供离线完整包。** x64 和 ARM64 可选择内置专用 .NET 与 Windows App Runtime 的完整包；体积更小的框架依赖包仍是推荐下载。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.2 发布说明](docs/releases/v1.4.2.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.3 发布说明](docs/releases/v1.4.3.md)。
 
 ## 当前界面
 
@@ -206,18 +205,29 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\arm64 -v:minimal
 ```
 
+生成离线完整包：
+
+```powershell
+dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -o .\artifacts\publish\DeskBox\x64-full -v:minimal
+dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -o .\artifacts\publish\DeskBox\arm64-full -v:minimal
+```
+
 安装 Inno Setup 6 或更高版本后，编译两个安装包：
 
 ```powershell
 ISCC.exe .\installer\DeskBox.iss
 ISCC.exe .\installer\DeskBox.arm64.iss
+ISCC.exe /DMyAppReleaseDir=..\artifacts\publish\DeskBox\x64-full /DDeskBoxBundledRuntime=1 /DMyAppPackageSuffix=_Full .\installer\DeskBox.iss
+ISCC.exe /DMyAppReleaseDir=..\artifacts\publish\DeskBox\arm64-full /DDeskBoxBundledRuntime=1 /DMyAppPackageSuffix=_Full .\installer\DeskBox.arm64.iss
 ```
 
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.4.2_x64.exe
-Output\DeskBox_Setup_1.4.2_arm64.exe
+Output\DeskBox_Setup_1.4.3_x64.exe
+Output\DeskBox_Setup_1.4.3_arm64.exe
+Output\DeskBox_Setup_1.4.3_x64_Full.exe
+Output\DeskBox_Setup_1.4.3_arm64_Full.exe
 ```
 
 ## 项目结构

@@ -6,6 +6,7 @@
 
 #### Windows 10 motion and materials
 
+- Windows 10 startup now treats a rejected tray Efficiency Mode request as an optional optimization failure, so `WidgetManager` initialization and desktop organization can continue.
 - Widget resize, capsule transitions, and full-widget expand or collapse keep moving the real widget windows while reducing redundant UI-thread work and repeated window-position updates.
 - Resize guidance is updated more efficiently and restores the illuminated edge feedback without placing a placeholder over the widget.
 - Windows 10 receives a dedicated material compatibility path. Unsupported Mica and system-corner choices are identified as Windows 11-only, while acrylic, solid, and fully transparent modes retain their Windows 10 behavior.
@@ -17,10 +18,15 @@
 - Language persistence, update notes, weather descriptions, city search, lunar calendar content, Todo, Quick Capture, and desktop organization now distinguish Simplified and Traditional Chinese.
 - Traditional Chinese terminology and punctuation were reviewed for Taiwan usage, with complete resource-key and formatting-placeholder parity across all supported languages.
 
+#### Release packages
+
+- x64 and ARM64 are available as recommended framework-dependent installers and as larger `_Full` offline installers containing private .NET and Windows App Runtime components.
+
 ### 中文
 
 #### Windows 10 动画与材质
 
+- Windows 10 拒绝托盘效率模式请求时，会将其视为可选优化失败，继续完成 `WidgetManager` 初始化和桌面整理。
 - 格子边缘调整、胶囊切换以及完整格子的展开和收起继续驱动真实窗口，同时减少 UI 线程上的重复计算和窗口位置更新。
 - 调整尺寸时的辅助提示改为更轻量的更新方式，并恢复边缘发光反馈，不会用预占位替代真实格子。
 - Windows 10 使用独立的材质兼容路径。设置会明确提示云母与系统圆角仅适用于 Windows 11，同时保留亚克力、纯色和全透明模式在 Windows 10 上的对应行为。
@@ -31,6 +37,10 @@
 - 應用程式與 x64、ARM64 安裝程式新增繁體中文（`zh-TW`）。
 - 語言儲存、更新說明、天氣描述、城市搜尋、農曆內容、待辦、隨記與桌面整理均能區分簡體和繁體中文。
 - 繁中詞彙與標點已按臺灣使用習慣複核，所有支援語言的資源鍵和格式化預留位置保持一致。
+
+#### 发布包
+
+- x64 与 ARM64 同时提供推荐的框架依赖安装包，以及内置专用 .NET 与 Windows App Runtime 的 `_Full` 离线完整包。
 
 ## 1.4.2 - 2026-08-16
 

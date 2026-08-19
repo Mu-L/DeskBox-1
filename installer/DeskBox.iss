@@ -9,6 +9,12 @@
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
 #define MyAppRuntimeArchitecture "x64"
+#ifndef MyAppPackageSuffix
+#define MyAppPackageSuffix ""
+#endif
+#ifndef DeskBoxBundledRuntime
+#define DeskBoxBundledRuntime 0
+#endif
 #ifndef MyAppReleaseDir
 #define MyAppReleaseDir "..\artifacts\publish\DeskBox\x64"
 #endif
@@ -19,7 +25,11 @@ AppId={{5E052824-3456-427E-9759-3BCAE078A1D3}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+#if DeskBoxBundledRuntime
+AppComments=Includes private .NET and Windows App Runtime components for offline installation.
+#else
 AppComments={cm:RuntimeDependencyComment}
+#endif
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
 UninstallDisplayIcon={app}\Assets\deskbox.ico
 ArchitecturesAllowed=x64compatible
@@ -42,7 +52,7 @@ CloseApplications=force
 CloseApplicationsFilter={#MyAppExeName}
 RestartApplications=no
 OutputDir=..\Output
-OutputBaseFilename={#MyAppOutputBaseName}_{#MyAppVersion}_x64
+OutputBaseFilename={#MyAppOutputBaseName}_{#MyAppVersion}_x64{#MyAppPackageSuffix}
 SetupIconFile=..\src\DeskBox\Assets\deskbox.ico
 VersionInfoVersion={#MyAppVersionInfo}
 VersionInfoProductVersion={#MyAppVersionInfo}

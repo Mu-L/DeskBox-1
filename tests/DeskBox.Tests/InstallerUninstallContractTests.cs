@@ -105,6 +105,28 @@ public sealed class InstallerUninstallContractTests
     }
 
     [Fact]
+    public void BundledRuntimeInstallers_SkipExternalDependencySetupAndUseDistinctNames()
+    {
+        foreach (string script in new[] { "installer/DeskBox.iss", "installer/DeskBox.arm64.iss" })
+        {
+            string content = ReadRepositoryFile(script);
+            Assert.Contains("#ifndef DeskBoxBundledRuntime", content, StringComparison.Ordinal);
+            Assert.Contains("{#MyAppPackageSuffix}", content, StringComparison.Ordinal);
+        }
+
+        foreach (string dependencyScript in new[]
+                 {
+                     "installer/DeskBox.Dependencies.iss",
+                     "installer/DeskBox.Dependencies.arm64.iss"
+                 })
+        {
+            string content = ReadRepositoryFile(dependencyScript);
+            Assert.Contains("#if DeskBoxBundledRuntime", content, StringComparison.Ordinal);
+            Assert.Contains("external runtime dependency setup skipped", content, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void CustomMessageKeysAndPlaceholders_AreAlignedAcrossLanguages()
     {
         string messages = string.Join(

@@ -358,6 +358,12 @@ end;
 function PrepareDeskBoxDependencies(var NeedsRestart: Boolean): String;
 begin
   Result := '';
+#if DeskBoxBundledRuntime
+  NeedsRestart := False;
+  DependenciesPrepared := True;
+  Log('DeskBox bundled-runtime installer: external runtime dependency setup skipped.');
+  Exit;
+#endif
   if DependenciesPrepared then
     Exit;
 

@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.4.2-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2)
+[![Latest release](https://img.shields.io/badge/release-1.4.3-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.3)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -29,21 +29,23 @@ DeskBox uses native-feeling Windows materials and keeps ordinary desktop files a
 | **Platform** | Windows 10/11, x64 and ARM64 |
 | **Technology** | C#, WinUI 3, .NET 10, Windows App SDK 2.2 |
 | **Storage model** | Local-first; files, notes, tasks, settings, and layouts remain on the PC |
-| **Languages** | English, Simplified Chinese, Japanese, German, Brazilian Portuguese, Hindi, Spanish, French, Arabic, Bengali, Russian |
+| **Languages** | English, Simplified Chinese, Traditional Chinese, Japanese, German, Brazilian Portuguese, Hindi, Spanish, French, Arabic, Bengali, Russian |
 | **License** | GPL-3.0-only |
 
-The six newer language packs prioritize the main file-widget and onboarding flows. A small number of detailed settings still use English while their translations are completed.
+All twelve selectable languages share the same resource-key and formatting-placeholder coverage.
 
 ## Download
 
-The current stable release is DeskBox 1.4.2, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.2).
+The current stable release is DeskBox 1.4.3, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.3).
 
-- [DeskBox 1.4.2 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_x64.exe), for most Intel and AMD PCs.
-- [DeskBox 1.4.2 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.2/DeskBox_Setup_1.4.2_arm64.exe), for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.4.3 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.3/DeskBox_Setup_1.4.3_x64.exe), recommended for most Intel and AMD PCs.
+- [DeskBox 1.4.3 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.3/DeskBox_Setup_1.4.3_arm64.exe), recommended for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.4.3 x64 full package](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.3/DeskBox_Setup_1.4.3_x64_Full.exe), with private .NET and Windows App Runtime components for offline installation.
+- [DeskBox 1.4.3 ARM64 full package](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.3/DeskBox_Setup_1.4.3_arm64_Full.exe), with private runtimes for offline Windows on ARM installation.
 
-The installers are framework-dependent, so they stay smaller and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
+The recommended smaller installers are framework-dependent and do not bundle a private runtime. Setup checks the matching architecture of .NET 10 Runtime and Windows App Runtime 2.2. An existing compatible runtime is reused; a missing dependency is downloaded and installed during setup.
 
-> Internet access is needed only when setup must download a missing runtime. Windows may request administrator permission for that dependency installation; DeskBox itself installs for the current user by default.
+> The smaller recommended packages need internet access only when setup must download a missing runtime. Choose a full package for offline installation. DeskBox itself installs for the current user by default.
 
 ## Features
 
@@ -102,18 +104,15 @@ The installers are framework-dependent, so they stay smaller and do not bundle a
 - Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
 - Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
-## What's new in 1.4.2
+## What's new in 1.4.3
 
-- **More controllable file stacks.** Manual stacks remain available without automatic stacking. Files can be dragged in from Explorer, browsers, and other widgets, then removed or reordered without changing the whole widget's sorting.
-- **More predictable capsules.** Choose automatic, downward, or upward expansion. Fixed directions keep the title edge anchored, while hover recovery and F7 restore no longer leave shifted widgets or stale drag masks.
-- **Desktop-compatible file launching.** Items opened from file widgets receive the same user environment as desktop launches. QuickLook navigation can continue into an adjacent visible file widget.
-- **Reliable Todo and Quick Capture.** Todo checkmarks stay with the intended task. Clipboard images show thumbnails and copy back as images, attachments use scrollable tiles, and Quick Capture search stays in the tab row.
-- **Smoother widget groups.** One wheel step changes one member and plays one highlight, rapid input remains responsive, and first-to-last circular navigation stays available.
-- **Windows-style music controls.** Play, pause, previous, and next use matching filled transport icons. Cover mode receives a clearer single-line frosted control bar.
-- **Clearer first use and editing.** Localized Todo and Quick Capture guides return after a reset, onboarding uses a calmer transition, and Markdown remains readable in light and dark themes.
-- **Refined interface details.** Desktop-layer widgets remain behind other apps when clicked. Title-bar add buttons share one widget-creation menu, while empty states, settings spacing, search refreshes, and compact controls are more consistent.
+- **More reliable Windows 10 startup.** Tray creation no longer opts the process into Efficiency Mode, avoiding a compatibility failure that could leave widget and desktop-organization services unavailable.
+- **Smoother real-window interaction on Windows 10.** Resize, capsule, expand, and collapse operations reduce redundant UI-thread and window-position work while continuing to move the real widget windows.
+- **Clearer Windows 10 material behavior.** Mica and system corners are identified as Windows 11-only; acrylic, solid, and fully transparent compatibility paths remain available on Windows 10.
+- **Traditional Chinese.** The app, installer, weather, city search, lunar calendar, Todo, Quick Capture, desktop organization, and update notes now support `zh-TW`.
+- **Offline packages.** Optional full x64 and ARM64 installers bundle private .NET and Windows App Runtime components; the smaller framework-dependent packages remain the recommended downloads.
 
-Read the complete [changelog](CHANGELOG.md) or the [1.4.2 release notes](docs/releases/v1.4.2.md).
+Read the complete [changelog](CHANGELOG.md) or the [1.4.3 release notes](docs/releases/v1.4.3.md).
 
 ## Current interface
 
@@ -206,18 +205,29 @@ dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=
 dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\arm64 -v:minimal
 ```
 
+Create full offline Release outputs:
+
+```powershell
+dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -o .\artifacts\publish\DeskBox\x64-full -v:minimal
+dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -o .\artifacts\publish\DeskBox\arm64-full -v:minimal
+```
+
 With Inno Setup 6 or newer installed, compile both installers:
 
 ```powershell
 ISCC.exe .\installer\DeskBox.iss
 ISCC.exe .\installer\DeskBox.arm64.iss
+ISCC.exe /DMyAppReleaseDir=..\artifacts\publish\DeskBox\x64-full /DDeskBoxBundledRuntime=1 /DMyAppPackageSuffix=_Full .\installer\DeskBox.iss
+ISCC.exe /DMyAppReleaseDir=..\artifacts\publish\DeskBox\arm64-full /DDeskBoxBundledRuntime=1 /DMyAppPackageSuffix=_Full .\installer\DeskBox.arm64.iss
 ```
 
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.4.2_x64.exe
-Output\DeskBox_Setup_1.4.2_arm64.exe
+Output\DeskBox_Setup_1.4.3_x64.exe
+Output\DeskBox_Setup_1.4.3_arm64.exe
+Output\DeskBox_Setup_1.4.3_x64_Full.exe
+Output\DeskBox_Setup_1.4.3_arm64_Full.exe
 ```
 
 ## Project layout
