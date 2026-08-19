@@ -385,9 +385,10 @@ public sealed class FileSurfaceParityContractTests
             "StartStackMemberEntranceAnimations",
             stackAnimations,
             StringComparison.Ordinal);
-        Assert.Equal(2, itemVisuals.Split(
-            "ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);",
-            StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain(
+            "ExternalFileDragEnded",
+            itemVisuals,
+            StringComparison.Ordinal);
         Assert.Contains(
             "TryMoveStackMemberOverride(",
             stackViewModel,
@@ -496,6 +497,98 @@ public sealed class FileSurfaceParityContractTests
                 $"Menu marker is missing or out of order: {marker}");
             previousIndex = currentIndex;
         }
+    }
+
+    [Fact]
+    public void FileSurfaceDragHotPath_CachesPayloadAndSkipsTinyReorderMoves()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+
+        Assert.Contains("_dragPayloadSnapshot", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "ReferenceEquals(cached.DataView, dataView)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("_dragDirectoryCache", source, StringComparison.Ordinal);
+        Assert.Contains("ResetDragPayloadCache();", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "Math.Abs(position.X - _surfaceReorderLastPosition.X) < 0.5",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_surfaceReorderDraggedItem",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DragAcrossFileSurfaces_KeepsTargetVisualsIdempotent()
+    {
+        string root = FindRepositoryRoot();
+        string visuals = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs"));
+        string shell = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetShell.xaml.cs"));
+        string collapse = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/WidgetWindowBase.Collapse.cs"));
+
+        int dragOverStart = visuals.IndexOf(
+            "private void StackSurface_DragOver",
+            StringComparison.Ordinal);
+        int dropStart = visuals.IndexOf(
+            "private async void StackSurface_Drop",
+            dragOverStart,
+            StringComparison.Ordinal);
+        Assert.True(dragOverStart >= 0);
+        Assert.True(dropStart > dragOverStart);
+        string dragOver = visuals[dragOverStart..dropStart];
+        Assert.DoesNotContain(
+            "ApplyItemSurfaceVisual(border, FileItemSurfaceVisualState.DropTarget)",
+            dragOver,
+            StringComparison.Ordinal);
+        Assert.Contains("_stackMemberDropVisualActive", visuals, StringComparison.Ordinal);
+        Assert.Contains("IsPointerInsideDropElement(border, e)", visuals, StringComparison.Ordinal);
+        Assert.Contains("_folderDropVisualActive", visuals, StringComparison.Ordinal);
+
+        Assert.Contains("_isShellDragActive", shell, StringComparison.Ordinal);
+        Assert.Contains("IsPointerInsideShell(e)", shell, StringComparison.Ordinal);
+        Assert.Contains("animate: false", collapse, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FileDropSession_ClearsChildCachesAndDisablesWindowHighlight()
+    {
+        string root = FindRepositoryRoot();
+        string visuals = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs"));
+        string native = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/ContentWidgetWindow.NativeDragDrop.cs"));
+        string shell = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetShell.xaml.cs"));
+        string shellXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetShell.xaml"));
+
+        Assert.Contains("ResetDragPayloadCache();", visuals, StringComparison.Ordinal);
+        Assert.Contains("_groupFileDropFormatCached", native, StringComparison.Ordinal);
+        Assert.Equal(1, native.Split(
+            "RequiresGroupManualDropFallback(dataView)",
+            StringSplitOptions.None).Length - 1);
+        Assert.Contains(
+            "_groupFileDropFormatCached = false;",
+            native,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("ContentDropHighlight", shell, StringComparison.Ordinal);
+        Assert.DoesNotContain("ContentDropHighlight", shellXaml, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

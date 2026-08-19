@@ -19,6 +19,18 @@ public sealed partial class FileSurfaceContent
     private readonly HashSet<Border> _itemSurfaces = [];
     private readonly HashSet<Border> _stackSurfaces = [];
     private readonly FileItemSurfaceStyleCache _itemSurfaceStyleCache = new();
+    private bool _folderDropVisualActive;
+    private SolidColorBrush? _stackDropBackgroundBrush;
+    private SolidColorBrush? _stackDropBorderBrush;
+    private SolidColorBrush? _stackTransparentBrush;
+    private Windows.UI.Color _stackDropBrushAccent;
+    private ElementTheme _stackDropBrushTheme;
+    private bool _stackDropBrushesInitialized;
+    private bool _stackMemberDropVisualActive;
+    private string? _stackDropItemsTargetKey;
+    private DataPackageView? _stackDropItemsDataView;
+    private int _stackDropItemsTargetMemberCount = -1;
+    private WidgetItem[] _stackDropItemsCache = [];
 
     private void ApplySelectionRectangleAppearance()
     {
@@ -67,6 +79,7 @@ public sealed partial class FileSurfaceContent
             if (ReferenceEquals(border, _folderDropTarget))
             {
                 _folderDropTarget = null;
+                _folderDropVisualActive = false;
             }
 
             _itemSurfaces.Remove(border);
@@ -122,9 +135,14 @@ public sealed partial class FileSurfaceContent
         // A folder item is an explicit filesystem destination. Cancel any
         // insertion preview that the root produced before the pointer entered
         // the folder so DragItemsCompleted cannot commit a stale reorder.
-        PersistSurfaceReorder();
+        if (_isSurfaceReorderDragActive ||
+            _surfaceReorderInsertionIndex >= 0)
+        {
+            PersistSurfaceReorder();
+        }
 
-        if (_isImportBusy || !HasSurfacePathDropData(e.DataView))
+        DragPayloadSnapshot payload = GetDragPayload(e.DataView);
+        if (_isImportBusy || !payload.HasSurfacePathData)
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
@@ -133,8 +151,7 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
-        string[] sourcePaths = GetPackagePaths(e.DataView);
-        if (IsUnsafeFolderDrop(sourcePaths, targetFolder.Path))
+        if (IsUnsafeFolderDrop(payload.Paths, targetFolder.Path))
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
@@ -144,7 +161,7 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
-        DataPackageOperation operation = ResolveFolderDropOperation(e.DataView);
+        DataPackageOperation operation = ResolveFolderDropOperation(payload.DataView);
         e.AcceptedOperation = operation;
         e.DragUIOverride.IsGlyphVisible = operation != DataPackageOperation.None;
         e.DragUIOverride.IsCaptionVisible = operation != DataPackageOperation.None;
@@ -172,6 +189,11 @@ public sealed partial class FileSurfaceContent
         }
 
         e.Handled = true;
+        if (IsPointerInsideDropElement(border, e))
+        {
+            return;
+        }
+
         if (ReferenceEquals(border, _folderDropTarget))
         {
             ClearFolderDropTarget();
@@ -188,14 +210,15 @@ public sealed partial class FileSurfaceContent
         }
 
         e.Handled = true;
-        ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
         ClearFolderDropTarget();
         PersistSurfaceReorder();
         ApplyDropVisual(FileDropVisualState.None);
 
-        if (_isImportBusy || !HasSurfacePathDropData(e.DataView))
+        DragPayloadSnapshot payload = GetDragPayload(e.DataView);
+        if (_isImportBusy || !payload.HasSurfacePathData)
         {
             e.AcceptedOperation = DataPackageOperation.None;
+            ResetDragPayloadCache();
             return;
         }
 
@@ -208,9 +231,11 @@ public sealed partial class FileSurfaceContent
         {
             using DroppedFileBatch batch = await GetSurfaceDropFilesAsync(e.DataView);
             DroppedFilePath[] droppedFiles = batch.Files
-                .Where(file =>
-                    !string.IsNullOrWhiteSpace(file.Path) &&
-                    (File.Exists(file.Path) || Directory.Exists(file.Path)))
+                // GetSurfaceDropFilesAsync has already normalized and validated
+                // filesystem paths (or materialized a temporary virtual file).
+                // Repeating synchronous existence checks here blocks the UI
+                // thread during a folder-target drop.
+                .Where(file => !string.IsNullOrWhiteSpace(file.Path))
                 .GroupBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToArray();
@@ -371,6 +396,7 @@ public sealed partial class FileSurfaceContent
             {
                 CancelAndResetTrackedImport();
             }
+            ResetDragPayloadCache();
             deferral?.Complete();
         }
     }
@@ -422,6 +448,12 @@ public sealed partial class FileSurfaceContent
 
     private void SetFolderDropTarget(Border border)
     {
+        if (ReferenceEquals(_folderDropTarget, border) &&
+            _folderDropVisualActive)
+        {
+            return;
+        }
+
         if (!ReferenceEquals(_folderDropTarget, border))
         {
             ClearFolderDropTarget();
@@ -429,15 +461,40 @@ public sealed partial class FileSurfaceContent
         }
 
         ApplyItemSurfaceVisual(border, FileItemSurfaceVisualState.DropTarget);
+        _folderDropVisualActive = true;
     }
 
     private void ClearFolderDropTarget()
     {
         Border? previous = _folderDropTarget;
         _folderDropTarget = null;
+        _folderDropVisualActive = false;
         if (previous?.XamlRoot is not null)
         {
             ApplyItemSurfaceVisual(previous, FileItemSurfaceVisualState.Normal);
+        }
+    }
+
+    private static bool IsPointerInsideDropElement(
+        FrameworkElement element,
+        DragEventArgs e)
+    {
+        if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            Windows.Foundation.Point point = e.GetPosition(element);
+            return point.X >= 0 &&
+                   point.Y >= 0 &&
+                   point.X <= element.ActualWidth &&
+                   point.Y <= element.ActualHeight;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
         }
     }
 
@@ -460,6 +517,11 @@ public sealed partial class FileSurfaceContent
         if (sender is Border border)
         {
             RestoreStackAnimationElement(border);
+            if (ReferenceEquals(border, _stackMemberDropTarget))
+            {
+                _stackMemberDropTarget = null;
+                _stackMemberDropVisualActive = false;
+            }
             _stackSurfaces.Remove(border);
         }
     }
@@ -544,10 +606,6 @@ public sealed partial class FileSurfaceContent
         DragEventArgs e)
     {
         e.Handled = true;
-        // This child target consumes the routed Drop event. Notify the host
-        // explicitly so its widget-wide breathing drop border cannot outlive
-        // the completed drag operation.
-        ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
         if (sender is not Border
             {
                 DataContext: WidgetStackItem stack
@@ -559,8 +617,9 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
+        DragPayloadSnapshot payload = GetDragPayload(e.DataView);
         if (TryGetStackDropItems(
-                e.DataView,
+                payload,
                 stack,
                 out _))
         {
@@ -575,7 +634,7 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
-        if (!HasSurfacePathDropData(e.DataView) || _isImportBusy)
+        if (!payload.HasSurfacePathData || _isImportBusy)
         {
             e.AcceptedOperation = DataPackageOperation.None;
             e.DragUIOverride.IsGlyphVisible = false;
@@ -583,9 +642,8 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
-        string[] synchronousPaths = GetPackagePaths(e.DataView);
         if (IsUnsafeFolderDrop(
-                synchronousPaths,
+                payload.Paths,
                 ViewModel.CurrentFolderPath))
         {
             e.AcceptedOperation = DataPackageOperation.None;
@@ -598,7 +656,7 @@ public sealed partial class FileSurfaceContent
         }
 
         SetStackMemberDropTarget(border);
-        e.AcceptedOperation = ResolveSurfaceDropOperation(e.DataView);
+        e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);
         e.DragUIOverride.IsGlyphVisible = true;
         e.DragUIOverride.IsCaptionVisible = true;
         e.DragUIOverride.Caption =
@@ -612,6 +670,12 @@ public sealed partial class FileSurfaceContent
         DragEventArgs e)
     {
         e.Handled = true;
+        if (sender is Border border &&
+            IsPointerInsideDropElement(border, e))
+        {
+            return;
+        }
+
         if (ReferenceEquals(
                 sender,
                 _stackMemberDropTarget))
@@ -632,19 +696,22 @@ public sealed partial class FileSurfaceContent
         {
             e.AcceptedOperation = DataPackageOperation.None;
             ClearStackMemberDropTarget();
+            ResetDragPayloadCache();
             return;
         }
 
+        DragPayloadSnapshot payload = GetDragPayload(e.DataView);
 
         if (!TryGetStackDropItems(
-                e.DataView,
+                payload,
                 stack,
                 out WidgetItem[] items))
         {
-            if (!HasSurfacePathDropData(e.DataView) || _isImportBusy)
+            if (!payload.HasSurfacePathData || _isImportBusy)
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 ClearStackMemberDropTarget();
+                ResetDragPayloadCache();
                 return;
             }
 
@@ -660,7 +727,7 @@ public sealed partial class FileSurfaceContent
                     await GetSurfaceDropFilesAsync(e.DataView);
                 DataPackageOperation accepted =
                     e.AcceptedOperation == DataPackageOperation.None
-                        ? ResolveSurfaceDropOperation(e.DataView)
+                        ? ResolveSurfaceDropOperation(payload.DataView)
                         : e.AcceptedOperation;
                 bool mapped = !string.IsNullOrWhiteSpace(
                     ViewModel.MappedFolderPath);
@@ -723,48 +790,64 @@ public sealed partial class FileSurfaceContent
             }
             finally
             {
+                ResetDragPayloadCache();
                 deferral.Complete();
             }
             return;
         }
 
         ClearStackMemberDropTarget();
-        bool added = ViewModel.AddItemsToStack(
-            stack.StackKey,
-            items);
-        e.AcceptedOperation = added
-            ? Windows.ApplicationModel.DataTransfer
-                .DataPackageOperation.Link
-            : Windows.ApplicationModel.DataTransfer
-                .DataPackageOperation.None;
-        // This is a stack-membership drop, not an ordering drop. Clear the
-        // complete reorder session, including the cached insertion position.
-        PersistSurfaceReorder();
-        if (added)
+        try
         {
-            ClearSelection();
+            bool added = ViewModel.AddItemsToStack(
+                stack.StackKey,
+                items);
+            e.AcceptedOperation = added
+                ? Windows.ApplicationModel.DataTransfer
+                    .DataPackageOperation.Link
+                : Windows.ApplicationModel.DataTransfer
+                    .DataPackageOperation.None;
+            // This is a stack-membership drop, not an ordering drop. Clear the
+            // complete reorder session, including the cached insertion position.
+            PersistSurfaceReorder();
+            if (added)
+            {
+                ClearSelection();
+            }
+        }
+        finally
+        {
+            ResetDragPayloadCache();
         }
     }
 
     private bool TryGetStackDropItems(
-        Windows.ApplicationModel.DataTransfer.DataPackageView dataView,
+        DragPayloadSnapshot payload,
         WidgetStackItem targetStack,
         out WidgetItem[] items)
     {
         items = [];
-        if (!IsInternalReorderDrag(dataView) ||
-            !string.IsNullOrWhiteSpace(
-                TryGetString(
-                    dataView.Properties,
-                    DeskBoxDragData.StackReorderKeyProperty)))
+        if (!payload.IsInternalReorder ||
+            !string.IsNullOrWhiteSpace(payload.StackReorderKey))
         {
             return false;
+        }
+
+        if (ReferenceEquals(_stackDropItemsDataView, payload.DataView) &&
+            string.Equals(
+                _stackDropItemsTargetKey,
+                targetStack.StackKey,
+                StringComparison.Ordinal) &&
+            _stackDropItemsTargetMemberCount == targetStack.Members.Count)
+        {
+            items = _stackDropItemsCache;
+            return items.Length > 0;
         }
 
         HashSet<string> targetPaths = targetStack.Members
             .Select(item => Path.GetFullPath(item.Path))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> sourcePaths = GetPackagePaths(dataView)
+        HashSet<string> sourcePaths = payload.Paths
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         items = ViewModel.Items
@@ -774,6 +857,10 @@ public sealed partial class FileSurfaceContent
                 !targetPaths.Contains(
                     Path.GetFullPath(item.Path)))
             .ToArray();
+        _stackDropItemsDataView = payload.DataView;
+        _stackDropItemsTargetKey = targetStack.StackKey;
+        _stackDropItemsTargetMemberCount = targetStack.Members.Count;
+        _stackDropItemsCache = items;
         return items.Length > 0;
     }
 
@@ -788,13 +875,21 @@ public sealed partial class FileSurfaceContent
             _stackMemberDropTarget = border;
         }
 
+        if (_stackMemberDropVisualActive &&
+            ReferenceEquals(_stackMemberDropTarget, border))
+        {
+            return;
+        }
+
         ApplyStackSurfaceDropVisual(border);
+        _stackMemberDropVisualActive = true;
     }
 
     private void ClearStackMemberDropTarget()
     {
         Border? previous = _stackMemberDropTarget;
         _stackMemberDropTarget = null;
+        _stackMemberDropVisualActive = false;
         if (previous?.XamlRoot is not null)
         {
             ApplyStackSurfaceVisual(
@@ -809,14 +904,26 @@ public sealed partial class FileSurfaceContent
         Windows.UI.Color accent =
             App.Current.ThemeService?.GetEffectiveAccentColor() ??
             AccentColorHelper.DefaultAccentColor;
-        border.Background = new SolidColorBrush(
-            WithAlpha(
-                accent,
-                Root.ActualTheme == ElementTheme.Dark
-                    ? (byte)0x38
-                    : (byte)0x28));
-        border.BorderBrush = new SolidColorBrush(
-            WithAlpha(accent, 0xD8));
+        ElementTheme theme = Root.ActualTheme;
+        if (!_stackDropBrushesInitialized ||
+            !_stackDropBrushAccent.Equals(accent) ||
+            _stackDropBrushTheme != theme)
+        {
+            _stackDropBrushAccent = accent;
+            _stackDropBrushTheme = theme;
+            _stackDropBackgroundBrush = new SolidColorBrush(
+                WithAlpha(
+                    accent,
+                    theme == ElementTheme.Dark
+                        ? (byte)0x38
+                        : (byte)0x28));
+            _stackDropBorderBrush = new SolidColorBrush(
+                WithAlpha(accent, 0xD8));
+            _stackDropBrushesInitialized = true;
+        }
+
+        border.Background = _stackDropBackgroundBrush;
+        border.BorderBrush = _stackDropBorderBrush;
         border.BorderThickness = new Thickness(1);
     }
 
@@ -942,12 +1049,21 @@ public sealed partial class FileSurfaceContent
         Border border,
         bool hovered)
     {
+        if (_stackMemberDropVisualActive &&
+            ReferenceEquals(border, _stackMemberDropTarget))
+        {
+            return;
+        }
+
         border.Background = hovered
             ? ResolveBrush("SubtleFillColorSecondaryBrush")
-            : new SolidColorBrush(Colors.Transparent);
-        border.BorderBrush = new SolidColorBrush(Colors.Transparent);
+            : GetStackTransparentBrush();
+        border.BorderBrush = GetStackTransparentBrush();
         border.BorderThickness = new Thickness(0);
     }
+
+    private SolidColorBrush GetStackTransparentBrush() =>
+        _stackTransparentBrush ??= new SolidColorBrush(Colors.Transparent);
 
     private static Windows.UI.Color WithAlpha(
         Windows.UI.Color color,

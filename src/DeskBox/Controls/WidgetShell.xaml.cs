@@ -16,7 +16,6 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Media.Animation;
 using System.Numerics;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.UI;
 using Windows.UI.ViewManagement;
 
@@ -24,8 +23,6 @@ namespace DeskBox.Controls;
 
 public sealed partial class WidgetShell : UserControl
 {
-    private static readonly ExclusiveDropHighlightCoordinator<WidgetShell>
-        ContentDropHighlightCoordinator = new();
     private const double CompactMarqueeGap = 32;
     private const double CompactMarqueeStartDelayMs = 900;
     private const double CompactMarqueeSpeedPixelsPerSecond = 50;
@@ -41,8 +38,7 @@ public sealed partial class WidgetShell : UserControl
             SettingsService.WidgetCompactAnimationSmooth,
             SettingsService.DefaultWidgetCompactAnimationDurationMs,
             true);
-    private ScalarKeyFrameAnimation? _contentDropHighlightAnimation;
-    private bool _isContentDropHighlightActive;
+    private bool _isShellDragActive;
     private bool _isCompactCompositionTransitionActive;
     private double _lastCompactTransitionCornerRadius = double.NaN;
 
@@ -313,7 +309,7 @@ public sealed partial class WidgetShell : UserControl
             _compactLiveStoryboard?.Stop();
             _compactUpdateStoryboard?.Stop();
             StopGroupDropPreviewBreathing();
-            StopContentDropHighlight();
+            EndShellDragSession(notifyCompact: true);
         };
     }
 
@@ -1318,7 +1314,7 @@ public sealed partial class WidgetShell : UserControl
         _hostedContent = null;
         _responsiveLayoutContent = null;
         ShellContent = null;
-        StopContentDropHighlight();
+        EndShellDragSession(notifyCompact: true);
         CompleteContentTransition();
         if (hadContent)
         {
@@ -1330,7 +1326,6 @@ public sealed partial class WidgetShell : UserControl
     {
         if (_hostedContent is FileSurfaceContent fileSurface)
         {
-            fileSurface.ExternalFileDragEnded += HostedFileSurface_ExternalFileDragEnded;
             fileSurface.ImportBusyChanged += HostedFileSurface_ImportBusyChanged;
             TitleBarGrid.IsHitTestVisible = !fileSurface.IsImportBusy;
         }
@@ -1340,18 +1335,10 @@ public sealed partial class WidgetShell : UserControl
     {
         if (_hostedContent is FileSurfaceContent fileSurface)
         {
-            fileSurface.ExternalFileDragEnded -= HostedFileSurface_ExternalFileDragEnded;
             fileSurface.ImportBusyChanged -= HostedFileSurface_ImportBusyChanged;
         }
 
         TitleBarGrid.IsHitTestVisible = true;
-    }
-
-    private void HostedFileSurface_ExternalFileDragEnded(
-        object? sender,
-        EventArgs e)
-    {
-        StopContentDropHighlight();
     }
 
     private void HostedFileSurface_ImportBusyChanged(bool isBusy)
@@ -4349,128 +4336,60 @@ public sealed partial class WidgetShell : UserControl
 
     private void ShellRoot_DragEnter(object sender, DragEventArgs e)
     {
-        if (ShouldShowContentDropHighlight(e.DataView))
+        if (_isShellDragActive)
         {
-            StartContentDropHighlight();
+            return;
         }
 
+        _isShellDragActive = true;
         CompactDragEntered?.Invoke(this, EventArgs.Empty);
     }
 
     private void ShellRoot_DragLeave(object sender, DragEventArgs e)
     {
-        StopContentDropHighlight();
-        CompactDragLeft?.Invoke(this, EventArgs.Empty);
+        if (IsPointerInsideShell(e))
+        {
+            return;
+        }
+
+        EndShellDragSession(notifyCompact: true);
     }
 
     private void ShellRoot_Drop(object sender, DragEventArgs e)
     {
-        StopContentDropHighlight();
-        ClearActiveContentDropHighlight();
+        EndShellDragSession(notifyCompact: false);
         CompactDropCompleted?.Invoke(this, EventArgs.Empty);
     }
 
-    private bool ShouldShowContentDropHighlight(
-        DataPackageView dataView)
+    private bool IsPointerInsideShell(DragEventArgs e)
     {
-        return _hostedContent is FileSurfaceContent fileSurface &&
-               DeskBoxDragData.HasDroppedFiles(dataView) &&
-               !fileSurface.IsInternalReorderDrag(dataView);
-    }
-
-    private void StartContentDropHighlight()
-    {
-        WidgetShell? previousOwner =
-            ContentDropHighlightCoordinator.Activate(this);
-        if (previousOwner is not null)
+        if (ShellRoot.ActualWidth <= 0 || ShellRoot.ActualHeight <= 0)
         {
-            StopContentDropHighlight(previousOwner);
+            return false;
         }
 
-        if (_isContentDropHighlightActive)
+        try
         {
-            return;
+            Windows.Foundation.Point point = e.GetPosition(ShellRoot);
+            return point.X >= 0 &&
+                   point.Y >= 0 &&
+                   point.X <= ShellRoot.ActualWidth &&
+                   point.Y <= ShellRoot.ActualHeight;
         }
-
-        _isContentDropHighlightActive = true;
-        Color accent =
-            App.Current?.ThemeService?.GetEffectiveAccentColor() ??
-            AccentColorHelper.DefaultAccentColor;
-        ContentDropHighlightBorder.BorderBrush =
-            new SolidColorBrush(Color.FromArgb(
-                0xD8,
-                accent.R,
-                accent.G,
-                accent.B));
-        ContentDropHighlightBorder.Visibility = Visibility.Visible;
-
-        Visual visual = ElementCompositionPreview.GetElementVisual(
-            ContentDropHighlightBorder);
-        visual.StopAnimation("Opacity");
-        if (!SystemAnimationsEnabled())
+        catch (InvalidOperationException)
         {
-            visual.Opacity = 0.72f;
-            return;
-        }
-
-        ScalarKeyFrameAnimation animation =
-            visual.Compositor.CreateScalarKeyFrameAnimation();
-        animation.Duration = TimeSpan.FromMilliseconds(1500);
-        animation.IterationBehavior = AnimationIterationBehavior.Forever;
-        CubicBezierEasingFunction easing =
-            visual.Compositor.CreateCubicBezierEasingFunction(
-                new Vector2(0.42f, 0),
-                new Vector2(0.58f, 1));
-        animation.InsertKeyFrame(0, 0.25f);
-        animation.InsertKeyFrame(0.5f, 0.9f, easing);
-        animation.InsertKeyFrame(1, 0.25f, easing);
-        _contentDropHighlightAnimation = animation;
-        visual.StartAnimation("Opacity", animation);
-    }
-
-    private void StopContentDropHighlight()
-    {
-        ContentDropHighlightCoordinator.Deactivate(this);
-        if (!_isContentDropHighlightActive)
-        {
-            return;
-        }
-
-        _isContentDropHighlightActive = false;
-        Visual visual = ElementCompositionPreview.GetElementVisual(
-            ContentDropHighlightBorder);
-        visual.StopAnimation("Opacity");
-        visual.Opacity = 0;
-        ContentDropHighlightBorder.Visibility = Visibility.Collapsed;
-        ContentDropHighlightBorder.BorderBrush =
-            new SolidColorBrush(Colors.Transparent);
-        _contentDropHighlightAnimation = null;
-    }
-
-    internal void ClearContentDropHighlight()
-    {
-        StopContentDropHighlight();
-    }
-
-    internal static void ClearActiveContentDropHighlight()
-    {
-        WidgetShell? activeOwner =
-            ContentDropHighlightCoordinator.DeactivateActive();
-        if (activeOwner is not null)
-        {
-            StopContentDropHighlight(activeOwner);
+            return false;
         }
     }
 
-    private static void StopContentDropHighlight(WidgetShell owner)
+    private void EndShellDragSession(bool notifyCompact)
     {
-        if (owner.DispatcherQueue.HasThreadAccess)
+        bool wasActive = _isShellDragActive;
+        _isShellDragActive = false;
+        if (notifyCompact && wasActive)
         {
-            owner.StopContentDropHighlight();
-            return;
+            CompactDragLeft?.Invoke(this, EventArgs.Empty);
         }
-
-        owner.DispatcherQueue.TryEnqueue(owner.StopContentDropHighlight);
     }
 
     private Brush CreateOpaqueOverlayButtonBackground()

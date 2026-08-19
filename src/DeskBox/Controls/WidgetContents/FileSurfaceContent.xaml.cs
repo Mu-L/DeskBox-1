@@ -56,6 +56,9 @@ public sealed partial class FileSurfaceContent :
     private int _surfaceReorderInsertionIndex = -1;
     private Windows.Foundation.Point _surfaceReorderLastPosition;
     private bool _surfaceReorderHasLastPosition;
+    private WidgetItem? _surfaceReorderDraggedItem;
+    private HashSet<string>? _surfaceReorderPathSet;
+    private ListViewBase? _surfaceReorderLastView;
     private WidgetItem[] _pendingPointerDragItems = [];
     private string[] _activeDragSourcePaths = [];
     private bool _activeDragHasStorageItems;
@@ -81,6 +84,48 @@ public sealed partial class FileSurfaceContent :
     private TransitionCollection? _suspendedGridItemContainerTransitions;
     private TransitionCollection? _suspendedListItemContainerTransitions;
     private bool _itemContainerTransitionsSuspendedForHostSwitch;
+    private DragPayloadSnapshot? _dragPayloadSnapshot;
+    private readonly Dictionary<string, bool> _dragDirectoryCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _dragUnsafeDropCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    private FileDropVisualState? _lastDropVisualState;
+    private bool _dragPayloadSessionActive;
+
+    private sealed class DragPayloadSnapshot
+    {
+        public DragPayloadSnapshot(
+            DataPackageView dataView,
+            string[] paths,
+            bool isInternalReorder,
+            bool hasSurfacePathData,
+            string? stackReorderKey,
+            string? sourceWidgetId,
+            string? internalDragToken)
+        {
+            DataView = dataView;
+            Paths = paths;
+            IsInternalReorder = isInternalReorder;
+            HasSurfacePathData = hasSurfacePathData;
+            StackReorderKey = stackReorderKey;
+            SourceWidgetId = sourceWidgetId;
+            InternalDragToken = internalDragToken;
+        }
+
+        public DataPackageView DataView { get; }
+
+        public string[] Paths { get; }
+
+        public bool IsInternalReorder { get; }
+
+        public bool HasSurfacePathData { get; }
+
+        public string? StackReorderKey { get; }
+
+        public string? SourceWidgetId { get; }
+
+        public string? InternalDragToken { get; }
+    }
 
     public FileSurfaceContent(
         WidgetConfig config,
@@ -139,8 +184,6 @@ public sealed partial class FileSurfaceContent :
 
     public event EventHandler<WidgetHostContextMenuOpeningEventArgs>?
         HostContextMenuOpening;
-
-    internal event EventHandler? ExternalFileDragEnded;
 
     internal event Action<bool>? ImportBusyChanged;
 
@@ -308,6 +351,7 @@ public sealed partial class FileSurfaceContent :
         ResetSelectionForStackProjectionChange();
         ResetStackInteractionVisuals();
         PersistSurfaceReorder();
+        ResetDragPayloadCache();
         ViewModel.StabilizeStackDisplay();
     }
 
@@ -423,6 +467,7 @@ public sealed partial class FileSurfaceContent :
         StopScrollBarHideTimer();
         ResetStackInteractionVisuals();
         PersistSurfaceReorder();
+        ResetDragPayloadCache();
         App.Current.WidgetManager?.NotifyQuickLookSurfaceUnavailable(this);
     }
 
@@ -642,6 +687,7 @@ public sealed partial class FileSurfaceContent :
         _activeDragHasStorageItems = false;
         _activeDragUsesVirtualStorageItems = false;
         _activeDragDesktopSnapshotTask = null;
+        ResetDragPayloadCache();
         ClearFolderDropTarget();
         HideSurfaceReorderInsertionIndicator();
         _isSurfaceReorderDragActive = false;
@@ -650,6 +696,9 @@ public sealed partial class FileSurfaceContent :
         _surfaceReorderInsertionIndex = -1;
         _surfaceReorderLastPosition = default;
         _surfaceReorderHasLastPosition = false;
+        _surfaceReorderDraggedItem = null;
+        _surfaceReorderPathSet = null;
+        _surfaceReorderLastView = null;
         WidgetStackItem? stack =
             e.Items.OfType<WidgetStackItem>().FirstOrDefault();
         if (stack is not null)
@@ -1549,22 +1598,22 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        if (IsInternalReorderDrag(e.DataView))
+        DragPayloadSnapshot payload = GetDragPayload(e.DataView);
+        if (payload.IsInternalReorder)
         {
             e.AcceptedOperation = DataPackageOperation.Link;
             e.DragUIOverride.IsGlyphVisible = false;
             e.DragUIOverride.IsCaptionVisible = false;
             ApplyDropVisual(FileDropVisualState.None);
             HandleSurfaceRealTimeReorder(
-                e.DataView.Properties,
+                payload,
                 e.GetPosition(GetActiveItemsView()));
             return;
         }
 
-        if (HasSurfacePathDropData(e.DataView))
+        if (payload.HasSurfacePathData)
         {
-            string[] synchronousPaths = GetPackagePaths(e.DataView);
-            if (IsUnsafeFolderDrop(synchronousPaths, ViewModel.CurrentFolderPath))
+            if (IsUnsafeFolderDrop(payload.Paths, ViewModel.CurrentFolderPath))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 e.DragUIOverride.IsGlyphVisible = false;
@@ -1574,7 +1623,7 @@ public sealed partial class FileSurfaceContent :
                 return;
             }
 
-            e.AcceptedOperation = ResolveSurfaceDropOperation(e.DataView);
+            e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);
             e.DragUIOverride.IsGlyphVisible =
                 e.AcceptedOperation != DataPackageOperation.None;
             e.DragUIOverride.IsCaptionVisible =
@@ -1592,7 +1641,7 @@ public sealed partial class FileSurfaceContent :
         }
     }
 
-    private static bool IsUnsafeFolderDrop(
+    private bool IsUnsafeFolderDrop(
         IReadOnlyList<string> sourcePaths,
         string? destinationFolder)
     {
@@ -1601,54 +1650,119 @@ public sealed partial class FileSurfaceContent :
             return false;
         }
 
-        string normalizedDestination = Path.GetFullPath(destinationFolder);
-        return sourcePaths.Any(sourcePath =>
-            !string.IsNullOrWhiteSpace(sourcePath) &&
-            Directory.Exists(sourcePath) &&
-            FileService.IsPathUnderDirectory(normalizedDestination, sourcePath));
+        string normalizedDestination;
+        try
+        {
+            normalizedDestination = Path.GetFullPath(destinationFolder);
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (_dragUnsafeDropCache.TryGetValue(
+                normalizedDestination,
+                out bool cachedResult))
+        {
+            return cachedResult;
+        }
+
+        bool unsafeDrop = false;
+        foreach (string sourcePath in sourcePaths)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath))
+            {
+                continue;
+            }
+
+            string normalizedSource;
+            try
+            {
+                normalizedSource = Path.GetFullPath(sourcePath);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!_dragDirectoryCache.TryGetValue(
+                    normalizedSource,
+                    out bool isDirectory))
+            {
+                isDirectory = Directory.Exists(normalizedSource);
+                _dragDirectoryCache[normalizedSource] = isDirectory;
+            }
+
+            if (isDirectory &&
+                FileService.IsPathUnderDirectory(
+                    normalizedDestination,
+                    normalizedSource))
+            {
+                unsafeDrop = true;
+                break;
+            }
+        }
+
+        _dragUnsafeDropCache[normalizedDestination] = unsafeDrop;
+        return unsafeDrop;
     }
 
     private void Root_DragEnter(object sender, DragEventArgs e)
     {
+        if (_dragPayloadSessionActive &&
+            _dragPayloadSnapshot is { } cached &&
+            !IsSameDragPayload(e.DataView, cached))
+        {
+            ResetDragPayloadCache();
+        }
+
+        GetDragPayload(e.DataView);
         ApplyDropVisual(FileDropVisualState.None);
     }
 
     private void Root_DragLeave(object sender, DragEventArgs e)
     {
+        if (IsPointerInsideRoot(e))
+        {
+            return;
+        }
+
         ClearFolderDropTarget();
         ClearStackMemberDropTarget();
         ApplyDropVisual(FileDropVisualState.None);
-        ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
         // Leaving the surface means the user may be dragging to Explorer,
         // another widget or another application. Discard the internal preview;
         // only a confirmed drop back onto this surface may change ordering.
         PersistSurfaceReorder();
+        ResetDragPayloadCache();
     }
 
     private async void Root_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        DragPayloadSnapshot payload = GetDragPayload(e.DataView);
         ClearFolderDropTarget();
         ClearStackMemberDropTarget();
         ApplyDropVisual(FileDropVisualState.None);
-        ExternalFileDragEnded?.Invoke(this, EventArgs.Empty);
         if (_isImportBusy)
         {
             App.LogVerbose(
                 $"[WidgetSurface] Ignored overlapping file drop id={WidgetId} " +
                 "stage=before-read");
+            ResetDragPayloadCache();
             return;
         }
 
-        if (IsInternalReorderDrag(e.DataView))
+        if (payload.IsInternalReorder)
         {
             _surfaceReorderStackKey ??= TryGetString(
                 e.DataView.Properties,
                 DeskBoxDragData.StackReorderKeyProperty);
             HandleSurfaceFinalReorder(
-                GetPackagePaths(e.DataView),
+                payload.Paths,
                 e.GetPosition(GetActiveItemsView()));
             PersistSurfaceReorder();
+            ResetDragPayloadCache();
             return;
         }
 
@@ -1734,6 +1848,7 @@ public sealed partial class FileSurfaceContent :
                 CancelAndResetTrackedImport();
             }
             ApplyDropVisual(FileDropVisualState.None);
+            ResetDragPayloadCache();
             deferral.Complete();
         }
     }
@@ -1808,31 +1923,126 @@ public sealed partial class FileSurfaceContent :
         ImportBusyChanged?.Invoke(isBusy);
     }
 
-    internal bool IsInternalReorderDrag(DataPackageView dataView)
+    private DragPayloadSnapshot GetDragPayload(DataPackageView dataView)
     {
+        if (_dragPayloadSessionActive && _dragPayloadSnapshot is { } cached)
+        {
+            return cached;
+        }
+
+        string[] paths = GetPackagePaths(dataView);
+        string? sourceWidgetId = TryGetString(
+            dataView.Properties,
+            DeskBoxDragData.SourceWidgetIdProperty);
+        string? internalDragToken = TryGetString(
+            dataView.Properties,
+            DeskBoxDragData.InternalFileDragTokenProperty);
+        string? stackReorderKey = TryGetString(
+            dataView.Properties,
+            DeskBoxDragData.StackReorderKeyProperty);
+        bool isInternalReorder =
+            string.Equals(
+                TryGetString(
+                    dataView.Properties,
+                    "DeskBoxInternalDragToken"),
+                "DeskBox.WidgetItemDrag.v2",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                TryGetString(
+                    dataView.Properties,
+                    "DeskBoxSourceWidgetId"),
+                WidgetId,
+                StringComparison.Ordinal) &&
+            (paths.Length > 0 || !string.IsNullOrWhiteSpace(stackReorderKey));
+        bool hasSurfacePathData = paths.Length > 0 ||
+            DeskBoxDragData.HasImportableFileData(dataView);
+
+        _dragPayloadSnapshot = new DragPayloadSnapshot(
+            dataView,
+            paths,
+            isInternalReorder,
+            hasSurfacePathData,
+            stackReorderKey,
+            sourceWidgetId,
+            internalDragToken);
+        _dragPayloadSessionActive = true;
+        _dragDirectoryCache.Clear();
+        _dragUnsafeDropCache.Clear();
+        return _dragPayloadSnapshot;
+    }
+
+    private void ResetDragPayloadCache()
+    {
+        _dragPayloadSnapshot = null;
+        _dragPayloadSessionActive = false;
+        _dragDirectoryCache.Clear();
+        _dragUnsafeDropCache.Clear();
+        _lastDropVisualState = null;
+        _stackDropItemsDataView = null;
+        _stackDropItemsTargetKey = null;
+        _stackDropItemsTargetMemberCount = -1;
+        _stackDropItemsCache = [];
+    }
+
+    private static bool IsSameDragPayload(
+        DataPackageView dataView,
+        DragPayloadSnapshot cached)
+    {
+        if (ReferenceEquals(cached.DataView, dataView))
+        {
+            return true;
+        }
+
+        string[] paths = GetPackagePaths(dataView);
+        if (!paths.SequenceEqual(
+                cached.Paths,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         return string.Equals(
                    TryGetString(
                        dataView.Properties,
-                       "DeskBoxInternalDragToken"),
-                   "DeskBox.WidgetItemDrag.v2",
+                       DeskBoxDragData.SourceWidgetIdProperty),
+                   cached.SourceWidgetId,
                    StringComparison.Ordinal) &&
                string.Equals(
                    TryGetString(
                        dataView.Properties,
-                       "DeskBoxSourceWidgetId"),
-                   WidgetId,
+                       DeskBoxDragData.InternalFileDragTokenProperty),
+                   cached.InternalDragToken,
                    StringComparison.Ordinal) &&
-               (GetPackagePaths(dataView).Length > 0 ||
-                !string.IsNullOrWhiteSpace(
-                    TryGetString(
-                        dataView.Properties,
-                        DeskBoxDragData.StackReorderKeyProperty)));
+               string.Equals(
+                   TryGetString(
+                       dataView.Properties,
+                       DeskBoxDragData.StackReorderKeyProperty),
+                   cached.StackReorderKey,
+                   StringComparison.Ordinal);
     }
 
-    private static bool HasSurfacePathDropData(DataPackageView dataView)
+    internal bool IsInternalReorderDrag(DataPackageView dataView) =>
+        GetDragPayload(dataView).IsInternalReorder;
+
+    private bool IsPointerInsideRoot(DragEventArgs e)
     {
-        return GetPackagePaths(dataView).Length > 0 ||
-               DeskBoxDragData.HasImportableFileData(dataView);
+        if (Root.ActualWidth <= 0 || Root.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            Windows.Foundation.Point point = e.GetPosition(Root);
+            return point.X >= 0 &&
+                   point.Y >= 0 &&
+                   point.X <= Root.ActualWidth &&
+                   point.Y <= Root.ActualHeight;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private DataPackageOperation ResolveSurfaceDropOperation(
@@ -2085,14 +2295,22 @@ public sealed partial class FileSurfaceContent :
     }
 
     private void HandleSurfaceRealTimeReorder(
-        DataPackagePropertySetView properties,
+        DragPayloadSnapshot payload,
         Windows.Foundation.Point position)
     {
-        string? stackKey = TryGetString(
-            properties,
-            DeskBoxDragData.StackReorderKeyProperty);
+        string? stackKey = payload.StackReorderKey;
         if (!string.IsNullOrWhiteSpace(stackKey))
         {
+            if (!string.Equals(
+                    _surfaceReorderStackKey,
+                    stackKey,
+                    StringComparison.Ordinal))
+            {
+                _surfaceReorderDraggedItem = null;
+                _surfaceReorderPathSet = null;
+                _surfaceReorderLastView = null;
+            }
+
             _isSurfaceReorderDragActive = true;
             _surfaceReorderStackKey = stackKey;
             _surfaceReorderPaths = [];
@@ -2100,26 +2318,18 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        string[] paths = properties.TryGetValue(
-                "DeskBoxSourcePaths",
-                out object? value)
-            ? value switch
-            {
-                string[] array => array,
-                IEnumerable<string> sequence => sequence.ToArray(),
-                _ => []
-            }
-            : [];
+        string[] paths = payload.Paths;
         if (paths.Length == 0)
         {
             return;
         }
 
-        HashSet<string> pathSet = paths
+        _surfaceReorderPathSet ??= paths
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        WidgetItem? draggedItem = ViewModel.Items.FirstOrDefault(item =>
-            pathSet.Contains(Path.GetFullPath(item.Path)));
+        WidgetItem? draggedItem = _surfaceReorderDraggedItem ??
+            ViewModel.Items.FirstOrDefault(item =>
+                _surfaceReorderPathSet.Contains(Path.GetFullPath(item.Path)));
         if (draggedItem is null)
         {
             return;
@@ -2141,6 +2351,7 @@ public sealed partial class FileSurfaceContent :
 
             _isSurfaceReorderDragActive = true;
             _surfaceReorderPaths = paths;
+            _surfaceReorderDraggedItem = draggedItem;
         }
 
         UpdateSurfaceReorderPreview(position);
@@ -2155,6 +2366,11 @@ public sealed partial class FileSurfaceContent :
             _surfaceReorderPaths = paths.ToArray();
             _isSurfaceReorderDragActive =
                 _surfaceReorderPaths.Length > 0;
+            _surfaceReorderPathSet = _surfaceReorderPaths
+                .Select(Path.GetFullPath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _surfaceReorderDraggedItem = ViewModel.Items.FirstOrDefault(item =>
+                _surfaceReorderPathSet.Contains(Path.GetFullPath(item.Path)));
         }
 
         CommitSurfaceReorder(position);
@@ -2163,9 +2379,18 @@ public sealed partial class FileSurfaceContent :
     private void UpdateSurfaceReorderPreview(
         Windows.Foundation.Point position)
     {
+        ListViewBase activeView = GetActiveItemsView();
+        if (_surfaceReorderHasLastPosition &&
+            ReferenceEquals(_surfaceReorderLastView, activeView) &&
+            Math.Abs(position.X - _surfaceReorderLastPosition.X) < 0.5 &&
+            Math.Abs(position.Y - _surfaceReorderLastPosition.Y) < 0.5)
+        {
+            return;
+        }
+
         _surfaceReorderLastPosition = position;
         _surfaceReorderHasLastPosition = true;
-        ListViewBase activeView = GetActiveItemsView();
+        _surfaceReorderLastView = activeView;
         _surfaceReorderInsertionIndex =
             ReorderDropIndexCalculator.Compute(
                 activeView,
@@ -2262,11 +2487,12 @@ public sealed partial class FileSurfaceContent :
             return;
         }
 
-        HashSet<string> pathSet = _surfaceReorderPaths
+        _surfaceReorderPathSet ??= _surfaceReorderPaths
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        WidgetItem? draggedItem = ViewModel.Items.FirstOrDefault(item =>
-            pathSet.Contains(Path.GetFullPath(item.Path)));
+        WidgetItem? draggedItem = _surfaceReorderDraggedItem ??
+            ViewModel.Items.FirstOrDefault(item =>
+                _surfaceReorderPathSet.Contains(Path.GetFullPath(item.Path)));
         if (draggedItem is null)
         {
             return;
@@ -2315,6 +2541,11 @@ public sealed partial class FileSurfaceContent :
         _surfaceReorderPaths = [];
         _surfaceReorderStackKey = null;
         _surfaceReorderInsertionIndex = -1;
+        _surfaceReorderDraggedItem = null;
+        _surfaceReorderPathSet = null;
+        _surfaceReorderLastView = null;
+        _surfaceReorderLastPosition = default;
+        _surfaceReorderHasLastPosition = false;
     }
 
     private void CommitSurfaceReorder(
@@ -2336,6 +2567,12 @@ public sealed partial class FileSurfaceContent :
 
     private void ApplyDropVisual(FileDropVisualState state)
     {
+        if (_lastDropVisualState == state)
+        {
+            return;
+        }
+
+        _lastDropVisualState = state;
         // Match the standalone file widget: keep content readable and let the
         // native drag caption communicate the operation and destination type.
         DropOverlay.Visibility = Visibility.Collapsed;
@@ -3083,6 +3320,7 @@ public sealed partial class FileSurfaceContent :
         DisposeScrollBarActivityTracking();
         ActualThemeChanged -= FileSurfaceContent_ActualThemeChanged;
         ViewModel.Items.CollectionChanged -= Items_CollectionChanged;
+        ResetDragPayloadCache();
         ViewModel.Dispose();
     }
 }

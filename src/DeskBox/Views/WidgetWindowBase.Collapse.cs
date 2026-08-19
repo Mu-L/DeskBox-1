@@ -2162,11 +2162,12 @@ public abstract partial class WidgetWindowBase
             SetCollapsedState(
                 false,
                 persistManualState: false,
-                animate: true,
-                durationMs: Math.Min(
-                    SettingsService.NormalizeWidgetCompactAnimationDurationMs(
-                        SettingsService.Settings.WidgetCompactAnimationDurationMs),
-                    180));
+                // A drag can cross several compact widgets in a single pointer
+                // gesture. Resizing each HWND through a compositor animation
+                // creates overlapping SetWindowPos/DWM work, so drag expansion
+                // is deliberately instantaneous.
+                animate: false,
+                durationMs: 0);
         }
     }
 
@@ -2232,7 +2233,11 @@ public abstract partial class WidgetWindowBase
                 EffectiveCollapseBehavior == WidgetCollapseBehavior.Click && Config.IsCollapsed;
             if (shouldCollapse)
             {
-                SetCollapsedState(true, persistManualState: false, animate: true);
+                SetCollapsedState(
+                    true,
+                    persistManualState: false,
+                    animate: false,
+                    durationMs: 0);
             }
         });
     }

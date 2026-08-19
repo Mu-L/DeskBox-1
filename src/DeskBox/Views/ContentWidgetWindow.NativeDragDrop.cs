@@ -26,6 +26,8 @@ public sealed partial class ContentWidgetWindow
     private bool _isGroupFileDropTracking;
     private bool _isGroupFileManualImporting;
     private long _groupFileDropGeneration;
+    private bool _groupFileDropFormatCached;
+    private bool _groupFileDropRequiresFallback;
 
     /// <summary>
     /// File members in a group share this window's HWND. Install the same two
@@ -61,8 +63,6 @@ public sealed partial class ContentWidgetWindow
         try
         {
             _nativeFileDropTarget = new NativeDropTarget(HWnd);
-            _nativeFileDropTarget.DragLeaveEvent +=
-                NativeFileDropTarget_DragLeaveEvent;
             _nativeFileDropTarget.DropEvent += NativeFileDropTarget_DropEvent;
             _nativeFileDropTarget.Register();
         }
@@ -157,9 +157,8 @@ public sealed partial class ContentWidgetWindow
             }
 
             StopGroupFileDropTracking(disposeCachedBatch: true);
-            ContentWidgetShell.ClearContentDropHighlight();
             App.Log(
-                $"[DropDiagnostic] Group drag leave cleared highlight " +
+                $"[DropDiagnostic] Group drag leave cleared tracking " +
                 $"id={_config.Id} hwnd=0x{HWnd.ToInt64():X}");
         });
     }
@@ -169,8 +168,6 @@ public sealed partial class ContentWidgetWindow
         // The nested FileSurfaceContent received a normal Drop event, so the
         // fallback must not import the cached source a second time.
         StopGroupFileDropTracking(disposeCachedBatch: true);
-        ContentWidgetShell.ClearContentDropHighlight();
-        WidgetShell.ClearActiveContentDropHighlight();
     }
 
     private void BeginGroupFileDropTracking(DataPackageView dataView)
@@ -178,8 +175,22 @@ public sealed partial class ContentWidgetWindow
         if (IsClosing ||
             CurrentContent is not FileSurfaceContent file ||
             file.IsImportBusy ||
-            file.IsInternalReorderDrag(dataView) ||
-            !RequiresGroupManualDropFallback(dataView))
+            file.IsInternalReorderDrag(dataView))
+        {
+            return;
+        }
+
+        // DragEnter is routed again while the pointer crosses nested child
+        // elements. Cache the OLE format scan until a real window leave or a
+        // Drop calls StopGroupFileDropTracking.
+        if (!_groupFileDropFormatCached)
+        {
+            _groupFileDropRequiresFallback =
+                RequiresGroupManualDropFallback(dataView);
+            _groupFileDropFormatCached = true;
+        }
+
+        if (!_groupFileDropRequiresFallback)
         {
             return;
         }
@@ -358,6 +369,8 @@ public sealed partial class ContentWidgetWindow
         _groupFileDropGeneration++;
         _isCachingGroupFileDrop = false;
         _groupFileDropCacheTask = null;
+        _groupFileDropFormatCached = false;
+        _groupFileDropRequiresFallback = false;
         if (_groupFileDropPollCts is not null)
         {
             _groupFileDropPollCts.Cancel();
@@ -391,8 +404,6 @@ public sealed partial class ContentWidgetWindow
 
         if (_nativeFileDropTarget is not null)
         {
-            _nativeFileDropTarget.DragLeaveEvent -=
-                NativeFileDropTarget_DragLeaveEvent;
             _nativeFileDropTarget.DropEvent -= NativeFileDropTarget_DropEvent;
             _nativeFileDropTarget.Dispose();
             _nativeFileDropTarget = null;
@@ -427,37 +438,10 @@ public sealed partial class ContentWidgetWindow
         int screenY,
         bool containsTemporaryFiles)
     {
-        ClearNativeFileDropHighlight(clearActiveHighlight: true);
         App.Log(
             $"[DropDiagnostic] content id={_config.Id} stage=NativeIDropTargetDrop " +
             $"count={paths.Count} temporary={containsTemporaryFiles}");
         QueueNativeFileDropImport(paths, containsTemporaryFiles);
-    }
-
-    private void NativeFileDropTarget_DragLeaveEvent()
-    {
-        ClearNativeFileDropHighlight(clearActiveHighlight: false);
-    }
-
-    private void ClearNativeFileDropHighlight(bool clearActiveHighlight)
-    {
-        void Clear()
-        {
-            ContentWidgetShell.ClearContentDropHighlight();
-            if (clearActiveHighlight)
-            {
-                WidgetShell.ClearActiveContentDropHighlight();
-            }
-        }
-
-        if (DispatcherQueue.HasThreadAccess)
-        {
-            Clear();
-        }
-        else
-        {
-            DispatcherQueue.TryEnqueue(Clear);
-        }
     }
 
     private void QueueNativeFileDropImport(

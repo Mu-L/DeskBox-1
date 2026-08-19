@@ -830,18 +830,6 @@
         </Grid>
 
         <Border
-            x:Name="ContentDropHighlightBorder"
-            Grid.RowSpan="2"
-            Margin="1"
-            Canvas.ZIndex="90"
-            Background="Transparent"
-            BorderBrush="Transparent"
-            BorderThickness="2"
-            CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
-            IsHitTestVisible="False"
-            Visibility="Collapsed" />
-
-        <Border
             x:Name="GroupDropPreview"
             Grid.RowSpan="2"
             HorizontalAlignment="Left"

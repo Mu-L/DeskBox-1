@@ -46,21 +46,17 @@ public sealed class ExclusiveDropHighlightCoordinatorTests
     }
 
     [Fact]
-    public void NativeDropBridge_UsesLeaveAndDropCleanupFallbacks()
+    public void NativeDropBridge_KeepsFallbackTrackingWithoutWindowHighlight()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Views/ContentWidgetWindow.NativeDragDrop.cs"));
 
-        Assert.Contains(
+        Assert.DoesNotContain(
             "DragLeaveEvent +=",
             source,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "ClearNativeFileDropHighlight(clearActiveHighlight: false)",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "ClearNativeFileDropHighlight(clearActiveHighlight: true)",
+        Assert.DoesNotContain(
+            "ClearNativeFileDropHighlight",
             source,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -76,7 +72,7 @@ public sealed class ExclusiveDropHighlightCoordinatorTests
             source,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Group drag leave cleared highlight",
+            "Group drag leave cleared tracking",
             source,
             StringComparison.Ordinal);
     }
