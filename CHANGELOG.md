@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.4.3 - 2026-08-19
+
+### English
+
+#### Windows 10 motion and materials
+
+- Widget resize, capsule transitions, and full-widget expand or collapse keep moving the real widget windows while reducing redundant UI-thread work and repeated window-position updates.
+- Resize guidance is updated more efficiently and restores the illuminated edge feedback without placing a placeholder over the widget.
+- Windows 10 receives a dedicated material compatibility path. Unsupported Mica and system-corner choices are identified as Windows 11-only, while acrylic, solid, and fully transparent modes retain their Windows 10 behavior.
+- Rapidly interrupted animations now hand off to the latest operation more cleanly, reducing delayed or sticky responses during repeated interaction.
+
+#### Traditional Chinese
+
+- Traditional Chinese (`zh-TW`) is available throughout the app and in both x64 and ARM64 installers.
+- Language persistence, update notes, weather descriptions, city search, lunar calendar content, Todo, Quick Capture, and desktop organization now distinguish Simplified and Traditional Chinese.
+- Traditional Chinese terminology and punctuation were reviewed for Taiwan usage, with complete resource-key and formatting-placeholder parity across all supported languages.
+
+### 中文
+
+#### Windows 10 动画与材质
+
+- 格子边缘调整、胶囊切换以及完整格子的展开和收起继续驱动真实窗口，同时减少 UI 线程上的重复计算和窗口位置更新。
+- 调整尺寸时的辅助提示改为更轻量的更新方式，并恢复边缘发光反馈，不会用预占位替代真实格子。
+- Windows 10 使用独立的材质兼容路径。设置会明确提示云母与系统圆角仅适用于 Windows 11，同时保留亚克力、纯色和全透明模式在 Windows 10 上的对应行为。
+- 连续快速操作时，新动画会更顺畅地接替未完成的旧动画，减少延迟和粘滞感。
+
+#### 繁體中文
+
+- 應用程式與 x64、ARM64 安裝程式新增繁體中文（`zh-TW`）。
+- 語言儲存、更新說明、天氣描述、城市搜尋、農曆內容、待辦、隨記與桌面整理均能區分簡體和繁體中文。
+- 繁中詞彙與標點已按臺灣使用習慣複核，所有支援語言的資源鍵和格式化預留位置保持一致。
+
 ## 1.4.2 - 2026-08-16
 
 ### English
