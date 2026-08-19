@@ -14,7 +14,7 @@ public sealed partial class WeatherWidgetViewModel
     private async Task EnsureLocationAsync()
     {
         IsUsingFallbackLocation = false;
-        string lang = _localizationService.ApiLanguageCode;
+        string lang = _localizationService.CurrentCultureName;
 
         if (_settingsService is null)
         {
@@ -56,7 +56,7 @@ public sealed partial class WeatherWidgetViewModel
             {
                 var item = await _weatherService.ResolveCityAsync(
                     settings.WeatherCityName,
-                    _localizationService.ApiLanguageCode);
+                    lang);
                 if (item is not null)
                 {
                     _latitude = item.Latitude;
@@ -87,7 +87,7 @@ public sealed partial class WeatherWidgetViewModel
                 {
                     var item = await _weatherService.ResolveCityAsync(
                         settings.WeatherCityName,
-                        _localizationService.ApiLanguageCode);
+                        lang);
                     if (item is not null)
                     {
                         _latitude = item.Latitude;
@@ -414,6 +414,7 @@ public sealed partial class WeatherWidgetViewModel
             var culture = language switch
             {
                 "zh-CN" => new System.Globalization.CultureInfo("zh-CN"),
+                "zh-TW" => new System.Globalization.CultureInfo("zh-TW"),
                 "ja-JP" => new System.Globalization.CultureInfo("ja-JP"),
                 "de-DE" => new System.Globalization.CultureInfo("de-DE"),
                 "pt-BR" => new System.Globalization.CultureInfo("pt-BR"),

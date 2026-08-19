@@ -2344,5 +2344,9 @@
     ,"Glance.Cache.Clear": "キャッシュをクリア"
     ,"Glance.Cache.Cleared": "キャッシュをクリアしました"
     ,"Settings.Windows10VisualCompatibility.Title": "Windows 10 の表示互換性"
-    ,"Settings.Windows10VisualCompatibility.Message": "Mica とシステムのウィンドウ角丸には Windows 11 が必要です。Windows 10 ではアクリルまたは単色と直角のウィンドウを使用します。"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica とシステムのウィンドウ角丸には Windows 11 が必要です。Windows 10 ではアクリルまたは単色と直角のウィンドウを使用します。",
+  "Settings.Dialog.QuickAccessOperationFailedBody": "DeskBox はエクスプローラーのクイック アクセスを更新できませんでした。後でもう一度お試しください。",
+  "DesktopOrganization.Result.FailedBody": "デスクトップの整理を完了できませんでした。後でもう一度お試しください。",
+  "DesktopOrganization.Undo.FailedBody": "デスクトップの整理を元に戻せませんでした。後でもう一度お試しください。",
+  "Common.OperationFailedRetry": "操作を完了できませんでした。もう一度お試しください。"
 }

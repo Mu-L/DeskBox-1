@@ -517,7 +517,7 @@ public async Task UpdateWeatherCitySuggestionsAsync(string query)
         }
 
         _citySearchService ??= new CitySearchService();
-        var language = _localizationService.ApiLanguageCode;
+        var language = _localizationService.CurrentCultureName;
         var results = await _citySearchService.SearchAsync(
             query, language, _cachedLocationLat, _cachedLocationLon, ct);
 
@@ -557,7 +557,7 @@ private async Task PopulateNearbyPopularCitiesAsync(CancellationToken cancellati
     try
     {
         _citySearchService ??= new CitySearchService();
-        var language = _localizationService.ApiLanguageCode;
+        var language = _localizationService.CurrentCultureName;
 
         // Try to get user location (cached after first call)
         if (!_locationInitialized)

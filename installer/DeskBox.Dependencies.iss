@@ -169,7 +169,7 @@ begin
   except
     if DependencyDownloadPage.AbortedByUser then
     begin
-      ErrorMessage := 'Download was cancelled.';
+      ErrorMessage := ExpandConstant('{cm:DependencyDownloadCancelled}');
       Exit;
     end;
 
@@ -185,13 +185,10 @@ begin
     Result := True;
   except
     if DependencyDownloadPage.AbortedByUser then
-      ErrorMessage := 'Download was cancelled.'
+      ErrorMessage := ExpandConstant('{cm:DependencyDownloadCancelled}')
     else
-      ErrorMessage :=
-        DisplayName + ' download failed.' + #13#10 +
-        'Primary URL: ' + Url + #13#10 +
-        'Fallback URL: ' + FallbackUrl + #13#10 +
-        'Error: ' + GetExceptionMessage;
+      ErrorMessage := FmtMessage(
+        ExpandConstant('{cm:DependencyDownloadFailed}'), [DisplayName, Url, FallbackUrl, GetExceptionMessage]);
 
     Log(DisplayName + ' fallback download failed: ' + ErrorMessage);
   end;
@@ -265,7 +262,11 @@ begin
 
   if not ShellExec('runas', InstallerPath, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    SuppressibleMsgBox(DisplayName + ' installer could not be started with administrator permission. Please allow the Windows prompt and try again.', mbCriticalError, MB_OK, IDOK);
+    SuppressibleMsgBox(
+      FmtMessage(ExpandConstant('{cm:DependencyInstallStartFailed}'), [DisplayName]),
+      mbCriticalError,
+      MB_OK,
+      IDOK);
     Exit;
   end;
 
@@ -279,8 +280,8 @@ begin
   if ResultCode <> 0 then
   begin
     SuppressibleMsgBox(
-      DisplayName + ' installation failed. Exit code: ' + IntToStr(ResultCode) + '.' + #13#10 +
-      'Please confirm this Windows version is supported, or install the dependency manually and run DeskBox setup again.',
+      FmtMessage(
+        ExpandConstant('{cm:DependencyInstallFailed}'), [DisplayName, IntToStr(ResultCode)]),
       mbCriticalError,
       MB_OK,
       IDOK);
@@ -365,13 +366,13 @@ begin
 
   if not DownloadDeskBoxDependencies then
   begin
-    Result := 'DeskBox dependencies could not be downloaded.';
+    Result := ExpandConstant('{cm:DependencyDownloadFailedSummary}');
     Exit;
   end;
 
   if not InstallDeskBoxDependencies(NeedsRestart) then
   begin
-    Result := 'DeskBox dependencies could not be installed.';
+    Result := ExpandConstant('{cm:DependencyInstallFailedSummary}');
     Exit;
   end;
 

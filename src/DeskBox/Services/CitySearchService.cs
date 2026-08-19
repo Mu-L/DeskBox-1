@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DeskBox.Helpers;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
@@ -46,7 +47,7 @@ internal sealed class PredefinedCity
 /// geocoding API. Supports location-based "nearby popular cities" by
 /// sorting the local list by haversine distance to the user's coordinates.
 /// </summary>
-public sealed class CitySearchService
+public sealed class CitySearchService : IDisposable
 {
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -107,7 +108,8 @@ public sealed class CitySearchService
     public static string? GetNearestCityName(
         double lat, double lon, string language = "zh", double maxDistanceKm = 80)
     {
-        bool isEn = language is "en" or "en-US";
+        bool useChinese = IsChineseLanguage(language);
+        bool useTraditional = LocalizationService.IsTraditionalChineseCulture(language);
         PredefinedCity? best = null;
         double bestDist = double.MaxValue;
 
@@ -126,7 +128,12 @@ public sealed class CitySearchService
             return null;
         }
 
-        return isEn ? best.En : best.Zh;
+        if (!useChinese)
+        {
+            return best.En;
+        }
+
+        return LocalizeChineseText(best.Zh, useTraditional);
     }
 
     /// <summary>
@@ -163,10 +170,11 @@ public sealed class CitySearchService
             return [];
         }
 
-        bool isEn = language is "en" or "en-US";
+        bool isEn = !IsChineseLanguage(language);
+        bool useTraditional = LocalizationService.IsTraditionalChineseCulture(language);
 
         // 1. Search local predefined cities (instant, no network)
-        var localResults = SearchLocal(query, isEn);
+        var localResults = SearchLocal(query, isEn, useTraditional);
 
         // 2. Search via Open-Meteo API (parallel, with cancellation)
         List<WeatherGeocodingItem>? apiResults = null;
@@ -220,14 +228,17 @@ public sealed class CitySearchService
                 var key = $"{item.Latitude:F2},{item.Longitude:F2}";
                 if (seen.Add(key))
                 {
+                    string name = LocalizeChineseText(item.Name, useTraditional);
+                    string admin1 = LocalizeChineseText(item.Admin1, useTraditional);
+                    string country = LocalizeChineseText(item.Country, useTraditional);
                     var result = new WeatherCitySearchResult
                     {
-                        Name = item.Name ?? string.Empty,
-                        DisplayName = BuildDisplayName(item),
+                        Name = name,
+                        DisplayName = BuildDisplayNameFromParts(name, admin1, country),
                         Latitude = item.Latitude,
                         Longitude = item.Longitude,
-                        Country = item.Country ?? string.Empty,
-                        Admin1 = item.Admin1 ?? string.Empty
+                        Country = country,
+                        Admin1 = admin1
                     };
                     merged.Add(new CitySearchCandidate(
                         result,
@@ -265,7 +276,8 @@ public sealed class CitySearchService
         string language = "zh",
         int maxCount = 8)
     {
-        bool isEn = language is "en" or "en-US";
+        bool isEn = !IsChineseLanguage(language);
+        bool useTraditional = LocalizationService.IsTraditionalChineseCulture(language);
 
         IEnumerable<PredefinedCity> cities = Predefined;
 
@@ -277,7 +289,7 @@ public sealed class CitySearchService
 
         return cities
             .Take(maxCount)
-            .Select(c => ToSearchResult(c, isEn))
+            .Select(c => ToSearchResult(c, isEn, useTraditional))
             .ToList();
     }
 
@@ -289,7 +301,8 @@ public sealed class CitySearchService
         string language = "zh",
         int maxCount = 8)
     {
-        bool isEn = language is "en" or "en-US";
+        bool isEn = !IsChineseLanguage(language);
+        bool useTraditional = LocalizationService.IsTraditionalChineseCulture(language);
 
         // Pick a spread of globally representative cities
         var indices = new[] { 0, 1, 2, 3, 4, 39, 53, 59, 78, 99, 113, 122, 139, 145, 153 };
@@ -297,16 +310,22 @@ public sealed class CitySearchService
         return indices
             .Where(i => i < Predefined.Count)
             .Take(maxCount)
-            .Select(i => ToSearchResult(Predefined[i], isEn))
+            .Select(i => ToSearchResult(Predefined[i], isEn, useTraditional))
             .ToList();
     }
 
     // ─── Private helpers ───
 
-    internal static List<WeatherCitySearchResult> SearchLocal(string query, bool isEn)
+    internal static List<WeatherCitySearchResult> SearchLocal(
+        string query,
+        bool isEn,
+        bool useTraditional = false)
     {
         var lower = query.ToLowerInvariant();
-        string normalizedQuery = NormalizeSearchText(query);
+        string matchingQuery = useTraditional
+            ? ChineseTextConverter.ToSimplified(query)
+            : query;
+        string normalizedQuery = NormalizeSearchText(matchingQuery);
         bool isPinyinInitials = lower.Length >= 2 && lower.All(c => c >= 'a' && c <= 'z');
 
         var matches = Predefined
@@ -324,7 +343,7 @@ public sealed class CitySearchService
             })
             .OrderByDescending(c => GetSearchRelevance(c, normalizedQuery))
             .Take(8)
-            .Select(c => ToSearchResult(c, isEn))
+            .Select(c => ToSearchResult(c, isEn, useTraditional))
             .ToList();
 
         return matches;
@@ -490,11 +509,14 @@ public sealed class CitySearchService
         bool IsLocal,
         int Sequence);
 
-    private static WeatherCitySearchResult ToSearchResult(PredefinedCity c, bool isEn)
+    private static WeatherCitySearchResult ToSearchResult(
+        PredefinedCity c,
+        bool isEn,
+        bool useTraditional)
     {
-        var name = isEn ? c.En : c.Zh;
-        var admin1 = isEn ? c.Admin1En : c.Admin1Zh;
-        var country = isEn ? c.CountryEn : c.CountryZh;
+        string name = isEn ? c.En : LocalizeChineseText(c.Zh, useTraditional);
+        string admin1 = isEn ? c.Admin1En : LocalizeChineseText(c.Admin1Zh, useTraditional);
+        string country = isEn ? c.CountryEn : LocalizeChineseText(c.CountryZh, useTraditional);
 
         return new WeatherCitySearchResult
         {
@@ -507,15 +529,6 @@ public sealed class CitySearchService
         };
     }
 
-    private static string BuildDisplayName(WeatherGeocodingItem item)
-    {
-        var parts = new List<string>();
-        if (!string.IsNullOrEmpty(item.Name)) parts.Add(item.Name);
-        if (!string.IsNullOrEmpty(item.Admin1) && item.Admin1 != item.Name) parts.Add(item.Admin1);
-        if (!string.IsNullOrEmpty(item.Country)) parts.Add(item.Country);
-        return string.Join(", ", parts);
-    }
-
     private static string BuildDisplayNameFromParts(string name, string admin1, string country)
     {
         var parts = new List<string> { name };
@@ -523,6 +536,15 @@ public sealed class CitySearchService
         if (!string.IsNullOrEmpty(country)) parts.Add(country);
         return string.Join(", ", parts);
     }
+
+    private static bool IsChineseLanguage(string? language) =>
+        !string.IsNullOrWhiteSpace(language) &&
+        language.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
+
+    private static string LocalizeChineseText(string? value, bool useTraditional) =>
+        useTraditional
+            ? ChineseTextConverter.ToTraditional(value)
+            : value ?? string.Empty;
 
     /// <summary>
     /// Calculate the great-circle distance between two points in kilometers.

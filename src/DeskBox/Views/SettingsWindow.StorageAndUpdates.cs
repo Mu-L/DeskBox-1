@@ -165,6 +165,7 @@ public sealed partial class SettingsWindow
                 return;
             }
 
+            App.Log($"[SettingsWindow] Quick Access operation failed: {result.Error ?? "unknown error"}");
             if (SettingsRoot.XamlRoot is null)
             {
                 return;
@@ -180,9 +181,7 @@ public sealed partial class SettingsWindow
                 DefaultButton = ContentDialogButton.Close,
                 Content = new TextBlock
                 {
-                    Text = shouldUnpin
-                        ? _localizationService.Format("Settings.Dialog.UnpinQuickAccessFailedBody", result.Error ?? string.Empty)
-                        : _localizationService.Format("Settings.Dialog.PinQuickAccessFailedBody", result.Error ?? string.Empty),
+                    Text = _localizationService.T("Settings.Dialog.QuickAccessOperationFailedBody"),
                     TextWrapping = TextWrapping.Wrap
                 }
             };
@@ -204,9 +203,7 @@ public sealed partial class SettingsWindow
                     DefaultButton = ContentDialogButton.Close,
                     Content = new TextBlock
                     {
-                        Text = shouldUnpin
-                            ? _localizationService.Format("Settings.Dialog.UnpinQuickAccessFailedBody", ex.Message)
-                            : _localizationService.Format("Settings.Dialog.PinQuickAccessFailedBody", ex.Message),
+                        Text = _localizationService.T("Settings.Dialog.QuickAccessOperationFailedBody"),
                         TextWrapping = TextWrapping.Wrap
                     }
                 };

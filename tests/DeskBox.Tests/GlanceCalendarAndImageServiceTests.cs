@@ -258,6 +258,8 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
 
         Assert.Equal(GlanceTraditionalCalendarMode.ChineseLunar,
             service.ResolveMode(GlanceTraditionalCalendarMode.Auto, "zh-CN"));
+        Assert.Equal(GlanceTraditionalCalendarMode.ChineseLunar,
+            service.ResolveMode(GlanceTraditionalCalendarMode.Auto, "zh-TW"));
         Assert.Equal(GlanceTraditionalCalendarMode.UmAlQura,
             service.ResolveMode(GlanceTraditionalCalendarMode.Auto, "ar-SA"));
         Assert.Equal(GlanceTraditionalCalendarMode.IndianSaka,
@@ -288,6 +290,10 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
             new DateOnly(2024, 2, 10),
             GlanceTraditionalCalendarMode.ChineseLunar,
             chinese), StringComparison.Ordinal);
+        Assert.Contains("臘月", service.FormatTitle(
+            new DateOnly(2025, 1, 7),
+            GlanceTraditionalCalendarMode.ChineseLunar,
+            CultureInfo.GetCultureInfo("zh-TW")), StringComparison.Ordinal);
         Assert.Equal("१/१", service.FormatDay(
             new DateOnly(2024, 3, 21),
             GlanceTraditionalCalendarMode.IndianSaka,
@@ -353,6 +359,23 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
         var service = new GlanceFestivalService();
 
         Assert.Equal(expected, service.GetChineseFestival(new DateOnly(year, month, day)));
+    }
+
+    [Theory]
+    [InlineData(2024, 2, 10, "春節")]
+    [InlineData(2024, 10, 11, "重陽")]
+    [InlineData(2025, 1, 7, "臘八")]
+    public void ChineseFestivals_UseTraditionalGlyphsForTraditionalChinese(
+        int year,
+        int month,
+        int day,
+        string expected)
+    {
+        var service = new GlanceFestivalService();
+
+        Assert.Equal(
+            expected,
+            service.GetChineseFestival(new DateOnly(year, month, day), useTraditional: true));
     }
 
     [Fact]

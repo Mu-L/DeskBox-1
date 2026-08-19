@@ -2344,5 +2344,9 @@
     ,"Glance.Cache.Clear": "Очистить кэш"
     ,"Glance.Cache.Cleared": "Кэш очищен"
     ,"Settings.Windows10VisualCompatibility.Title": "Визуальная совместимость с Windows 10"
-    ,"Settings.Windows10VisualCompatibility.Message": "Mica и системное скругление окон требуют Windows 11. В Windows 10 используется акрил или сплошной цвет с прямыми углами окон."
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica и системное скругление окон требуют Windows 11. В Windows 10 используется акрил или сплошной цвет с прямыми углами окон.",
+  "Settings.Dialog.QuickAccessOperationFailedBody": "DeskBox не удалось обновить быстрый доступ в Проводнике. Повторите попытку позже.",
+  "DesktopOrganization.Result.FailedBody": "Не удалось завершить организацию рабочего стола. Повторите попытку позже.",
+  "DesktopOrganization.Undo.FailedBody": "Не удалось отменить организацию рабочего стола. Повторите попытку позже.",
+  "Common.OperationFailedRetry": "Не удалось завершить операцию. Повторите попытку."
 }

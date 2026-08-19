@@ -215,10 +215,11 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
         }
         catch (Exception ex)
         {
+            App.Log($"[DesktopOrganization] Undo from settings failed: {ex}");
             RuleStatusInfo.ActionButton = null;
             RuleStatusInfo.Severity = InfoBarSeverity.Error;
             RuleStatusInfo.Title = T("DesktopOrganization.Undo.Failed");
-            RuleStatusInfo.Message = ex.Message;
+            RuleStatusInfo.Message = T("DesktopOrganization.Undo.FailedBody");
             RuleStatusInfo.IsOpen = true;
             UndoOrganizationButton.IsEnabled = true;
         }
@@ -832,9 +833,10 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
             }
             catch (Exception ex)
             {
+                App.Log($"[DesktopOrganization] Rule transfer failed: {ex}");
                 RuleStatusInfo.Severity = InfoBarSeverity.Error;
                 RuleStatusInfo.Title = T("DesktopOrganization.Result.FailedTitle");
-                RuleStatusInfo.Message = ex.Message;
+                RuleStatusInfo.Message = T("DesktopOrganization.Result.FailedBody");
                 action.IsEnabled = true;
             }
         };

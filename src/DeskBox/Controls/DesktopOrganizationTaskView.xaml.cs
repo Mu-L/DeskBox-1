@@ -105,6 +105,7 @@ public sealed partial class DesktopOrganizationTaskView : UserControl
         }
         catch (Exception ex)
         {
+            App.Log($"[DesktopOrganization] Scan failed: {ex}");
             if (generation != _scanGeneration)
             {
                 return;
@@ -112,7 +113,7 @@ public sealed partial class DesktopOrganizationTaskView : UserControl
 
             ResultInfo.Severity = InfoBarSeverity.Error;
             ResultInfo.Title = T("DesktopOrganization.Result.FailedTitle");
-            ResultInfo.Message = ex.Message;
+            ResultInfo.Message = T("DesktopOrganization.Result.FailedBody");
             ResultInfo.IsOpen = true;
             SummaryTitle.Text = T("DesktopOrganization.Result.FailedTitle");
             SummaryDescription.Text = T("DesktopOrganization.Preview.PageDescription");

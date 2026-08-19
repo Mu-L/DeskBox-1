@@ -2344,5 +2344,9 @@
     ,"Glance.Cache.Clear": "Borrar caché"
     ,"Glance.Cache.Cleared": "Caché borrada"
     ,"Settings.Windows10VisualCompatibility.Title": "Compatibilidad visual con Windows 10"
-    ,"Settings.Windows10VisualCompatibility.Message": "Mica y las esquinas del sistema requieren Windows 11. Windows 10 usa acrílico o color sólido con ventanas cuadradas."
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica y las esquinas del sistema requieren Windows 11. Windows 10 usa acrílico o color sólido con ventanas cuadradas.",
+  "Settings.Dialog.QuickAccessOperationFailedBody": "DeskBox no pudo actualizar el acceso rápido del Explorador de archivos. Inténtalo de nuevo más tarde.",
+  "DesktopOrganization.Result.FailedBody": "No se pudo completar la organización del escritorio. Inténtalo de nuevo más tarde.",
+  "DesktopOrganization.Undo.FailedBody": "No se pudo deshacer la organización del escritorio. Inténtalo de nuevo más tarde.",
+  "Common.OperationFailedRetry": "No se pudo completar la operación. Inténtalo de nuevo."
 }

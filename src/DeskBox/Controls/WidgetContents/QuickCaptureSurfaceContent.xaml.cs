@@ -1244,7 +1244,10 @@ public sealed partial class QuickCaptureSurfaceContent :
         catch (Exception ex)
         {
             App.Log($"[QuickCaptureSurface] Detail save failed id={WidgetId}: {ex}");
-            RaiseFeedback(ex.Message, WidgetFeedbackSeverity.Error, "quick-detail-save-error");
+            RaiseFeedback(
+                T("Common.OperationFailedRetry"),
+                WidgetFeedbackSeverity.Error,
+                "quick-detail-save-error");
             return false;
         }
         finally
@@ -1602,7 +1605,10 @@ public sealed partial class QuickCaptureSurfaceContent :
         catch (Exception ex)
         {
             App.Log($"[QuickCaptureSurface] Add attachment failed: {ex}");
-            RaiseFeedback(ex.Message, WidgetFeedbackSeverity.Error, "quick-attachment-error");
+            RaiseFeedback(
+                T("Common.OperationFailedRetry"),
+                WidgetFeedbackSeverity.Error,
+                "quick-attachment-error");
         }
     }
 
@@ -2471,7 +2477,10 @@ public sealed partial class QuickCaptureSurfaceContent :
         catch (Exception ex)
         {
             App.Log($"[WidgetSurface] Quick Capture drop failed id={WidgetId}: {ex}");
-            RaiseFeedback(ex.Message, WidgetFeedbackSeverity.Error, "quick-drop-error");
+            RaiseFeedback(
+                T("Common.OperationFailedRetry"),
+                WidgetFeedbackSeverity.Error,
+                "quick-drop-error");
         }
         finally
         {
@@ -2921,7 +2930,10 @@ public sealed partial class QuickCaptureSurfaceContent :
         catch (Exception ex)
         {
             App.Log($"[WidgetSurface] Quick Capture action failed id={WidgetId}: {ex}");
-            RaiseFeedback(ex.Message, WidgetFeedbackSeverity.Error, "quick-action-error");
+            RaiseFeedback(
+                T("Common.OperationFailedRetry"),
+                WidgetFeedbackSeverity.Error,
+                "quick-action-error");
         }
     }
 

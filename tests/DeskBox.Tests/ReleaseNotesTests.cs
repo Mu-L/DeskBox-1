@@ -14,20 +14,26 @@ public sealed class ReleaseNotesTests : IDisposable
         Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public void LocalizedReleaseNotes_ChinesePrefersChineseAndFallsBackToEnglish()
+    public void LocalizedReleaseNotes_ChineseVariantsPreferMatchingScriptAndFallBack()
     {
         var manifest = new AppUpdateManifest
         {
             ReleaseNotes = new Dictionary<string, string>
             {
                 ["en-US"] = "English content",
-                ["zh-CN"] = "中文内容"
+                ["zh-CN"] = "简体内容",
+                ["zh-TW"] = "繁體內容"
             }
         };
 
-        Assert.Equal("中文内容", manifest.GetLocalizedReleaseNotes("zh-CN"));
+        Assert.Equal("简体内容", manifest.GetLocalizedReleaseNotes("zh-CN"));
+        Assert.Equal("繁體內容", manifest.GetLocalizedReleaseNotes("zh-TW"));
+        Assert.Equal("繁體內容", manifest.GetLocalizedReleaseNotes("zh-HK"));
+        Assert.Equal("繁體內容", manifest.GetLocalizedReleaseNotes("zh-Hant"));
         Assert.Equal("English content", manifest.GetLocalizedReleaseNotes("de-DE"));
 
+        manifest.ReleaseNotes.Remove("zh-TW");
+        Assert.Equal("简体内容", manifest.GetLocalizedReleaseNotes("zh-TW"));
         manifest.ReleaseNotes.Remove("zh-CN");
         Assert.Equal("English content", manifest.GetLocalizedReleaseNotes("zh-CN"));
     }

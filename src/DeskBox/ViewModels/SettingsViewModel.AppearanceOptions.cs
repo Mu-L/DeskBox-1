@@ -627,7 +627,7 @@ public partial class SettingsViewModel
     public string HoverButtonActionsSummaryText => !ShowHoverButtons
         ? _localizationService.T("Settings.HoverButtonActions.None")
         : string.Join(
-            _localizationService.ApiLanguageCode == "zh" ? "、" : ", ",
+            _localizationService.IsChinese ? "、" : ", ",
             AvailableWidgetHoverButtonActions
                 .Where(IsHoverButtonActionSelected)
                 .Select(GetHoverButtonActionDisplayName));

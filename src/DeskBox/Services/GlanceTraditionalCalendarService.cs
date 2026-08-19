@@ -1,4 +1,5 @@
 using System.Globalization;
+using DeskBox.Helpers;
 using DeskBox.Models;
 using Windows.Globalization;
 using WinCalendar = Windows.Globalization.Calendar;
@@ -89,7 +90,9 @@ internal sealed class GlanceTraditionalCalendarService
             return mode switch
             {
                 GlanceTraditionalCalendarMode.None => string.Empty,
-                GlanceTraditionalCalendarMode.ChineseLunar => FormatChineseTitle(date),
+                GlanceTraditionalCalendarMode.ChineseLunar => FormatChineseTitle(
+                    date,
+                    LocalizationService.IsTraditionalChineseCulture(culture.Name)),
                 GlanceTraditionalCalendarMode.IndianSaka => FormatIndianTitle(date),
                 GlanceTraditionalCalendarMode.Bangla => FormatBanglaTitle(date),
                 _ => FormatSystemCalendarTitle(date, mode, culture)
@@ -113,7 +116,9 @@ internal sealed class GlanceTraditionalCalendarService
             return mode switch
             {
                 GlanceTraditionalCalendarMode.None => string.Empty,
-                GlanceTraditionalCalendarMode.ChineseLunar => FormatChineseDay(date),
+                GlanceTraditionalCalendarMode.ChineseLunar => FormatChineseDay(
+                    date,
+                    LocalizationService.IsTraditionalChineseCulture(culture.Name)),
                 GlanceTraditionalCalendarMode.IndianSaka => FormatIndianDay(date),
                 GlanceTraditionalCalendarMode.Bangla => FormatBanglaDay(date),
                 GlanceTraditionalCalendarMode.JapaneseEra or
@@ -128,20 +133,22 @@ internal sealed class GlanceTraditionalCalendarService
         }
     }
 
-    private static string FormatChineseDay(DateOnly date)
+    private static string FormatChineseDay(DateOnly date, bool useTraditional)
     {
         ChineseDate value = GetChineseDate(date);
-        return value.Day == 1
+        string text = value.Day == 1
             ? $"{(value.IsLeapMonth ? "闰" : string.Empty)}{ChineseMonthNames[value.Month]}"
             : ChineseDayNames[value.Day];
+        return useTraditional ? ChineseTextConverter.ToTraditional(text) : text;
     }
 
-    private static string FormatChineseTitle(DateOnly date)
+    private static string FormatChineseTitle(DateOnly date, bool useTraditional)
     {
         ChineseDate value = GetChineseDate(date);
         string cyclicalYear = $"{HeavenlyStems[(value.SexagenaryYear - 1) % 10]}{EarthlyBranches[(value.SexagenaryYear - 1) % 12]}年";
         string month = $"{(value.IsLeapMonth ? "闰" : string.Empty)}{ChineseMonthNames[value.Month]}";
-        return $"{cyclicalYear} {month}{ChineseDayNames[value.Day]}";
+        string text = $"{cyclicalYear} {month}{ChineseDayNames[value.Day]}";
+        return useTraditional ? ChineseTextConverter.ToTraditional(text) : text;
     }
 
     private static ChineseDate GetChineseDate(DateOnly date)

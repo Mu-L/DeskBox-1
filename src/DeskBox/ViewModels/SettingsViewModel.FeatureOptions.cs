@@ -852,6 +852,7 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
     [
         SettingsService.LanguageSystem,
         SettingsService.LanguageChinese,
+        SettingsService.LanguageChineseTraditional,
         SettingsService.LanguageEnglish,
         LocalizationService.LanguageJapanese,
         LocalizationService.LanguageGerman,

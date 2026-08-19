@@ -82,12 +82,15 @@ public sealed class AppUpdateServiceTests : IDisposable
             Summary =
             {
                 ["zh-CN"] = "中文摘要",
+                ["zh-TW"] = "繁體摘要",
                 ["en-US"] = "English summary"
             }
         };
 
         Assert.Equal("English summary", manifest.GetLocalizedSummary("de-DE"));
         Assert.Equal("中文摘要", manifest.GetLocalizedSummary("zh-CN"));
+        Assert.Equal("繁體摘要", manifest.GetLocalizedSummary("zh-TW"));
+        Assert.Equal("繁體摘要", manifest.GetLocalizedSummary("zh-MO"));
     }
 
     [Fact]
