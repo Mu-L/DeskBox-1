@@ -79,6 +79,20 @@ internal static class WidgetMaterialVisualCalculator
                 : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
     }
 
+    public static Windows.UI.Color BuildEmbeddedMicaTintOverlayColor(
+        bool isDark,
+        Windows.UI.Color accentColor,
+        bool useAlt,
+        double materialIntensity)
+    {
+        WidgetMaterialOpacityProfile profile = CalculateMica(
+            isDark,
+            useAlt,
+            materialIntensity);
+        Windows.UI.Color tintColor = BuildContentTintColor(isDark, accentColor);
+        return ApplySurfaceOpacity(tintColor, profile.TintOpacity);
+    }
+
     public static Windows.UI.Color BuildContentSolidSurfaceColor(
         bool isDark,
         Windows.UI.Color accentColor,

@@ -74,8 +74,8 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
             "src/DeskBox/ViewModels/GlanceWidgetViewModel.cs"));
         string codeBehind = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/GlanceWidgetContent.xaml.cs"));
-        string persistentMica = File.ReadAllText(TestPaths.FromRepository(
-            "src/DeskBox/Services/PersistentMicaBackdrop.cs"));
+        string visualCalculator = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetMaterialVisualCalculator.cs"));
         string backdrop = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Views/WidgetWindowBase.Backdrop.cs"));
         string settingsXaml = File.ReadAllText(TestPaths.FromRepository(
@@ -98,17 +98,16 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
         Assert.Contains("CornerRadius=\"{Binding CalendarCornerRadius}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Key=\"GlanceCalendarAcrylicBrush\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"CalendarMaterialSurface\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"CalendarSystemBackdropSurface\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("<controls:SystemBackdropElement", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("SystemBackdropElement", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("TintOpacity=\"0.06\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("TintLuminosityOpacity=\"0.24\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Opacity=\"0.88\"", xaml, StringComparison.Ordinal);
         Assert.Contains("WidgetMaterialVisualCalculator.CalculateAcrylic", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("new PersistentMicaBackdrop", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("_configuration.IsInputActive = true", persistentMica, StringComparison.Ordinal);
-        Assert.Contains("WidgetMaterialVisualCalculator.CalculateMica", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("CalendarMaterialSurface.Background = null", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("BuildEmbeddedMicaTintOverlayColor", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("WidgetMaterialOpacityProfile profile = CalculateMica", visualCalculator, StringComparison.Ordinal);
+        Assert.Contains("BuildEmbeddedMicaTintOverlayColor", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("BuildEmbeddedMicaTintOverlayColor", visualCalculator, StringComparison.Ordinal);
+        Assert.Contains("CalendarMaterialSurface.Background = _calendarSolidMaterialBrush", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("SystemBackdrop =", codeBehind, StringComparison.Ordinal);
         Assert.Contains("BuildContentSolidSurfaceColor", codeBehind, StringComparison.Ordinal);
         Assert.Contains("CalendarMaterialOpacity", viewModel, StringComparison.Ordinal);
         Assert.Contains("CalendarMaterialIntensity", viewModel, StringComparison.Ordinal);
@@ -568,19 +567,41 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
         Assert.Equal(0.82, baseAcrylic.LuminosityOpacity, precision: 4);
     }
 
-    [Fact]
-    public void EmbeddedMica_DoesNotApplyASecondTintLayer()
+    [Theory]
+    [InlineData(false, 0.0, 10)]
+    [InlineData(false, 1.0, 117)]
+    [InlineData(true, 0.0, 71)]
+    [InlineData(true, 1.0, 209)]
+    public void EmbeddedMicaTintOverlay_UsesMicaIntensityCurve(
+        bool useAlt,
+        double materialIntensity,
+        int expectedAlpha)
     {
+        Windows.UI.Color color = WidgetMaterialVisualCalculator.BuildEmbeddedMicaTintOverlayColor(
+            isDark: false,
+            Windows.UI.Color.FromArgb(255, 0, 120, 215),
+            useAlt,
+            materialIntensity);
+
+        Assert.Equal(expectedAlpha, color.A);
+    }
+
+    [Fact]
+    public void EmbeddedMica_UsesTintOverlayWithoutNestedSystemBackdrop()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/GlanceWidgetContent.xaml"));
         string codeBehind = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/GlanceWidgetContent.xaml.cs"));
-        string persistentMica = File.ReadAllText(TestPaths.FromRepository(
-            "src/DeskBox/Services/PersistentMicaBackdrop.cs"));
+        string visualCalculator = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetMaterialVisualCalculator.cs"));
 
-        Assert.Contains("CalendarSystemBackdropSurface.Visibility = Visibility.Visible", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("CalendarMaterialSurface.Background = null", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("_configuration.IsInputActive = true", persistentMica, StringComparison.Ordinal);
-        Assert.Contains("BuildContentTintColor", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("BuildEmbeddedMicaTintOverlayColor", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("SystemBackdropElement", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("SystemBackdrop =", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("BuildContentTintColor(isDark, accentColor)", visualCalculator, StringComparison.Ordinal);
+        Assert.Contains("BuildEmbeddedMicaTintOverlayColor", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("BuildEmbeddedMicaTintOverlayColor", visualCalculator, StringComparison.Ordinal);
+        Assert.Contains("CalendarMaterialSurface.Background = _calendarSolidMaterialBrush", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]

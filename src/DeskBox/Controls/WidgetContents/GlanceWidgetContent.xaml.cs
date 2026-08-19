@@ -43,7 +43,6 @@ public sealed partial class GlanceWidgetContent : UserControl
     private bool _isCalendarWheelNavigationInProgress;
     private int _imageLoadVersion;
     private long? _calendarDisplayModeCallbackToken;
-    private PersistentMicaBackdrop? _calendarMicaBackdrop;
     private string? _calendarImagePalettePath;
     private GlanceImagePalette? _calendarImagePalette;
     private CancellationTokenSource? _paletteCts;
@@ -102,8 +101,6 @@ public sealed partial class GlanceWidgetContent : UserControl
         _calendarWheelGestureTimer.Stop();
         _isCalendarWheelGestureActive = false;
         UnconfigureNativeCalendarView();
-        CalendarSystemBackdropSurface.SystemBackdrop = null;
-        _calendarMicaBackdrop = null;
         DelayedLoadingRing.IsActive = false;
         DelayedLoadingRing.Visibility = Visibility.Collapsed;
         _transitionStoryboard?.Stop();
@@ -220,7 +217,6 @@ public sealed partial class GlanceWidgetContent : UserControl
 
         if (_viewModel.CalendarMaterialMode == GlanceCalendarMaterialMode.FollowImage)
         {
-            DisableCalendarSystemBackdrop();
             var fallbackTint = WidgetMaterialVisualCalculator.BuildContentTintColor(isDark, accentColor);
             GlanceImagePalette palette = _calendarImagePalette ?? new GlanceImagePalette(
                 accentColor,
@@ -240,40 +236,15 @@ public sealed partial class GlanceWidgetContent : UserControl
         if (SettingsService.IsMicaMaterial(materialType))
         {
             bool useAlt = materialType == SettingsService.WidgetMaterialTypeMicaAlt;
-            Windows.UI.Color tintColor =
-                WidgetMaterialVisualCalculator.BuildContentTintColor(isDark, accentColor);
-            WidgetMaterialOpacityProfile profile = WidgetMaterialVisualCalculator.CalculateMica(
-                isDark,
-                useAlt,
-                _viewModel.CalendarMaterialIntensity);
-            if (_calendarMicaBackdrop is null)
-            {
-                _calendarMicaBackdrop = new PersistentMicaBackdrop(
+            _calendarSolidMaterialBrush.Color =
+                WidgetMaterialVisualCalculator.BuildEmbeddedMicaTintOverlayColor(
                     isDark,
+                    accentColor,
                     useAlt,
-                    tintColor,
-                    profile);
-            }
-            else
-            {
-                _calendarMicaBackdrop.Update(isDark, useAlt, tintColor, profile);
-            }
-
-            if (!ReferenceEquals(
-                    CalendarSystemBackdropSurface.SystemBackdrop,
-                    _calendarMicaBackdrop))
-            {
-                CalendarSystemBackdropSurface.SystemBackdrop = _calendarMicaBackdrop;
-            }
-
-            CalendarSystemBackdropSurface.Visibility = Visibility.Visible;
-            // PersistentMicaBackdrop uses the same tint and opacity profile as
-            // the outer widget and stays input-active on the desktop layer.
-            CalendarMaterialSurface.Background = null;
+                    _viewModel.CalendarMaterialIntensity);
+            CalendarMaterialSurface.Background = _calendarSolidMaterialBrush;
             return;
         }
-
-        DisableCalendarSystemBackdrop();
 
         if (SettingsService.IsAcrylicMaterial(materialType) &&
             Resources["GlanceCalendarAcrylicBrush"] is AcrylicBrush acrylicBrush)
@@ -310,16 +281,6 @@ public sealed partial class GlanceWidgetContent : UserControl
         };
         _calendarSolidMaterialBrush.Color = surfaceColor;
         CalendarMaterialSurface.Background = _calendarSolidMaterialBrush;
-    }
-
-    private void DisableCalendarSystemBackdrop()
-    {
-        if (CalendarSystemBackdropSurface.SystemBackdrop is not null)
-        {
-            CalendarSystemBackdropSurface.SystemBackdrop = null;
-        }
-
-        CalendarSystemBackdropSurface.Visibility = Visibility.Collapsed;
     }
 
     private void ConfigureNativeCalendarView()
