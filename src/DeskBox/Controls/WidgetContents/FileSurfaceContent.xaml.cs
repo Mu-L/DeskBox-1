@@ -1590,6 +1590,11 @@ public sealed partial class FileSurfaceContent :
     private void Root_DragOver(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        // Child folder/stack targets mark their own DragOver handled. Reaching
+        // the root therefore means the pointer is no longer over either target,
+        // even when WinUI suppressed the corresponding child DragLeave.
+        ClearFolderDropTarget();
+        ClearStackMemberDropTarget();
         if (_isImportBusy)
         {
             e.AcceptedOperation = DataPackageOperation.None;
@@ -1982,6 +1987,15 @@ public sealed partial class FileSurfaceContent :
         _stackDropItemsTargetKey = null;
         _stackDropItemsTargetMemberCount = -1;
         _stackDropItemsCache = [];
+    }
+
+    internal void ClearDragSessionVisualState()
+    {
+        ClearFolderDropTarget();
+        ClearStackMemberDropTarget();
+        ApplyDropVisual(FileDropVisualState.None);
+        PersistSurfaceReorder();
+        ResetDragPayloadCache();
     }
 
     private static bool IsSameDragPayload(

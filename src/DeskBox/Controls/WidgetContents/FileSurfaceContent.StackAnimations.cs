@@ -2,7 +2,6 @@ using System.Numerics;
 using DeskBox.Services;
 using DeskBox.ViewModels;
 using Microsoft.UI.Composition;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -11,10 +10,7 @@ namespace DeskBox.Controls.WidgetContents;
 
 public sealed partial class FileSurfaceContent
 {
-    private const int StackExpandDurationMs = 180;
     private const int StackCollapseDurationMs = 130;
-    private const int StackMemberStaggerMs = 14;
-    private const int StackMemberStaggerLimit = 5;
     private readonly HashSet<FrameworkElement> _animatedStackElements = [];
     private int _stackTransitionGeneration;
     private string? _pendingStackTransitionKey;
@@ -130,86 +126,11 @@ public sealed partial class FileSurfaceContent
                 ViewModel.SetStackExpanded(stack, expanded));
         }
 
-        if (animate && expanded)
-        {
-            await YieldForStackLayoutAsync();
-            if (generation != _stackTransitionGeneration)
-            {
-                return;
-            }
-
-            WidgetStackItem? current = ViewModel.GetExpandedStack();
-            if (current is not null)
-            {
-                StartStackMemberEntranceAnimations(current);
-                await Task.Delay(
-                    StackExpandDurationMs +
-                    StackMemberStaggerMs * StackMemberStaggerLimit);
-            }
-        }
-
         if (generation == _stackTransitionGeneration)
         {
             _pendingStackTransitionKey = null;
             _pendingStackExpanded = null;
             _animatedStackElements.Clear();
-        }
-    }
-
-    private Task YieldForStackLayoutAsync()
-    {
-        var completion = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!DispatcherQueue.TryEnqueue(
-                DispatcherQueuePriority.Low,
-                () =>
-                {
-                    GetActiveItemsView().UpdateLayout();
-                    completion.TrySetResult();
-                }))
-        {
-            completion.TrySetResult();
-        }
-
-        return completion.Task;
-    }
-
-    private void StartStackMemberEntranceAnimations(
-        WidgetStackItem stack)
-    {
-        Border? anchor = FindStackSurface(stack);
-        FrameworkElement[] elements = GetRealizedStackMemberElements(stack);
-        for (int index = 0; index < elements.Length; index++)
-        {
-            FrameworkElement element = elements[index];
-            Vector3 translation = GetStackTransitionTranslation(
-                anchor,
-                element);
-            StartStackElementAnimation(
-                element,
-                fromOpacity: 0,
-                toOpacity: 1,
-                fromScale: 0.94f,
-                toScale: 1,
-                fromTranslation: translation,
-                toTranslation: Vector3.Zero,
-                durationMs: StackExpandDurationMs,
-                delayMs: Math.Min(index, StackMemberStaggerLimit) *
-                    StackMemberStaggerMs);
-        }
-
-        if (anchor is not null)
-        {
-            StartStackElementAnimation(
-                anchor,
-                fromOpacity: 0.78f,
-                toOpacity: 1,
-                fromScale: 0.98f,
-                toScale: 1,
-                fromTranslation: Vector3.Zero,
-                toTranslation: Vector3.Zero,
-                durationMs: 120,
-                delayMs: 0);
         }
     }
 

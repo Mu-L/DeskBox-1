@@ -21,7 +21,6 @@ public enum FileItemSurfaceVisualState
 public sealed class FileItemSurfaceStyleCache
 {
     private SolidColorBrush? _normalSurfaceBrush;
-    private SolidColorBrush? _stackChildSurfaceBrush;
     private SolidColorBrush? _selectedSurfaceBrush;
     private SolidColorBrush? _hoverSurfaceBrush;
     private SolidColorBrush? _pressedSurfaceBrush;
@@ -38,8 +37,7 @@ public sealed class FileItemSurfaceStyleCache
         ElementTheme theme,
         Windows.UI.Color accentColor,
         bool isSelected,
-        bool isCut,
-        bool isStackChild = false)
+        bool isCut)
     {
         bool dark = theme == ElementTheme.Dark;
         EnsureBrushes(dark, accentColor);
@@ -52,7 +50,6 @@ public sealed class FileItemSurfaceStyleCache
             FileItemSurfaceVisualState.Hover => _hoverSurfaceBrush,
             FileItemSurfaceVisualState.Pressed => _pressedSurfaceBrush,
             _ when isSelected => _selectedSurfaceBrush,
-            _ when isStackChild => _stackChildSurfaceBrush,
             _ => _normalSurfaceBrush
         };
         border.BorderBrush = state == FileItemSurfaceVisualState.DropTarget
@@ -93,7 +90,6 @@ public sealed class FileItemSurfaceStyleCache
             isDark,
             FileItemSurfaceVisualState.Hover,
             isSelected: true);
-        Windows.UI.Color stackChildBackground = GetStackChildSurfaceLayer(isDark);
         Windows.UI.Color dropTargetBackground = WithAlpha(
             BuildAccentSurfaceColor(
                 isDark,
@@ -106,9 +102,6 @@ public sealed class FileItemSurfaceStyleCache
             isDark ? (byte)0x92 : (byte)0x9C);
 
         _normalSurfaceBrush = UpdateBrush(_normalSurfaceBrush, Colors.Transparent);
-        _stackChildSurfaceBrush = UpdateBrush(
-            _stackChildSurfaceBrush,
-            stackChildBackground);
         _selectedSurfaceBrush = UpdateBrush(_selectedSurfaceBrush, selectedBackground);
         _hoverSurfaceBrush = UpdateBrush(_hoverSurfaceBrush, hoverBackground);
         _pressedSurfaceBrush = UpdateBrush(_pressedSurfaceBrush, pressedBackground);
@@ -155,18 +148,6 @@ public sealed class FileItemSurfaceStyleCache
         // Keep this policy path usable by headless tests and non-UI callers.
         // Microsoft.UI.Colors and Microsoft.UI.ColorHelper are WinRT statics;
         // resolving them requires Windows App SDK registration on the process.
-        return Windows.UI.Color.FromArgb(alpha, channel, channel, channel);
-    }
-
-    /// <summary>
-    /// Provides a quiet membership tint for a file shown inside an expanded
-    /// stack. Interaction state layers intentionally take precedence over this
-    /// base tint in <see cref="Apply"/>.
-    /// </summary>
-    internal static Windows.UI.Color GetStackChildSurfaceLayer(bool isDark)
-    {
-        byte channel = isDark ? (byte)0xFF : (byte)0x00;
-        byte alpha = isDark ? (byte)0x16 : (byte)0x0C;
         return Windows.UI.Color.FromArgb(alpha, channel, channel, channel);
     }
 

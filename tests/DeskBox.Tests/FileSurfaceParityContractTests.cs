@@ -381,8 +381,16 @@ public sealed class FileSurfaceParityContractTests
             "_stackTransitionGeneration",
             stackAnimations,
             StringComparison.Ordinal);
-        Assert.Contains(
+        Assert.DoesNotContain(
             "StartStackMemberEntranceAnimations",
+            stackAnimations,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "YieldForStackLayoutAsync",
+            stackAnimations,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StartStackMemberExitAnimations",
             stackAnimations,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
@@ -537,6 +545,9 @@ public sealed class FileSurfaceParityContractTests
         string collapse = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Views/WidgetWindowBase.Collapse.cs"));
+        string surface = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
 
         int dragOverStart = visuals.IndexOf(
             "private void StackSurface_DragOver",
@@ -555,10 +566,64 @@ public sealed class FileSurfaceParityContractTests
         Assert.Contains("_stackMemberDropVisualActive", visuals, StringComparison.Ordinal);
         Assert.Contains("IsPointerInsideDropElement(border, e)", visuals, StringComparison.Ordinal);
         Assert.Contains("_folderDropVisualActive", visuals, StringComparison.Ordinal);
+        int folderTargetStart = visuals.IndexOf(
+            "private void SetFolderDropTarget(Border border)",
+            StringComparison.Ordinal);
+        int folderTargetEnd = visuals.IndexOf(
+            "private void ClearFolderDropTarget()",
+            folderTargetStart,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ClearStackMemberDropTarget();",
+            visuals[folderTargetStart..folderTargetEnd],
+            StringComparison.Ordinal);
+        int stackTargetStart = visuals.IndexOf(
+            "private void SetStackMemberDropTarget(",
+            StringComparison.Ordinal);
+        int stackTargetEnd = visuals.IndexOf(
+            "private void ClearStackMemberDropTarget()",
+            stackTargetStart,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ClearFolderDropTarget();",
+            visuals[stackTargetStart..stackTargetEnd],
+            StringComparison.Ordinal);
+
+        int rootDragOverStart = surface.IndexOf(
+            "private void Root_DragOver(",
+            StringComparison.Ordinal);
+        int rootDragOverEnd = surface.IndexOf(
+            "private bool IsUnsafeFolderDrop(",
+            rootDragOverStart,
+            StringComparison.Ordinal);
+        string rootDragOver = surface[rootDragOverStart..rootDragOverEnd];
+        Assert.Contains("ClearFolderDropTarget();", rootDragOver, StringComparison.Ordinal);
+        Assert.Contains("ClearStackMemberDropTarget();", rootDragOver, StringComparison.Ordinal);
+        Assert.Contains("ClearDragSessionVisualState();", shell, StringComparison.Ordinal);
 
         Assert.Contains("_isShellDragActive", shell, StringComparison.Ordinal);
         Assert.Contains("IsPointerInsideShell(e)", shell, StringComparison.Ordinal);
-        Assert.Contains("animate: false", collapse, StringComparison.Ordinal);
+        int compactDragEnteredStart = collapse.IndexOf(
+            "private void WidgetShellControl_CompactDragEntered(",
+            StringComparison.Ordinal);
+        int compactDragEnteredEnd = collapse.IndexOf(
+            "private void ReconcileCompactDragStateAfterPointerRelease()",
+            compactDragEnteredStart,
+            StringComparison.Ordinal);
+        string compactDragEntered = collapse[
+            compactDragEnteredStart..compactDragEnteredEnd];
+        Assert.Contains(
+            "bool animateDragExpansion = Config.WidgetKind == WidgetKind.File;",
+            compactDragEntered,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "animate: animateDragExpansion",
+            compactDragEntered,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "durationMs: 0",
+            compactDragEntered,
+            StringComparison.Ordinal);
     }
 
     [Fact]

@@ -47,6 +47,7 @@ public abstract partial class WidgetWindowBase
     private const int CompactExpansionPrimeNodeBudget = 48;
     private const double CompactExpansionPrimeTimeBudgetMs = 4;
     private const int CompactHoverRecoveryProbeMs = 120;
+    private const int CompactDragSessionRecoveryProbeMs = 120;
     private const int CompactLayerRestoreFallbackMs = 120;
     private static readonly int[] CompactBoundsSettleDelaysMs = [80, 320, 900];
     private static readonly SemaphoreSlim CompactExpansionWarmupGate = new(1, 1);
@@ -56,6 +57,7 @@ public abstract partial class WidgetWindowBase
     private OwnedOneShotDispatcherTimer? _collapseHoverTimer;
     private OwnedOneShotDispatcherTimer? _collapseLeaveTimer;
     private OwnedOneShotDispatcherTimer? _collapseDragRestoreTimer;
+    private OwnedOneShotDispatcherTimer? _compactDragSessionRecoveryTimer;
     private OwnedOneShotDispatcherTimer? _compactBoundsSettleTimer;
     private OwnedOneShotDispatcherTimer? _collapseAnimationWatchdogTimer;
     private OwnedOneShotDispatcherTimer? _compactExpansionReadinessDeadlineTimer;
@@ -705,6 +707,7 @@ public abstract partial class WidgetWindowBase
         CancelTimer(ref _collapseHoverTimer);
         CancelTimer(ref _collapseLeaveTimer);
         CancelTimer(ref _collapseDragRestoreTimer);
+        CancelTimer(ref _compactDragSessionRecoveryTimer);
         CancelTimer(ref _compactBoundsSettleTimer);
         CancelTimer(ref _collapseAnimationWatchdogTimer);
         CancelPendingCompactExpansion();
@@ -1456,6 +1459,8 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
+        ReconcileCompactDragStateAfterPointerRelease();
+
         if (_isCollapseAnimationRendering ||
             _isShellTransitionActive ||
             !WidgetShellControl.IsCollapsed ||
@@ -1859,6 +1864,7 @@ public abstract partial class WidgetWindowBase
 
     private void WidgetShellControl_CompactPointerEntered(object? sender, EventArgs e)
     {
+        ReconcileCompactDragStateAfterPointerRelease();
         MarkCompactRoutedPointerActivity();
         _isPointerOverWidget = true;
         // Treat the compact surface as an expansion candidate immediately.
@@ -1880,6 +1886,7 @@ public abstract partial class WidgetWindowBase
 
     private void WidgetShellControl_CompactPointerMoved(object? sender, EventArgs e)
     {
+        ReconcileCompactDragStateAfterPointerRelease();
         if (!_targetCollapsed ||
             !UsesSmartCollapseBehavior() ||
             _isCollapseAnimationRendering ||
@@ -2154,25 +2161,43 @@ public abstract partial class WidgetWindowBase
         CancelTimer(ref _collapseHoverTimer);
         CancelTimer(ref _collapseLeaveTimer);
         CancelTimer(ref _collapseDragRestoreTimer);
+        ScheduleCompactDragSessionRecoveryProbe();
         UpdateCompactViewState();
 
         if (!_dragExpandedFromCollapsed && (_targetCollapsed || IsWidgetCollapsedBoundsActive))
         {
             _dragExpandedFromCollapsed = true;
+            bool animateDragExpansion = Config.WidgetKind == WidgetKind.File;
             SetCollapsedState(
                 false,
                 persistManualState: false,
-                // A drag can cross several compact widgets in a single pointer
-                // gesture. Resizing each HWND through a compositor animation
-                // creates overlapping SetWindowPos/DWM work, so drag expansion
-                // is deliberately instantaneous.
-                animate: false,
-                durationMs: 0);
+                // File grids use the configured capsule transition so their
+                // drag-open behavior visually matches hover/click expansion.
+                // The session flag above prevents child DragEnter churn from
+                // restarting the animation during the same drag.
+                animate: animateDragExpansion);
         }
+    }
+
+    private void ReconcileCompactDragStateAfterPointerRelease()
+    {
+        if (!WidgetShellControl.TryClearStaleShellDragSessionAfterPointerRelease())
+        {
+            return;
+        }
+
+        _isCompactDragInside = false;
+        _dragExpandedFromCollapsed = false;
+        CancelTimer(ref _collapseDragRestoreTimer);
+        UpdateCompactViewState();
+        App.Log(
+            $"[Compact] Cleared stale drag session before pointer hover " +
+            $"kind={Config.WidgetKind} id={Config.Id}");
     }
 
     private void WidgetShellControl_CompactDragLeft(object? sender, EventArgs e)
     {
+        CancelTimer(ref _compactDragSessionRecoveryTimer);
         _isCompactDragInside = false;
         UpdateCompactViewState();
         if (!_dragExpandedFromCollapsed)
@@ -2190,6 +2215,7 @@ public abstract partial class WidgetWindowBase
 
     private void WidgetShellControl_CompactDropCompleted(object? sender, EventArgs e)
     {
+        CancelTimer(ref _compactDragSessionRecoveryTimer);
         _isCompactDragInside = false;
         UpdateCompactViewState();
         if (_dragExpandedFromCollapsed)
@@ -2240,6 +2266,59 @@ public abstract partial class WidgetWindowBase
                     durationMs: 0);
             }
         });
+    }
+
+    private void ScheduleCompactDragSessionRecoveryProbe()
+    {
+        ScheduleTimer(
+            ref _compactDragSessionRecoveryTimer,
+            CompactDragSessionRecoveryProbeMs,
+            ProbeCompactDragSessionState);
+    }
+
+    private void ProbeCompactDragSessionState()
+    {
+        if (!_isCompactDragInside || IsClosing)
+        {
+            return;
+        }
+
+        if (!IsPointerPhysicallyInsideWindow() &&
+            WidgetShellControl.TryEndShellDragSessionAfterNativePointerExit())
+        {
+            App.Log(
+                $"[Compact] Recovered missing drag leave from native pointer " +
+                $"kind={Config.WidgetKind} id={Config.Id}");
+            return;
+        }
+
+        if (Win32Helper.IsAnyMouseButtonDown())
+        {
+            ScheduleCompactDragSessionRecoveryProbe();
+            return;
+        }
+
+        if (!WidgetShellControl.TryClearStaleShellDragSessionAfterPointerRelease())
+        {
+            return;
+        }
+
+        _isCompactDragInside = false;
+        UpdateCompactViewState();
+        if (_dragExpandedFromCollapsed)
+        {
+            ScheduleDragRestore(DragRestoreDelayMs);
+        }
+        else if (UsesSmartCollapseBehavior() &&
+                 !_isPointerOverWidget &&
+                 !_isSmartPinnedOpen)
+        {
+            ScheduleSmartCollapse();
+        }
+
+        App.Log(
+            $"[Compact] Recovered drag session after pointer release " +
+            $"kind={Config.WidgetKind} id={Config.Id}");
     }
 
     protected bool UsesCompactExpansionGeometry()

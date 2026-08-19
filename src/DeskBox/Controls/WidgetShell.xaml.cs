@@ -4386,10 +4386,44 @@ public sealed partial class WidgetShell : UserControl
     {
         bool wasActive = _isShellDragActive;
         _isShellDragActive = false;
+        if (wasActive && _hostedContent is FileSurfaceContent fileSurface)
+        {
+            fileSurface.ClearDragSessionVisualState();
+        }
         if (notifyCompact && wasActive)
         {
             CompactDragLeft?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    internal bool TryClearStaleShellDragSessionAfterPointerRelease()
+    {
+        if (!_isShellDragActive || Win32Helper.IsAnyMouseButtonDown())
+        {
+            return false;
+        }
+
+        // A drag that finishes outside the XAML island can miss the final
+        // routed DragLeave. Do not raise CompactDragLeft here: its delayed
+        // restore belongs to a real drag leave and can race the hover request
+        // that is repairing this stale session.
+        _isShellDragActive = false;
+        if (_hostedContent is FileSurfaceContent fileSurface)
+        {
+            fileSurface.ClearDragSessionVisualState();
+        }
+        return true;
+    }
+
+    internal bool TryEndShellDragSessionAfterNativePointerExit()
+    {
+        if (!_isShellDragActive)
+        {
+            return false;
+        }
+
+        EndShellDragSession(notifyCompact: true);
+        return true;
     }
 
     private Brush CreateOpaqueOverlayButtonBackground()

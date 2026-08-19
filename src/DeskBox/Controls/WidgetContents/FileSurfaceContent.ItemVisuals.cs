@@ -448,6 +448,7 @@ public sealed partial class FileSurfaceContent
 
     private void SetFolderDropTarget(Border border)
     {
+        ClearStackMemberDropTarget();
         if (ReferenceEquals(_folderDropTarget, border) &&
             _folderDropVisualActive)
         {
@@ -867,6 +868,7 @@ public sealed partial class FileSurfaceContent
     private void SetStackMemberDropTarget(
         Border border)
     {
+        ClearFolderDropTarget();
         if (!ReferenceEquals(
                 _stackMemberDropTarget,
                 border))
@@ -1042,8 +1044,7 @@ public sealed partial class FileSurfaceContent
             Root.ActualTheme,
             accent,
             isSelected,
-            item?.IsCut == true,
-            isStackChild: item?.IsStackChild == true);
+            item?.IsCut == true);
     }
 
     private void ApplyStackSurfaceVisual(

@@ -38,21 +38,4 @@ public sealed class FileItemSurfaceStyleCacheTests
         Assert.True(selected.A > hover.A);
         Assert.True(selectedHover.A > selected.A);
     }
-
-    [Theory]
-    [InlineData(false, (byte)0x0C, (byte)0x00)]
-    [InlineData(true, (byte)0x16, (byte)0xFF)]
-    public void StackChildSurfaceLayer_UsesLowContrastThemeAdaptiveTint(
-        bool isDark,
-        byte expectedAlpha,
-        byte expectedChannel)
-    {
-        Windows.UI.Color layer =
-            FileItemSurfaceStyleCache.GetStackChildSurfaceLayer(isDark);
-
-        Assert.Equal(expectedAlpha, layer.A);
-        Assert.Equal(expectedChannel, layer.R);
-        Assert.Equal(expectedChannel, layer.G);
-        Assert.Equal(expectedChannel, layer.B);
-    }
 }

@@ -124,6 +124,56 @@ public sealed class WidgetCompactTrayVisibilityContractTests
     }
 
     [Fact]
+    public void StaleRoutedDragSession_DoesNotPermanentlyBlockHoverExpansion()
+    {
+        string shellSource = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetShell.xaml.cs"));
+        string shellRecovery = ExtractSection(
+            shellSource,
+            "internal bool TryClearStaleShellDragSessionAfterPointerRelease()",
+            "private Brush CreateOpaqueOverlayButtonBackground()");
+        string nativeExitRecovery = ExtractSection(
+            shellSource,
+            "internal bool TryEndShellDragSessionAfterNativePointerExit()",
+            "private Brush CreateOpaqueOverlayButtonBackground()");
+        string collapseSource = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.Collapse.cs"));
+        string compactRecovery = ExtractSection(
+            collapseSource,
+            "private void ReconcileCompactDragStateAfterPointerRelease()",
+            "private void WidgetShellControl_CompactDragLeft");
+        string dragRecoveryProbe = ExtractSection(
+            collapseSource,
+            "private void ProbeCompactDragSessionState()",
+            "protected bool UsesCompactExpansionGeometry()");
+        string hoverProbe = ExtractSection(
+            collapseSource,
+            "private void RunCompactHoverRecoveryProbe(",
+            "private void SynchronizeCompactHoverFromNativeCursor(");
+
+        Assert.Contains("Win32Helper.IsAnyMouseButtonDown()", shellRecovery, StringComparison.Ordinal);
+        Assert.Contains("_isShellDragActive = false;", shellRecovery, StringComparison.Ordinal);
+        Assert.Contains("fileSurface.ClearDragSessionVisualState();", shellRecovery, StringComparison.Ordinal);
+        Assert.DoesNotContain("CompactDragLeft?.Invoke", shellRecovery, StringComparison.Ordinal);
+        Assert.Contains(
+            "EndShellDragSession(notifyCompact: true);",
+            nativeExitRecovery,
+            StringComparison.Ordinal);
+        Assert.Contains("_isCompactDragInside = false;", compactRecovery, StringComparison.Ordinal);
+        Assert.Contains("_dragExpandedFromCollapsed = false;", compactRecovery, StringComparison.Ordinal);
+        Assert.Contains("CancelTimer(ref _collapseDragRestoreTimer);", compactRecovery, StringComparison.Ordinal);
+        Assert.Contains("ReconcileCompactDragStateAfterPointerRelease();", hoverProbe, StringComparison.Ordinal);
+        Assert.Contains("Win32Helper.IsAnyMouseButtonDown()", dragRecoveryProbe, StringComparison.Ordinal);
+        Assert.Contains("!IsPointerPhysicallyInsideWindow()", dragRecoveryProbe, StringComparison.Ordinal);
+        Assert.Contains(
+            "TryEndShellDragSessionAfterNativePointerExit()",
+            dragRecoveryProbe,
+            StringComparison.Ordinal);
+        Assert.Contains("ScheduleCompactDragSessionRecoveryProbe();", dragRecoveryProbe, StringComparison.Ordinal);
+        Assert.Contains("ScheduleDragRestore(DragRestoreDelayMs);", dragRecoveryProbe, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EnteringCompactBehavior_CapturesDirectionAwareTitleEdgeBeforeStateTransition()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(
