@@ -522,6 +522,7 @@ public sealed class AppUpdateService : IAppUpdateService
             Summary =
             {
                 ["zh-CN"] = $"DeskBox {version} 已发布，可从 GitHub Releases 下载更新。",
+                ["zh-TW"] = $"DeskBox {version} 已發布，可從 GitHub Releases 下載更新。",
                 ["en-US"] = $"DeskBox {version} is available from GitHub Releases.",
                 ["ja-JP"] = $"DeskBox {version} は GitHub Releases から入手できます。",
                 ["de-DE"] = $"DeskBox {version} ist über GitHub Releases verfügbar.",

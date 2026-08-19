@@ -2343,4 +2343,10 @@
     ,"Glance.Cache.Title": "Cache de imagens"
     ,"Glance.Cache.Clear": "Limpar cache"
     ,"Glance.Cache.Cleared": "Cache limpo"
+    ,"Settings.Windows10VisualCompatibility.Title": "Compatibilidade visual com o Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica e cantos de janela do sistema exigem o Windows 11. O Windows 10 usa Acrylic ou cor sólida com janelas quadradas.",
+  "Settings.Dialog.QuickAccessOperationFailedBody": "O DeskBox não conseguiu atualizar o Acesso Rápido do Explorador de Arquivos. Tente novamente mais tarde.",
+  "DesktopOrganization.Result.FailedBody": "Não foi possível concluir a organização da área de trabalho. Tente novamente mais tarde.",
+  "DesktopOrganization.Undo.FailedBody": "Não foi possível desfazer a organização da área de trabalho. Tente novamente mais tarde.",
+  "Common.OperationFailedRetry": "Não foi possível concluir a operação. Tente novamente."
 }

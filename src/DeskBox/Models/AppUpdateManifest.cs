@@ -31,33 +31,18 @@ public sealed class AppUpdateManifest
 
     public string GetLocalizedSummary(string cultureName)
     {
-        if (Summary.Count == 0)
+        string localized = GetValueForLocale(Summary, cultureName);
+        if (!string.IsNullOrWhiteSpace(localized))
         {
-            return string.Empty;
-        }
-
-        if (Summary.TryGetValue(cultureName, out string? exact) &&
-            !string.IsNullOrWhiteSpace(exact))
-        {
-            return exact;
-        }
-
-        string language = cultureName.Split('-', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? cultureName;
-        var languageMatch = Summary.FirstOrDefault(pair =>
-            pair.Key.StartsWith(language, StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(pair.Value));
-
-        if (!string.IsNullOrWhiteSpace(languageMatch.Value))
-        {
-            return languageMatch.Value;
+            return localized;
         }
 
         // Non-Chinese locales should never inherit a Chinese-only summary when
         // the server omits their exact translation. Prefer the English
         // fallback, then use any available value for compatibility with older
         // manifests that predate the English entry.
-        if (Summary.TryGetValue("en-US", out string? english) &&
-            !string.IsNullOrWhiteSpace(english))
+        string english = GetExactValue(Summary, "en-US");
+        if (!string.IsNullOrWhiteSpace(english))
         {
             return english;
         }
@@ -72,23 +57,7 @@ public sealed class AppUpdateManifest
     /// </summary>
     public string GetReleaseNotesForLocale(string cultureName)
     {
-        if (ReleaseNotes.Count == 0 || string.IsNullOrWhiteSpace(cultureName))
-        {
-            return string.Empty;
-        }
-
-        if (ReleaseNotes.TryGetValue(cultureName, out string? exact) &&
-            !string.IsNullOrWhiteSpace(exact))
-        {
-            return exact;
-        }
-
-        string language = cultureName.Split('-', StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault() ?? cultureName;
-        var languageMatch = ReleaseNotes.FirstOrDefault(pair =>
-            pair.Key.StartsWith(language, StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(pair.Value));
-        return languageMatch.Value ?? string.Empty;
+        return GetValueForLocale(ReleaseNotes, cultureName);
     }
 
     /// <summary>
@@ -104,17 +73,69 @@ public sealed class AppUpdateManifest
             return localized;
         }
 
-        bool isChinese = cultureName.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
-        if (isChinese)
+        return GetExactValue(ReleaseNotes, "en-US");
+    }
+
+    private static string GetValueForLocale(
+        IReadOnlyDictionary<string, string> values,
+        string cultureName)
+    {
+        if (values.Count == 0 || string.IsNullOrWhiteSpace(cultureName))
         {
-            string chinese = GetReleaseNotesForLocale("zh-CN");
-            if (!string.IsNullOrWhiteSpace(chinese))
+            return string.Empty;
+        }
+
+        string exact = GetExactValue(values, cultureName);
+        if (!string.IsNullOrWhiteSpace(exact))
+        {
+            return exact;
+        }
+
+        string normalized = cultureName.Replace('_', '-');
+        string language = normalized.Split('-', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault() ?? normalized;
+        string neutral = GetExactValue(values, language);
+        if (!string.IsNullOrWhiteSpace(neutral))
+        {
+            return neutral;
+        }
+
+        if (language.Equals("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            string[] preferredLocales = IsTraditionalChineseLocale(normalized)
+                ? ["zh-TW", "zh-Hant", "zh-HK", "zh-MO", "zh-CN", "zh-Hans", "zh-SG"]
+                : ["zh-CN", "zh-Hans", "zh-SG", "zh-TW", "zh-Hant", "zh-HK", "zh-MO"];
+
+            foreach (string locale in preferredLocales)
             {
-                return chinese;
+                string value = GetExactValue(values, locale);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
             }
         }
 
-        return GetReleaseNotesForLocale("en-US");
+        return values.FirstOrDefault(pair =>
+            pair.Key.Equals(language, StringComparison.OrdinalIgnoreCase) ||
+            pair.Key.StartsWith(language + "-", StringComparison.OrdinalIgnoreCase)).Value ?? string.Empty;
+    }
+
+    private static string GetExactValue(
+        IReadOnlyDictionary<string, string> values,
+        string locale)
+    {
+        return values.FirstOrDefault(pair =>
+            pair.Key.Equals(locale, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(pair.Value)).Value ?? string.Empty;
+    }
+
+    private static bool IsTraditionalChineseLocale(string cultureName)
+    {
+        return cultureName.Equals("zh-TW", StringComparison.OrdinalIgnoreCase) ||
+            cultureName.Equals("zh-HK", StringComparison.OrdinalIgnoreCase) ||
+            cultureName.Equals("zh-MO", StringComparison.OrdinalIgnoreCase) ||
+            cultureName.StartsWith("zh-Hant", StringComparison.OrdinalIgnoreCase);
     }
 
     public bool HasReleaseNotes => ReleaseNotes.Values.Any(value => !string.IsNullOrWhiteSpace(value));

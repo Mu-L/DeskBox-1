@@ -343,6 +343,7 @@ public static class WeatherCodeMapper
         return language switch
         {
             "zh-CN" => GetDescriptionZh(code),
+            "zh-TW" => ChineseTextConverter.ToTraditional(GetDescriptionZh(code)),
             "ja-JP" => GetDescriptionJa(code),
             "de-DE" => GetDescriptionDe(code),
             "pt-BR" => GetDescriptionPt(code),

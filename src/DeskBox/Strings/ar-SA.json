@@ -2343,4 +2343,10 @@
     ,"Glance.Cache.Title": "ذاكرة الصور المؤقتة"
     ,"Glance.Cache.Clear": "مسح الذاكرة المؤقتة"
     ,"Glance.Cache.Cleared": "تم مسح الذاكرة المؤقتة"
+    ,"Settings.Windows10VisualCompatibility.Title": "التوافق المرئي مع Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "تتطلب مادة Mica وزوايا نوافذ النظام Windows 11. يستخدم Windows 10 الأكريليك أو اللون الصلب مع زوايا نوافذ مربعة.",
+  "Settings.Dialog.QuickAccessOperationFailedBody": "تعذر على DeskBox تحديث الوصول السريع في مستكشف الملفات. حاول مرة أخرى لاحقًا.",
+  "DesktopOrganization.Result.FailedBody": "تعذر إكمال تنظيم سطح المكتب. حاول مرة أخرى.",
+  "DesktopOrganization.Undo.FailedBody": "تعذر التراجع عن تنظيم سطح المكتب. حاول مرة أخرى.",
+  "Common.OperationFailedRetry": "تعذر إكمال العملية. يُرجى المحاولة مرة أخرى."
 }

@@ -60,7 +60,8 @@ public sealed class WeatherService : IDisposable
 
         try
         {
-            string url = $"{GeocodingBaseUrl}?name={Uri.EscapeDataString(query)}&count=10&language={language}&format=json";
+            string apiLanguage = NormalizeGeocodingLanguage(language);
+            string url = $"{GeocodingBaseUrl}?name={Uri.EscapeDataString(query)}&count=10&language={apiLanguage}&format=json";
             string json = await s_httpClient.GetStringAsync(url, cancellationToken);
             var result = JsonSerializer.Deserialize<WeatherGeocodingResult>(json, s_jsonOptions);
             return result?.Results ?? [];
@@ -153,6 +154,32 @@ public sealed class WeatherService : IDisposable
     {
         var results = await SearchCityAsync(cityName, language);
         return results.Count > 0 ? results[0] : null;
+    }
+
+    internal static string NormalizeGeocodingLanguage(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+        {
+            return "en";
+        }
+
+        if (language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            // Open-Meteo currently returns English for zh-TW/zh-Hant, while
+            // zh returns Chinese. Traditional glyph conversion is applied by
+            // CitySearchService after the response is received.
+            return "zh";
+        }
+
+        try
+        {
+            return CultureInfo.GetCultureInfo(language).TwoLetterISOLanguageName.ToLowerInvariant();
+        }
+        catch
+        {
+            int separator = language.IndexOfAny(['-', '_']);
+            return (separator > 0 ? language[..separator] : language).ToLowerInvariant();
+        }
     }
 
     private static string GetCurrentDataSource()

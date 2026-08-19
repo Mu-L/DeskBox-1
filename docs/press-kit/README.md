@@ -20,7 +20,7 @@ DeskBox is a free, open-source desktop organizer for Windows. It adds native-fee
 
 ## Maker bio
 
-Tianyu Zhu is a product designer and solo maker building native-feeling Windows tools. He created DeskBox through AI-assisted development and remains responsible for its product direction, interaction design, testing, release engineering, and technical tradeoffs. DeskBox is a public, inspectable record of that work: a WinUI 3 application with automated tests, x64 and ARM64 releases, and eleven selectable interface languages.
+Tianyu Zhu is a product designer and solo maker building native-feeling Windows tools. He created DeskBox through AI-assisted development and remains responsible for its product direction, interaction design, testing, release engineering, and technical tradeoffs. DeskBox is a public, inspectable record of that work: a WinUI 3 application with automated tests, x64 and ARM64 releases, and twelve selectable interface languages.
 
 ## Verified product facts
 

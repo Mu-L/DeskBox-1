@@ -62,6 +62,7 @@ public sealed class StoreAppUpdateService : IAppUpdateService
                 Summary =
                 {
                     ["zh-CN"] = "Microsoft Store 中有可用更新，可由商店完成下载和安装。",
+                    ["zh-TW"] = "Microsoft Store 中有可用更新，可由商店完成下載與安裝。",
                     ["en-US"] = "An update is available in Microsoft Store. The Store will handle download and installation.",
                     ["hi-IN"] = "Microsoft Store में अपडेट उपलब्ध है। Microsoft Store इसे डाउनलोड और इंस्टॉल करेगा।",
                     ["es-ES"] = "Hay una actualización disponible en Microsoft Store. Microsoft Store se encargará de descargarla e instalarla.",

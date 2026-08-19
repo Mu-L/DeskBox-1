@@ -2343,4 +2343,10 @@
     ,"Glance.Cache.Title": "图片缓存"
     ,"Glance.Cache.Clear": "清除缓存"
     ,"Glance.Cache.Cleared": "缓存已清除"
+    ,"Settings.Windows10VisualCompatibility.Title": "Windows 10 视觉兼容"
+    ,"Settings.Windows10VisualCompatibility.Message": "云母材质和系统窗口圆角仅适用于 Windows 11。Windows 10 将使用亚克力或纯色，并保持直角窗口。",
+  "Settings.Dialog.QuickAccessOperationFailedBody": "DeskBox 无法更新文件资源管理器中的快速访问，请稍后重试。",
+  "DesktopOrganization.Result.FailedBody": "无法完成桌面整理，请稍后重试。",
+  "DesktopOrganization.Undo.FailedBody": "无法撤销桌面整理，请稍后重试。",
+  "Common.OperationFailedRetry": "操作无法完成。请重试。"
 }

@@ -1,3 +1,4 @@
+using DeskBox.Helpers;
 using DeskBox.Services;
 
 namespace DeskBox.Tests;
@@ -24,5 +25,44 @@ public sealed class CitySearchServiceTests
         Assert.Equal("New York", result.Name);
         Assert.InRange(result.Latitude, 40.70, 40.73);
         Assert.InRange(result.Longitude, -74.02, -73.99);
+    }
+
+    [Fact]
+    public void SearchLocal_TraditionalChinese_ConvertsLocalCityNames()
+    {
+        var results = CitySearchService.SearchLocal("harbin", isEn: false, useTraditional: true);
+
+        var result = Assert.IsType<DeskBox.Models.WeatherCitySearchResult>(results.First());
+        Assert.Equal("哈爾濱", result.Name);
+    }
+
+    [Fact]
+    public void NonChineseLocale_UsesEnglishLocalCityNames()
+    {
+        using var service = new CitySearchService();
+
+        var result = service.GetGlobalPopularCities("ja-JP", maxCount: 1).Single();
+
+        Assert.Equal("Beijing", result.Name);
+    }
+
+    [Fact]
+    public void ChineseTextConverter_MapsBothWritingSystems()
+    {
+        const string simplified = "文件夹与台湾腊月闰月";
+        string traditional = ChineseTextConverter.ToTraditional(simplified);
+
+        Assert.Equal("文件夾與臺灣臘月閏月", traditional);
+        Assert.Equal(simplified, ChineseTextConverter.ToSimplified(traditional));
+    }
+
+    [Theory]
+    [InlineData("zh-TW", "zh")]
+    [InlineData("zh-Hant", "zh")]
+    [InlineData("de-DE", "de")]
+    [InlineData("pt-BR", "pt")]
+    public void GeocodingLanguage_UsesApiSupportedLanguageCode(string culture, string expected)
+    {
+        Assert.Equal(expected, WeatherService.NormalizeGeocodingLanguage(culture));
     }
 }

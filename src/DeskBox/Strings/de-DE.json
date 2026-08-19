@@ -2343,4 +2343,10 @@
     ,"Glance.Cache.Title": "Bildcache"
     ,"Glance.Cache.Clear": "Cache leeren"
     ,"Glance.Cache.Cleared": "Cache geleert"
+    ,"Settings.Windows10VisualCompatibility.Title": "Visuelle Kompatibilität mit Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica und abgerundete Systemfenster erfordern Windows 11. Windows 10 verwendet Acrylic oder Vollfarbe mit eckigen Fenstern.",
+  "Settings.Dialog.QuickAccessOperationFailedBody": "DeskBox konnte den Schnellzugriff im Datei-Explorer nicht aktualisieren. Versuchen Sie es später erneut.",
+  "DesktopOrganization.Result.FailedBody": "Die Desktoporganisation konnte nicht abgeschlossen werden. Versuchen Sie es später erneut.",
+  "DesktopOrganization.Undo.FailedBody": "Die Desktoporganisation konnte nicht rückgängig gemacht werden. Versuchen Sie es später erneut.",
+  "Common.OperationFailedRetry": "Der Vorgang konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut."
 }

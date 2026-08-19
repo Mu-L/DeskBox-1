@@ -5,6 +5,7 @@ namespace DeskBox.Tests;
 public sealed class WeatherCodeMapperLocalizationTests
 {
     [Theory]
+    [InlineData("zh-TW", "晴")]
     [InlineData("hi-IN", "साफ आसमान")]
     [InlineData("es-ES", "Cielo despejado")]
     [InlineData("fr-FR", "Ciel dégagé")]

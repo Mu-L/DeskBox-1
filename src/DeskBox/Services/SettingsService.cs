@@ -223,6 +223,7 @@ public sealed class SettingsService
     public const string EditorEnterBehaviorEnterSaves = "EnterSaves";
     public const string LanguageSystem = "System";
     public const string LanguageChinese = "zh-CN";
+    public const string LanguageChineseTraditional = "zh-TW";
     public const string LanguageEnglish = "en-US";
     public const string LanguageJapanese = "ja-JP";
     public const string LanguageGerman = "de-DE";
@@ -1861,7 +1862,7 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
-        if (settings.Language is not (LanguageSystem or LanguageChinese or LanguageEnglish or LanguageJapanese or LanguageGerman or LanguagePortuguese
+        if (settings.Language is not (LanguageSystem or LanguageChinese or LanguageChineseTraditional or LanguageEnglish or LanguageJapanese or LanguageGerman or LanguagePortuguese
             or LanguageHindi or LanguageSpanish or LanguageFrench or LanguageArabic or LanguageBengali or LanguageRussian))
         {
             settings.Language = LanguageSystem;

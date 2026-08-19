@@ -10,6 +10,7 @@ public sealed class LocalizationService
 {
     public const string LanguageSystem = SettingsService.LanguageSystem;
     public const string LanguageChinese = SettingsService.LanguageChinese;
+    public const string LanguageChineseTraditional = SettingsService.LanguageChineseTraditional;
     public const string LanguageEnglish = SettingsService.LanguageEnglish;
     public const string LanguageJapanese = "ja-JP";
     public const string LanguageGerman = "de-DE";
@@ -47,6 +48,8 @@ public sealed class LocalizationService
     }
 
     public bool IsEnglish => string.Equals(CurrentCultureName, LanguageEnglish, StringComparison.OrdinalIgnoreCase);
+    public bool IsChinese => CurrentCultureName is LanguageChinese or LanguageChineseTraditional;
+    public bool IsTraditionalChinese => CurrentCultureName == LanguageChineseTraditional;
 
     /// <summary>
     /// Returns a 2-letter language code ("en", "zh", "ja", "de", "pt", "hi", "es", "fr", "ar", "bn", "ru")
@@ -54,7 +57,7 @@ public sealed class LocalizationService
     /// </summary>
     public string ApiLanguageCode => CurrentCultureName switch
     {
-        LanguageChinese => "zh",
+        LanguageChinese or LanguageChineseTraditional => "zh",
         LanguageJapanese => "ja",
         LanguageGerman => "de",
         LanguagePortuguese => "pt",
@@ -71,6 +74,7 @@ public sealed class LocalizationService
     [
         LanguageSystem,
         LanguageChinese,
+        LanguageChineseTraditional,
         LanguageEnglish,
         LanguageJapanese,
         LanguageGerman,
@@ -87,7 +91,8 @@ public sealed class LocalizationService
     {
         return NormalizeLanguageSetting(language) switch
         {
-            LanguageChinese => T("Language.Chinese"),
+            LanguageChinese => "简体中文",
+            LanguageChineseTraditional => "繁體中文",
             LanguageEnglish => T("Language.English"),
             LanguageJapanese => T("Language.Japanese"),
             LanguageGerman => T("Language.German"),
@@ -154,6 +159,7 @@ public sealed class LocalizationService
     {
         var table = CurrentCultureName switch
         {
+            LanguageChineseTraditional => ZhTw,
             LanguageJapanese => JaJp,
             LanguageGerman => DeDe,
             LanguagePortuguese => PtBr,
@@ -198,7 +204,7 @@ public sealed class LocalizationService
 
     public static string NormalizeLanguageSetting(string? language)
     {
-        return language is LanguageChinese or LanguageEnglish or LanguageJapanese or LanguageGerman or LanguagePortuguese
+        return language is LanguageChinese or LanguageChineseTraditional or LanguageEnglish or LanguageJapanese or LanguageGerman or LanguagePortuguese
             or LanguageHindi or LanguageSpanish or LanguageFrench or LanguageArabic or LanguageBengali or LanguageRussian
             ? language
             : LanguageSystem;
@@ -208,7 +214,11 @@ public sealed class LocalizationService
     {
         string name = CultureInfo.CurrentUICulture.Name;
         if (name.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
-            return LanguageChinese;
+        {
+            return IsTraditionalChineseCulture(name)
+                ? LanguageChineseTraditional
+                : LanguageChinese;
+        }
         if (name.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
             return LanguageJapanese;
         if (name.StartsWith("de", StringComparison.OrdinalIgnoreCase))
@@ -230,6 +240,20 @@ public sealed class LocalizationService
         return LanguageEnglish;
     }
 
+    internal static bool IsTraditionalChineseCulture(string? cultureName)
+    {
+        if (string.IsNullOrWhiteSpace(cultureName))
+        {
+            return false;
+        }
+
+        string normalized = cultureName.Replace('_', '-');
+        return normalized.StartsWith("zh-Hant", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("zh-TW", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("zh-HK", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("zh-MO", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Resolves the default language used when the user has not explicitly
     /// picked one in the app. Honors the language chosen at install time
@@ -247,6 +271,7 @@ public sealed class LocalizationService
                 null) as string;
             if (!string.IsNullOrWhiteSpace(value)
                 && (value == LanguageChinese
+                    || value == LanguageChineseTraditional
                     || value == LanguageEnglish
                     || value == LanguageJapanese
                     || value == LanguageGerman
@@ -271,6 +296,7 @@ public sealed class LocalizationService
     }
 
     private static Dictionary<string, string>? _zhCn;
+    private static Dictionary<string, string>? _zhTw;
     private static Dictionary<string, string>? _enUs;
     private static Dictionary<string, string>? _jaJp;
     private static Dictionary<string, string>? _deDe;
@@ -293,6 +319,19 @@ public sealed class LocalizationService
                 _zhCn ??= LoadStringResource("DeskBox.Strings.zh-CN.json");
             }
             return _zhCn;
+        }
+    }
+
+    private static Dictionary<string, string> ZhTw
+    {
+        get
+        {
+            if (_zhTw is not null) return _zhTw;
+            lock (s_loadLock)
+            {
+                _zhTw ??= LoadStringResource("DeskBox.Strings.zh-TW.json");
+            }
+            return _zhTw;
         }
     }
 

@@ -33,9 +33,10 @@ public sealed partial class DesktopOrganizationTaskView
         }
         catch (Exception ex)
         {
+            App.Log($"[DesktopOrganization] Failed to create execution plan: {ex}");
             ResultInfo.Severity = InfoBarSeverity.Error;
             ResultInfo.Title = T("DesktopOrganization.Result.FailedTitle");
-            ResultInfo.Message = ex.Message;
+            ResultInfo.Message = T("DesktopOrganization.Result.FailedBody");
             ResultInfo.IsOpen = true;
             return;
         }
@@ -94,9 +95,10 @@ public sealed partial class DesktopOrganizationTaskView
         }
         catch (Exception ex)
         {
+            App.Log($"[DesktopOrganization] Execution failed: {ex}");
             ResultInfo.Severity = InfoBarSeverity.Error;
             ResultInfo.Title = T("DesktopOrganization.Result.FailedTitle");
-            ResultInfo.Message = ex.Message;
+            ResultInfo.Message = T("DesktopOrganization.Result.FailedBody");
             ResultInfo.IsOpen = true;
             ExecuteButton.IsEnabled = true;
         }
@@ -141,9 +143,10 @@ public sealed partial class DesktopOrganizationTaskView
         }
         catch (Exception ex)
         {
+            App.Log($"[DesktopOrganization] Undo failed: {ex}");
             ResultInfo.Severity = InfoBarSeverity.Error;
             ResultInfo.Title = T("DesktopOrganization.Undo.Failed");
-            ResultInfo.Message = ex.Message;
+            ResultInfo.Message = T("DesktopOrganization.Undo.FailedBody");
             ResultInfo.IsOpen = true;
         }
         finally
@@ -216,9 +219,10 @@ public sealed partial class DesktopOrganizationTaskView
         }
         catch (Exception ex)
         {
+            App.Log($"[DesktopOrganization] Failed to change storage path: {ex}");
             ResultInfo.Severity = InfoBarSeverity.Error;
             ResultInfo.Title = T("DesktopOrganization.Window.ChangePathError");
-            ResultInfo.Message = ex.Message;
+            ResultInfo.Message = T("DesktopOrganization.Result.FailedBody");
             ResultInfo.IsOpen = true;
             ChangePathButton.IsEnabled = true;
             RefreshButton.IsEnabled = true;

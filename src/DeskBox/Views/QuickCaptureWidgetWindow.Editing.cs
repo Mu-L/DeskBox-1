@@ -408,7 +408,8 @@ public sealed partial class QuickCaptureWidgetWindow
         }
         catch (Exception ex)
         {
-            ShowStatusToast(ex.Message);
+            App.Log($"[QuickCapture] Title rename failed: {ex}");
+            ShowStatusToast(_localizationService.T("Common.OperationFailedRetry"));
             editor.Focus(FocusState.Programmatic);
             editor.SelectAll();
         }

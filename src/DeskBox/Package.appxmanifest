@@ -12,7 +12,7 @@
   <Identity
     Name="D1FC332A.DeskBoxWidgets"
     Publisher="CN=3B75AA4A-2433-4F71-9CC1-B644B26F474A"
-    Version="1.4.2.0" />
+    Version="1.4.3.0" />
 
   <mp:PhoneIdentity PhoneProductId="7bb59608-421d-4fd4-8f12-8929f87d086a" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
 
@@ -29,6 +29,7 @@
   <Resources>
     <Resource Language="en-US" />
     <Resource Language="zh-CN" />
+    <Resource Language="zh-TW" />
     <Resource Language="ja-JP" />
     <Resource Language="de-DE" />
     <Resource Language="pt-BR" />

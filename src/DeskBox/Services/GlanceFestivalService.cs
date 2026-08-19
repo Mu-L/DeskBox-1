@@ -1,4 +1,5 @@
 using System.Globalization;
+using DeskBox.Helpers;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
@@ -30,21 +31,25 @@ internal sealed class GlanceFestivalService
             };
         }
 
+        bool useTraditional = LocalizationService.IsTraditionalChineseCulture(culture.Name);
         return month with
         {
             Days = month.Days
-                .Select(day => day with { FestivalText = GetChineseFestival(day.Date) })
+                .Select(day => day with
+                {
+                    FestivalText = GetChineseFestival(day.Date, useTraditional)
+                })
                 .ToList()
         };
     }
 
-    internal string GetChineseFestival(DateOnly date)
+    internal string GetChineseFestival(DateOnly date, bool useTraditional = false)
     {
         try
         {
             if (date.Month == 4 && date.Day == GetQingmingDay(date.Year))
             {
-                return "清明";
+                return Localize("清明", useTraditional);
             }
 
             ChineseFestivalDate value = GetChineseDate(date);
@@ -64,7 +69,7 @@ internal sealed class GlanceFestivalService
                 };
                 if (!string.IsNullOrEmpty(fixedFestival))
                 {
-                    return fixedFestival;
+                    return Localize(fixedFestival, useTraditional);
                 }
             }
 
@@ -72,7 +77,7 @@ internal sealed class GlanceFestivalService
             // before a non-leap first day of the first month is always 除夕.
             ChineseFestivalDate next = GetChineseDate(date.AddDays(1));
             return !next.IsLeapMonth && next.Month == 1 && next.Day == 1
-                ? "除夕"
+                ? Localize("除夕", useTraditional)
                 : string.Empty;
         }
         catch (ArgumentOutOfRangeException)
@@ -80,6 +85,9 @@ internal sealed class GlanceFestivalService
             return string.Empty;
         }
     }
+
+    private static string Localize(string value, bool useTraditional) =>
+        useTraditional ? ChineseTextConverter.ToTraditional(value) : value;
 
     private static ChineseFestivalDate GetChineseDate(DateOnly date)
     {

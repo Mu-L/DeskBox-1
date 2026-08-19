@@ -3,8 +3,8 @@
 ; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\x64 -v:minimal
 
 #define MyAppName "DeskBox"
-#define MyAppVersion "1.4.2"
-#define MyAppVersionInfo "1.4.2.0"
+#define MyAppVersion "1.4.3"
+#define MyAppVersionInfo "1.4.3.0"
 #define MyAppPublisher "朱天雨"
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
@@ -19,7 +19,7 @@ AppId={{5E052824-3456-427E-9759-3BCAE078A1D3}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-AppComments=安装包会按需检测并下载 .NET 10 Runtime 和 Windows App Runtime 2.2。
+AppComments={cm:RuntimeDependencyComment}
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
 UninstallDisplayIcon={app}\Assets\deskbox.ico
 ArchitecturesAllowed=x64compatible
@@ -58,6 +58,7 @@ ShowLanguageDialog=yes
 [Languages]
 Name: "english"; MessagesFile: "Languages\English.isl"
 Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
+Name: "chinesetraditional"; MessagesFile: "Languages\ChineseTraditional.isl"
 Name: "japanese"; MessagesFile: "Languages\Japanese.isl"
 Name: "german"; MessagesFile: "Languages\German.isl"
 Name: "brazilianportuguese"; MessagesFile: "Languages\BrazilianPortuguese.isl"
@@ -197,6 +198,7 @@ brazilianportuguese.NeedsRestart=As dependências de runtime foram instaladas, m
 brazilianportuguese.DependencyVerificationFailed=O ambiente de execução necessário ainda não foi detectado após a instalação das dependências. O DeskBox ainda não foi instalado. Instale o .NET 10 Runtime estável e o Windows App Runtime 2.2 e execute o instalador novamente.
 
 #include "DeskBox.NewLanguageCustomMessages.iss"
+#include "DeskBox.DependencyCustomMessages.iss"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -248,5 +250,6 @@ begin
   else if ActiveLanguage = 'bengali' then Result := 'bn-BD'
   else if ActiveLanguage = 'russian' then Result := 'ru-RU'
   else if ActiveLanguage = 'chinesesimplified' then Result := 'zh-CN'
+  else if ActiveLanguage = 'chinesetraditional' then Result := 'zh-TW'
   else Result := 'en-US';
 end;
