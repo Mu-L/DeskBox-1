@@ -171,7 +171,9 @@ public partial class App
 
         if (!_trayIcon.IsCreated)
         {
-            _trayIcon.ForceCreate();
+            // Keep the process at normal QoS. Tray creation must never opt the
+            // whole application into a lower-priority efficiency mode.
+            _trayIcon.ForceCreate(enablesEfficiencyMode: false);
         }
 
         try
@@ -193,7 +195,7 @@ public partial class App
                 return;
             }
 
-            WindowExtensions.Hide(_trayWindow);
+            WindowExtensions.Hide(_trayWindow, enableEfficiencyMode: false);
         });
 
         ThemeService.AppearanceChanged += UpdateTrayIconAppearance;
