@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "Image cache"
     ,"Glance.Cache.Clear": "Clear cache"
     ,"Glance.Cache.Cleared": "Cache cleared"
+    ,"Settings.Windows10VisualCompatibility.Title": "Windows 10 visual compatibility"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica and system window corners require Windows 11. Windows 10 uses acrylic or solid material with square window corners."
 }

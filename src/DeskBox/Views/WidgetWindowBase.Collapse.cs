@@ -3487,18 +3487,29 @@ public abstract partial class WidgetWindowBase
 
     private void MoveWindowWithoutPersisting(RectInt32 bounds, bool suppressRedraw = false)
     {
+        uint flags = Win32Helper.SWP_NOZORDER | Win32Helper.SWP_NOACTIVATE;
+        if (suppressRedraw)
+        {
+            // During the per-frame morph the swapchain already holds the
+            // pre-laid-out content, so skip the internal BitBlt and the
+            // WM_PAINT invalidation that SetWindowPos would otherwise emit.
+            flags |= Win32Helper.SWP_NOREDRAW | Win32Helper.SWP_NOCOPYBITS;
+        }
+
+        if (WidgetCompactAnimationCoordinator.TryQueueBoundsMove(
+            HWnd,
+            bounds,
+            flags,
+            beforeCommit: () => IsApplyingBounds = true,
+            afterCommit: () => IsApplyingBounds = false,
+            fallback: () => AppWindow.MoveAndResize(bounds)))
+        {
+            return;
+        }
+
         IsApplyingBounds = true;
         try
         {
-            uint flags = Win32Helper.SWP_NOZORDER | Win32Helper.SWP_NOACTIVATE;
-            if (suppressRedraw)
-            {
-                // During the per-frame morph the swapchain already holds the
-                // pre-laid-out content, so skip the internal BitBlt and the
-                // WM_PAINT invalidation that SetWindowPos would otherwise emit.
-                flags |= Win32Helper.SWP_NOREDRAW | Win32Helper.SWP_NOCOPYBITS;
-            }
-
             bool moved = Win32Helper.SetWindowPos(
                 HWnd,
                 IntPtr.Zero,

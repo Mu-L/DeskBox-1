@@ -247,7 +247,9 @@ public abstract partial class WidgetWindowBase
     {
         if (!IsCompactBoundsStateActive && !UsesCompactExpansionGeometry())
         {
-            var minSize = GetPhysicalMinimumWindowSize(x, y, width, height);
+            SizeInt32 minSize = IsResizing && _interactiveResizeMinimumSize.Width > 0
+                ? _interactiveResizeMinimumSize
+                : GetPhysicalMinimumWindowSize(x, y, width, height);
             width = Math.Max(minSize.Width, width);
             height = Math.Max(minSize.Height, height);
         }
@@ -256,8 +258,15 @@ public abstract partial class WidgetWindowBase
         try
         {
             var bounds = new RectInt32(x, y, width, height);
-            if (IsCompactBoundsStateActive)
+            if (IsCompactBoundsStateActive ||
+                !WindowsCompatibilityService.IsWindows11OrLater)
             {
+                uint flags = Win32Helper.SWP_NOZORDER | Win32Helper.SWP_NOACTIVATE;
+                if (IsResizing && !WindowsCompatibilityService.IsWindows11OrLater)
+                {
+                    flags |= Win32Helper.SWP_NOCOPYBITS | Win32Helper.SWP_DEFERERASE;
+                }
+
                 bool moved = Win32Helper.SetWindowPos(
                     HWnd,
                     IntPtr.Zero,
@@ -265,7 +274,7 @@ public abstract partial class WidgetWindowBase
                     bounds.Y,
                     bounds.Width,
                     bounds.Height,
-                    Win32Helper.SWP_NOZORDER | Win32Helper.SWP_NOACTIVATE);
+                    flags);
                 if (!moved)
                 {
                     AppWindow.MoveAndResize(bounds);

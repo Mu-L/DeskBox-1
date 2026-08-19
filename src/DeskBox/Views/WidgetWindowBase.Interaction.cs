@@ -350,6 +350,12 @@ public abstract partial class WidgetWindowBase
         RectInt32 initialBounds = GetActualWindowBounds();
         InitialWindowPos = new PointInt32(initialBounds.X, initialBounds.Y);
         InitialWindowSize = new SizeInt32(initialBounds.Width, initialBounds.Height);
+        _interactiveResizeMinimumSize = GetPhysicalMinimumWindowSize(
+            initialBounds.X,
+            initialBounds.Y,
+            initialBounds.Width,
+            initialBounds.Height);
+        BeginInteractiveResizePerformanceSession();
         element.CapturePointer(e.Pointer);
         App.Current.ResizeGuideOverlay.BeginResize(HWnd, RootElement);
         e.Handled = true;
@@ -396,11 +402,7 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
-        var minSize = GetPhysicalMinimumWindowSize(
-            InitialWindowPos.X,
-            InitialWindowPos.Y,
-            InitialWindowSize.Width,
-            InitialWindowSize.Height);
+        SizeInt32 minSize = _interactiveResizeMinimumSize;
 
         if (ResizeDirection.Contains("Right"))
         {
@@ -446,6 +448,7 @@ public abstract partial class WidgetWindowBase
         ResizeDirection = string.Empty;
         EndWidgetBoundsInteraction();
         OnResizeEnd();
+        EndInteractiveResizePerformanceSession();
         DisplayChangeWatcher?.ResumeRestore();
         QueueBackdropRefresh();
         e.Handled = true;
@@ -472,6 +475,7 @@ public abstract partial class WidgetWindowBase
         ResizeDirection = string.Empty;
         EndWidgetBoundsInteraction();
         OnResizeEnd();
+        EndInteractiveResizePerformanceSession();
         DisplayChangeWatcher?.ResumeRestore();
         QueueBackdropRefresh();
         e.Handled = true;

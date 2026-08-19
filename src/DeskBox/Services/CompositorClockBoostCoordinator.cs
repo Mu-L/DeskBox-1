@@ -74,7 +74,14 @@ internal sealed class ReferenceCountedToggleLeasePool
 internal static class CompositorClockBoostCoordinator
 {
     private static readonly ReferenceCountedToggleLeasePool LeasePool =
-        new(enabled => _ = Win32Helper.TrySetCompositorClockBoost(enabled));
+        new(enabled =>
+        {
+            _ = Win32Helper.TrySetCompositorClockBoost(enabled);
+            if (!WindowsCompatibilityService.IsWindows11OrLater)
+            {
+                _ = Win32Helper.TrySetHighResolutionTimer(enabled);
+            }
+        });
 
     public static IDisposable Acquire() => LeasePool.Acquire();
 }

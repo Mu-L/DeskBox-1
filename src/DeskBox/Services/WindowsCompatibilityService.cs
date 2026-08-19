@@ -22,9 +22,40 @@ public static class WindowsCompatibilityService
 
     public static bool SupportsWin11DwmAttributes => IsWindows11OrLater;
 
+    public static bool SupportsNativeWindowCorners => IsWindows11OrLater;
+
     public static bool SupportsMica => IsWindows11OrLater && IsSupported(() => MicaController.IsSupported());
 
-    public static bool SupportsDesktopAcrylic => IsSupported(() => DesktopAcrylicController.IsSupported());
+    public static bool SupportsDesktopAcrylic =>
+        IsSupported(() => DesktopAcrylicController.IsSupported());
+
+    public static bool UsesLegacyWindowAcrylic => !IsWindows11OrLater;
+
+    public static string ResolveWidgetMaterialType(string? requestedMaterialType)
+    {
+        return ResolveWidgetMaterialTypeForBuild(requestedMaterialType, OsBuild);
+    }
+
+    internal static string ResolveWidgetMaterialTypeForBuild(
+        string? requestedMaterialType,
+        int osBuild)
+    {
+        string normalized = requestedMaterialType is
+            SettingsService.WidgetMaterialTypeMica or
+            SettingsService.WidgetMaterialTypeMicaAlt or
+            SettingsService.WidgetMaterialTypeAcrylic or
+            SettingsService.WidgetMaterialTypeAcrylicBase or
+            SettingsService.WidgetMaterialTypeSolid
+                ? requestedMaterialType
+                : SettingsService.WidgetMaterialTypeAcrylic;
+
+        if (osBuild < Windows11Build && SettingsService.IsMicaMaterial(normalized))
+        {
+            return SettingsService.WidgetMaterialTypeAcrylic;
+        }
+
+        return normalized;
+    }
 
     /// <summary>
     /// Applies a secondary-window backdrop without invoking Win11-only APIs on

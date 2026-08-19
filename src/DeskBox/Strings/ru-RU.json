@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "Кэш изображений"
     ,"Glance.Cache.Clear": "Очистить кэш"
     ,"Glance.Cache.Cleared": "Кэш очищен"
+    ,"Settings.Windows10VisualCompatibility.Title": "Визуальная совместимость с Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica и системное скругление окон требуют Windows 11. В Windows 10 используется акрил или сплошной цвет с прямыми углами окон."
 }

@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "Bildcache"
     ,"Glance.Cache.Clear": "Cache leeren"
     ,"Glance.Cache.Cleared": "Cache geleert"
+    ,"Settings.Windows10VisualCompatibility.Title": "Visuelle Kompatibilität mit Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica und abgerundete Systemfenster erfordern Windows 11. Windows 10 verwendet Acrylic oder Vollfarbe mit eckigen Fenstern."
 }

@@ -1,6 +1,10 @@
 // Copyright (c) DeskBox. All rights reserved.
 
+using System.Diagnostics;
+using DeskBox.Helpers;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 
 namespace DeskBox.Services;
 
@@ -21,9 +25,20 @@ internal static class WidgetCompactAnimationCoordinator
 
     private static readonly Dictionary<long, Action> FrameCallbacks = [];
     private static readonly HashSet<long> BoundsTransitionRegistrations = [];
+    private static readonly Dictionary<IntPtr, PendingBoundsMove> PendingBoundsMoves = [];
     private static long s_nextRegistrationId;
     private static bool s_isRenderingSubscribed;
+    private static bool s_isDispatchingFrame;
     private static IDisposable? s_clockBoostLease;
+    private static DispatcherQueueTimer? s_windows10FrameTimer;
+
+    private readonly record struct PendingBoundsMove(
+        IntPtr WindowHandle,
+        RectInt32 Bounds,
+        uint Flags,
+        Action BeforeCommit,
+        Action AfterCommit,
+        Action Fallback);
 
     public static IDisposable Register(Action frameCallback)
     {
@@ -45,6 +60,35 @@ internal static class WidgetCompactAnimationCoordinator
         return RegisterCore(frameCallback, isBoundsTransition: true);
     }
 
+    /// <summary>
+    /// Queues one real HWND bounds update for the current compositor tick. All
+    /// concurrent capsule transitions are committed atomically after their
+    /// callbacks finish, avoiding N independent DWM commits without changing
+    /// the physical-window animation semantics.
+    /// </summary>
+    public static bool TryQueueBoundsMove(
+        IntPtr windowHandle,
+        RectInt32 bounds,
+        uint flags,
+        Action beforeCommit,
+        Action afterCommit,
+        Action fallback)
+    {
+        if (!s_isDispatchingFrame || windowHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        PendingBoundsMoves[windowHandle] = new PendingBoundsMove(
+            windowHandle,
+            bounds,
+            flags,
+            beforeCommit,
+            afterCommit,
+            fallback);
+        return true;
+    }
+
     private static IDisposable RegisterCore(Action frameCallback, bool isBoundsTransition)
     {
         ArgumentNullException.ThrowIfNull(frameCallback);
@@ -58,34 +102,159 @@ internal static class WidgetCompactAnimationCoordinator
         if (!s_isRenderingSubscribed)
         {
             s_isRenderingSubscribed = true;
-            CompositionTarget.Rendering += OnRendering;
             s_clockBoostLease = CompositorClockBoostCoordinator.Acquire();
+            StartFrameClock();
         }
 
         return new Registration(registrationId);
     }
 
+    private static void StartFrameClock()
+    {
+        if (WindowsCompatibilityService.IsWindows11OrLater)
+        {
+            CompositionTarget.Rendering += OnRendering;
+            return;
+        }
+
+        DispatcherQueue? dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        if (dispatcherQueue is null)
+        {
+            CompositionTarget.Rendering += OnRendering;
+            return;
+        }
+
+        s_windows10FrameTimer = dispatcherQueue.CreateTimer();
+        s_windows10FrameTimer.Interval = TimeSpan.FromMilliseconds(15);
+        s_windows10FrameTimer.IsRepeating = true;
+        s_windows10FrameTimer.Tick += OnWindows10FrameTimerTick;
+        s_windows10FrameTimer.Start();
+        App.LogVerbose("[AnimationClock] compact source=DispatcherQueueTimer intervalMs=15.0");
+    }
+
+    private static void OnWindows10FrameTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        OnRendering(sender, args);
+    }
+
     private static void OnRendering(object? sender, object args)
     {
-        // Callbacks may complete and unregister themselves while this snapshot
-        // is being dispatched. The registration check avoids invoking an entry
-        // that another callback cancelled earlier in the same compositor tick.
-        foreach ((long registrationId, Action callback) in FrameCallbacks.ToArray())
+        PendingBoundsMoves.Clear();
+        s_isDispatchingFrame = true;
+        try
         {
-            if (!FrameCallbacks.ContainsKey(registrationId))
+            // Callbacks may complete and unregister themselves while this snapshot
+            // is being dispatched. The registration check avoids invoking an entry
+            // that another callback cancelled earlier in the same compositor tick.
+            foreach ((long registrationId, Action callback) in FrameCallbacks.ToArray())
             {
-                continue;
-            }
+                if (!FrameCallbacks.ContainsKey(registrationId))
+                {
+                    continue;
+                }
 
-            try
-            {
-                callback();
-            }
-            catch (Exception ex)
-            {
-                App.Log($"[CompactAnimationClock] Frame callback failed: {ex.Message}");
+                try
+                {
+                    callback();
+                }
+                catch (Exception ex)
+                {
+                    App.Log($"[CompactAnimationClock] Frame callback failed: {ex.Message}");
+                }
             }
         }
+        finally
+        {
+            s_isDispatchingFrame = false;
+            FlushPendingBoundsMoves();
+        }
+    }
+
+    private static void FlushPendingBoundsMoves()
+    {
+        if (PendingBoundsMoves.Count == 0)
+        {
+            return;
+        }
+
+        PendingBoundsMove[] moves = PendingBoundsMoves.Values.ToArray();
+        PendingBoundsMoves.Clear();
+        long started = Stopwatch.GetTimestamp();
+
+        foreach (PendingBoundsMove move in moves)
+        {
+            move.BeforeCommit();
+        }
+
+        try
+        {
+            bool committed = TryCommitBatch(moves);
+            if (!committed)
+            {
+                foreach (PendingBoundsMove move in moves)
+                {
+                    bool moved = Win32Helper.SetWindowPos(
+                        move.WindowHandle,
+                        IntPtr.Zero,
+                        move.Bounds.X,
+                        move.Bounds.Y,
+                        move.Bounds.Width,
+                        move.Bounds.Height,
+                        move.Flags);
+                    if (!moved)
+                    {
+                        move.Fallback();
+                    }
+                }
+            }
+        }
+        finally
+        {
+            foreach (PendingBoundsMove move in moves)
+            {
+                move.AfterCommit();
+            }
+
+            double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            if (elapsedMs >= 8)
+            {
+                string details = $"count={moves.Length} elapsedMs={elapsedMs:F1}";
+                PerformanceLogger.Mark("CompactBoundsBatch", details);
+                App.LogVerbose($"[CompactBoundsBatch] {details}");
+            }
+        }
+    }
+
+    private static bool TryCommitBatch(IReadOnlyList<PendingBoundsMove> moves)
+    {
+        IntPtr deferred = Win32Helper.BeginDeferWindowPos(moves.Count);
+        if (deferred == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        foreach (PendingBoundsMove move in moves)
+        {
+            IntPtr next = Win32Helper.DeferWindowPos(
+                deferred,
+                move.WindowHandle,
+                IntPtr.Zero,
+                move.Bounds.X,
+                move.Bounds.Y,
+                move.Bounds.Width,
+                move.Bounds.Height,
+                move.Flags);
+            if (next == IntPtr.Zero)
+            {
+                // A failed DeferWindowPos invalidates the transaction. The
+                // caller retries every real bounds update directly.
+                return false;
+            }
+
+            deferred = next;
+        }
+
+        return Win32Helper.EndDeferWindowPos(deferred);
     }
 
     private static void Unregister(long registrationId)
@@ -97,7 +266,16 @@ internal static class WidgetCompactAnimationCoordinator
             return;
         }
 
-        CompositionTarget.Rendering -= OnRendering;
+        if (s_windows10FrameTimer is not null)
+        {
+            s_windows10FrameTimer.Stop();
+            s_windows10FrameTimer.Tick -= OnWindows10FrameTimerTick;
+            s_windows10FrameTimer = null;
+        }
+        else
+        {
+            CompositionTarget.Rendering -= OnRendering;
+        }
         s_isRenderingSubscribed = false;
         s_clockBoostLease?.Dispose();
         s_clockBoostLease = null;

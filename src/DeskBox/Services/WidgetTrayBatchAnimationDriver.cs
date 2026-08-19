@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using DeskBox.Helpers;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
 
 namespace DeskBox.Services;
@@ -53,6 +54,7 @@ public sealed class WidgetTrayBatchAnimationDriver
     private int _remainingDelayFrames;
     private bool _isRunning;
     private IDisposable? _clockBoostLease;
+    private DispatcherQueueTimer? _windows10FrameTimer;
     private WidgetTrayAnimationFrameTracker? _frameTracker;
 
     public WidgetTrayBatchAnimationDriver(Action<string>? log = null)
@@ -88,11 +90,55 @@ public sealed class WidgetTrayBatchAnimationDriver
         _stopwatch = null;
         _isRunning = true;
         _clockBoostLease = CompositorClockBoostCoordinator.Acquire();
-        CompositionTarget.Rendering -= OnRenderingFrame;
-        CompositionTarget.Rendering += OnRenderingFrame;
+        StartFrameClock();
         _log(
             $"[BatchAnim] Start count={_entries.Count} durationMs={_durationMs} " +
             $"mode={(isShowing ? "show" : "hide")} delayFrames={_remainingDelayFrames}");
+    }
+
+    private void StartFrameClock()
+    {
+        StopFrameClock();
+        if (WindowsCompatibilityService.IsWindows11OrLater)
+        {
+            CompositionTarget.Rendering += OnRenderingFrame;
+            return;
+        }
+
+        DispatcherQueue? dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        if (dispatcherQueue is null)
+        {
+            CompositionTarget.Rendering += OnRenderingFrame;
+            return;
+        }
+
+        int refreshRateHz = Math.Max(1, _entries.Max(entry => entry.RefreshRateHz));
+        double intervalMs = Math.Clamp(1000.0 / refreshRateHz, 8.0, 16.0);
+        _windows10FrameTimer = dispatcherQueue.CreateTimer();
+        _windows10FrameTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
+        _windows10FrameTimer.IsRepeating = true;
+        _windows10FrameTimer.Tick += OnWindows10FrameTimerTick;
+        _windows10FrameTimer.Start();
+        App.LogVerbose(
+            $"[AnimationClock] tray source=DispatcherQueueTimer intervalMs={intervalMs:F1} " +
+            $"refreshHz={refreshRateHz}");
+    }
+
+    private void OnWindows10FrameTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        OnRenderingFrame(sender, args);
+    }
+
+    private void StopFrameClock()
+    {
+        if (_windows10FrameTimer is not null)
+        {
+            _windows10FrameTimer.Stop();
+            _windows10FrameTimer.Tick -= OnWindows10FrameTimerTick;
+            _windows10FrameTimer = null;
+        }
+
+        CompositionTarget.Rendering -= OnRenderingFrame;
     }
 
     public void Cancel()
@@ -171,6 +217,19 @@ public sealed class WidgetTrayBatchAnimationDriver
     }
 
     private void MoveEntriesFrame(double easedProgress)
+    {
+        long started = Stopwatch.GetTimestamp();
+        MoveEntriesFrameCore(easedProgress);
+        double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (elapsedMs >= 8)
+        {
+            string details = $"count={_entries.Count} elapsedMs={elapsedMs:F1}";
+            PerformanceLogger.Mark("TrayBoundsBatch", details);
+            App.LogVerbose($"[TrayBoundsBatch] {details}");
+        }
+    }
+
+    private void MoveEntriesFrameCore(double easedProgress)
     {
         IntPtr hdwp = Win32Helper.BeginDeferWindowPos(_entries.Count);
         if (hdwp == IntPtr.Zero)
@@ -251,7 +310,7 @@ public sealed class WidgetTrayBatchAnimationDriver
         _entries.Clear();
         _stopwatch = null;
         _frameTracker = null;
-        CompositionTarget.Rendering -= OnRenderingFrame;
+        StopFrameClock();
         _clockBoostLease?.Dispose();
         _clockBoostLease = null;
     }

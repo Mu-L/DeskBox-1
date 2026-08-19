@@ -284,10 +284,8 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
             : CornerRound;
-        _selectedWidgetMaterialType = settings.WidgetMaterialType is
-            MaterialMica or MaterialMicaAlt or MaterialAcrylic or MaterialAcrylicBase or MaterialSolid
-            ? settings.WidgetMaterialType
-            : MaterialAcrylic;
+        _selectedWidgetMaterialType = WindowsCompatibilityService.ResolveWidgetMaterialType(
+            settings.WidgetMaterialType);
         _selectedWidgetBorderColorMode = settings.WidgetBorderColorMode is
             BorderColorNeutral or BorderColorAccent or BorderColorNone
                 ? settings.WidgetBorderColorMode

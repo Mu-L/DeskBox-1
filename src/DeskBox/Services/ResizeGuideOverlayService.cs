@@ -42,6 +42,7 @@ public sealed class ResizeGuideOverlayService
     private string? _lastDragSnapSignature;
     private readonly List<(RectInt32 Bounds, IntPtr Hwnd)> _resizeSnapTargets = [];
     private readonly List<(RectInt32 Bounds, IntPtr Hwnd)> _dragSnapTargets = [];
+    private RectInt32? _resizeWorkAreaBounds;
 
     /// <summary>
     /// Whether a resize session is currently active.
@@ -73,6 +74,7 @@ public sealed class ResizeGuideOverlayService
         _currentTargetEdge = null;
         _resizeSnapTargets.Clear();
         _resizeSnapTargets.AddRange(GetOtherWidgetBounds(resizingWidgetHwnd));
+        _resizeWorkAreaBounds = GetResizeWorkAreaBounds(resizingWidgetHwnd);
         IsActive = true;
 
         App.LogVerbose($"[ResizeGuide] BeginResize hwnd=0x{resizingWidgetHwnd.ToInt64():X}");
@@ -262,6 +264,7 @@ public sealed class ResizeGuideOverlayService
         _currentResizeEdge = null;
         _currentTargetEdge = null;
         _resizeSnapTargets.Clear();
+        _resizeWorkAreaBounds = null;
 
         App.LogVerbose("[ResizeGuide] EndResize");
     }
@@ -329,21 +332,17 @@ public sealed class ResizeGuideOverlayService
         }
 
         // Work area edges (no target widget)
-        int waLeft = 0;
-        int waRight = int.MaxValue;
-        if (Win32Helper.GetWindowRect(_resizingWidgetHwnd, out var wr))
+        if (_resizeWorkAreaBounds is { } workArea)
         {
-            int cx = (wr.Left + wr.Right) / 2;
-            int cy = (wr.Top + wr.Bottom) / 2;
-            if (Win32Helper.TryGetMonitorWorkArea(cx, cy, out _, out var workArea))
-            {
-                waLeft = workArea.Left;
-                waRight = workArea.Right;
-            }
+            TrySnap(edgeX, workArea.X, IntPtr.Zero, ref bestDelta, ref bestSnap, ref bestTarget);
+            TrySnap(
+                edgeX,
+                workArea.X + workArea.Width,
+                IntPtr.Zero,
+                ref bestDelta,
+                ref bestSnap,
+                ref bestTarget);
         }
-
-        TrySnap(edgeX, waLeft, IntPtr.Zero, ref bestDelta, ref bestSnap, ref bestTarget);
-        TrySnap(edgeX, waRight, IntPtr.Zero, ref bestDelta, ref bestSnap, ref bestTarget);
 
         return (bestSnap, bestTarget);
     }
@@ -370,21 +369,17 @@ public sealed class ResizeGuideOverlayService
         }
 
         // Work area edges
-        int waTop = 0;
-        int waBottom = int.MaxValue;
-        if (Win32Helper.GetWindowRect(_resizingWidgetHwnd, out var wr))
+        if (_resizeWorkAreaBounds is { } workArea)
         {
-            int cx = (wr.Left + wr.Right) / 2;
-            int cy = (wr.Top + wr.Bottom) / 2;
-            if (Win32Helper.TryGetMonitorWorkArea(cx, cy, out _, out var workArea))
-            {
-                waTop = workArea.Top;
-                waBottom = workArea.Bottom;
-            }
+            TrySnap(edgeY, workArea.Y, IntPtr.Zero, ref bestDelta, ref bestSnap, ref bestTarget);
+            TrySnap(
+                edgeY,
+                workArea.Y + workArea.Height,
+                IntPtr.Zero,
+                ref bestDelta,
+                ref bestSnap,
+                ref bestTarget);
         }
-
-        TrySnap(edgeY, waTop, IntPtr.Zero, ref bestDelta, ref bestSnap, ref bestTarget);
-        TrySnap(edgeY, waBottom, IntPtr.Zero, ref bestDelta, ref bestSnap, ref bestTarget);
 
         return (bestSnap, bestTarget);
     }
@@ -400,6 +395,27 @@ public sealed class ResizeGuideOverlayService
             bestSnap = candidate;
             bestTarget = hwnd;
         }
+    }
+
+    private static RectInt32? GetResizeWorkAreaBounds(IntPtr hwnd)
+    {
+        if (!Win32Helper.GetWindowRect(hwnd, out var windowRect))
+        {
+            return null;
+        }
+
+        int centerX = (windowRect.Left + windowRect.Right) / 2;
+        int centerY = (windowRect.Top + windowRect.Bottom) / 2;
+        if (!Win32Helper.TryGetMonitorWorkArea(centerX, centerY, out _, out var workArea))
+        {
+            return null;
+        }
+
+        return new RectInt32(
+            workArea.Left,
+            workArea.Top,
+            workArea.Right - workArea.Left,
+            workArea.Bottom - workArea.Top);
     }
 
     private static void TrySnapWidget(
@@ -559,27 +575,36 @@ public sealed class ResizeGuideOverlayService
         Grid.SetColumn(border, 0);
         border.SetValue(Canvas.ZIndexProperty, HighlightZIndex);
 
-        // Breathing animation: pulse opacity gently
-        var breathing = new DoubleAnimation
+        if (WindowsCompatibilityService.IsWindows11OrLater)
         {
-            From = BreathingMaxOpacity,
-            To = BreathingMinOpacity,
-            Duration = new Duration(BreathingDuration),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
-        };
-        Storyboard.SetTarget(breathing, border);
-        Storyboard.SetTargetProperty(breathing, "Opacity");
+            // Win11 keeps the original breathing effect. Win10 uses the same
+            // edge gradient as a static glow so live resize does not add a
+            // second continuously animated XAML workload.
+            var breathing = new DoubleAnimation
+            {
+                From = BreathingMaxOpacity,
+                To = BreathingMinOpacity,
+                Duration = new Duration(BreathingDuration),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            };
+            Storyboard.SetTarget(breathing, border);
+            Storyboard.SetTargetProperty(breathing, "Opacity");
 
-        var sb = new Storyboard();
-        sb.Children.Add(breathing);
-        border.Resources["BreathingStoryboard"] = sb;
+            var sb = new Storyboard();
+            sb.Children.Add(breathing);
+            border.Resources["BreathingStoryboard"] = sb;
+        }
 
         grid.Children.Add(border);
         _activeHighlights[hwnd] = border;
 
-        sb.Begin();
+        if (border.Resources.TryGetValue("BreathingStoryboard", out var value) &&
+            value is Storyboard storyboard)
+        {
+            storyboard.Begin();
+        }
     }
 
     private void RemoveHighlight(IntPtr hwnd)

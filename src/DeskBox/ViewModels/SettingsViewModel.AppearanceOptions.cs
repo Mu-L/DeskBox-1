@@ -198,6 +198,18 @@ public partial class SettingsViewModel
 
     public string SelectedWidgetMaterialTypeText => GetMaterialTypeDisplayName(SelectedWidgetMaterialType);
 
+    public bool IsWindows10VisualCompatibilityMode =>
+        !WindowsCompatibilityService.IsWindows11OrLater;
+
+    public bool SupportsNativeWidgetCorners =>
+        WindowsCompatibilityService.SupportsNativeWindowCorners;
+
+    public string Windows10VisualCompatibilityTitle =>
+        _localizationService.T("Settings.Windows10VisualCompatibility.Title");
+
+    public string Windows10VisualCompatibilityMessage =>
+        _localizationService.T("Settings.Windows10VisualCompatibility.Message");
+
     public bool IsOpacitySliderEnabled =>
         SettingsService.SupportsWidgetOpacity(_selectedWidgetMaterialType);
 

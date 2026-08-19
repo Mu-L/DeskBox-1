@@ -60,6 +60,7 @@ public abstract partial class WidgetWindowBase : Window
     protected MicaController? MicaController;
     protected bool AcrylicControllerAttached;
     protected bool MicaControllerAttached;
+    protected bool LegacyAccentBackdropActive;
     private bool? _acrylicControllerUsesBase;
     private bool? _micaControllerUsesAlt;
     private BackdropSignature? _lastAppliedBackdropSignature;
@@ -87,6 +88,10 @@ public abstract partial class WidgetWindowBase : Window
     protected FrameworkElement? DragCaptureElement;
     private RectInt32? _pendingInteractiveResizeBounds;
     private IDisposable? _interactiveResizeFrameRegistration;
+    private bool _interactiveResizeCommitQueued;
+    private long _lastInteractiveResizeCommitTimestamp;
+    private IDisposable? _interactiveResizeClockBoostLease;
+    private SizeInt32 _interactiveResizeMinimumSize;
 
     // ── Protected state: layer / Z-order ───────────────────────
     protected bool IsAtDesktopLayer;
@@ -281,6 +286,7 @@ public abstract partial class WidgetWindowBase : Window
     protected void CleanupBase()
     {
         CancelPendingInteractiveResizeFrame();
+        EndInteractiveResizePerformanceSession();
         RemoveDesktopPinnedPointerRouting();
         RemoveDesktopPinnedActivationGuard();
         WidgetShellControl.HostedContentChanged -= WidgetShellControl_HostedContentChanged;
@@ -301,8 +307,42 @@ public abstract partial class WidgetWindowBase : Window
     private void QueueInteractiveResizeBounds(RectInt32 bounds)
     {
         _pendingInteractiveResizeBounds = bounds;
-        _interactiveResizeFrameRegistration ??=
-            WidgetCompactAnimationCoordinator.Register(ApplyPendingInteractiveResizeBounds);
+        if (WindowsCompatibilityService.IsWindows11OrLater)
+        {
+            _interactiveResizeFrameRegistration ??=
+                WidgetCompactAnimationCoordinator.Register(ApplyPendingInteractiveResizeBounds);
+            return;
+        }
+
+        // The first ordinary Win10 move goes straight to the real HWND. Only
+        // pointer bursts closer than 8ms are coalesced, keeping input latency
+        // low without issuing redundant DWM resizes.
+        if (_interactiveResizeCommitQueued)
+        {
+            return;
+        }
+
+        long now = Stopwatch.GetTimestamp();
+        if (_lastInteractiveResizeCommitTimestamp == 0 ||
+            Stopwatch.GetElapsedTime(_lastInteractiveResizeCommitTimestamp, now).TotalMilliseconds >= 8)
+        {
+            ApplyPendingInteractiveResizeBounds();
+            return;
+        }
+
+        _interactiveResizeCommitQueued = true;
+        bool queued = DispatcherQueue.TryEnqueue(
+            DispatcherQueuePriority.High,
+            () =>
+            {
+                _interactiveResizeCommitQueued = false;
+                ApplyPendingInteractiveResizeBounds();
+            });
+        if (!queued)
+        {
+            _interactiveResizeCommitQueued = false;
+            ApplyPendingInteractiveResizeBounds();
+        }
     }
 
     private void ApplyPendingInteractiveResizeBounds()
@@ -321,6 +361,7 @@ public abstract partial class WidgetWindowBase : Window
             bounds.Height,
             persist: false,
             updateConfig: false);
+        _lastInteractiveResizeCommitTimestamp = Stopwatch.GetTimestamp();
     }
 
     private void FlushPendingInteractiveResizeBounds()
@@ -345,6 +386,20 @@ public abstract partial class WidgetWindowBase : Window
         _pendingInteractiveResizeBounds = null;
         _interactiveResizeFrameRegistration?.Dispose();
         _interactiveResizeFrameRegistration = null;
+    }
+
+    private void BeginInteractiveResizePerformanceSession()
+    {
+        _lastInteractiveResizeCommitTimestamp = 0;
+        _interactiveResizeClockBoostLease ??= CompositorClockBoostCoordinator.Acquire();
+    }
+
+    private void EndInteractiveResizePerformanceSession()
+    {
+        _interactiveResizeClockBoostLease?.Dispose();
+        _interactiveResizeClockBoostLease = null;
+        _lastInteractiveResizeCommitTimestamp = 0;
+        _interactiveResizeMinimumSize = default;
     }
 
     protected void TrackWindowClosedForDiagnostics()

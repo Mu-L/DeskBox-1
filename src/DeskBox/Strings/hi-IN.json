@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "चित्र कैश"
     ,"Glance.Cache.Clear": "कैश साफ़ करें"
     ,"Glance.Cache.Cleared": "कैश साफ़ हो गया"
+    ,"Settings.Windows10VisualCompatibility.Title": "Windows 10 दृश्य संगतता"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica और सिस्टम विंडो के गोल कोनों के लिए Windows 11 आवश्यक है। Windows 10 में चौकोर कोनों के साथ ऐक्रेलिक या ठोस सामग्री का उपयोग होता है।"
 }

@@ -435,6 +435,12 @@ Text="DeskBox" />
                     Visibility="Collapsed"
                     Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
+                        <InfoBar
+                            IsClosable="False"
+                            IsOpen="{Binding IsWindows10VisualCompatibilityMode}"
+                            Message="{Binding Windows10VisualCompatibilityMessage}"
+                            Severity="Informational"
+                            Title="{Binding Windows10VisualCompatibilityTitle}" />
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.Material.GroupDescription"
@@ -522,6 +528,7 @@ Text="DeskBox" />
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
+                                    IsEnabled="{Binding SupportsNativeWidgetCorners}"
                                     svc:Localized.DescriptionKey="Settings.Corner.Description"
                                     svc:Localized.HeaderKey="Settings.Corner.Title">
                                     <ComboBox

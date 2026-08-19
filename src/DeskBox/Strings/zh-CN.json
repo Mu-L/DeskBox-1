@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "图片缓存"
     ,"Glance.Cache.Clear": "清除缓存"
     ,"Glance.Cache.Cleared": "缓存已清除"
+    ,"Settings.Windows10VisualCompatibility.Title": "Windows 10 视觉兼容"
+    ,"Settings.Windows10VisualCompatibility.Message": "云母材质和系统窗口圆角仅适用于 Windows 11。Windows 10 将使用亚克力或纯色，并保持直角窗口。"
 }

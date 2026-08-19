@@ -23,6 +23,12 @@ public static partial class Win32Helper
     private static extern int DCompositionBoostCompositorClock(
         [MarshalAs(UnmanagedType.Bool)] bool enable);
 
+    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    private static extern uint TimeBeginPeriod(uint periodMilliseconds);
+
+    [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+    private static extern uint TimeEndPeriod(uint periodMilliseconds);
+
     [LibraryImport("gdi32.dll", SetLastError = true)]
     public static partial IntPtr CreateRoundRectRgn(
         int left,
@@ -52,6 +58,23 @@ public static partial class Win32Helper
         try
         {
             return DCompositionBoostCompositorClock(enabled) >= 0;
+        }
+        catch (Exception ex) when (
+            ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Requests 1ms timer resolution only while an interactive Win10 animation
+    /// owns a lease. Calls are reference-counted by the coordinator.
+    /// </summary>
+    public static bool TrySetHighResolutionTimer(bool enabled)
+    {
+        try
+        {
+            return (enabled ? TimeBeginPeriod(1) : TimeEndPeriod(1)) == 0;
         }
         catch (Exception ex) when (
             ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
@@ -183,6 +206,7 @@ public static partial class Win32Helper
     public const uint SWP_NOCOPYBITS = 0x0100;
     public const uint SWP_FRAMECHANGED = 0x0020;
     public const uint SWP_NOOWNERZORDER = 0x0200;
+    public const uint SWP_DEFERERASE = 0x2000;
     public const int SW_HIDE = 0;
     public const int SW_SHOWNORMAL = 1;
     public const int SW_SHOWNOACTIVATE = 4;
@@ -1138,7 +1162,7 @@ public static partial class Win32Helper
         TrySetDwmWindowAttribute(hWnd, DWMWA_BORDER_COLOR, ref colorRef);
     }
 
-    public static void ApplyAccentBlur(IntPtr hWnd, Windows.UI.Color tintColor, double opacity, bool enabled)
+    public static bool ApplyAccentBlur(IntPtr hWnd, Windows.UI.Color tintColor, double opacity, bool enabled)
     {
         opacity = Math.Clamp(opacity, 0.0, 1.0);
 
@@ -1189,6 +1213,7 @@ public static partial class Win32Helper
                 $"[Composition] hwnd=0x{hWnd.ToInt64():X} enabled={enabled} opacity={opacity:F3} " +
                 $"accentState={DescribeAccentState(accent.AccentState)} gradient=0x{accent.GradientColor:X8} " +
                 $"applied={applied} lastError={lastError}");
+            return applied;
         }
         finally
         {

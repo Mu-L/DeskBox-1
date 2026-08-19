@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "画像キャッシュ"
     ,"Glance.Cache.Clear": "キャッシュをクリア"
     ,"Glance.Cache.Cleared": "キャッシュをクリアしました"
+    ,"Settings.Windows10VisualCompatibility.Title": "Windows 10 の表示互換性"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica とシステムのウィンドウ角丸には Windows 11 が必要です。Windows 10 ではアクリルまたは単色と直角のウィンドウを使用します。"
 }

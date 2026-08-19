@@ -600,7 +600,8 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         double surfaceOpacity = Math.Clamp(SettingsService.Settings.WidgetOpacity, 0.0, 1.0);
         var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
-        string materialType = SettingsService.Settings.WidgetMaterialType;
+        string materialType = WindowsCompatibilityService.ResolveWidgetMaterialType(
+            SettingsService.Settings.WidgetMaterialType);
 
         // Simplified layering: only apply surface color overlay for Solid mode.
         if (materialType is SettingsService.WidgetMaterialTypeSolid && !IsSolidColorBackdropActive)
@@ -612,6 +613,19 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
             ContentWidgetShell.BackgroundSurface.Background = GetOrUpdateSolidColorBrush(
                 ContentWidgetShell.BackgroundSurface.Background,
                 surfaceColor);
+        }
+        else if (WindowsCompatibilityService.UsesLegacyWindowAcrylic &&
+            SettingsService.IsAcrylicMaterial(materialType))
+        {
+            var overlayColor = WidgetMaterialVisualCalculator.BuildLegacyAcrylicSurfaceOverlayColor(
+                isDark,
+                accentColor,
+                materialType == SettingsService.WidgetMaterialTypeAcrylicBase,
+                surfaceOpacity,
+                SettingsService.Settings.WidgetMaterialIntensity);
+            ContentWidgetShell.BackgroundSurface.Background = GetOrUpdateSolidColorBrush(
+                ContentWidgetShell.BackgroundSurface.Background,
+                overlayColor);
         }
         else
         {
@@ -1177,7 +1191,6 @@ IsHideAnimationRunning = true;
         {
             if (child.Tag is string tag && !string.IsNullOrWhiteSpace(tag))
             {
-                child.PointerPressed += ResizeBorder_PointerPressed;
                 child.PointerMoved += ResizeBorder_PointerMoved;
                 child.PointerReleased += ResizeBorder_PointerReleased;
                 child.PointerEntered += ResizeBorder_PointerEntered;
@@ -1216,7 +1229,6 @@ IsHideAnimationRunning = true;
             {
                 if (child.Tag is string tag && !string.IsNullOrWhiteSpace(tag))
                 {
-                    child.PointerPressed -= ResizeBorder_PointerPressed;
                     child.PointerMoved -= ResizeBorder_PointerMoved;
                     child.PointerReleased -= ResizeBorder_PointerReleased;
                     child.PointerEntered -= ResizeBorder_PointerEntered;

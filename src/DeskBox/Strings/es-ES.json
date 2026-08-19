@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "Caché de imágenes"
     ,"Glance.Cache.Clear": "Borrar caché"
     ,"Glance.Cache.Cleared": "Caché borrada"
+    ,"Settings.Windows10VisualCompatibility.Title": "Compatibilidad visual con Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica y las esquinas del sistema requieren Windows 11. Windows 10 usa acrílico o color sólido con ventanas cuadradas."
 }

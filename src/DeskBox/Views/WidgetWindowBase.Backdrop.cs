@@ -37,7 +37,9 @@ public abstract partial class WidgetWindowBase
 
         bool isDark = RootElement.ActualTheme == ElementTheme.Dark;
         double surfaceOpacity = Math.Clamp(WidgetOpacity, 0.0, 1.0);
-        string materialType = SettingsService.Settings.WidgetMaterialType;
+        string requestedMaterialType = SettingsService.Settings.WidgetMaterialType;
+        string materialType = WindowsCompatibilityService.ResolveWidgetMaterialType(
+            requestedMaterialType);
         var tintColor = materialType == SettingsService.WidgetMaterialTypeSolid
             ? BuildSolidColorBackdropTintColor(isDark, surfaceOpacity)
             : BuildNativeBackdropTintColor(isDark);
@@ -91,6 +93,7 @@ public abstract partial class WidgetWindowBase
 
             if (controllerApplied)
             {
+                LegacyAccentBackdropActive = false;
                 backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 Win32Helper.DisableAccentPolicy(HWnd);
@@ -101,15 +104,49 @@ public abstract partial class WidgetWindowBase
                 Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 DetachAcrylicControllerTarget();
                 DetachMicaControllerTarget();
-                Win32Helper.ApplyAccentBlur(HWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
+                double accentOpacity = WindowsCompatibilityService.UsesLegacyWindowAcrylic &&
+                    SettingsService.IsAcrylicMaterial(materialType)
+                        ? WidgetMaterialVisualCalculator.CalculateLegacyAcrylicOpacity(
+                            materialType == SettingsService.WidgetMaterialTypeAcrylicBase,
+                            surfaceOpacity,
+                            SettingsService.Settings.WidgetMaterialIntensity)
+                        : Math.Min(surfaceOpacity, 0.52);
+                if (WindowsCompatibilityService.UsesLegacyWindowAcrylic)
+                {
+                    DisposeAcrylicController();
+                    DisposeMicaController();
+                    SystemBackdrop = null;
+                }
+                LegacyAccentBackdropActive = Win32Helper.ApplyAccentBlur(
+                    HWnd,
+                    tintColor,
+                    accentOpacity,
+                    true);
+                if (!LegacyAccentBackdropActive)
+                {
+                    App.Log(
+                        $"[Backdrop] Legacy accent application failed hwnd=0x{HWnd.ToInt64():X} " +
+                        $"material={materialType} opacity={accentOpacity:F3}");
+                }
             }
 
             App.LogVerbose(
-                $"[Backdrop] hwnd=0x{HWnd.ToInt64():X} material={materialType} isDark={isDark} " +
+                $"[Backdrop] hwnd=0x{HWnd.ToInt64():X} requested={requestedMaterialType} " +
+                $"material={materialType} isDark={isDark} " +
                 $"opacity={surfaceOpacity:F3} tint=#{tintColor.A:X2}{tintColor.R:X2}{tintColor.G:X2}{tintColor.B:X2} " +
                 $"dwmBackdropType={backdropType} " +
-                $"acrylicController={AcrylicController is not null} micaController={MicaController is not null} " +
-                $"solidColorBackdrop={IsSolidColorBackdropActive}");
+                $"acrylicController={AcrylicController is { IsClosed: false } && AcrylicControllerAttached} " +
+                $"micaController={MicaController is not null && MicaControllerAttached} " +
+                $"solidColorBackdrop={IsSolidColorBackdropActive} " +
+                $"legacyAccent={LegacyAccentBackdropActive}");
+            if (WindowsCompatibilityService.UsesLegacyWindowAcrylic)
+            {
+                App.Log(
+                    $"[Backdrop.Win10] hwnd=0x{HWnd.ToInt64():X} requested={requestedMaterialType} " +
+                    $"resolved={materialType} desktopAcrylicSupported={WindowsCompatibilityService.SupportsDesktopAcrylic} " +
+                    $"controllerApplied={controllerApplied} legacyAccent={LegacyAccentBackdropActive} " +
+                    $"opacity={surfaceOpacity:F3} intensity={SettingsService.Settings.WidgetMaterialIntensity:F3}");
+            }
 
             _lastAppliedBackdropSignature = signature;
             ScheduleInactiveBackdropControllerCleanup(materialType);
@@ -126,10 +163,21 @@ public abstract partial class WidgetWindowBase
                 int backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 Win32Helper.DisableAccentPolicy(HWnd);
+                LegacyAccentBackdropActive = false;
             }
             else
             {
-                Win32Helper.ApplyAccentBlur(HWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
+                double fallbackOpacity = WindowsCompatibilityService.UsesLegacyWindowAcrylic
+                    ? WidgetMaterialVisualCalculator.CalculateLegacyAcrylicOpacity(
+                        materialType == SettingsService.WidgetMaterialTypeAcrylicBase,
+                        surfaceOpacity,
+                        SettingsService.Settings.WidgetMaterialIntensity)
+                    : Math.Min(surfaceOpacity, 0.52);
+                LegacyAccentBackdropActive = Win32Helper.ApplyAccentBlur(
+                    HWnd,
+                    tintColor,
+                    fallbackOpacity,
+                    true);
             }
         }
 
@@ -146,7 +194,8 @@ public abstract partial class WidgetWindowBase
         return SettingsService.IsMicaMaterial(signature.MaterialType)
             ? MicaController is not null && MicaControllerAttached
             : SettingsService.IsAcrylicMaterial(signature.MaterialType)
-                ? AcrylicController is { IsClosed: false } && AcrylicControllerAttached
+                ? (AcrylicController is { IsClosed: false } && AcrylicControllerAttached) ||
+                  LegacyAccentBackdropActive
                 : signature.MaterialType == SettingsService.WidgetMaterialTypeSolid &&
                   IsSolidColorBackdropActive &&
                   _solidColorBackdrop is not null &&
@@ -466,7 +515,7 @@ public abstract partial class WidgetWindowBase
         double surfaceOpacity,
         bool useBase)
     {
-        if (!DesktopAcrylicController.IsSupported())
+        if (!WindowsCompatibilityService.SupportsDesktopAcrylic)
         {
             DisposeAcrylicController();
             return false;

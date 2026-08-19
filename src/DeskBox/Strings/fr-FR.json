@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "Cache des images"
     ,"Glance.Cache.Clear": "Vider le cache"
     ,"Glance.Cache.Cleared": "Cache vidé"
+    ,"Settings.Windows10VisualCompatibility.Title": "Compatibilité visuelle avec Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica et les coins de fenêtre système nécessitent Windows 11. Windows 10 utilise l’acrylique ou une couleur unie avec des fenêtres carrées."
 }

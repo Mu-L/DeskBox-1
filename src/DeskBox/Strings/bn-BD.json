@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "ছবির ক্যাশ"
     ,"Glance.Cache.Clear": "ক্যাশ মুছুন"
     ,"Glance.Cache.Cleared": "ক্যাশ মুছে ফেলা হয়েছে"
+    ,"Settings.Windows10VisualCompatibility.Title": "Windows 10 ভিজ্যুয়াল সামঞ্জস্য"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica এবং সিস্টেম উইন্ডোর গোলাকার কোণের জন্য Windows 11 প্রয়োজন। Windows 10-এ বর্গাকার কোণসহ অ্যাক্রিলিক বা সলিড উপাদান ব্যবহার করা হয়।"
 }

@@ -70,9 +70,8 @@ public partial class SettingsViewModel
             SelectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerSquare or CornerSmall or CornerRound
                 ? settings.WidgetCornerPreference
                 : CornerRound;
-            SelectedWidgetMaterialType = settings.WidgetMaterialType is MaterialMica or MaterialMicaAlt or MaterialAcrylic or MaterialAcrylicBase or MaterialSolid
-                ? settings.WidgetMaterialType
-                : MaterialAcrylic;
+            SelectedWidgetMaterialType = WindowsCompatibilityService.ResolveWidgetMaterialType(
+                settings.WidgetMaterialType);
             SelectedWidgetBorderColorMode = settings.WidgetBorderColorMode is BorderColorNeutral or BorderColorAccent or BorderColorNone
                 ? settings.WidgetBorderColorMode
                 : BorderColorNeutral;
@@ -380,6 +379,8 @@ RefreshWeatherCityPopularCities();
         OnPropertyChanged(nameof(SelectedLanguageText));
         OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceText));
         OnPropertyChanged(nameof(SelectedWidgetMaterialTypeText));
+        OnPropertyChanged(nameof(Windows10VisualCompatibilityTitle));
+        OnPropertyChanged(nameof(Windows10VisualCompatibilityMessage));
         OnPropertyChanged(nameof(SelectedWidgetBorderColorModeText));
         OnPropertyChanged(nameof(SelectedWidgetBorderStyleText));
         OnPropertyChanged(nameof(SelectedWidgetCollapseBehaviorText));

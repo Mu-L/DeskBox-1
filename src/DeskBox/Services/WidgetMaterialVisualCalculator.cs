@@ -34,6 +34,44 @@ internal static class WidgetMaterialVisualCalculator
             Math.Clamp(luminosityOpacity * surfaceStrength, 0.0, 1.0));
     }
 
+    public static double CalculateLegacyAcrylicOpacity(
+        bool useBase,
+        double surfaceOpacity,
+        double materialIntensity)
+    {
+        double surface = Math.Clamp(surfaceOpacity, 0.0, 1.0);
+        double intensity = NormalizeMaterialIntensity(materialIntensity);
+        double maximumOpacity = useBase ? 0.90 : 0.72;
+        double opacity = Lerp(0.01, maximumOpacity, surface);
+
+        // Win10's accent policy exposes one tint-alpha control rather than the
+        // independent tint/luminosity controls available to Desktop Acrylic.
+        // Keep both settings effective by letting intensity tune the final
+        // material concentration without flattening the opacity slider range.
+        return Math.Clamp(opacity * Lerp(0.58, 1.0, intensity), 0.0, 1.0);
+    }
+
+    public static Windows.UI.Color BuildLegacyAcrylicSurfaceOverlayColor(
+        bool isDark,
+        Windows.UI.Color accentColor,
+        bool useBase,
+        double surfaceOpacity,
+        double materialIntensity)
+    {
+        Windows.UI.Color tintColor = BuildContentTintColor(isDark, accentColor);
+        double legacyOpacity = CalculateLegacyAcrylicOpacity(
+            useBase,
+            surfaceOpacity,
+            materialIntensity);
+
+        // Accent policy and Desktop Acrylic can report success on Win10 while
+        // DWM (especially under a VM/RDP display driver) presents no blur or
+        // tint. This lightweight XAML tint keeps both sliders visibly effective
+        // without replacing the real window-level acrylic attempt.
+        double overlayOpacity = legacyOpacity * (useBase ? 0.72 : 0.62);
+        return ApplySurfaceOpacity(tintColor, overlayOpacity);
+    }
+
     public static WidgetMaterialOpacityProfile CalculateMica(
         bool isDark,
         bool useAlt,

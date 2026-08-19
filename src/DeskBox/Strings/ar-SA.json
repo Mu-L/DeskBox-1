@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "ذاكرة الصور المؤقتة"
     ,"Glance.Cache.Clear": "مسح الذاكرة المؤقتة"
     ,"Glance.Cache.Cleared": "تم مسح الذاكرة المؤقتة"
+    ,"Settings.Windows10VisualCompatibility.Title": "التوافق المرئي مع Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "تتطلب مادة Mica وزوايا نوافذ النظام Windows 11. يستخدم Windows 10 الأكريليك أو اللون الصلب مع زوايا نوافذ مربعة."
 }

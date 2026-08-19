@@ -787,7 +787,8 @@ public sealed partial class SearchPopupWindow : Window
         var accentColor = (App.Current as App)?.ThemeService?.GetEffectiveAccentColor()
                           ?? AccentColorHelper.DefaultAccentColor;
 
-        string materialType = _settingsService.Settings.WidgetMaterialType;
+        string materialType = WindowsCompatibilityService.ResolveWidgetMaterialType(
+            _settingsService.Settings.WidgetMaterialType);
         double surfaceOpacity = Math.Clamp(_settingsService.Settings.WidgetOpacity, 0.0, 1.0);
         double materialIntensity = Math.Clamp(_settingsService.Settings.WidgetMaterialIntensity, 0.0, 1.0);
 
@@ -841,7 +842,18 @@ public sealed partial class SearchPopupWindow : Window
                 Win32Helper.TrySetDwmWindowAttribute(_hwnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 DetachAcrylicControllerTarget();
                 DetachMicaControllerTarget();
-                Win32Helper.ApplyAccentBlur(_hwnd, BuildNativeBackdropTintColor(isDark, accentColor, materialIntensity), Math.Min(surfaceOpacity, 0.52), true);
+                double accentOpacity = WindowsCompatibilityService.UsesLegacyWindowAcrylic &&
+                    SettingsService.IsAcrylicMaterial(materialType)
+                        ? WidgetMaterialVisualCalculator.CalculateLegacyAcrylicOpacity(
+                            materialType == SettingsService.WidgetMaterialTypeAcrylicBase,
+                            surfaceOpacity,
+                            materialIntensity)
+                        : Math.Min(surfaceOpacity, 0.52);
+                Win32Helper.ApplyAccentBlur(
+                    _hwnd,
+                    BuildNativeBackdropTintColor(isDark, accentColor, materialIntensity),
+                    accentOpacity,
+                    true);
                 RootGrid.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x01, 0x00, 0x00, 0x00));
             }
         }
@@ -850,7 +862,17 @@ public sealed partial class SearchPopupWindow : Window
             App.Log($"[SearchPopup] ApplyMaterialFromSettings fallback: {ex.Message}");
             DisposeAcrylicController();
             DisposeMicaController();
-            Win32Helper.ApplyAccentBlur(_hwnd, BuildNativeBackdropTintColor(isDark, accentColor, materialIntensity), Math.Min(surfaceOpacity, 0.52), true);
+            double fallbackOpacity = WindowsCompatibilityService.UsesLegacyWindowAcrylic
+                ? WidgetMaterialVisualCalculator.CalculateLegacyAcrylicOpacity(
+                    materialType == SettingsService.WidgetMaterialTypeAcrylicBase,
+                    surfaceOpacity,
+                    materialIntensity)
+                : Math.Min(surfaceOpacity, 0.52);
+            Win32Helper.ApplyAccentBlur(
+                _hwnd,
+                BuildNativeBackdropTintColor(isDark, accentColor, materialIntensity),
+                fallbackOpacity,
+                true);
         }
 
         var (thickness, borderColor) = GetPopupBorderVisuals(isDark, accentColor);

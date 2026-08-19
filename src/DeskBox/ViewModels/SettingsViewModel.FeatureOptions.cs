@@ -868,8 +868,9 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
         [CornerRound, CornerSmall, CornerSquare];
     public string[] AvailableWidgetCornerPreferenceDisplayNames => _cachedWidgetCornerPreferenceDisplayNames ??= AvailableWidgetCornerPreferences.Select(GetCornerDisplayName).ToArray();
 
-    public string[] AvailableWidgetMaterialTypes { get; } =
-        [MaterialAcrylic, MaterialAcrylicBase, MaterialMica, MaterialMicaAlt, MaterialSolid];
+    public string[] AvailableWidgetMaterialTypes => WindowsCompatibilityService.IsWindows11OrLater
+        ? [MaterialAcrylic, MaterialAcrylicBase, MaterialMica, MaterialMicaAlt, MaterialSolid]
+        : [MaterialAcrylic, MaterialAcrylicBase, MaterialSolid];
     public string[] AvailableWidgetMaterialTypeDisplayNames => _cachedWidgetMaterialTypeDisplayNames ??= AvailableWidgetMaterialTypes.Select(GetMaterialTypeDisplayName).ToArray();
 
     public string[] AvailableWidgetBorderColorModes { get; } =

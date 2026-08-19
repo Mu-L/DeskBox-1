@@ -2343,4 +2343,6 @@
     ,"Glance.Cache.Title": "Cache de imagens"
     ,"Glance.Cache.Clear": "Limpar cache"
     ,"Glance.Cache.Cleared": "Cache limpo"
+    ,"Settings.Windows10VisualCompatibility.Title": "Compatibilidade visual com o Windows 10"
+    ,"Settings.Windows10VisualCompatibility.Message": "Mica e cantos de janela do sistema exigem o Windows 11. O Windows 10 usa Acrylic ou cor sólida com janelas quadradas."
 }

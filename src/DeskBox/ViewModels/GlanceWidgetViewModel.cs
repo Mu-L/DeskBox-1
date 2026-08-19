@@ -224,8 +224,10 @@ public sealed class GlanceWidgetViewModel : ObservableObject, IDisposable
     public CornerRadius CalendarCornerRadius => new(
         WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(
             _settingsService?.Settings.WidgetCornerPreference));
-    public string CalendarMaterialType => _settingsService?.Settings.WidgetMaterialType
-        ?? SettingsService.WidgetMaterialTypeMica;
+    public string CalendarMaterialType =>
+        WindowsCompatibilityService.ResolveWidgetMaterialType(
+            _settingsService?.Settings.WidgetMaterialType ??
+            SettingsService.WidgetMaterialTypeMica);
     public double CalendarMaterialOpacity => Math.Clamp(
         _settingsService?.Settings.WidgetOpacity ?? SettingsService.DefaultWidgetOpacity,
         SettingsService.MinWidgetOpacity,
