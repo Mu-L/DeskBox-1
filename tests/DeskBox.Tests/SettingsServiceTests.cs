@@ -57,6 +57,27 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_PreservesDisabledStateForIndividualGlanceWidgets()
+    {
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+        service.Settings.Widgets.Add(new WidgetConfig
+        {
+            Name = "Photo",
+            WidgetKind = WidgetKind.Glance,
+            IsVisible = false,
+            IsDisabled = true
+        });
+
+        await service.SaveAsync();
+
+        Assert.True(Assert.Single(service.Settings.Widgets).IsDisabled);
+        var reloaded = new SettingsService(_settingsRoot);
+        await reloaded.LoadAsync();
+        Assert.True(Assert.Single(reloaded.Settings.Widgets).IsDisabled);
+    }
+
+    [Fact]
     public async Task LoadAsync_ExistingProfilePreservesManagedStoragePath()
     {
         const string existingPath = @"C:\DeskBox\Existing";
@@ -1312,7 +1333,7 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_SolidMaterialForcesFullOpacity()
+    public async Task SaveAsync_SolidMaterialPreservesConfiguredOpacity()
     {
         var service = new SettingsService(_settingsRoot);
         service.Settings.WidgetMaterialType = SettingsService.WidgetMaterialTypeSolid;
@@ -1320,7 +1341,42 @@ public sealed class SettingsServiceTests : IDisposable
 
         await service.SaveAsync(notifySubscribers: false);
 
-        Assert.Equal(SettingsService.MaxWidgetOpacity, service.Settings.WidgetOpacity);
+        Assert.Equal(0.24, service.Settings.WidgetOpacity);
+    }
+
+    [Fact]
+    public async Task LoadAsync_MigratesRemovedSystemCornerPreferenceToRound()
+    {
+        string settingsPath = Path.Combine(_settingsRoot, "settings.json");
+        await File.WriteAllTextAsync(
+            settingsPath,
+            """
+            {
+              "widgetCornerPreference": "Default"
+            }
+            """);
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(SettingsService.WidgetCornerPreferenceRound, service.Settings.WidgetCornerPreference);
+        using JsonDocument persisted = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPath));
+        Assert.Equal(
+            SettingsService.WidgetCornerPreferenceRound,
+            persisted.RootElement.GetProperty("widgetCornerPreference").GetString());
+    }
+
+    [Theory]
+    [InlineData(SettingsService.WidgetMaterialTypeAcrylic, true)]
+    [InlineData(SettingsService.WidgetMaterialTypeAcrylicBase, true)]
+    [InlineData(SettingsService.WidgetMaterialTypeSolid, true)]
+    [InlineData(SettingsService.WidgetMaterialTypeMica, false)]
+    [InlineData(SettingsService.WidgetMaterialTypeMicaAlt, false)]
+    public void SupportsWidgetOpacity_ExposesTransparencyForSupportedMaterials(
+        string materialType,
+        bool expected)
+    {
+        Assert.Equal(expected, SettingsService.SupportsWidgetOpacity(materialType));
     }
 
     private static object? CreateNonDefaultSettingValue(Type type, object? defaultValue)

@@ -59,6 +59,7 @@ public sealed class OnboardingExperienceTests
         Assert.Contains("x:Name=\"TaskStep5SearchToggle\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep5WeatherToggle\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep5MusicToggle\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5GlanceToggle\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"TaskStep2ConfirmPathButton\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"TaskStep2StoragePathText\"", xaml, StringComparison.Ordinal);
         Assert.Contains("0 when !_hasCompletedFilePractice", codeBehind, StringComparison.Ordinal);
@@ -75,6 +76,8 @@ public sealed class OnboardingExperienceTests
         Assert.DoesNotContain("Onboarding.Task.Step2.MappedBody", activeFlow, StringComparison.Ordinal);
         Assert.DoesNotContain("Onboarding.Task.Step3.DragBody", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step5.OptionalBody", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5OptionalHint\"", activeFlow, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"TaskStep5OptionalCard\"", activeFlow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -254,6 +257,7 @@ public sealed class OnboardingExperienceTests
         Assert.Contains("x:Name=\"TaskStep4PreviewWidgets\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep2MenuPreview\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep5FeatureGrid\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep5FeatureSection\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Width=\"720\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("xmlns:controls=\"using:DeskBox.Controls\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Todo\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
@@ -261,11 +265,13 @@ public sealed class OnboardingExperienceTests
         Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Search\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Weather\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Music\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("<controls:WidgetTitleIcon IconKind=\"Glance\" Mode=\"Color\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step5.TodoDescription", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step5.QuickCaptureDescription", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step5.SearchDescription", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step5.WeatherDescription", activeFlow, StringComparison.Ordinal);
         Assert.Contains("Onboarding.Task.Step5.MusicDescription", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("WidgetContent.Glance.StatusDescription", activeFlow, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"StepCounterText\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep5TodoToggle\" Width=\"40\" MinWidth=\"0\" HorizontalAlignment=\"Right\"", activeFlow, StringComparison.Ordinal);
         Assert.Contains("dot.Width = active ? 8 : 6", codeBehind, StringComparison.Ordinal);
@@ -287,7 +293,7 @@ public sealed class OnboardingExperienceTests
         Assert.Contains("CreateTrayAmbientStoryboard", codeBehind, StringComparison.Ordinal);
         Assert.Contains("CreateFeatureCardEntranceStoryboard", codeBehind, StringComparison.Ordinal);
         Assert.Contains("ApplyTwoColumnTaskLayout", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("TaskStep5FeatureGrid.Width = compact", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("TaskStep5FeatureSection.Width = compact", codeBehind, StringComparison.Ordinal);
         Assert.Contains("AnimateStatusFeedback", taskFlow, StringComparison.Ordinal);
         Assert.Contains("UpdateVisibilityPreview", taskFlow, StringComparison.Ordinal);
     }
@@ -353,7 +359,7 @@ public sealed class OnboardingExperienceTests
             root,
             "src/DeskBox/Views/OnboardingWindow.TaskFlow.cs"));
 
-        foreach (string kind in new[] { "Todo", "QuickCapture", "Search", "Weather", "Music" })
+        foreach (string kind in new[] { "Todo", "QuickCapture", "Search", "Weather", "Music", "Glance" })
         {
             Assert.Contains(
                 $"Tag=\"{kind}\" Toggled=\"TaskStep5FeatureToggle_Toggled\"",

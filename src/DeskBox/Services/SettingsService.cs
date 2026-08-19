@@ -61,7 +61,6 @@ public sealed class SettingsService
     public const string WidgetBorderStyleThin = "Thin";
     public const string WidgetBorderStyleMedium = "Medium";
     public const string WidgetBorderStyleThick = "Thick";
-    public const string WidgetCornerPreferenceDefault = "Default";
     public const string WidgetCornerPreferenceSquare = "Square";
     public const string WidgetCornerPreferenceSmall = "Small";
     public const string WidgetCornerPreferenceRound = "Round";
@@ -101,7 +100,7 @@ public sealed class SettingsService
         materialType is WidgetMaterialTypeAcrylic or WidgetMaterialTypeAcrylicBase;
 
     public static bool SupportsWidgetOpacity(string? materialType) =>
-        IsAcrylicMaterial(materialType);
+        IsAcrylicMaterial(materialType) || materialType == WidgetMaterialTypeSolid;
 
     public static bool SupportsMaterialIntensity(string? materialType) =>
         IsMicaMaterial(materialType) || IsAcrylicMaterial(materialType);
@@ -961,7 +960,6 @@ settings.FocusClickedWidgetOnRaise = false;
         }
 
         if (settings.WidgetCornerPreference is not (
-            WidgetCornerPreferenceDefault or
             WidgetCornerPreferenceSquare or
             WidgetCornerPreferenceSmall or
             WidgetCornerPreferenceRound))
@@ -986,13 +984,6 @@ settings.FocusClickedWidgetOnRaise = false;
             {
                 settings.WidgetMaterialType = WidgetMaterialTypeAcrylic;
             }
-            changed = true;
-        }
-
-        if (settings.WidgetMaterialType == WidgetMaterialTypeSolid &&
-            Math.Abs(settings.WidgetOpacity - MaxWidgetOpacity) > 0.0001)
-        {
-            settings.WidgetOpacity = MaxWidgetOpacity;
             changed = true;
         }
 
@@ -2004,7 +1995,7 @@ settings.FocusClickedWidgetOnRaise = false;
                 changed = true;
             }
 
-            if (widget.IsDisabled)
+            if (widget.IsDisabled && widget.WidgetKind != WidgetKind.Glance)
             {
                 widget.IsDisabled = false;
                 changed = true;

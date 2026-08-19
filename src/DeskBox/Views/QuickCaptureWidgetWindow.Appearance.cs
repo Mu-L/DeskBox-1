@@ -74,6 +74,15 @@ public sealed partial class QuickCaptureWidgetWindow
             overlayMix: isDark ? 0.04 : 0.08);
     }
 
+    protected override Windows.UI.Color BuildSolidColorBackdropTintColor(
+        bool isDark,
+        double surfaceOpacity)
+    {
+        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
+            ?? AccentColorHelper.DefaultAccentColor;
+        return BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
+    }
+
     protected override void ApplySurfaceStyle()
     {
         bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
@@ -83,7 +92,7 @@ public sealed partial class QuickCaptureWidgetWindow
         string materialType = _settingsService.Settings.WidgetMaterialType;
 
         // Simplified layering: only apply surface color overlay for Solid mode.
-        if (materialType is SettingsService.WidgetMaterialTypeSolid)
+        if (materialType is SettingsService.WidgetMaterialTypeSolid && !IsSolidColorBackdropActive)
         {
             var surfaceColor = BuildFrostedSurfaceColor(isDark, accentColor, surfaceOpacity);
             BackgroundPlate.Background = GetOrUpdateSolidColorBrush(BackgroundPlate.Background, surfaceColor);
@@ -419,10 +428,6 @@ public sealed partial class QuickCaptureWidgetWindow
         Windows.UI.Color accentColor,
         double surfaceOpacity)
     {
-        double materialOpacity = isDark
-            ? Math.Clamp(surfaceOpacity * 0.78, 0.10, 0.82)
-            : Math.Clamp(surfaceOpacity * 0.78, 0.0, 0.78);
-
         return ApplySurfaceOpacity(
             BuildAccentSurfaceColor(
                 isDark,
@@ -432,7 +437,7 @@ public sealed partial class QuickCaptureWidgetWindow
                     : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
                 accentMix: isDark ? 0.18 : 0.18,
                 overlayMix: isDark ? 0.15 : 0.04),
-            materialOpacity);
+            Math.Clamp(surfaceOpacity, 0.0, 1.0));
     }
 
     private static Windows.UI.Color ApplySurfaceOpacity(Windows.UI.Color color, double opacity)

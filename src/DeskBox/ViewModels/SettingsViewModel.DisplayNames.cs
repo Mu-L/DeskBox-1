@@ -39,10 +39,10 @@ public partial class SettingsViewModel
     {
         return corner switch
         {
-            CornerDefault => _localizationService.T("Settings.Corner.Default"),
             CornerSquare => _localizationService.T("Settings.Corner.Square"),
+            CornerSmall => _localizationService.T("Settings.Corner.Small"),
             CornerRound => _localizationService.T("Settings.Corner.Round"),
-            _ => _localizationService.T("Settings.Corner.Small")
+            _ => _localizationService.T("Settings.Corner.Round")
         };
     }
 

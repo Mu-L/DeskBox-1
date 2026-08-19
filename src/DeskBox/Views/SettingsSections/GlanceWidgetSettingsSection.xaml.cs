@@ -15,39 +15,215 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 {
     private static readonly string[] DisplayOptions = ["Time", "Date", "Year", "Weekday", "Calendar"];
     private sealed record Option(string Label, object Value);
-    private readonly GlanceWidgetStore _store = GlanceWidgetStore.Shared;
+    private sealed record InstanceOption(string Label, string Id, bool IsEnabled);
+    private GlanceWidgetStore? _store;
     private readonly GlanceImageService _imageService = new();
     private readonly GlanceTraditionalCalendarService _traditionalCalendarService = new();
     private readonly SystemFontCatalogService _fontCatalogService = new();
     private readonly DispatcherTimer _scaleSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(280) };
     private readonly DispatcherTimer _calendarTransparencySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(280) };
     private GlanceWidgetData _settings = new();
+    private string? _selectedWidgetId;
     private IntPtr _ownerWindow;
     private bool _isLoading;
+    private bool _isSectionLoaded;
+    private bool _instanceRefreshQueued;
+    private string _instanceStateSignature = string.Empty;
 
     public GlanceWidgetSettingsSection()
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
         _scaleSaveTimer.Tick += ScaleSaveTimer_Tick;
         _calendarTransparencySaveTimer.Tick += CalendarTransparencySaveTimer_Tick;
+        WidgetDangerActionStyle.Apply(DeleteInstanceMenuItem);
     }
 
     private LocalizationService Localization => App.Current.LocalizationService;
 
     public void SetOwnerWindow(IntPtr ownerWindow) => _ownerWindow = ownerWindow;
 
+    public void SelectWidget(string widgetId)
+    {
+        if (!string.IsNullOrWhiteSpace(widgetId))
+        {
+            _selectedWidgetId = widgetId;
+        }
+    }
+
     public async Task RefreshFromStoreAsync()
     {
-        _settings = await _store.LoadAsync();
-        PopulateOptions();
-        ApplySettingsToControls();
-        UpdateCacheSize();
+        await RefreshInstancesAsync(_selectedWidgetId);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        _isSectionLoaded = true;
+        App.Current.SettingsService.SettingsChanged -= OnAppSettingsChanged;
+        App.Current.SettingsService.SettingsChanged += OnAppSettingsChanged;
         await RefreshFromStoreAsync();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _isSectionLoaded = false;
+        App.Current.SettingsService.SettingsChanged -= OnAppSettingsChanged;
+    }
+
+    private void OnAppSettingsChanged()
+    {
+        if (!_isSectionLoaded ||
+            _instanceRefreshQueued)
+        {
+            return;
+        }
+
+        _instanceRefreshQueued = true;
+        if (!DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    if (!_isSectionLoaded ||
+                        App.Current.WidgetManager is not { } manager)
+                    {
+                        return;
+                    }
+
+                    IReadOnlyList<GlanceWidgetInstanceInfo> instances =
+                        manager.GetGlanceWidgetInstances();
+                    if (!string.Equals(
+                            _instanceStateSignature,
+                            CreateInstanceStateSignature(manager, instances),
+                            StringComparison.Ordinal))
+                    {
+                        await RefreshInstancesAsync(_selectedWidgetId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    App.Log($"[GlanceSettings] Instance state refresh failed: {ex}");
+                }
+                finally
+                {
+                    _instanceRefreshQueued = false;
+                }
+            }))
+        {
+            _instanceRefreshQueued = false;
+        }
+    }
+
+    private async Task RefreshInstancesAsync(string? preferredWidgetId)
+    {
+        UpdateInstanceLocalization();
+        if (App.Current.WidgetManager is not { } manager)
+        {
+            ApplyEmptyInstanceState();
+            return;
+        }
+
+        IReadOnlyList<GlanceWidgetInstanceInfo> instances = manager.GetGlanceWidgetInstances();
+        _instanceStateSignature = CreateInstanceStateSignature(manager, instances);
+        GlanceWidgetInstanceInfo? selected = instances.FirstOrDefault(instance =>
+            string.Equals(instance.Id, preferredWidgetId, StringComparison.Ordinal)) ??
+            instances.FirstOrDefault();
+
+        _isLoading = true;
+        try
+        {
+            var options = instances
+                .Select(instance => new InstanceOption(instance.Name, instance.Id, instance.IsEnabled))
+                .ToList();
+            InstanceComboBox.ItemsSource = options;
+            InstanceComboBox.SelectedItem = options.FirstOrDefault(option =>
+                string.Equals(option.Id, selected?.Id, StringComparison.Ordinal));
+            _selectedWidgetId = selected?.Id;
+
+            bool hasSelection = selected is not null;
+            InstanceSettingsPanel.Visibility = hasSelection ? Visibility.Visible : Visibility.Collapsed;
+            InstanceMoreButton.IsEnabled = hasSelection;
+            LocateInstanceMenuItem.IsEnabled = selected?.IsEnabled == true;
+            DuplicateInstanceMenuItem.IsEnabled = hasSelection;
+            RenameInstanceMenuItem.IsEnabled = hasSelection;
+            DeleteInstanceMenuItem.IsEnabled = hasSelection;
+            InstanceEnabledToggle.IsEnabled = hasSelection && manager.IsGlanceFeatureEnabled;
+            InstanceEnabledToggle.IsOn = selected?.IsEnabled == true;
+            InstanceManagerCard.Description = Localization.Format(
+                "Glance.Instances.Description",
+                instances.Count);
+            if (!manager.IsGlanceFeatureEnabled)
+            {
+                InstanceManagerCard.Description =
+                    $"{InstanceManagerCard.Description} {Localization.T("Glance.Instances.MasterOff")}";
+            }
+
+            if (!hasSelection)
+            {
+                _store = null;
+                _settings = new GlanceWidgetData();
+                return;
+            }
+
+            _store = GlanceWidgetStore.ForWidget(selected!.Id);
+            _settings = await _store.LoadAsync();
+            PopulateOptions();
+            ApplySettingsToControls();
+            UpdateCacheSize();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string CreateInstanceStateSignature(
+        WidgetManager manager,
+        IEnumerable<GlanceWidgetInstanceInfo> instances)
+    {
+        return $"{manager.IsGlanceFeatureEnabled}:" + string.Join(
+            "|",
+            instances.Select(instance =>
+                $"{instance.Id.Length}:{instance.Id}" +
+                $"{instance.Name.Length}:{instance.Name}" +
+                $"{instance.IsEnabled}"));
+    }
+
+    private void ApplyEmptyInstanceState()
+    {
+        _isLoading = true;
+        try
+        {
+            _selectedWidgetId = null;
+            _instanceStateSignature = string.Empty;
+            _store = null;
+            _settings = new GlanceWidgetData();
+            InstanceComboBox.ItemsSource = Array.Empty<InstanceOption>();
+            InstanceSettingsPanel.Visibility = Visibility.Collapsed;
+            InstanceEnabledToggle.IsOn = false;
+            InstanceEnabledToggle.IsEnabled = false;
+            InstanceMoreButton.IsEnabled = false;
+            LocateInstanceMenuItem.IsEnabled = false;
+            DuplicateInstanceMenuItem.IsEnabled = false;
+            RenameInstanceMenuItem.IsEnabled = false;
+            DeleteInstanceMenuItem.IsEnabled = false;
+            InstanceManagerCard.Description = Localization.Format(
+                "Glance.Instances.Description",
+                0);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void UpdateInstanceLocalization()
+    {
+        InstanceComboBox.PlaceholderText = Localization.T("Glance.Instances.Empty");
+        LocateInstanceMenuItem.Text = Localization.T("Glance.Instances.Locate");
+        DuplicateInstanceMenuItem.Text = Localization.T("Glance.Instances.Duplicate");
+        RenameInstanceMenuItem.Text = Localization.T("Common.Rename");
+        DeleteInstanceMenuItem.Text = Localization.T("Common.Delete");
     }
 
     private void PopulateOptions()
@@ -79,12 +255,17 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
         };
         RotationComboBox.ItemsSource = new[]
         {
-            new Option(Localization.T("Glance.Rotation.Manual"), 0),
-            new Option(Localization.T("Glance.Rotation.10Minutes"), 10),
-            new Option(Localization.T("Glance.Rotation.30Minutes"), 30),
-            new Option(Localization.T("Glance.Rotation.1Hour"), 60),
-            new Option(Localization.T("Glance.Rotation.6Hours"), 360),
-            new Option(Localization.T("Glance.Rotation.Daily"), 1440)
+            new Option(Localization.T("Glance.Rotation.Manual"), 0d),
+            new Option(Localization.T("Glance.Rotation.10Seconds"), 10d / 60d),
+            new Option(Localization.T("Glance.Rotation.30Seconds"), 30d / 60d),
+            new Option(Localization.T("Glance.Rotation.60Seconds"), 1d),
+            new Option(Localization.T("Glance.Rotation.2Minutes"), 2d),
+            new Option(Localization.T("Glance.Rotation.5Minutes"), 5d),
+            new Option(Localization.T("Glance.Rotation.10Minutes"), 10d),
+            new Option(Localization.T("Glance.Rotation.30Minutes"), 30d),
+            new Option(Localization.T("Glance.Rotation.1Hour"), 60d),
+            new Option(Localization.T("Glance.Rotation.6Hours"), 360d),
+            new Option(Localization.T("Glance.Rotation.Daily"), 1440d)
         };
         TransitionComboBox.ItemsSource = new[]
         {
@@ -145,6 +326,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private void ApplySettingsToControls()
     {
+        bool wasLoading = _isLoading;
         _isLoading = true;
         try
         {
@@ -161,6 +343,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
             RandomOrderToggle.IsOn = _settings.RandomOrder;
             TimeScaleSlider.Value = _settings.TimeScale;
             CalendarImageTransparencySlider.Value = _settings.CalendarImageMaterialTransparency;
+            ShowChineseFestivalsToggle.IsOn = _settings.ShowChineseFestivals;
             ShowPhotoControlsToggle.IsOn = _settings.ShowPhotoControls;
             UpdateDisplaySelectionSummary();
             UpdateLocalSourceState();
@@ -168,7 +351,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
         }
         finally
         {
-            _isLoading = false;
+            _isLoading = wasLoading;
         }
     }
 
@@ -179,13 +362,173 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async Task SaveAsync(Action<GlanceWidgetData> update)
     {
-        if (_isLoading)
+        GlanceWidgetStore? store = _store;
+        if (_isLoading || store is null)
         {
             return;
         }
 
         update(_settings);
-        await _store.SaveAsync(_settings);
+        await store.SaveAsync(_settings);
+    }
+
+    private async Task FlushPendingSavesAsync()
+    {
+        bool hasPendingSave = _scaleSaveTimer.IsEnabled ||
+            _calendarTransparencySaveTimer.IsEnabled;
+        _scaleSaveTimer.Stop();
+        _calendarTransparencySaveTimer.Stop();
+        if (hasPendingSave && _store is { } store)
+        {
+            await store.SaveAsync(_settings);
+        }
+    }
+
+    private async void InstanceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isLoading ||
+            InstanceComboBox.SelectedItem is not InstanceOption selected ||
+            string.Equals(_selectedWidgetId, selected.Id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await FlushPendingSavesAsync();
+        _selectedWidgetId = selected.Id;
+        await RefreshInstancesAsync(selected.Id);
+    }
+
+    private async void InstanceEnabledToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading ||
+            string.IsNullOrWhiteSpace(_selectedWidgetId) ||
+            App.Current.WidgetManager is not { } manager)
+        {
+            return;
+        }
+
+        await manager.SetGlanceWidgetInstanceEnabledAsync(
+            _selectedWidgetId,
+            InstanceEnabledToggle.IsOn);
+        await RefreshInstancesAsync(_selectedWidgetId);
+    }
+
+    private async void AddInstanceButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (App.Current.WidgetManager is not { } manager)
+        {
+            return;
+        }
+
+        await FlushPendingSavesAsync();
+        GlanceWidgetInstanceInfo created = await manager.CreateGlanceWidgetAsync();
+        await RefreshInstancesAsync(created.Id);
+    }
+
+    private async void LocateInstanceMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_selectedWidgetId) &&
+            App.Current.WidgetManager is { } manager)
+        {
+            await manager.LocateGlanceWidgetAsync(_selectedWidgetId);
+        }
+    }
+
+    private async void DuplicateInstanceMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_selectedWidgetId) ||
+            App.Current.WidgetManager is not { } manager)
+        {
+            return;
+        }
+
+        await FlushPendingSavesAsync();
+        GlanceWidgetInstanceInfo created = await manager.CreateGlanceWidgetAsync(_selectedWidgetId);
+        await RefreshInstancesAsync(created.Id);
+    }
+
+    private async void RenameInstanceMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_selectedWidgetId) ||
+            App.Current.WidgetManager is not { } manager ||
+            XamlRoot is null)
+        {
+            return;
+        }
+
+        GlanceWidgetInstanceInfo? selected = manager.GetGlanceWidgetInstances()
+            .FirstOrDefault(instance =>
+                string.Equals(instance.Id, _selectedWidgetId, StringComparison.Ordinal));
+        if (selected is null)
+        {
+            return;
+        }
+
+        var nameBox = new TextBox
+        {
+            Text = selected.Name,
+            MinWidth = 320,
+            MaxLength = 80,
+            PlaceholderText = Localization.T("Glance.Instances.RenamePlaceholder")
+        };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = Localization.T("Glance.Instances.RenameTitle"),
+            Content = nameBox,
+            PrimaryButtonText = Localization.T("Common.Save"),
+            CloseButtonText = Localization.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Primary
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary ||
+            string.IsNullOrWhiteSpace(nameBox.Text))
+        {
+            return;
+        }
+
+        await manager.RenameWidgetAsync(selected.Id, nameBox.Text);
+        await RefreshInstancesAsync(selected.Id);
+    }
+
+    private async void DeleteInstanceMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_selectedWidgetId) ||
+            App.Current.WidgetManager is not { } manager ||
+            XamlRoot is null)
+        {
+            return;
+        }
+
+        GlanceWidgetInstanceInfo? selected = manager.GetGlanceWidgetInstances()
+            .FirstOrDefault(instance =>
+                string.Equals(instance.Id, _selectedWidgetId, StringComparison.Ordinal));
+        if (selected is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = Localization.Format("Glance.Instances.DeleteTitle", selected.Name),
+            Content = new TextBlock
+            {
+                Text = Localization.T("Glance.Instances.DeleteDescription"),
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = Localization.T("Common.Delete"),
+            CloseButtonText = Localization.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        await FlushPendingSavesAsync();
+        await manager.RemoveGlanceWidgetAsync(selected.Id);
+        _selectedWidgetId = null;
+        await RefreshInstancesAsync(null);
     }
 
     private void DisplayContentDropDown_Click(object sender, RoutedEventArgs e)
@@ -231,7 +574,10 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
         SynchronizeLayoutSelection();
         UpdateDisplaySelectionSummary();
         UpdateCalendarMaterialState();
-        await _store.SaveAsync(_settings);
+        if (_store is { } store)
+        {
+            await store.SaveAsync(_settings);
+        }
     }
 
     private async void LayoutComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -273,8 +619,12 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
         if (TraditionalCalendarComboBox.SelectedItem is Option { Value: GlanceTraditionalCalendarMode mode })
         {
             await SaveAsync(settings => settings.TraditionalCalendarMode = mode);
+            UpdateCalendarMaterialState();
         }
     }
+
+    private async void ShowChineseFestivalsToggle_Toggled(object sender, RoutedEventArgs e)
+        => await SaveAsync(settings => settings.ShowChineseFestivals = ShowChineseFestivalsToggle.IsOn);
 
     private async void BackgroundSourceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -295,7 +645,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void RotationComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (RotationComboBox.SelectedItem is Option { Value: int minutes })
+        if (RotationComboBox.SelectedItem is Option { Value: double minutes })
         {
             await SaveAsync(settings => settings.RotationIntervalMinutes = minutes);
         }
@@ -343,7 +693,10 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
     private async void CalendarTransparencySaveTimer_Tick(object? sender, object e)
     {
         _calendarTransparencySaveTimer.Stop();
-        await _store.SaveAsync(_settings);
+        if (_store is { } store)
+        {
+            await store.SaveAsync(_settings);
+        }
     }
 
     private async void FontComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -375,7 +728,10 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
     private async void ScaleSaveTimer_Tick(object? sender, object e)
     {
         _scaleSaveTimer.Stop();
-        await _store.SaveAsync(_settings);
+        if (_store is { } store)
+        {
+            await store.SaveAsync(_settings);
+        }
     }
 
     private async void ChooseFilesButton_Click(object sender, RoutedEventArgs e)
@@ -395,7 +751,12 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
         _settings.BackgroundSource = GlanceBackgroundSource.LocalFiles;
         _settings.LocalImagePaths = files.Select(file => file.Path).ToList();
-        await _store.SaveAsync(_settings);
+        if (_store is not { } store)
+        {
+            return;
+        }
+
+        await store.SaveAsync(_settings);
         ApplySettingsToControls();
     }
 
@@ -409,7 +770,12 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
         _settings.BackgroundSource = GlanceBackgroundSource.LocalFolder;
         _settings.LocalFolderPath = folder;
-        await _store.SaveAsync(_settings);
+        if (_store is not { } store)
+        {
+            return;
+        }
+
+        await store.SaveAsync(_settings);
         ApplySettingsToControls();
     }
 
@@ -424,7 +790,12 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
             _settings.LocalImagePaths.Clear();
         }
 
-        await _store.SaveAsync(_settings);
+        if (_store is not { } store)
+        {
+            return;
+        }
+
+        await store.SaveAsync(_settings);
         ApplySettingsToControls();
     }
 
@@ -471,6 +842,12 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
     {
         bool calendarVisible = _settings.Layout == GlanceLayoutMode.Calendar && _settings.ShowCalendar;
         TraditionalCalendarCard.Visibility = calendarVisible ? Visibility.Visible : Visibility.Collapsed;
+        bool chineseLunarSelected = _traditionalCalendarService.ResolveMode(
+            _settings.TraditionalCalendarMode,
+            Localization.CurrentCultureName) == GlanceTraditionalCalendarMode.ChineseLunar;
+        ChineseFestivalCard.Visibility = calendarVisible && chineseLunarSelected
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         CalendarMaterialCard.Visibility = calendarVisible ? Visibility.Visible : Visibility.Collapsed;
         CalendarImageTransparencyCard.Visibility = calendarVisible &&
             _settings.CalendarMaterialMode == GlanceCalendarMaterialMode.FollowImage

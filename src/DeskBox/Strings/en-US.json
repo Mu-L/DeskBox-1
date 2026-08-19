@@ -365,7 +365,6 @@
     "Settings.Section.Animation": "Animation",
     "Settings.Corner.Title": "Widget corners",
     "Settings.Corner.Description": "Controls the native DWM corner style for desktop widgets",
-    "Settings.Corner.Default": "System default",
     "Settings.Corner.Square": "Square",
     "Settings.Corner.Small": "Small radius",
     "Settings.Corner.Round": "Large radius",
@@ -567,8 +566,8 @@
     "Settings.Animation.Preset.Standard": "Standard",
     "Settings.Animation.Preset.Emphasized": "Emphasized",
     "Settings.Animation.Preset.Custom": "Custom",
-    "Settings.Opacity.Title": "Background opacity",
-    "Settings.Opacity.Description": "Adjust how much of the background shows through acrylic materials",
+    "Settings.Opacity.Title": "Background transparency",
+    "Settings.Opacity.Description": "Adjust acrylic and solid background transparency; solid can be fully transparent",
     "Settings.IconSize.Title": "Icon size",
     "Settings.TextSize.Title": "Text size",
     "Settings.HorizontalSpacing.Title": "Horizontal spacing",
@@ -2223,6 +2222,19 @@
     ,"Settings.WidgetGroups.DissolveDialog.Confirm": "Dissolve group"
     ,"Settings.WidgetGroups.DissolveDialog.Description": "No content will be deleted. The widgets in this group will become independent widgets again."
     ,"Glance.Title": "Glance"
+    ,"Glance.Instances.Title": "Glance widgets"
+    ,"Glance.Instances.Description": "Manage {0} Glance widget(s) independently"
+    ,"Glance.Instances.MasterOff": "The master switch is off, so every Glance widget is turned off."
+    ,"Glance.Instances.Empty": "No Glance widgets"
+    ,"Glance.Instances.Enable": "Enable this widget"
+    ,"Glance.Instances.Add": "Add Glance widget"
+    ,"Glance.Instances.More": "More actions"
+    ,"Glance.Instances.Locate": "Show on desktop"
+    ,"Glance.Instances.Duplicate": "Duplicate widget"
+    ,"Glance.Instances.RenamePlaceholder": "Enter a widget name"
+    ,"Glance.Instances.RenameTitle": "Rename Glance widget"
+    ,"Glance.Instances.DeleteTitle": "Delete “{0}”?"
+    ,"Glance.Instances.DeleteDescription": "Only this Glance widget and its independent settings will be deleted. Other Glance widgets are not affected."
     ,"WidgetContent.Glance.StatusLabel": "Glance"
     ,"WidgetContent.Glance.StatusDescription": "See your photo, time, and date at a glance"
     ,"Glance.Settings.Title": "Glance"
@@ -2251,6 +2263,8 @@
     ,"Glance.CalendarMaterial.TransparencyDescription": "Affects only the calendar background; 100% is fully transparent"
     ,"Glance.TraditionalCalendar.Title": "Traditional calendar"
     ,"Glance.TraditionalCalendar.Description": "Follow the DeskBox language automatically, choose a calendar, or turn it off"
+    ,"Glance.Festivals.Title": "Chinese traditional festivals"
+    ,"Glance.Festivals.Description": "Show Spring Festival, Mid-Autumn Festival, and others in the lunar date line"
     ,"Glance.TraditionalCalendar.Auto": "Automatic ({0})"
     ,"Glance.TraditionalCalendar.None": "Off"
     ,"Glance.TraditionalCalendar.ChineseLunar": "Chinese lunar"
@@ -2285,6 +2299,11 @@
     ,"Glance.Background.Category.People": "People"
     ,"Glance.Rotation.Title": "Rotation"
     ,"Glance.Rotation.Manual": "Manual"
+    ,"Glance.Rotation.10Seconds": "Every 10 seconds"
+    ,"Glance.Rotation.30Seconds": "Every 30 seconds"
+    ,"Glance.Rotation.60Seconds": "Every 60 seconds"
+    ,"Glance.Rotation.2Minutes": "Every 2 minutes"
+    ,"Glance.Rotation.5Minutes": "Every 5 minutes"
     ,"Glance.Rotation.10Minutes": "Every 10 minutes"
     ,"Glance.Rotation.30Minutes": "Every 30 minutes"
     ,"Glance.Rotation.1Hour": "Every hour"
@@ -2301,8 +2320,9 @@
     ,"Glance.Speed.Fast": "Fast"
     ,"Glance.Speed.Standard": "Standard"
     ,"Glance.Speed.Relaxed": "Relaxed"
-    ,"Glance.Typography.Title": "Typography"
+    ,"Glance.Typography.Title": "Font size"
     ,"Glance.Typography.Font": "Font"
+    ,"Glance.Speed.Title": "Transition speed"
     ,"Glance.Typography.SystemDefault": "System default"
     ,"Glance.Readability.Title": "Readability"
     ,"Glance.Readability.None": "None"

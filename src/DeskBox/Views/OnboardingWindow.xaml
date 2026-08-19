@@ -114,6 +114,14 @@
                 <Setter Property="CornerRadius" Value="14"/>
                 <Setter Property="Padding" Value="14"/>
             </Style>
+            <Style x:Key="FeatureHintBar" TargetType="Border">
+                <Setter Property="MinHeight" Value="48"/>
+                <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="12"/>
+                <Setter Property="Padding" Value="14,9"/>
+            </Style>
 
         </Grid.Resources>
 
@@ -685,14 +693,18 @@
                         <Image Grid.Column="1" Width="38" Height="38" Margin="0,8,4,0" VerticalAlignment="Top" Source="ms-appx:///Assets/deskbox.svg"/>
                     </Grid>
 
-                    <Grid
-                        x:Name="TaskStep5FeatureGrid"
+                    <StackPanel
+                        x:Name="TaskStep5FeatureSection"
                         Width="720"
-                        ColumnDefinitions="*,*,*"
-                        ColumnSpacing="12"
-                        RowDefinitions="Auto,Auto"
-                        RowSpacing="12">
-                        <Border x:Name="TaskStep5TodoCard" Style="{StaticResource FeatureChoiceCard}">
+                        HorizontalAlignment="Center"
+                        Spacing="12">
+                        <Grid
+                            x:Name="TaskStep5FeatureGrid"
+                            ColumnDefinitions="*,*,*"
+                            ColumnSpacing="12"
+                            RowDefinitions="Auto,Auto"
+                            RowSpacing="12">
+                            <Border x:Name="TaskStep5TodoCard" Style="{StaticResource FeatureChoiceCard}">
                             <Grid RowDefinitions="Auto,Auto">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -752,23 +764,36 @@
                                 <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" svc:Localized.Key="Onboarding.Task.Step5.MusicDescription"/>
                             </Grid>
                         </Border>
-                        <Border x:Name="TaskStep5OptionalCard" Grid.Row="1" Grid.Column="2" Style="{StaticResource FeatureChoiceCard}">
+                            <Border x:Name="TaskStep5GlanceCard" Grid.Row="1" Grid.Column="2" Style="{StaticResource FeatureChoiceCard}">
+                                <Grid RowDefinitions="Auto,Auto">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <controls:WidgetTitleIcon IconKind="Glance" Mode="Color" IconSize="16"/>
+                                            <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" svc:Localized.Key="Glance.Title"/>
+                                        </StackPanel>
+                                        <ToggleSwitch Grid.Column="1" x:Name="TaskStep5GlanceToggle" Width="40" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center" OnContent="" OffContent="" Tag="Glance" Toggled="TaskStep5FeatureToggle_Toggled"/>
+                                    </Grid>
+                                    <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" svc:Localized.Key="WidgetContent.Glance.StatusDescription"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                        <Border x:Name="TaskStep5OptionalHint" Style="{StaticResource FeatureHintBar}">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                <Grid Width="36" Height="36">
-                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="10"/>
-                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE946;"/>
+                                <Grid Width="30" Height="30" VerticalAlignment="Center">
+                                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"/>
+                                    <FontIcon HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE946;"/>
                                 </Grid>
                                 <TextBlock
                                     Grid.Column="1"
                                     VerticalAlignment="Center"
-                                    FontSize="11.5"
+                                    FontSize="12"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    LineHeight="17"
+                                    LineHeight="18"
                                     TextWrapping="Wrap"
                                     svc:Localized.Key="Onboarding.Task.Step5.OptionalBody"/>
                             </Grid>
                         </Border>
-                    </Grid>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- ─────────── Step 1: Core Value Overview (3 highlight cards) ─────────── -->

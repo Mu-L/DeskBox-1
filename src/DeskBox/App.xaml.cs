@@ -2157,6 +2157,14 @@ public partial class App : Application
         settingsWindow.ShowSection(sectionTag);
     }
 
+    public void ShowGlanceSettings(string widgetId)
+    {
+        CancelBackgroundMemoryCleanup();
+        var settingsWindow = _settingsWindow ?? CreateSettingsWindow();
+        settingsWindow.ShowWindow();
+        settingsWindow.ShowGlanceSection(widgetId);
+    }
+
     private async Task EnsureInitialFileWidgetSetupAsync(bool isInteractiveLaunch)
     {
         if (WidgetManager is null)

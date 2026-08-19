@@ -226,7 +226,7 @@ public class AppSettings
 
     /// <summary>
     /// Native DWM corner style for widget windows.
-    /// Valid values: <c>"Default"</c>, <c>"Square"</c>, <c>"Small"</c>, <c>"Round"</c>.
+    /// Valid values: <c>"Square"</c>, <c>"Small"</c>, <c>"Round"</c>.
     /// </summary>
     public string WidgetCornerPreference { get; set; } = "Round";
 

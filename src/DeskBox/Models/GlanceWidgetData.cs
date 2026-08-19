@@ -105,12 +105,12 @@ public enum GlanceImageFocus
 }
 
 /// <summary>
-/// Versioned, portable preferences for the singleton Glance widget. Downloaded
-/// images and their catalog deliberately live outside this document.
+/// Versioned, portable preferences for one Glance widget. Downloaded images
+/// and their catalog deliberately live outside this document.
 /// </summary>
 public sealed class GlanceWidgetData
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
 
     public int Version { get; set; } = CurrentVersion;
     public bool ShowTime { get; set; } = true;
@@ -124,7 +124,7 @@ public sealed class GlanceWidgetData
         GlanceOnlineImageCategory.Featured;
     public List<string> LocalImagePaths { get; set; } = [];
     public string? LocalFolderPath { get; set; }
-    public int RotationIntervalMinutes { get; set; } = 30;
+    public double RotationIntervalMinutes { get; set; } = 30;
     public bool RandomOrder { get; set; } = true;
     public GlanceTransitionMode Transition { get; set; } = GlanceTransitionMode.CrossFade;
     public GlanceTransitionSpeed TransitionSpeed { get; set; } = GlanceTransitionSpeed.Standard;
@@ -135,6 +135,7 @@ public sealed class GlanceWidgetData
     public double CalendarImageMaterialTransparency { get; set; } = 0.32;
     public GlanceTraditionalCalendarMode TraditionalCalendarMode { get; set; } =
         GlanceTraditionalCalendarMode.None;
+    public bool ShowChineseFestivals { get; set; } = true;
     public GlanceImageFitMode ImageFit { get; set; } = GlanceImageFitMode.Fill;
     public GlanceImageFocus ImageFocus { get; set; } = GlanceImageFocus.Center;
     public string? TimeFontFamily { get; set; }
@@ -168,10 +169,23 @@ public sealed record GlanceCalendarDay(
     string DayText,
     bool IsCurrentMonth,
     bool IsToday,
-    string TraditionalText = "")
+    string TraditionalText = "",
+    string FestivalText = "")
 {
     public bool HasTraditionalText => !string.IsNullOrWhiteSpace(TraditionalText);
+    public bool HasFestival => !string.IsNullOrWhiteSpace(FestivalText);
+    public bool HasTraditionalTextOnly => HasTraditionalText && !HasFestival;
+    public bool HasSecondaryText => HasFestival || HasTraditionalText;
 }
+
+public sealed record GlanceCalendarDayDecoration(
+    string DayText,
+    string SecondaryText,
+    bool HasSecondaryText,
+    bool IsToday,
+    bool IsFestival,
+    double PrimaryOpacity,
+    double SecondaryOpacity);
 
 public sealed record GlanceCalendarMonth(
     DateOnly Month,

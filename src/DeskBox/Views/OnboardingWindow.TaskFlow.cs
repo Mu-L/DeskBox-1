@@ -167,6 +167,9 @@ public sealed partial class OnboardingWindow
             TaskStep5MusicToggle.IsOn = FeatureWidgetSettings.IsEnabled(
                 _settingsService.Settings,
                 WidgetKind.Music);
+            TaskStep5GlanceToggle.IsOn = FeatureWidgetSettings.IsEnabled(
+                _settingsService.Settings,
+                WidgetKind.Glance);
             _hasInitializedFeatureToggles = true;
         }
         finally

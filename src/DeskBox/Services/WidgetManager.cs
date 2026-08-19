@@ -413,9 +413,9 @@ public sealed partial class WidgetManager
                 () => HideAndCloseFeatureWidgetAsync(WidgetKind.Search)),
             new(
                 WidgetKind.Glance,
-                async _ => await CreateSingletonContentFeatureWidgetAsync(WidgetKind.Glance),
+                CreateOrShowGlanceWidgetsAsync,
                 SetGlanceFeatureWidgetEnabledAsync,
-                () => HideAndCloseFeatureWidgetAsync(WidgetKind.Glance))
+                () => CloseLoadedFeatureWidgetWindows(WidgetKind.Glance))
         ];
 
         return handlers.ToDictionary(handler => handler.WidgetKind);
@@ -580,7 +580,8 @@ public sealed partial class WidgetManager
     {
         RepairLegacyContentFeatureFileShells();
 
-        // Dedup feature widgets: each kind should only have one config
+        // Dedup singleton feature widgets. Glance intentionally supports
+        // multiple independently configured instances.
         DeduplicateFeatureWidgets();
         NormalizeWidgetGroupsForRuntime();
 
@@ -729,6 +730,9 @@ public sealed partial class WidgetManager
                 break;
             case WidgetKind.Music:
                 await CreateSingletonContentFeatureWidgetAsync(widgetKind);
+                break;
+            case WidgetKind.Glance:
+                await CreateGlanceWidgetAsync();
                 break;
             default:
                 if (IsContentFeatureWidgetKind(widgetKind))
@@ -1193,7 +1197,21 @@ public sealed partial class WidgetManager
         ClearWidgetGroupTransientState(widgetId);
         if (config is not null && FeatureWidgetSettings.IsFeatureWidget(config.WidgetKind))
         {
-            SetFeatureWidgetEnabledState(config.WidgetKind, false);
+            if (config.WidgetKind == WidgetKind.Glance)
+            {
+                await GlanceWidgetStore.DeleteForWidgetAsync(config.Id);
+                bool hasRemainingGlanceWidget = _settingsService.Settings.Widgets.Any(widget =>
+                    widget.WidgetKind == WidgetKind.Glance &&
+                    !IsDeleted(widget.Id));
+                if (!hasRemainingGlanceWidget)
+                {
+                    SetFeatureWidgetEnabledState(WidgetKind.Glance, false);
+                }
+            }
+            else
+            {
+                SetFeatureWidgetEnabledState(config.WidgetKind, false);
+            }
         }
         await _settingsService.SaveAsync();
         _deletedWidgetIds.Remove(widgetId);

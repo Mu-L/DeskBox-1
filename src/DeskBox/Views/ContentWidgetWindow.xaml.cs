@@ -580,6 +580,18 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         return WidgetMaterialVisualCalculator.BuildContentTintColor(isDark, accentColor);
     }
 
+    protected override Windows.UI.Color BuildSolidColorBackdropTintColor(
+        bool isDark,
+        double surfaceOpacity)
+    {
+        var accentColor = App.Current.ThemeService?.GetEffectiveAccentColor()
+            ?? AccentColorHelper.DefaultAccentColor;
+        return WidgetMaterialVisualCalculator.BuildContentSolidSurfaceColor(
+            isDark,
+            accentColor,
+            surfaceOpacity);
+    }
+
     // ── Virtual hooks ──────────────────────────────────────────
 
     protected override void ApplySurfaceStyle()
@@ -591,7 +603,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         string materialType = SettingsService.Settings.WidgetMaterialType;
 
         // Simplified layering: only apply surface color overlay for Solid mode.
-        if (materialType is SettingsService.WidgetMaterialTypeSolid)
+        if (materialType is SettingsService.WidgetMaterialTypeSolid && !IsSolidColorBackdropActive)
         {
             var surfaceColor = WidgetMaterialVisualCalculator.BuildContentSolidSurfaceColor(
                 isDark,

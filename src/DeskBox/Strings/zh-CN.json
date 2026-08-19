@@ -552,7 +552,7 @@
     "Onboarding.Step4.QuickCaptureDescription": "快速记录文本、链接，可自动捕获剪贴板",
     "Settings.Music.DisplayMode.Description": "自动适应格子尺寸，或强制使用封面、控制布局",
     "QuickCapture.ClearRecent": "清空最近",
-    "Widget.FeatureWidget.DisableConfirmTitle": "关闭“{0}”",
+    "Widget.FeatureWidget.DisableConfirmTitle": "关闭格子“{0}”",
     "Settings.Todo.TabStyle.Description": "选择待办顶部筛选标签的显示方式",
     "QuickCapture.OpenImageFailed": "无法打开图片",
     "Settings.AutoStart.Title": "开机自动启动",
@@ -1290,7 +1290,6 @@
     "Onboarding.Scene.Startup": "后台启动",
     "Settings.FileStacks.Status.Custom": "自定义格式 · {0} 条规则",
     "Settings.Dialog.MigrateFailedBody": "默认收纳路径没有更新。\n\n{0}",
-    "Settings.Corner.Default": "跟随系统",
     "QuickCapture.CopyText": "复制图片文字",
     "Onboarding.Scene.MusicTrack": "正在播放",
     "Weather.Unit.Fahrenheit": "华氏度",
@@ -1305,7 +1304,7 @@
     "Settings.FileStacks.Custom.Preview.Loading": "正在读取文件格子内容…",
     "QuickCapture.Detail.ReplaceImage": "替换图片",
     "Todo.Undo.ClearedCompleted": "已清除 {0} 个已完成任务",
-    "Settings.Opacity.Description": "调整亚克力材质的背景透视程度",
+    "Settings.Opacity.Description": "调整亚克力和纯色材质的背景透明程度，纯色可设为全透明",
     "Onboarding.Scene.ClipboardContent": "剪贴板内容",
     "Widget.MoveBackToDesktop": "移回桌面",
     "Settings.DataBackup.SuccessTitle": "应用数据已备份",
@@ -2223,6 +2222,19 @@
     ,"Settings.WidgetGroups.DissolveDialog.Confirm": "解散格子组"
     ,"Settings.WidgetGroups.DissolveDialog.Description": "格子内容不会删除，组内格子会恢复为独立格子。"
     ,"Glance.Title": "时光"
+    ,"Glance.Instances.Title": "时光格子"
+    ,"Glance.Instances.Description": "共 {0} 个时光格子，可在这里分别设置"
+    ,"Glance.Instances.MasterOff": "总开关已关闭，所有时光格子均为关闭状态。"
+    ,"Glance.Instances.Empty": "暂无时光格子"
+    ,"Glance.Instances.Enable": "启用此格子"
+    ,"Glance.Instances.Add": "新增时光格子"
+    ,"Glance.Instances.More": "更多操作"
+    ,"Glance.Instances.Locate": "在桌面上显示"
+    ,"Glance.Instances.Duplicate": "复制格子"
+    ,"Glance.Instances.RenamePlaceholder": "输入格子名称"
+    ,"Glance.Instances.RenameTitle": "重命名时光格子"
+    ,"Glance.Instances.DeleteTitle": "删除“{0}”？"
+    ,"Glance.Instances.DeleteDescription": "只删除这个时光格子及其独立设置，其他时光格子不受影响。"
     ,"WidgetContent.Glance.StatusLabel": "时光"
     ,"WidgetContent.Glance.StatusDescription": "在桌面上一眼查看照片、时间与日期"
     ,"Glance.Settings.Title": "时光"
@@ -2251,6 +2263,8 @@
     ,"Glance.CalendarMaterial.TransparencyDescription": "仅调整日历背景，100% 时完全透明"
     ,"Glance.TraditionalCalendar.Title": "传统历法"
     ,"Glance.TraditionalCalendar.Description": "自动跟随 DeskBox 语言，也可手动选择或关闭"
+    ,"Glance.Festivals.Title": "中国传统节日"
+    ,"Glance.Festivals.Description": "在农历日期位置优先显示春节、中秋等传统节日"
     ,"Glance.TraditionalCalendar.Auto": "自动（{0}）"
     ,"Glance.TraditionalCalendar.None": "关闭"
     ,"Glance.TraditionalCalendar.ChineseLunar": "中国农历"
@@ -2285,6 +2299,11 @@
     ,"Glance.Background.Category.People": "人文"
     ,"Glance.Rotation.Title": "轮换"
     ,"Glance.Rotation.Manual": "手动"
+    ,"Glance.Rotation.10Seconds": "每 10 秒"
+    ,"Glance.Rotation.30Seconds": "每 30 秒"
+    ,"Glance.Rotation.60Seconds": "每 60 秒"
+    ,"Glance.Rotation.2Minutes": "每 2 分钟"
+    ,"Glance.Rotation.5Minutes": "每 5 分钟"
     ,"Glance.Rotation.10Minutes": "每 10 分钟"
     ,"Glance.Rotation.30Minutes": "每 30 分钟"
     ,"Glance.Rotation.1Hour": "每小时"
@@ -2301,8 +2320,9 @@
     ,"Glance.Speed.Fast": "快速"
     ,"Glance.Speed.Standard": "标准"
     ,"Glance.Speed.Relaxed": "舒缓"
-    ,"Glance.Typography.Title": "字体"
+    ,"Glance.Typography.Title": "字体大小"
     ,"Glance.Typography.Font": "字体"
+    ,"Glance.Speed.Title": "切换速度"
     ,"Glance.Typography.SystemDefault": "系统默认"
     ,"Glance.Readability.Title": "可读性"
     ,"Glance.Readability.None": "无"

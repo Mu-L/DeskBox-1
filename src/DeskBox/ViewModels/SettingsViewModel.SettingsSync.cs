@@ -67,9 +67,9 @@ public partial class SettingsViewModel
 
             WidgetOpacity = settings.WidgetOpacity;
             WidgetMaterialIntensity = settings.WidgetMaterialIntensity;
-            SelectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerDefault or CornerSquare or CornerSmall or CornerRound
+            SelectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerSquare or CornerSmall or CornerRound
                 ? settings.WidgetCornerPreference
-                : CornerSmall;
+                : CornerRound;
             SelectedWidgetMaterialType = settings.WidgetMaterialType is MaterialMica or MaterialMicaAlt or MaterialAcrylic or MaterialAcrylicBase or MaterialSolid
                 ? settings.WidgetMaterialType
                 : MaterialAcrylic;

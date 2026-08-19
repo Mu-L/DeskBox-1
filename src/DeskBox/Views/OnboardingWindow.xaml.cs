@@ -235,7 +235,7 @@ public sealed partial class OnboardingWindow : Window
 
         TaskStep5FeatureGrid.ColumnDefinitions.Clear();
         TaskStep5FeatureGrid.RowDefinitions.Clear();
-        TaskStep5FeatureGrid.Width = compact
+        TaskStep5FeatureSection.Width = compact
             ? Math.Min(720, Math.Max(520, availableWidth - 56))
             : 720;
         int columnCount = compact ? 2 : 3;
@@ -263,7 +263,7 @@ public sealed partial class OnboardingWindow : Window
             TaskStep5SearchCard,
             TaskStep5WeatherCard,
             TaskStep5MusicCard,
-            TaskStep5OptionalCard
+            TaskStep5GlanceCard
         ];
         for (int index = 0; index < cards.Length; index++)
         {
@@ -347,6 +347,7 @@ public sealed partial class OnboardingWindow : Window
         TaskStep5SearchToggle.IsEnabled = false;
         TaskStep5WeatherToggle.IsEnabled = false;
         TaskStep5MusicToggle.IsEnabled = false;
+        TaskStep5GlanceToggle.IsEnabled = false;
         NextButton.IsEnabled = false;
         BackButton.IsEnabled = false;
         await _featureWidgetSelectionUpdateTask;
@@ -788,7 +789,8 @@ public sealed partial class OnboardingWindow : Window
             TaskStep5SearchCard,
             TaskStep5WeatherCard,
             TaskStep5MusicCard,
-            TaskStep5OptionalCard
+            TaskStep5GlanceCard,
+            TaskStep5OptionalHint
         ];
         for (int index = 0; index < cards.Length; index++)
         {

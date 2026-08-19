@@ -427,7 +427,6 @@ public abstract partial class WidgetWindowBase
     {
         int cornerPreference = SettingsService.Settings.WidgetCornerPreference switch
         {
-            SettingsService.WidgetCornerPreferenceDefault => Win32Helper.DWMWCP_DEFAULT,
             SettingsService.WidgetCornerPreferenceSquare => Win32Helper.DWMWCP_DONOTROUND,
             SettingsService.WidgetCornerPreferenceSmall => Win32Helper.DWMWCP_ROUNDSMALL,
             _ => Win32Helper.DWMWCP_ROUND

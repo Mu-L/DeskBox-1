@@ -84,6 +84,7 @@ public sealed class GlanceWidgetContextMenuTests
             using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
             Assert.True(document.RootElement.TryGetProperty("Widget.Settings.Glance", out _), path);
             Assert.True(document.RootElement.TryGetProperty("Glance.Display.Year", out _), path);
+            Assert.True(document.RootElement.TryGetProperty("Glance.Speed.Title", out _), path);
         }
     }
 
@@ -99,5 +100,8 @@ public sealed class GlanceWidgetContextMenuTests
         Assert.Equal(
             "杂志式",
             document.RootElement.GetProperty("Glance.Layout.Editorial").GetString());
+        Assert.Equal(
+            "字体大小",
+            document.RootElement.GetProperty("Glance.Typography.Title").GetString());
     }
 }

@@ -68,15 +68,22 @@ internal static class WidgetMaterialVisualCalculator
             overlayMix: isDark ? 0.04 : 0.08);
     }
 
+    public static Windows.UI.Color BuildMicaFallbackColor(bool isDark, bool useAlt)
+    {
+        return useAlt
+            ? isDark
+                ? ColorHelper.FromArgb(0xFF, 0x16, 0x18, 0x1D)
+                : ColorHelper.FromArgb(0xFF, 0xE8, 0xEA, 0xEF)
+            : isDark
+                ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
+                : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+    }
+
     public static Windows.UI.Color BuildContentSolidSurfaceColor(
         bool isDark,
         Windows.UI.Color accentColor,
         double surfaceOpacity)
     {
-        double materialOpacity = isDark
-            ? Math.Clamp(surfaceOpacity * 0.78, 0.10, 0.82)
-            : Math.Clamp(surfaceOpacity * 0.78, 0.0, 0.78);
-
         return ApplySurfaceOpacity(
             BuildAccentSurfaceColor(
                 isDark,
@@ -86,26 +93,7 @@ internal static class WidgetMaterialVisualCalculator
                     : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
                 accentMix: 0.18,
                 overlayMix: isDark ? 0.15 : 0.04),
-            materialOpacity);
-    }
-
-    public static Windows.UI.Color BuildEmbeddedMicaTintOverlayColor(
-        bool isDark,
-        Windows.UI.Color accentColor,
-        bool useAlt,
-        double materialIntensity)
-    {
-        WidgetMaterialOpacityProfile profile = CalculateMica(
-            isDark,
-            useAlt,
-            materialIntensity);
-        // SystemBackdropElement exposes the Mica kind but not the controller
-        // tint properties used by widget windows. Reapply the exact same tint
-        // color and intensity curve as the host controller so the embedded
-        // calendar responds to Mica/Mica Alt concentration changes in lockstep
-        // with every other widget instead of using a second approximation.
-        Windows.UI.Color tintColor = BuildContentTintColor(isDark, accentColor);
-        return ApplySurfaceOpacity(tintColor, profile.TintOpacity);
+            Math.Clamp(surfaceOpacity, 0.0, 1.0));
     }
 
     public static WidgetMaterialGradientProfile BuildImagePaletteGradient(

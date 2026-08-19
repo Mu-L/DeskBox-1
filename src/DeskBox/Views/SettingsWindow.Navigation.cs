@@ -394,6 +394,12 @@ public sealed partial class SettingsWindow
         NavigateToSettingsSection(sectionTag);
     }
 
+    public void ShowGlanceSection(string widgetId)
+    {
+        GlanceSettingsSection.SelectWidget(widgetId);
+        NavigateToSettingsSection("GlanceSettings");
+    }
+
     public void RefreshUpdateStateFromService()
     {
         ViewModel.RefreshCachedUpdateState();

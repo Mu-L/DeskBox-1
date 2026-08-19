@@ -11,6 +11,11 @@ using Microsoft.UI.Xaml;
 
 namespace DeskBox.Services;
 
+public sealed record GlanceWidgetInstanceInfo(
+    string Id,
+    string Name,
+    bool IsEnabled);
+
 /// <summary>
 /// Partial class containing FeatureWidgets logic for WidgetManager.
 /// </summary>
@@ -282,6 +287,192 @@ public sealed partial class WidgetManager
         await _settingsService.SaveAsync();
 
         return await CreateContentWidgetFromConfigAsync(config, revealAfterCreate: true);
+    }
+
+    public IReadOnlyList<GlanceWidgetInstanceInfo> GetGlanceWidgetInstances()
+    {
+        bool featureEnabled = GetFeatureWidgetEnabledState(WidgetKind.Glance);
+        return _settingsService.Settings.Widgets
+            .Where(widget => widget.WidgetKind == WidgetKind.Glance && !IsDeleted(widget.Id))
+            .Select(widget => new GlanceWidgetInstanceInfo(
+                widget.Id,
+                widget.Name,
+                featureEnabled && !widget.IsDisabled))
+            .ToList();
+    }
+
+    public bool IsGlanceFeatureEnabled =>
+        GetFeatureWidgetEnabledState(WidgetKind.Glance);
+
+    public async Task<GlanceWidgetInstanceInfo> CreateGlanceWidgetAsync(
+        string? sourceWidgetId = null)
+    {
+        if (!HasUiThreadAccess())
+        {
+            return await RunOnUiThreadAsync(() => CreateGlanceWidgetAsync(sourceWidgetId));
+        }
+
+        WidgetConfig? sourceConfig = string.IsNullOrWhiteSpace(sourceWidgetId)
+            ? null
+            : _settingsService.Settings.Widgets.FirstOrDefault(widget =>
+                widget.WidgetKind == WidgetKind.Glance &&
+                string.Equals(widget.Id, sourceWidgetId, StringComparison.Ordinal) &&
+                !IsDeleted(widget.Id));
+        if (!string.IsNullOrWhiteSpace(sourceWidgetId) && sourceConfig is null)
+        {
+            throw new InvalidOperationException($"Glance widget '{sourceWidgetId}' was not found.");
+        }
+
+        bool featureEnabled = GetFeatureWidgetEnabledState(WidgetKind.Glance);
+        WidgetConfig? placementSource = sourceConfig ?? _settingsService.Settings.Widgets
+            .LastOrDefault(widget => widget.WidgetKind == WidgetKind.Glance && !IsDeleted(widget.Id));
+        var config = new WidgetConfig
+        {
+            Name = GetUniqueGlanceWidgetName(),
+            IsDefaultTitle = placementSource is null,
+            WidgetKind = WidgetKind.Glance,
+            BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+            X = (placementSource?.X ?? 100) + (placementSource is null ? 0 : 24),
+            Y = (placementSource?.Y ?? 100) + (placementSource is null ? 0 : 24),
+            Width = sourceConfig?.Width ?? 360,
+            Height = sourceConfig?.Height ?? 260,
+            ViewMode = sourceConfig?.ViewMode ?? ViewMode.Icon,
+            IsVisible = featureEnabled,
+            IsDisabled = !featureEnabled,
+            Metadata = sourceConfig?.Metadata.ToDictionary(
+                entry => entry.Key,
+                entry => entry.Value,
+                StringComparer.Ordinal) ?? []
+        };
+        ApplyDefaultFeatureWidgetChromeMode(config, WidgetKind.Glance);
+
+        GlanceWidgetData data = sourceConfig is null
+            ? new GlanceWidgetData()
+            : await GlanceWidgetStore.ForWidget(sourceConfig.Id).LoadAsync();
+        await GlanceWidgetStore.ForWidget(config.Id).SaveAsync(data);
+
+        _settingsService.Settings.Widgets.Add(config);
+        await _settingsService.SaveAsync();
+
+        if (featureEnabled)
+        {
+            await CreateContentWidgetFromConfigAsync(config, revealAfterCreate: true);
+        }
+
+        App.Log(
+            $"[WidgetManager] Glance instance created id={config.Id} " +
+            $"source={sourceConfig?.Id ?? "default"} enabled={featureEnabled}");
+        return new GlanceWidgetInstanceInfo(config.Id, config.Name, featureEnabled);
+    }
+
+    public async Task SetGlanceWidgetInstanceEnabledAsync(string widgetId, bool enabled)
+    {
+        if (!HasUiThreadAccess())
+        {
+            await RunOnUiThreadAsync(() => SetGlanceWidgetInstanceEnabledAsync(widgetId, enabled));
+            return;
+        }
+
+        WidgetConfig? config = _settingsService.Settings.Widgets.FirstOrDefault(widget =>
+            widget.WidgetKind == WidgetKind.Glance &&
+            string.Equals(widget.Id, widgetId, StringComparison.Ordinal) &&
+            !IsDeleted(widget.Id));
+        if (config is null)
+        {
+            return;
+        }
+
+        if (enabled && !GetFeatureWidgetEnabledState(WidgetKind.Glance))
+        {
+            App.Log($"[WidgetManager] Ignored Glance instance toggle while master is off id={widgetId}");
+            return;
+        }
+
+        if (enabled)
+        {
+            config.IsDisabled = false;
+            config.IsVisible = true;
+            await _settingsService.SaveAsync();
+            await ShowWidgetAsync(config.Id, reveal: true, autoRestoreOnReveal: false);
+        }
+        else
+        {
+            await RemoveWidgetFromGroupAsync(config.Id, revealStandalone: false);
+            config.IsDisabled = true;
+            config.IsVisible = false;
+            if (_contentWidgets.TryGetValue(config.Id, out ContentWidgetWindow? window))
+            {
+                CloseFeatureWidgetInstance(window);
+            }
+
+            await _settingsService.SaveAsync();
+        }
+
+        App.Log($"[WidgetManager] Glance instance enabled={enabled} id={widgetId}");
+    }
+
+    public async Task<bool> LocateGlanceWidgetAsync(string widgetId)
+    {
+        if (!GetFeatureWidgetEnabledState(WidgetKind.Glance))
+        {
+            return false;
+        }
+
+        return await ShowWidgetAsync(widgetId, reveal: true, autoRestoreOnReveal: false);
+    }
+
+    public Task RemoveGlanceWidgetAsync(string widgetId) => RemoveWidgetAsync(widgetId);
+
+    private string GetUniqueGlanceWidgetName()
+    {
+        string baseName = GetDefaultFeatureWidgetTitle(
+            WidgetKind.Glance,
+            new WidgetContentFactory(_localizationService).GetDescriptor(WidgetKind.Glance));
+        HashSet<string> existingNames = _settingsService.Settings.Widgets
+            .Where(widget => widget.WidgetKind == WidgetKind.Glance && !IsDeleted(widget.Id))
+            .Select(widget => widget.Name)
+            .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        if (!existingNames.Contains(baseName))
+        {
+            return baseName;
+        }
+
+        for (int index = 2; ; index++)
+        {
+            string candidate = $"{baseName} {index}";
+            if (!existingNames.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    private async Task<IDesktopWidgetWindow?> CreateOrShowGlanceWidgetsAsync(bool reveal)
+    {
+        SetFeatureWidgetEnabledState(WidgetKind.Glance, true);
+        List<WidgetConfig> configs = _settingsService.Settings.Widgets
+            .Where(widget => widget.WidgetKind == WidgetKind.Glance && !IsDeleted(widget.Id))
+            .ToList();
+        if (configs.Count == 0)
+        {
+            GlanceWidgetInstanceInfo created = await CreateGlanceWidgetAsync();
+            return _contentWidgets.GetValueOrDefault(created.Id);
+        }
+
+        ApplyGlanceMasterState(configs, enabled: true);
+
+        await _settingsService.SaveAsync();
+        if (reveal)
+        {
+            foreach (WidgetConfig config in configs)
+            {
+                await ShowWidgetAsync(config.Id, reveal: true, autoRestoreOnReveal: false);
+            }
+        }
+
+        return configs
+            .Select(config => _contentWidgets.GetValueOrDefault(config.Id))
+            .FirstOrDefault(window => window is not null);
     }
 
     private void RestoreDeletedQuickCaptureConfigs()
@@ -591,7 +782,7 @@ public sealed partial class WidgetManager
 
         foreach (var config in _settingsService.Settings.Widgets.ToList())
         {
-            if (config.WidgetKind == WidgetKind.File) continue;
+            if (!RequiresSingletonFeatureWidgetConfig(config.WidgetKind)) continue;
             if (IsDeleted(config.Id)) continue;
 
             if (!seen.Add(config.WidgetKind))
@@ -610,6 +801,12 @@ public sealed partial class WidgetManager
             }
             _settingsService.SaveDebounced();
         }
+    }
+
+    internal static bool RequiresSingletonFeatureWidgetConfig(WidgetKind kind)
+    {
+        return FeatureWidgetSettings.IsFeatureWidget(kind) &&
+               kind != WidgetKind.Glance;
     }
 
     internal IDesktopWidgetWindow? GetFeatureWidget(WidgetKind kind)
@@ -717,7 +914,10 @@ public sealed partial class WidgetManager
             }
             else if (kind == WidgetKind.Glance)
             {
-                await GlanceWidgetStore.Shared.ResetAsync();
+                foreach (WidgetConfig glanceConfig in configs)
+                {
+                    await GlanceWidgetStore.ForWidget(glanceConfig.Id).ResetAsync();
+                }
                 await new GlanceImageService().ClearCacheAsync();
             }
 
@@ -728,6 +928,10 @@ public sealed partial class WidgetManager
             foreach (var duplicate in configs.Where(widget => !ReferenceEquals(widget, config)).ToList())
             {
                 _settingsService.Settings.Widgets.Remove(duplicate);
+                if (kind == WidgetKind.Glance)
+                {
+                    await GlanceWidgetStore.DeleteForWidgetAsync(duplicate.Id);
+                }
                 if (!_settingsService.Settings.DeletedWidgetIds.Contains(duplicate.Id))
                 {
                     _settingsService.Settings.DeletedWidgetIds.Add(duplicate.Id);
@@ -758,6 +962,10 @@ public sealed partial class WidgetManager
             else if (kind == WidgetKind.Todo)
             {
                 await SeedTodoGuideAsync(config);
+            }
+            else if (kind == WidgetKind.Glance)
+            {
+                await GlanceWidgetStore.ForWidget(config.Id).ResetAsync();
             }
 
             await _settingsService.SaveAsync();
@@ -799,7 +1007,7 @@ public sealed partial class WidgetManager
         (config.Width, config.Height) = GetDefaultFeatureWidgetSize(kind);
         config.ViewMode = ViewMode.Icon;
         config.IsVisible = isEnabled;
-        config.IsDisabled = false;
+        config.IsDisabled = kind == WidgetKind.Glance && !isEnabled;
         config.IsPositionLocked = false;
         config.IsSizeLocked = false;
         config.Metadata ??= [];
@@ -946,7 +1154,39 @@ public sealed partial class WidgetManager
 
     private Task SetGlanceFeatureWidgetEnabledAsync(bool enabled, bool reveal)
     {
-        return SetContentFeatureWidgetEnabledAsync(WidgetKind.Glance, enabled, reveal);
+        return SetGlanceFeatureWidgetEnabledCoreAsync(enabled, reveal);
+    }
+
+    private async Task SetGlanceFeatureWidgetEnabledCoreAsync(bool enabled, bool reveal)
+    {
+        if (enabled)
+        {
+            await CreateOrShowGlanceWidgetsAsync(reveal);
+            return;
+        }
+
+        await DetachFeatureWidgetsFromGroupsAsync(WidgetKind.Glance);
+        List<WidgetConfig> configs = _settingsService.Settings.Widgets
+            .Where(widget =>
+                widget.WidgetKind == WidgetKind.Glance &&
+                !IsDeleted(widget.Id))
+            .ToList();
+        ApplyGlanceMasterState(configs, enabled: false);
+
+        CloseLoadedFeatureWidgetWindows(WidgetKind.Glance);
+        SetFeatureWidgetEnabledState(WidgetKind.Glance, false);
+        await _settingsService.SaveAsync();
+    }
+
+    internal static void ApplyGlanceMasterState(
+        IEnumerable<WidgetConfig> configs,
+        bool enabled)
+    {
+        foreach (WidgetConfig config in configs)
+        {
+            config.IsVisible = enabled;
+            config.IsDisabled = !enabled;
+        }
     }
 
     private bool GetFeatureWidgetEnabledState(WidgetKind? kind)

@@ -862,7 +862,7 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
     ];
     public string[] AvailableLanguageDisplayNames => _cachedLanguageDisplayNames ??= AvailableLanguages.Select(_localizationService.GetLanguageDisplayName).ToArray();
     public string[] AvailableWidgetCornerPreferences { get; } =
-        [CornerDefault, CornerSmall, CornerRound, CornerSquare];
+        [CornerRound, CornerSmall, CornerSquare];
     public string[] AvailableWidgetCornerPreferenceDisplayNames => _cachedWidgetCornerPreferenceDisplayNames ??= AvailableWidgetCornerPreferences.Select(GetCornerDisplayName).ToArray();
 
     public string[] AvailableWidgetMaterialTypes { get; } =

@@ -156,9 +156,9 @@ public partial class SettingsViewModel
                 return;
             }
 
-            _settingsService.Settings.WidgetCornerPreference = value is CornerDefault or CornerSquare or CornerSmall or CornerRound
+            _settingsService.Settings.WidgetCornerPreference = value is CornerSquare or CornerSmall or CornerRound
                 ? value
-                : SettingsService.WidgetCornerPreferenceSmall;
+                : SettingsService.WidgetCornerPreferenceRound;
             _settingsService.SaveDebounced();
             OnPropertyChanged(nameof(SelectedWidgetCornerPreferenceText));
         }
@@ -186,17 +186,7 @@ public partial class SettingsViewModel
                 ? value
                 : SettingsService.WidgetMaterialTypeAcrylic;
 
-            bool forcedSolidOpacity =
-                _settingsService.Settings.WidgetMaterialType == MaterialSolid &&
-                Math.Abs(WidgetOpacity - SettingsService.MaxWidgetOpacity) > 0.0001;
-            if (forcedSolidOpacity)
-            {
-                WidgetOpacity = SettingsService.MaxWidgetOpacity;
-            }
-            else
-            {
-                _settingsService.RequestAppearancePreview();
-            }
+            _settingsService.RequestAppearancePreview();
 
             _settingsService.SaveDebounced();
             OnPropertyChanged(nameof(SelectedWidgetMaterialTypeText));

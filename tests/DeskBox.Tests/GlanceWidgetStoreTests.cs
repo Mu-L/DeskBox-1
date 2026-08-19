@@ -26,11 +26,12 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         Assert.Equal(GlanceLayoutMode.Centered, data.Layout);
         Assert.Equal(GlanceBackgroundSource.Bing, data.BackgroundSource);
         Assert.Equal(GlanceOnlineImageCategory.Featured, data.OnlineImageCategory);
-        Assert.Equal(30, data.RotationIntervalMinutes);
+        Assert.Equal(30d, data.RotationIntervalMinutes);
         Assert.Equal(GlanceTransitionMode.CrossFade, data.Transition);
         Assert.Equal(GlanceCalendarMaterialMode.FollowSystem, data.CalendarMaterialMode);
         Assert.Equal(0.32, data.CalendarImageMaterialTransparency, precision: 2);
         Assert.Equal(GlanceTraditionalCalendarMode.None, data.TraditionalCalendarMode);
+        Assert.True(data.ShowChineseFestivals);
         Assert.True(data.ShowPhotoControls);
     }
 
@@ -82,7 +83,7 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         Assert.Single(reloaded.LocalImagePaths);
         Assert.Equal(GlanceOnlineImageCategory.Astronomy, reloaded.OnlineImageCategory);
         Assert.Equal(@"C:\Pictures\one.jpg", reloaded.LocalImagePaths[0]);
-        Assert.Equal(30, reloaded.RotationIntervalMinutes);
+        Assert.Equal(30d, reloaded.RotationIntervalMinutes);
         Assert.Equal(1.35, reloaded.TimeScale);
         Assert.False(reloaded.ShowPhotoControls);
     }
@@ -99,6 +100,28 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         Assert.True(second.ShowTime);
     }
 
+    [Theory]
+    [InlineData(0d)]
+    [InlineData(10d / 60d)]
+    [InlineData(30d / 60d)]
+    [InlineData(1d)]
+    [InlineData(2d)]
+    [InlineData(5d)]
+    [InlineData(10d)]
+    [InlineData(30d)]
+    public async Task SaveAsync_PreservesSupportedShortRotationIntervals(double intervalMinutes)
+    {
+        var store = new GlanceWidgetStore(_tempRoot);
+        await store.SaveAsync(new GlanceWidgetData
+        {
+            RotationIntervalMinutes = intervalMinutes
+        });
+
+        GlanceWidgetData reloaded = await new GlanceWidgetStore(_tempRoot).LoadAsync();
+
+        Assert.Equal(intervalMinutes, reloaded.RotationIntervalMinutes, precision: 6);
+    }
+
     [Fact]
     public async Task SaveAsync_PreservesImageMaterialAndClampsTransparency()
     {
@@ -107,7 +130,8 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         {
             CalendarMaterialMode = GlanceCalendarMaterialMode.FollowImage,
             CalendarImageMaterialTransparency = 4,
-            TraditionalCalendarMode = GlanceTraditionalCalendarMode.Hebrew
+            TraditionalCalendarMode = GlanceTraditionalCalendarMode.Hebrew,
+            ShowChineseFestivals = false
         });
 
         GlanceWidgetData reloaded = await new GlanceWidgetStore(_tempRoot).LoadAsync();
@@ -115,6 +139,39 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         Assert.Equal(GlanceCalendarMaterialMode.FollowImage, reloaded.CalendarMaterialMode);
         Assert.Equal(1, reloaded.CalendarImageMaterialTransparency);
         Assert.Equal(GlanceTraditionalCalendarMode.Hebrew, reloaded.TraditionalCalendarMode);
+        Assert.False(reloaded.ShowChineseFestivals);
+    }
+
+    [Fact]
+    public async Task PerWidgetStores_KeepPreferencesIndependent()
+    {
+        var first = new GlanceWidgetStore(_tempRoot, "first-widget");
+        var second = new GlanceWidgetStore(_tempRoot, "second-widget");
+
+        await first.SaveAsync(new GlanceWidgetData
+        {
+            ShowTime = false,
+            BackgroundSource = GlanceBackgroundSource.LocalFiles,
+            LocalImagePaths = [@"C:\Pictures\first.jpg"]
+        });
+        await second.SaveAsync(new GlanceWidgetData
+        {
+            ShowTime = true,
+            BackgroundSource = GlanceBackgroundSource.Bing
+        });
+
+        GlanceWidgetData firstReloaded = await new GlanceWidgetStore(
+            _tempRoot,
+            "first-widget").LoadAsync();
+        GlanceWidgetData secondReloaded = await new GlanceWidgetStore(
+            _tempRoot,
+            "second-widget").LoadAsync();
+
+        Assert.NotEqual(first.StorePath, second.StorePath);
+        Assert.False(firstReloaded.ShowTime);
+        Assert.Single(firstReloaded.LocalImagePaths);
+        Assert.True(secondReloaded.ShowTime);
+        Assert.Empty(secondReloaded.LocalImagePaths);
     }
 
     public void Dispose()

@@ -23,7 +23,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private const string TrayIconStyleColorful = "Colorful";
     private const string TrayIconStyleBlack = "Black";
     private const string TrayIconStyleWhite = "White";
-    private const string CornerDefault = SettingsService.WidgetCornerPreferenceDefault;
     private const string CornerSquare = SettingsService.WidgetCornerPreferenceSquare;
     private const string CornerSmall = SettingsService.WidgetCornerPreferenceSmall;
     private const string CornerRound = SettingsService.WidgetCornerPreferenceRound;
@@ -282,9 +281,9 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         InitializeContentEditorSettings(settings);
         _widgetOpacity = settings.WidgetOpacity;
         _widgetMaterialIntensity = settings.WidgetMaterialIntensity;
-        _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerDefault or CornerSquare or CornerSmall or CornerRound
+        _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
-            : CornerSmall;
+            : CornerRound;
         _selectedWidgetMaterialType = settings.WidgetMaterialType is
             MaterialMica or MaterialMicaAlt or MaterialAcrylic or MaterialAcrylicBase or MaterialSolid
             ? settings.WidgetMaterialType

@@ -1,16 +1,19 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Collections.Concurrent;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
 
 /// <summary>
-/// Owns the singleton Glance preferences. The store is deliberately separate
-/// from AppSettings so a future sync layer can classify portable preferences,
-/// device-local paths, and disposable media independently.
+/// Owns the preferences for one Glance widget instance. The store is
+/// deliberately separate from AppSettings so a future sync layer can classify
+/// portable preferences, device-local paths, and disposable media independently.
 /// </summary>
 public sealed class GlanceWidgetStore
 {
+    private static readonly ConcurrentDictionary<string, GlanceWidgetStore> WidgetStores =
+        new(StringComparer.Ordinal);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -20,9 +23,8 @@ public sealed class GlanceWidgetStore
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _storePath;
+    private readonly string? _legacyStorePath;
     private GlanceWidgetData? _cached;
-
-    public static GlanceWidgetStore Shared { get; } = new();
 
     public GlanceWidgetStore()
         : this(Path.Combine(DeskBoxDataPathService.Current.DataDirectory, "glance"))
@@ -30,12 +32,47 @@ public sealed class GlanceWidgetStore
     }
 
     internal GlanceWidgetStore(string dataDirectory)
+        : this(Path.Combine(dataDirectory, "glance.json"), legacyStorePath: null, exactPath: true)
     {
-        Directory.CreateDirectory(dataDirectory);
-        _storePath = Path.Combine(dataDirectory, "glance.json");
+    }
+
+    internal GlanceWidgetStore(string dataDirectory, string widgetId)
+        : this(
+            Path.Combine(dataDirectory, $"{GetSafeWidgetFileName(widgetId)}.json"),
+            legacyStorePath: null,
+            exactPath: true)
+    {
+    }
+
+    private GlanceWidgetStore(string storePath, string? legacyStorePath, bool exactPath)
+    {
+        _ = exactPath;
+        Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
+        _storePath = storePath;
+        _legacyStorePath = legacyStorePath;
     }
 
     internal string StorePath => _storePath;
+
+    public static GlanceWidgetStore ForWidget(string widgetId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        return WidgetStores.GetOrAdd(
+            widgetId,
+            static id =>
+            {
+                string glanceDirectory = Path.Combine(
+                    DeskBoxDataPathService.Current.DataDirectory,
+                    "glance");
+                return new GlanceWidgetStore(
+                    Path.Combine(
+                        glanceDirectory,
+                        "widgets",
+                        $"{GetSafeWidgetFileName(id)}.json"),
+                    Path.Combine(glanceDirectory, "glance.json"),
+                    exactPath: true);
+            });
+    }
 
     public event EventHandler? Changed;
 
@@ -44,6 +81,7 @@ public sealed class GlanceWidgetStore
         await _gate.WaitAsync();
         try
         {
+            await MigrateLegacyStoreIfNeededLockedAsync();
             _cached ??= await ResilientJsonStore.LoadAsync(
                 _storePath,
                 json => Normalize(JsonSerializer.Deserialize<GlanceWidgetData>(json, JsonOptions)),
@@ -80,6 +118,7 @@ public sealed class GlanceWidgetStore
         await _gate.WaitAsync();
         try
         {
+            await MigrateLegacyStoreIfNeededLockedAsync();
             _cached ??= await ResilientJsonStore.LoadAsync(
                 _storePath,
                 json => Normalize(JsonSerializer.Deserialize<GlanceWidgetData>(json, JsonOptions)),
@@ -100,6 +139,56 @@ public sealed class GlanceWidgetStore
     public async Task ResetAsync()
     {
         await SaveAsync(new GlanceWidgetData());
+    }
+
+    public static async Task DeleteForWidgetAsync(string widgetId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        GlanceWidgetStore store = ForWidget(widgetId);
+        await store.DeleteAsync();
+        WidgetStores.TryRemove(widgetId, out _);
+    }
+
+    private async Task DeleteAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            _cached = null;
+            TryDeleteFile(_storePath);
+            TryDeleteFile(ResilientJsonStore.GetBackupPath(_storePath));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task MigrateLegacyStoreIfNeededLockedAsync()
+    {
+        if (File.Exists(_storePath) ||
+            string.IsNullOrWhiteSpace(_legacyStorePath) ||
+            !File.Exists(_legacyStorePath))
+        {
+            return;
+        }
+
+        try
+        {
+            string legacyJson = await File.ReadAllTextAsync(_legacyStorePath);
+            GlanceWidgetData migrated = Normalize(
+                JsonSerializer.Deserialize<GlanceWidgetData>(legacyJson, JsonOptions));
+            await ResilientJsonStore.SaveAsync(
+                _storePath,
+                JsonSerializer.Serialize(migrated, JsonOptions));
+            TryDeleteFile(_legacyStorePath);
+            TryDeleteFile(ResilientJsonStore.GetBackupPath(_legacyStorePath));
+            App.Log($"[GlanceWidgetStore] Migrated legacy preferences to '{_storePath}'.");
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[GlanceWidgetStore] Legacy preference migration failed: {ex}");
+        }
     }
 
     private async Task PersistLockedAsync()
@@ -125,9 +214,26 @@ public sealed class GlanceWidgetStore
         {
             data.ShowYear = false;
         }
-        data.RotationIntervalMinutes = data.RotationIntervalMinutes is 0 or 10 or 30 or 60 or 360 or 1440
-            ? data.RotationIntervalMinutes
-            : 30;
+        double[] supportedRotationIntervals =
+        [
+            0,
+            10d / 60d,
+            30d / 60d,
+            1,
+            2,
+            5,
+            10,
+            30,
+            60,
+            360,
+            1440
+        ];
+        double normalizedRotationInterval = supportedRotationIntervals.FirstOrDefault(
+            interval => Math.Abs(interval - data.RotationIntervalMinutes) < 0.0001,
+            double.NaN);
+        data.RotationIntervalMinutes = double.IsNaN(normalizedRotationInterval)
+            ? 30
+            : normalizedRotationInterval;
         data.TimeScale = Math.Clamp(data.TimeScale, 0.75, 1.35);
         data.TimeFontFamily = string.IsNullOrWhiteSpace(data.TimeFontFamily)
             ? null
@@ -160,6 +266,30 @@ public sealed class GlanceWidgetStore
     {
         string json = JsonSerializer.Serialize(data, JsonOptions);
         return JsonSerializer.Deserialize<GlanceWidgetData>(json, JsonOptions) ?? new GlanceWidgetData();
+    }
+
+    private static string GetSafeWidgetFileName(string widgetId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        char[] invalidCharacters = Path.GetInvalidFileNameChars();
+        return new string(widgetId.Trim()
+            .Select(character => invalidCharacters.Contains(character) ? '_' : character)
+            .ToArray());
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[GlanceWidgetStore] Failed to delete '{path}': {ex.Message}");
+        }
     }
 
     private void RaiseChanged()

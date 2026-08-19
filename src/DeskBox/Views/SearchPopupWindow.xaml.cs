@@ -760,7 +760,6 @@ public sealed partial class SearchPopupWindow : Window
         {
             SettingsService.WidgetCornerPreferenceSquare => Win32Helper.DWMWCP_DONOTROUND,
             SettingsService.WidgetCornerPreferenceSmall => Win32Helper.DWMWCP_ROUNDSMALL,
-            SettingsService.WidgetCornerPreferenceDefault => Win32Helper.DWMWCP_DEFAULT,
             _ => Win32Helper.DWMWCP_ROUND
         };
 
@@ -773,7 +772,6 @@ public sealed partial class SearchPopupWindow : Window
         {
             Win32Helper.DWMWCP_DONOTROUND => new CornerRadius(0),
             Win32Helper.DWMWCP_ROUNDSMALL => new CornerRadius(4),
-            Win32Helper.DWMWCP_DEFAULT => new CornerRadius(4),
             _ => new CornerRadius(8)
         };
     }

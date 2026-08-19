@@ -37,8 +37,10 @@ public abstract partial class WidgetWindowBase
 
         bool isDark = RootElement.ActualTheme == ElementTheme.Dark;
         double surfaceOpacity = Math.Clamp(WidgetOpacity, 0.0, 1.0);
-        var tintColor = BuildNativeBackdropTintColor(isDark);
         string materialType = SettingsService.Settings.WidgetMaterialType;
+        var tintColor = materialType == SettingsService.WidgetMaterialTypeSolid
+            ? BuildSolidColorBackdropTintColor(isDark, surfaceOpacity)
+            : BuildNativeBackdropTintColor(isDark);
         var signature = new BackdropSignature(
             isDark,
             materialType,
@@ -61,33 +63,34 @@ public abstract partial class WidgetWindowBase
             int backdropType;
             bool controllerApplied = false;
 
-            if (SettingsService.IsMicaMaterial(materialType))
+            if (materialType == SettingsService.WidgetMaterialTypeSolid)
             {
-                controllerApplied = ApplyMicaController(
-                    isDark,
-                    tintColor,
-                    materialType == SettingsService.WidgetMaterialTypeMicaAlt);
+                controllerApplied = ApplySolidColorBackdrop(tintColor);
             }
-
-            if (!controllerApplied && SettingsService.IsAcrylicMaterial(materialType))
+            else
             {
-                controllerApplied = ApplyAcrylicController(
-                    isDark,
-                    tintColor,
-                    surfaceOpacity,
-                    materialType == SettingsService.WidgetMaterialTypeAcrylicBase);
+                ClearSolidColorBackdrop();
+
+                if (SettingsService.IsMicaMaterial(materialType))
+                {
+                    controllerApplied = ApplyMicaController(
+                        isDark,
+                        tintColor,
+                        materialType == SettingsService.WidgetMaterialTypeMicaAlt);
+                }
+
+                if (!controllerApplied && SettingsService.IsAcrylicMaterial(materialType))
+                {
+                    controllerApplied = ApplyAcrylicController(
+                        isDark,
+                        tintColor,
+                        surfaceOpacity,
+                        materialType == SettingsService.WidgetMaterialTypeAcrylicBase);
+                }
             }
 
             if (controllerApplied)
             {
-                backdropType = Win32Helper.DWMSBT_NONE;
-                Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
-                Win32Helper.DisableAccentPolicy(HWnd);
-            }
-            else if (materialType is SettingsService.WidgetMaterialTypeSolid)
-            {
-                DetachAcrylicControllerTarget();
-                DetachMicaControllerTarget();
                 backdropType = Win32Helper.DWMSBT_NONE;
                 Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
                 Win32Helper.DisableAccentPolicy(HWnd);
@@ -105,7 +108,8 @@ public abstract partial class WidgetWindowBase
                 $"[Backdrop] hwnd=0x{HWnd.ToInt64():X} material={materialType} isDark={isDark} " +
                 $"opacity={surfaceOpacity:F3} tint=#{tintColor.A:X2}{tintColor.R:X2}{tintColor.G:X2}{tintColor.B:X2} " +
                 $"dwmBackdropType={backdropType} " +
-                $"acrylicController={AcrylicController is not null} micaController={MicaController is not null}");
+                $"acrylicController={AcrylicController is not null} micaController={MicaController is not null} " +
+                $"solidColorBackdrop={IsSolidColorBackdropActive}");
 
             _lastAppliedBackdropSignature = signature;
             ScheduleInactiveBackdropControllerCleanup(materialType);
@@ -114,9 +118,19 @@ public abstract partial class WidgetWindowBase
         {
             App.Log($"ApplyBackdropPreference fallback: {ex}");
             _lastAppliedBackdropSignature = null;
+            ClearSolidColorBackdrop();
             DisposeAcrylicController();
             DisposeMicaController();
-            Win32Helper.ApplyAccentBlur(HWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
+            if (materialType == SettingsService.WidgetMaterialTypeSolid)
+            {
+                int backdropType = Win32Helper.DWMSBT_NONE;
+                Win32Helper.TrySetDwmWindowAttribute(HWnd, Win32Helper.DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType);
+                Win32Helper.DisableAccentPolicy(HWnd);
+            }
+            else
+            {
+                Win32Helper.ApplyAccentBlur(HWnd, tintColor, Math.Min(surfaceOpacity, 0.52), true);
+            }
         }
 
         ApplySurfaceStyle();
@@ -133,7 +147,61 @@ public abstract partial class WidgetWindowBase
             ? MicaController is not null && MicaControllerAttached
             : SettingsService.IsAcrylicMaterial(signature.MaterialType)
                 ? AcrylicController is { IsClosed: false } && AcrylicControllerAttached
-                : false;
+                : signature.MaterialType == SettingsService.WidgetMaterialTypeSolid &&
+                  IsSolidColorBackdropActive &&
+                  _solidColorBackdrop is not null &&
+                  ReferenceEquals(SystemBackdrop, _solidColorBackdrop);
+    }
+
+    protected virtual Windows.UI.Color BuildSolidColorBackdropTintColor(
+        bool isDark,
+        double surfaceOpacity)
+    {
+        Windows.UI.Color tintColor = BuildNativeBackdropTintColor(isDark);
+        return Windows.UI.Color.FromArgb(
+            (byte)Math.Clamp(Math.Round(surfaceOpacity * 255), 0, 255),
+            tintColor.R,
+            tintColor.G,
+            tintColor.B);
+    }
+
+    private bool ApplySolidColorBackdrop(Windows.UI.Color tintColor)
+    {
+        DetachAcrylicControllerTarget();
+        DetachMicaControllerTarget();
+
+        if (_solidColorBackdrop is null)
+        {
+            _solidColorBackdrop = new WinUIEx.TransparentTintBackdrop(tintColor);
+            SystemBackdrop = _solidColorBackdrop;
+        }
+        else
+        {
+            _solidColorBackdrop.TintColor = tintColor;
+            if (!ReferenceEquals(SystemBackdrop, _solidColorBackdrop))
+            {
+                SystemBackdrop = _solidColorBackdrop;
+            }
+        }
+
+        IsSolidColorBackdropActive = true;
+        return true;
+    }
+
+    protected void ClearSolidColorBackdrop()
+    {
+        IsSolidColorBackdropActive = false;
+        if (_solidColorBackdrop is null)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(SystemBackdrop, _solidColorBackdrop))
+        {
+            SystemBackdrop = null;
+        }
+
+        _solidColorBackdrop = null;
     }
 
     protected static SolidColorBrush GetOrUpdateSolidColorBrush(Brush? current, Windows.UI.Color color)
@@ -335,13 +403,9 @@ public abstract partial class WidgetWindowBase
 
         MicaController.Kind = useAlt ? MicaKind.BaseAlt : MicaKind.Base;
         MicaController.TintColor = tintColor;
-        MicaController.FallbackColor = useAlt
-            ? isDark
-                ? ColorHelper.FromArgb(0xFF, 0x16, 0x18, 0x1D)
-                : ColorHelper.FromArgb(0xFF, 0xE8, 0xEA, 0xEF)
-            : isDark
-                ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
-                : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        MicaController.FallbackColor = WidgetMaterialVisualCalculator.BuildMicaFallbackColor(
+            isDark,
+            useAlt);
 
         WidgetMaterialOpacityProfile profile = WidgetMaterialVisualCalculator.CalculateMica(
             isDark,
@@ -457,54 +521,6 @@ public abstract partial class WidgetWindowBase
             SettingsService.Settings.WidgetMaterialIntensity);
         AcrylicController.TintOpacity = (float)profile.TintOpacity;
         AcrylicController.LuminosityOpacity = (float)profile.LuminosityOpacity;
-        return true;
-    }
-
-    protected bool ApplyTransparentAcrylicController(bool isDark)
-    {
-        if (!DesktopAcrylicController.IsSupported())
-        {
-            DisposeAcrylicController();
-            return false;
-        }
-
-        BackdropTarget ??= this.As<ICompositionSupportsSystemBackdrop>();
-        BackdropConfiguration ??= new SystemBackdropConfiguration();
-        BackdropConfiguration.IsInputActive = true;
-        BackdropConfiguration.Theme = isDark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
-
-        if (AcrylicController is null || AcrylicController.IsClosed)
-        {
-            AcrylicController = new DesktopAcrylicController
-            {
-                Kind = DesktopAcrylicKind.Thin
-            };
-
-        }
-
-        DetachMicaControllerTarget();
-        if (!AcrylicControllerAttached)
-        {
-            if (!AcrylicController.AddSystemBackdropTarget(BackdropTarget))
-            {
-                DisposeAcrylicController();
-                return false;
-            }
-
-            AcrylicControllerAttached = true;
-            AcrylicController.SetSystemBackdropConfiguration(BackdropConfiguration);
-        }
-
-        AcrylicController.Kind = DesktopAcrylicKind.Thin;
-        AcrylicController.TintColor = isDark
-            ? ColorHelper.FromArgb(0x01, 0x20, 0x22, 0x26)
-            : ColorHelper.FromArgb(0x01, 0xFF, 0xFF, 0xFF);
-        AcrylicController.FallbackColor = isDark
-            ? ColorHelper.FromArgb(0x01, 0x20, 0x22, 0x26)
-            : ColorHelper.FromArgb(0x01, 0xFF, 0xFF, 0xFF);
-        AcrylicController.TintOpacity = 0.0f;
-        AcrylicController.LuminosityOpacity = 0.0f;
-
         return true;
     }
 

@@ -174,9 +174,9 @@ public sealed class GlanceImageService
             int newDownloads = 0;
             int usableCategoryCount = cached.Count(image =>
                 MatchesOnlineSource(image, provider, category) && IsUsableFile(image.LocalPath));
-            int downloadLimit = Math.Max(
+            int downloadLimit = Math.Min(
                 IncrementalDownloadCount,
-                TargetCatalogSizePerCategory - usableCategoryCount);
+                Math.Max(0, TargetCatalogSizePerCategory - usableCategoryCount));
             foreach (GlanceImageInfo candidate in remote)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -452,7 +452,7 @@ public sealed class GlanceImageService
         CancellationToken cancellationToken)
     {
         var results = new List<GlanceImageInfo>();
-        foreach (string[] chunk in fileNames.Chunk(10))
+        foreach (string[] chunk in fileNames.Chunk(50))
         {
             string imageUrl = "https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo" +
                 "&iiprop=url%7Csize%7Cmime%7Cextmetadata" +

@@ -63,8 +63,10 @@ public abstract partial class WidgetWindowBase : Window
     private bool? _acrylicControllerUsesBase;
     private bool? _micaControllerUsesAlt;
     private BackdropSignature? _lastAppliedBackdropSignature;
+    private WinUIEx.TransparentTintBackdrop? _solidColorBackdrop;
     protected SystemBackdropConfiguration? BackdropConfiguration;
     protected ICompositionSupportsSystemBackdrop? BackdropTarget;
+    protected bool IsSolidColorBackdropActive { get; private set; }
 
     // ── Protected state: backdrop refresh ──────────────────────
     protected long BackdropRefreshGeneration;
@@ -289,6 +291,7 @@ public abstract partial class WidgetWindowBase : Window
         ReleaseTopMostSafetyTimer();
         DisplayChangeWatcher?.Dispose();
         DisplayChangeWatcher = null;
+        ClearSolidColorBackdrop();
         DisposeAcrylicController();
         DisposeMicaController();
         WidgetLayerService.ReleaseWindow(HWnd);

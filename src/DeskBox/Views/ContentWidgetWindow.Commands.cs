@@ -187,7 +187,7 @@ public sealed partial class ContentWidgetWindow
                 new WidgetCompactConfirmationOptions(
                     localization.Format("Widget.FeatureWidget.DisableConfirmTitle", _config.Name),
                     localization.T("Widget.FeatureWidget.Disable"),
-                    async () => await widgetManager.SetFeatureWidgetEnabledAsync(_config.WidgetKind, enabled: false, reveal: false))
+                    async () => await DisableCurrentFeatureWidgetAsync(widgetManager))
                 {
                     Message = localization.T("Widget.FeatureWidget.DisableConfirmNote"),
                     MessageGlyph = "\uE946",
@@ -203,7 +203,7 @@ public sealed partial class ContentWidgetWindow
     private void MoreButton_Click(object sender, RoutedEventArgs e)
     {
         var target = sender as FrameworkElement ?? ContentWidgetShell.MoreActionButton;
-        ShowFlyoutWithInteraction(CreateMoreFlyout(), target);
+        ShowFlyoutWithInteraction(CreateMoreFlyout(target), target);
     }
 
     private void PositionLockButton_Click(object sender, RoutedEventArgs e)
@@ -222,11 +222,17 @@ public sealed partial class ContentWidgetWindow
     {
         if (ContentWidgetShell.IsCollapsed)
         {
-            ShowFlyoutWithInteraction(CreateMoreFlyout(), ContentWidgetShell, e.GetPosition(ContentWidgetShell));
+            ShowFlyoutWithInteraction(
+                CreateMoreFlyout(ContentWidgetShell),
+                ContentWidgetShell,
+                e.GetPosition(ContentWidgetShell));
         }
         else
         {
-            ShowFlyoutWithInteraction(CreateMoreFlyout(), ContentWidgetShell.TitleBar, e.GetPosition(ContentWidgetShell.TitleBar));
+            ShowFlyoutWithInteraction(
+                CreateMoreFlyout(ContentWidgetShell.TitleBar),
+                ContentWidgetShell.TitleBar,
+                e.GetPosition(ContentWidgetShell.TitleBar));
         }
         e.Handled = true;
     }
@@ -236,7 +242,10 @@ public sealed partial class ContentWidgetWindow
         // Item-level context menus mark the event handled before it reaches the shell.
         // Any remaining right click is therefore on the content background and should
         // expose the same widget actions as the title bar.
-        ShowFlyoutWithInteraction(CreateMoreFlyout(), ContentWidgetShell, e.GetPosition(ContentWidgetShell));
+        ShowFlyoutWithInteraction(
+            CreateMoreFlyout(ContentWidgetShell),
+            ContentWidgetShell,
+            e.GetPosition(ContentWidgetShell));
         e.Handled = true;
     }
 
@@ -257,7 +266,7 @@ public sealed partial class ContentWidgetWindow
 
     // ── Flyout ─────────────────────────────────────────────────
 
-    private MenuFlyout CreateMoreFlyout()
+    private MenuFlyout CreateMoreFlyout(FrameworkElement closeConfirmationTarget)
     {
         var flyout = new MenuFlyout();
 
@@ -285,7 +294,8 @@ public sealed partial class ContentWidgetWindow
             }
             else if (showCloseWhenClosed)
             {
-                DispatcherQueue.TryEnqueue(ShowCloseWidgetFlyout);
+                DispatcherQueue.TryEnqueue(() =>
+                    ShowCloseWidgetFlyout(closeConfirmationTarget));
             }
         };
         flyout.Items.Add(rename);
@@ -327,12 +337,13 @@ public sealed partial class ContentWidgetWindow
         flyout.Items.Add(WidgetSettingsMenuHelper.CreateMenuItem(
             _config.WidgetKind,
             App.Current.LocalizationService,
-            beforeClick: flyout.Hide));
+            beforeClick: flyout.Hide,
+            widgetId: _config.Id));
 
         flyout.Items.Add(new MenuFlyoutSeparator());
         var disableWidget = new MenuFlyoutItem
         {
-            Text = App.Current.LocalizationService.T("Widget.FeatureWidget.Disable"),
+            Text = GetFeatureWidgetCloseMenuText(),
             Icon = new FontIcon { Glyph = "\uE7E8" }
         };
         WidgetDangerActionStyle.Apply(disableWidget);
@@ -368,8 +379,7 @@ public sealed partial class ContentWidgetWindow
         bool showCloseWhenClosed = false;
         var closeWidget = new MenuFlyoutItem
         {
-            Text = App.Current.LocalizationService.T(
-                "Widget.FeatureWidget.Disable"),
+            Text = GetFeatureWidgetCloseMenuText(),
             Icon = new FontIcon { Glyph = "\uE7E8" }
         };
         WidgetDangerActionStyle.Apply(closeWidget);
@@ -383,6 +393,16 @@ public sealed partial class ContentWidgetWindow
             }
         };
         e.CloseWidgetItem = closeWidget;
+    }
+
+    private string GetFeatureWidgetCloseMenuText()
+    {
+        LocalizationService localization = App.Current.LocalizationService;
+        return _config.WidgetKind == WidgetKind.Glance
+            ? localization.Format(
+                "Widget.FeatureWidget.DisableConfirmTitle",
+                _config.Name)
+            : localization.T("Widget.FeatureWidget.Disable");
     }
 
     private void ShowCloseWidgetFlyout()
@@ -426,10 +446,7 @@ public sealed partial class ContentWidgetWindow
                     _isCloseWidgetPending = true;
                     try
                     {
-                        await widgetManager.SetFeatureWidgetEnabledAsync(
-                            _config.WidgetKind,
-                            enabled: false,
-                            reveal: false);
+                        await DisableCurrentFeatureWidgetAsync(widgetManager);
                     }
                     finally
                     {
@@ -442,6 +459,16 @@ public sealed partial class ContentWidgetWindow
                 MessageGlyph = "\uE946",
                 CancelText = localization.T("Common.Cancel")
             });
+    }
+
+    private Task DisableCurrentFeatureWidgetAsync(WidgetManager widgetManager)
+    {
+        return _config.WidgetKind == WidgetKind.Glance
+            ? widgetManager.SetGlanceWidgetInstanceEnabledAsync(_config.Id, enabled: false)
+            : widgetManager.SetFeatureWidgetEnabledAsync(
+                _config.WidgetKind,
+                enabled: false,
+                reveal: false);
     }
 
     private MenuFlyout CreateFileWidgetCloseFlyout(

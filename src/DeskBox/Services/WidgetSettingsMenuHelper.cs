@@ -55,7 +55,8 @@ internal static class WidgetSettingsMenuHelper
     public static MenuFlyoutItem CreateMenuItem(
         WidgetKind kind,
         LocalizationService localization,
-        Action? beforeClick = null)
+        Action? beforeClick = null,
+        string? widgetId = null)
     {
         var item = new MenuFlyoutItem
         {
@@ -68,7 +69,14 @@ internal static class WidgetSettingsMenuHelper
             beforeClick?.Invoke();
             if (sectionTag is not null)
             {
-                App.Current.ShowSettings(sectionTag);
+                if (kind == WidgetKind.Glance && !string.IsNullOrWhiteSpace(widgetId))
+                {
+                    App.Current.ShowGlanceSettings(widgetId);
+                }
+                else
+                {
+                    App.Current.ShowSettings(sectionTag);
+                }
             }
         };
         return item;
