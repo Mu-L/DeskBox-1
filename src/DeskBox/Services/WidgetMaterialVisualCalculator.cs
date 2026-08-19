@@ -1,5 +1,3 @@
-using Microsoft.UI;
-
 namespace DeskBox.Services;
 
 internal readonly record struct WidgetMaterialOpacityProfile(
@@ -57,8 +55,8 @@ internal static class WidgetMaterialVisualCalculator
         Windows.UI.Color accentColor)
     {
         var baseColor = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
-            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+            ? Windows.UI.Color.FromArgb(0xFF, 0x20, 0x22, 0x26)
+            : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
 
         return BuildAccentSurfaceColor(
             isDark,
@@ -72,11 +70,11 @@ internal static class WidgetMaterialVisualCalculator
     {
         return useAlt
             ? isDark
-                ? ColorHelper.FromArgb(0xFF, 0x16, 0x18, 0x1D)
-                : ColorHelper.FromArgb(0xFF, 0xE8, 0xEA, 0xEF)
+                ? Windows.UI.Color.FromArgb(0xFF, 0x16, 0x18, 0x1D)
+                : Windows.UI.Color.FromArgb(0xFF, 0xE8, 0xEA, 0xEF)
             : isDark
-                ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
-                : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+                ? Windows.UI.Color.FromArgb(0xFF, 0x20, 0x22, 0x26)
+                : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
     }
 
     public static Windows.UI.Color BuildEmbeddedMicaTintOverlayColor(
@@ -103,8 +101,8 @@ internal static class WidgetMaterialVisualCalculator
                 isDark,
                 accentColor,
                 isDark
-                    ? ColorHelper.FromArgb(0xFF, 0x21, 0x24, 0x2A)
-                    : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
+                    ? Windows.UI.Color.FromArgb(0xFF, 0x21, 0x24, 0x2A)
+                    : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
                 accentMix: 0.18,
                 overlayMix: isDark ? 0.15 : 0.04),
             Math.Clamp(surfaceOpacity, 0.0, 1.0));
@@ -115,11 +113,11 @@ internal static class WidgetMaterialVisualCalculator
         GlanceImagePalette palette)
     {
         var startBase = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x20, 0x22, 0x26)
-            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+            ? Windows.UI.Color.FromArgb(0xFF, 0x20, 0x22, 0x26)
+            : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
         var endBase = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x16, 0x18, 0x1C)
-            : ColorHelper.FromArgb(0xFF, 0xF3, 0xF3, 0xF3);
+            ? Windows.UI.Color.FromArgb(0xFF, 0x16, 0x18, 0x1C)
+            : Windows.UI.Color.FromArgb(0xFF, 0xF3, 0xF3, 0xF3);
         var startColor = BlendColors(
             startBase,
             palette.Primary,
@@ -151,8 +149,8 @@ internal static class WidgetMaterialVisualCalculator
     {
         var mixed = BlendColors(baseColor, accentColor, accentMix);
         var overlay = isDark
-            ? ColorHelper.FromArgb(0xFF, 0x2B, 0x2F, 0x36)
-            : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+            ? Windows.UI.Color.FromArgb(0xFF, 0x2B, 0x2F, 0x36)
+            : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
         return BlendColors(mixed, overlay, overlayMix);
     }
 
