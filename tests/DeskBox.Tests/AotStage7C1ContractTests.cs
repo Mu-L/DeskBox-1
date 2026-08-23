@@ -126,6 +126,7 @@ public sealed class AotStage7C1ContractTests
                      "publish-aot-audit.ps1",
                      "publish-arm64-aot-static-audit.ps1",
                      "DeskBoxNativeAot=1",
+                     "/F$installerOutputBaseName",
                      "PackageBuildMode\", \"StoreUpload",
                      "installerInstallationExecuted = $false",
                      "msixInstallationExecuted = $false",

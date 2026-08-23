@@ -230,13 +230,27 @@ $installerScript = if ($Platform -eq "ARM64") {
 else {
     Join-Path $repoRoot "installer\DeskBox.iss"
 }
+$installerScriptText = Get-Content -LiteralPath $installerScript -Raw
+$installerBaseNameMatch = [regex]::Match(
+    $installerScriptText,
+    '(?m)^\s*#define\s+MyAppOutputBaseName\s+"([^"]+)"\s*$')
+$installerVersionMatch = [regex]::Match(
+    $installerScriptText,
+    '(?m)^\s*#define\s+MyAppVersion\s+"([^"]+)"\s*$')
+if (-not $installerBaseNameMatch.Success -or -not $installerVersionMatch.Success) {
+    throw "The Inno script does not expose MyAppOutputBaseName and MyAppVersion definitions."
+}
+$installerOutputBaseName = "{0}_{1}_{2}_NativeAot" -f `
+    $installerBaseNameMatch.Groups[1].Value,
+    $installerVersionMatch.Groups[1].Value,
+    $platformSegment
 $innoCompiler = Get-InnoCompilerPath
 $innoLogPath = Join-Path $OutputDirectory "inno-compile.log"
 $innoArguments = @(
     "/Qp",
     "/DDeskBoxNativeAot=1",
     "/DMyAppReleaseDir=`"$directPublishDirectory`"",
-    "/DMyAppPackageSuffix=`"_NativeAot`"",
+    "/F$installerOutputBaseName",
     "/O$installerOutputDirectory",
     $installerScript
 )
