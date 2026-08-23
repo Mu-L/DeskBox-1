@@ -79,7 +79,7 @@ public sealed class AotStage7AContractTests
     }
 
     [Fact]
-    public void Project_PackagesDirectArm64SearchCoreButKeepsItsProductDefaultOff()
+    public void Project_DefaultsDirectArm64SearchCoreOnAfterHostedNativeRuntimeGate()
     {
         string projectText = Read("src/DeskBox/DeskBox.csproj");
         XDocument project = XDocument.Parse(projectText);
@@ -96,8 +96,9 @@ public sealed class AotStage7AContractTests
             project.Descendants("DeskBoxSearchCoreDefaultEnabled")
                 .Where(element => element.Value == "true"));
         string condition = Assert.IsType<string>((string?)defaultPolicy.Attribute("Condition"));
-        Assert.Contains("'$(Platform)' != 'ARM64'", condition, StringComparison.Ordinal);
-        Assert.Contains("'$(RuntimeIdentifier)' != 'win-arm64'", condition, StringComparison.Ordinal);
+        Assert.Contains("'$(DeskBoxDistribution)' == 'Direct'", condition, StringComparison.Ordinal);
+        Assert.DoesNotContain("'$(Platform)' != 'ARM64'", condition, StringComparison.Ordinal);
+        Assert.DoesNotContain("'$(RuntimeIdentifier)' != 'win-arm64'", condition, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -130,8 +131,8 @@ public sealed class AotStage7AContractTests
                      "aarch64-pc-windows-msvc",
                      "0xAA64",
                      "IlcUseEnvironmentalTools=true",
-                     "DeskBoxSearchCoreDefaultEnabled=false",
-                     "defaultDecisionDeferredToStage7B = $true",
+                     "DeskBoxSearchCoreDefaultEnabled=true",
+                     "defaultDecisionDeferredToStage7B = $false",
                      "sourceStableDuringAudit",
                      "publishMatchesStaging = $true"
                  })

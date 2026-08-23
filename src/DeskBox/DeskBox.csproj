@@ -28,14 +28,15 @@
     <DeskBoxRustNative Condition="'$(DeskBoxRustNative)' == ''">false</DeskBoxRustNative>
     <!-- Stage 7C0 keeps CRT linkage explicit so A/B outputs cannot be reused
          across incompatible native dependency policies. -->
-    <DeskBoxRustCrtLinkage Condition="'$(DeskBoxRustCrtLinkage)' == ''">Dynamic</DeskBoxRustCrtLinkage>
-    <!-- Stage 7A packages SearchCore in Direct x64 and ARM64 builds. Only x64
-         defaults to it until the Stage 7B ARM64 device matrix is complete. -->
+    <DeskBoxRustCrtLinkage Condition="'$(DeskBoxRustCrtLinkage)' == ''">Static</DeskBoxRustCrtLinkage>
+    <!-- Stage 7B validated SearchCore in native x64 and hosted native ARM64
+         processes. Direct builds therefore default to it on both supported
+         architectures; Store builds still retain the managed backend. -->
     <DeskBoxSearchCorePreviewModule Condition="'$(DeskBoxSearchCorePreviewModule)' == '' and '$(DeskBoxDistribution)' == 'Direct'">true</DeskBoxSearchCorePreviewModule>
     <DeskBoxSearchCorePreviewModule Condition="'$(DeskBoxSearchCorePreviewModule)' == ''">false</DeskBoxSearchCorePreviewModule>
-    <DeskBoxSearchCoreDefaultEnabled Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == '' and '$(DeskBoxSearchCorePreviewModule)' == 'true' and '$(DeskBoxDistribution)' == 'Direct' and '$(Platform)' != 'ARM64' and '$(RuntimeIdentifier)' != 'win-arm64'">true</DeskBoxSearchCoreDefaultEnabled>
+    <DeskBoxSearchCoreDefaultEnabled Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == '' and '$(DeskBoxSearchCorePreviewModule)' == 'true' and '$(DeskBoxDistribution)' == 'Direct'">true</DeskBoxSearchCoreDefaultEnabled>
     <DeskBoxSearchCoreDefaultEnabled Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == ''">false</DeskBoxSearchCoreDefaultEnabled>
-    <DefineConstants Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true' and '$(DeskBoxDistribution)' == 'Direct' and '$(Platform)' != 'ARM64' and '$(RuntimeIdentifier)' != 'win-arm64'">$(DefineConstants);DESKBOX_SEARCH_CORE_DEFAULT</DefineConstants>
+    <DefineConstants Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true' and '$(DeskBoxDistribution)' == 'Direct'">$(DefineConstants);DESKBOX_SEARCH_CORE_DEFAULT</DefineConstants>
     <DefineConstants Condition="'$(DeskBoxDistribution)' == 'Store'">$(DefineConstants);DESKBOX_STORE</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\deskbox.ico</ApplicationIcon>

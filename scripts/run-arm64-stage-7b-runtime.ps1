@@ -39,6 +39,7 @@ function Invoke-DeskBoxBuildProbe {
     $emitted = @(& $Script `
         -Platform ARM64 `
         -Configuration $Configuration `
+        -CrtLinkage Static `
         -OutputDirectory $ModuleOutput `
         -CargoTargetDirectory $cargoTargetRoot)
     $results = @($emitted | Where-Object {
@@ -162,7 +163,9 @@ try {
         if (-not $result.RuntimeProbeExecuted -or
             $result.ContractValidation -ne "runtime-load-plus-static-pe" -or
             $result.ProcessArchitecture -ne "Arm64" -or
-            $result.MachineName -ne "ARM64") {
+            $result.MachineName -ne "ARM64" -or
+            $result.CrtLinkage -ne "Static" -or
+            $result.VcRuntimeImports.Count -ne 0) {
             throw "ARM64 build completed without the required runtime ABI plus static PE validation."
         }
     }
@@ -187,6 +190,7 @@ try {
             "--configuration", $Configuration,
             "-p:Platform=ARM64",
             "-p:RuntimeIdentifier=win-arm64",
+            "-p:DeskBoxRustCrtLinkage=Static",
             "-p:WindowsAppSdkBootstrapInitialize=false",
             "--results-directory", $testResultsDirectory,
             "--logger", "trx;LogFileName=arm64-runtime-gate.trx",

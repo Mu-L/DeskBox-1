@@ -12,7 +12,7 @@
     <IsTestProject>true</IsTestProject>
     <DeskBoxNativeTestPlatform Condition="'$(Platform)' == 'ARM64' Or '$(RuntimeIdentifier)' == 'win-arm64'">ARM64</DeskBoxNativeTestPlatform>
     <DeskBoxNativeTestPlatform Condition="'$(DeskBoxNativeTestPlatform)' == ''">x64</DeskBoxNativeTestPlatform>
-    <DeskBoxRustCrtLinkage Condition="'$(DeskBoxRustCrtLinkage)' == ''">Dynamic</DeskBoxRustCrtLinkage>
+    <DeskBoxRustCrtLinkage Condition="'$(DeskBoxRustCrtLinkage)' == ''">Static</DeskBoxRustCrtLinkage>
     <DeskBoxNativeTestIntermediateDir>$(MSBuildProjectDirectory)\obj\rust-native\$(Configuration)\$(Platform)\$(RuntimeIdentifier)\$(DeskBoxRustCrtLinkage)</DeskBoxNativeTestIntermediateDir>
     <DeskBoxNativeTestCargoTargetDir>$(DeskBoxNativeTestIntermediateDir)\cargo-target</DeskBoxNativeTestCargoTargetDir>
     <DeskBoxNativeTestDll>$(DeskBoxNativeTestIntermediateDir)\deskbox_native.dll</DeskBoxNativeTestDll>

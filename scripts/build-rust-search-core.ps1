@@ -12,7 +12,7 @@ param(
     [string]$CargoTargetDirectory,
 
     [ValidateSet("Dynamic", "Static")]
-    [string]$CrtLinkage = "Dynamic",
+    [string]$CrtLinkage = "Static",
 
     [switch]$ValidateOnly
 )

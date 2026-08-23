@@ -98,7 +98,7 @@ public sealed class SearchCoreStage6DContractTests
     }
 
     [Fact]
-    public void AuditProfile_RecordsStage6DAndDirectX64DefaultWithUnsupportedBuildsExcluded()
+    public void AuditProfile_RecordsStage6DAndDirectSupportedArchitectureDefault()
     {
         string audit = Read("scripts/publish-aot-audit.ps1");
         string launcher = Read("scripts/start-aot-preview.ps1");
@@ -111,13 +111,19 @@ public sealed class SearchCoreStage6DContractTests
         Assert.Contains("runtimeFallback = \"managed-session-quarantine\"", audit, StringComparison.Ordinal);
         Assert.Contains("aotSearchScenario = \"SearchCorePreviewReadOnly\"", audit, StringComparison.Ordinal);
         Assert.Contains("defaultEnabled = $searchCorePreviewEnabled", audit, StringComparison.Ordinal);
-        Assert.Contains("defaultPolicy = \"Direct-x64-module-build\"", audit, StringComparison.Ordinal);
+        Assert.Contains("defaultPolicy = \"Direct-supported-architecture-module-build\"", audit, StringComparison.Ordinal);
         Assert.Contains("$RequiredAuditProfileVersion = 58", launcher, StringComparison.Ordinal);
         Assert.Contains("$RequiredSummarySchemaVersion = 55", launcher, StringComparison.Ordinal);
         Assert.Contains("DeskBoxSearchCoreDefaultEnabled", project, StringComparison.Ordinal);
         Assert.Contains("'$(DeskBoxDistribution)' == 'Direct'", project, StringComparison.Ordinal);
-        Assert.Contains("'$(Platform)' != 'ARM64'", project, StringComparison.Ordinal);
-        Assert.Contains("'$(RuntimeIdentifier)' != 'win-arm64'", project, StringComparison.Ordinal);
+        System.Xml.Linq.XDocument projectXml = System.Xml.Linq.XDocument.Parse(project);
+        System.Xml.Linq.XElement defaultPolicy = Assert.Single(
+            projectXml.Descendants("DeskBoxSearchCoreDefaultEnabled")
+                .Where(element => element.Value == "true"));
+        string defaultCondition = Assert.IsType<string>(
+            (string?)defaultPolicy.Attribute("Condition"));
+        Assert.DoesNotContain("'$(Platform)' != 'ARM64'", defaultCondition, StringComparison.Ordinal);
+        Assert.DoesNotContain("'$(RuntimeIdentifier)' != 'win-arm64'", defaultCondition, StringComparison.Ordinal);
         Assert.Contains("DESKBOX_SEARCH_CORE_DEFAULT", project, StringComparison.Ordinal);
         Assert.Contains("SearchRustIndexerDefaultEnabled = true", settings, StringComparison.Ordinal);
         Assert.Contains("AppSettings.SearchRustIndexerDefaultEnabled", defaults, StringComparison.Ordinal);

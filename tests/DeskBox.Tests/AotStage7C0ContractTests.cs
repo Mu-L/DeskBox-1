@@ -15,6 +15,7 @@ public sealed class AotStage7C0ContractTests
             foreach (string token in new[]
                      {
                          "[ValidateSet(\"Dynamic\", \"Static\")]",
+                         "[string]$CrtLinkage = \"Static\"",
                          "target-feature=+crt-static",
                          "target-feature=-crt-static",
                          "CARGO_ENCODED_RUSTFLAGS",
@@ -46,6 +47,7 @@ public sealed class AotStage7C0ContractTests
         {
             string project = Read(relativePath);
             Assert.Contains("DeskBoxRustCrtLinkage", project, StringComparison.Ordinal);
+            Assert.Contains(">Static</DeskBoxRustCrtLinkage>", project, StringComparison.Ordinal);
             Assert.Contains("-CrtLinkage $(DeskBoxRustCrtLinkage)", project, StringComparison.Ordinal);
             Assert.Contains("$(DeskBoxRustCrtLinkage)", project, StringComparison.Ordinal);
             Assert.Contains("must be Dynamic or Static", project, StringComparison.Ordinal);
@@ -87,6 +89,12 @@ public sealed class AotStage7C0ContractTests
         Assert.Contains("audit-rust-crt-distribution.ps1", workflow, StringComparison.Ordinal);
         Assert.Contains("-Platforms ARM64", workflow, StringComparison.Ordinal);
         Assert.Contains("arm64-stage7c0-crt-evidence", workflow, StringComparison.Ordinal);
+
+        string runtimeGate = Read("scripts/run-arm64-stage-7b-runtime.ps1");
+        Assert.Contains("-CrtLinkage Static", runtimeGate, StringComparison.Ordinal);
+        Assert.Contains("-p:DeskBoxRustCrtLinkage=Static", runtimeGate, StringComparison.Ordinal);
+        Assert.Contains("$result.CrtLinkage -ne \"Static\"", runtimeGate, StringComparison.Ordinal);
+        Assert.Contains("$result.VcRuntimeImports.Count -ne 0", runtimeGate, StringComparison.Ordinal);
     }
 
     private static string Read(string relativePath) =>

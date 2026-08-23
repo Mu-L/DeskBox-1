@@ -271,7 +271,7 @@ $commonProperties = @(
     "-p:PublishAot=true",
     "-p:DeskBoxRustNative=true",
     "-p:DeskBoxSearchCorePreviewModule=true",
-    "-p:DeskBoxSearchCoreDefaultEnabled=false",
+    "-p:DeskBoxSearchCoreDefaultEnabled=true",
     "-p:JsonSerializerIsReflectionEnabledByDefault=false",
     "-p:IlcUseEnvironmentalTools=true",
     "-p:SelfContained=true",
@@ -531,8 +531,8 @@ $summary = [ordered]@{
         stagingSha256 = $searchStagingSha256
         publishSha256 = $searchPublishSha256
         publishMatchesStaging = $true
-        productDefaultEnabled = $false
-        defaultDecisionDeferredToStage7B = $true
+        productDefaultEnabled = $true
+        defaultDecisionDeferredToStage7B = $false
     }
 }
 
