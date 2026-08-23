@@ -15,6 +15,9 @@
 #ifndef DeskBoxBundledRuntime
 #define DeskBoxBundledRuntime 0
 #endif
+#ifndef DeskBoxNativeAot
+#define DeskBoxNativeAot 0
+#endif
 #ifndef MyAppReleaseDir
 #define MyAppReleaseDir "..\artifacts\publish\DeskBox\x64"
 #endif
@@ -27,6 +30,8 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 #if DeskBoxBundledRuntime
 AppComments=Includes private .NET and Windows App Runtime components for offline installation.
+#elif DeskBoxNativeAot
+AppComments=Native AOT build; Windows App Runtime is installed when missing.
 #else
 AppComments={cm:RuntimeDependencyComment}
 #endif
