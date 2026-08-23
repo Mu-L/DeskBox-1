@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
@@ -11,14 +12,8 @@ namespace DeskBox.Services;
 /// results are available immediately on launch, and subsequent scans reconcile
 /// against the existing index (incremental update) instead of rebuilding from scratch.
 /// </summary>
-public sealed class SearchIndexService : IDisposable
+public sealed partial class SearchIndexService : IDisposable
 {
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        WriteIndented = false,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     /// <summary>Hard cap on in-memory entries to prevent unbounded memory growth.</summary>
     private const int MaxIndexEntries = 300_000;
 
@@ -33,6 +28,7 @@ public sealed class SearchIndexService : IDisposable
     private const int CompactIndexMagic = 0x58494244; // "DBIX"
     private const int CompactIndexVersion = 1;
     private const int WatcherBufferSizeBytes = 64 * 1024;
+    private const int NativeMutationBatchSize = 8192;
     private static readonly TimeSpan WatcherRecoveryDelay = TimeSpan.FromMilliseconds(750);
 
     private readonly SettingsService _settingsService;
@@ -48,6 +44,8 @@ public sealed class SearchIndexService : IDisposable
     private readonly Func<CancellationToken, Task<bool>>? _canRunDeferredReconciliation;
     private Dictionary<string, IndexedFileEntry> _index = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, string> _directoryPool = new(StringComparer.OrdinalIgnoreCase);
+    private SearchCoreNativeBackend? _nativeIndex;
+    private readonly List<SearchCoreMutation> _nativeScanMutations = new(NativeMutationBatchSize);
     private readonly BoundedPathChangeBuffer<PendingIndexChange> _pendingChanges =
         new(MaxPendingIndexChanges, StringComparer.OrdinalIgnoreCase);
     private readonly List<FileSystemWatcher> _watchers = [];
@@ -55,6 +53,7 @@ public sealed class SearchIndexService : IDisposable
         new(StringComparer.OrdinalIgnoreCase);
     private readonly List<PendingWatcherChange> _scanWatcherChanges = [];
     private readonly string _storePath;
+    private readonly string _searchCoreModulePath;
     private readonly string _dirtyMarkerPath;
     private readonly ManualResetEventSlim _pauseGate = new(true);
     private CancellationTokenSource? _scanCts;
@@ -82,18 +81,40 @@ public sealed class SearchIndexService : IDisposable
     private int _partialRootCount;
     private int _scanOnlyRootCount;
     private int _lastScanCapacityLimited;
+    private int _nativeScanCapacityLimited;
+    private int _nativeTombstoneCount;
+    private int _rustPreviewSuppressedForSession;
+    private int _nativeRuntimeRecoveryCount;
+    private string? _rustPreviewFallbackReason;
     private readonly string _rootsManifestPath;
 
     public SearchIndexService(SettingsService settingsService)
         : this(
             settingsService,
             GetDefaultStorePath(),
-            canRunDeferredReconciliation: null)
+            canRunDeferredReconciliation: null,
+            searchCoreModulePath: GetDefaultSearchCoreModulePath())
     {
     }
 
     internal SearchIndexService(SettingsService settingsService, string storePath)
-        : this(settingsService, storePath, canRunDeferredReconciliation: null)
+        : this(
+            settingsService,
+            storePath,
+            canRunDeferredReconciliation: null,
+            searchCoreModulePath: GetDefaultSearchCoreModulePath())
+    {
+    }
+
+    internal SearchIndexService(
+        SettingsService settingsService,
+        string storePath,
+        string searchCoreModulePath)
+        : this(
+            settingsService,
+            storePath,
+            canRunDeferredReconciliation: null,
+            searchCoreModulePath)
     {
     }
 
@@ -103,17 +124,20 @@ public sealed class SearchIndexService : IDisposable
         : this(
             settingsService,
             GetDefaultStorePath(),
-            canRunDeferredReconciliation)
+            canRunDeferredReconciliation,
+            searchCoreModulePath: GetDefaultSearchCoreModulePath())
     {
     }
 
     private SearchIndexService(
         SettingsService settingsService,
         string storePath,
-        Func<CancellationToken, Task<bool>>? canRunDeferredReconciliation)
+        Func<CancellationToken, Task<bool>>? canRunDeferredReconciliation,
+        string searchCoreModulePath)
     {
         _settingsService = settingsService;
         _storePath = storePath;
+        _searchCoreModulePath = Path.GetFullPath(searchCoreModulePath);
         _dirtyMarkerPath = storePath + ".dirty";
         _rootsManifestPath = storePath + ".roots";
         _canRunDeferredReconciliation = canRunDeferredReconciliation;
@@ -125,6 +149,9 @@ public sealed class SearchIndexService : IDisposable
             "cache",
             "search-index.json");
 
+    private static string GetDefaultSearchCoreModulePath() =>
+        Path.Combine(AppContext.BaseDirectory, SearchCoreNativeBackend.DllName);
+
     public bool IsScanning => Volatile.Read(ref _isScanning) == 1;
     public bool IsLoading => Volatile.Read(ref _isLoading) == 1;
     public bool IsReconciliationPending =>
@@ -135,6 +162,76 @@ public sealed class SearchIndexService : IDisposable
     public int EntryCount => GetVisibleEntryCount();
     public int IndexedCount => EntryCount;
     public bool IsIndexResident => Volatile.Read(ref _isIndexResident);
+
+    public bool IsRustPreviewActive
+    {
+        get
+        {
+            _indexLock.EnterReadLock();
+            try
+            {
+                return IsIndexResident && _nativeIndex is not null;
+            }
+            finally
+            {
+                _indexLock.ExitReadLock();
+            }
+        }
+    }
+
+    public string? RustPreviewFallbackReason
+    {
+        get
+        {
+            _indexLock.EnterReadLock();
+            try
+            {
+                return _rustPreviewFallbackReason;
+            }
+            finally
+            {
+                _indexLock.ExitReadLock();
+            }
+        }
+    }
+
+    internal bool HasSingleResidentBackend
+    {
+        get
+        {
+            _indexLock.EnterReadLock();
+            try
+            {
+                return !IsIndexResident ||
+                       _nativeIndex is null ||
+                       (_index.Count == 0 && _directoryPool.Count == 0);
+            }
+            finally
+            {
+                _indexLock.ExitReadLock();
+            }
+        }
+    }
+
+    internal bool IsRustPreviewSuppressedForSession =>
+        Volatile.Read(ref _rustPreviewSuppressedForSession) == 1;
+
+    internal int NativeRuntimeRecoveryCount =>
+        Volatile.Read(ref _nativeRuntimeRecoveryCount);
+
+    internal void ResetRustPreviewRuntimeFallback()
+    {
+        _indexLock.EnterWriteLock();
+        try
+        {
+            Volatile.Write(ref _rustPreviewSuppressedForSession, 0);
+            _rustPreviewFallbackReason = null;
+        }
+        finally
+        {
+            _indexLock.ExitWriteLock();
+        }
+    }
 
     /// <summary>Number of items scanned during the current/last scan pass.</summary>
     public int ScannedCount => Volatile.Read(ref _scannedCount);
@@ -271,66 +368,105 @@ public sealed class SearchIndexService : IDisposable
                 return true;
             }
 
-            LoadedIndex? loaded;
+            bool rustPreviewConfigured =
+                _settingsService.Settings.SearchRustIndexerPreviewEnabled;
+            bool rustPreviewRequested = rustPreviewConfigured &&
+                !IsRustPreviewSuppressedForSession;
+            if (rustPreviewRequested)
+            {
+                App.Log(
+                    $"[SearchIndex] Rust SearchCore preview requested " +
+                    $"(module={_searchCoreModulePath}, exists={File.Exists(_searchCoreModulePath)}).");
+            }
+            else if (rustPreviewConfigured)
+            {
+                App.Log(
+                    "[SearchIndex] Rust SearchCore preview remains suppressed for this " +
+                    "session after a runtime failure.");
+            }
+
+            NativeDbixLoadAttempt nativeAttempt = default;
+            LoadedIndex? loaded = null;
             Interlocked.Exchange(ref _isLoading, 1);
             try
             {
-                loaded = await Task.Run(
-                    () => LoadPersistedIndexCore(cancellationToken),
-                    cancellationToken).ConfigureAwait(false);
+                if (rustPreviewRequested && File.Exists(_storePath))
+                {
+                    nativeAttempt = await Task.Run(
+                        () => TryLoadNativeDbix(cancellationToken),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
+                if (nativeAttempt.Backend is null)
+                {
+                    loaded = await Task.Run(
+                        () => LoadPersistedIndexCore(cancellationToken),
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
             finally
             {
                 Interlocked.Exchange(ref _isLoading, 0);
             }
+
+            if (nativeAttempt.Backend is { } nativeBackend)
+            {
+                LoadRootManifest();
+                if (TryActivateNativeLoadedIndex(
+                        nativeBackend,
+                        nativeAttempt.LoadInfo,
+                        out bool nativeHadPendingChanges,
+                        out bool nativePendingChangesOverflowed,
+                        out string activationError))
+                {
+                    App.Log(
+                        $"[SearchIndex] Loaded {EntryCount} persisted entries " +
+                        "into the Rust SearchCore preview backend.");
+
+                    if (nativePendingChangesOverflowed)
+                    {
+                        App.Log(
+                            "[SearchIndex] Idle delta buffer overflowed; scheduling a full " +
+                            "non-destructive reconciliation after restoring the Rust index.");
+                        ScheduleWatcherRecovery("idle-delta-overflow");
+                    }
+                    else if (nativeHadPendingChanges)
+                    {
+                        _ = Task.Run(SaveIndex);
+                    }
+
+                    return true;
+                }
+
+                nativeBackend.Dispose();
+                nativeAttempt = nativeAttempt with { Error = activationError, Backend = null };
+                loaded = await Task.Run(
+                    () => LoadPersistedIndexCore(cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             if (loaded is null)
             {
+                if (rustPreviewConfigured && !string.IsNullOrWhiteSpace(nativeAttempt.Error))
+                {
+                    SetRustPreviewFallbackReason(nativeAttempt.Error);
+                }
                 return false;
             }
 
             LoadRootManifest();
-
-            bool hadPendingChanges;
-            bool pendingChangesOverflowed;
-            _indexLock.EnterWriteLock();
-            try
+            string? managedFallbackReason = rustPreviewConfigured
+                ? rustPreviewRequested
+                    ? nativeAttempt.Error
+                    : RustPreviewFallbackReason
+                : null;
+            if (!TryActivateManagedLoadedIndex(
+                    loaded,
+                    managedFallbackReason,
+                    out bool hadPendingChanges,
+                    out bool pendingChangesOverflowed))
             {
-                if (_isDisposed ||
-                    !_settingsService.Settings.SearchCustomIndexerEnabled)
-                {
-                    return false;
-                }
-
-                pendingChangesOverflowed = _pendingChanges.IsOverflowed;
-                if (!pendingChangesOverflowed)
-                {
-                    foreach (var (path, change) in _pendingChanges.Entries)
-                    {
-                        if (change.IsDeleted)
-                        {
-                            loaded.Index.Remove(path);
-                            continue;
-                        }
-
-                        loaded.Index[path] = CreateIndexedEntry(
-                            path,
-                            change.IsDirectory,
-                            change.LastModified,
-                            change.ScanGeneration,
-                            loaded.DirectoryPool);
-                    }
-                }
-
-                hadPendingChanges = _pendingChanges.Count > 0;
-                _pendingChanges.Reset();
-                _index = loaded.Index;
-                _directoryPool = loaded.DirectoryPool;
-                _persistedEntryCount = _index.Count;
-                Volatile.Write(ref _isIndexResident, true);
-            }
-            finally
-            {
-                _indexLock.ExitWriteLock();
+                return false;
             }
 
             App.Log(
@@ -357,6 +493,62 @@ public sealed class SearchIndexService : IDisposable
         }
     }
 
+    private bool TryActivateManagedLoadedIndex(
+        LoadedIndex loaded,
+        string? fallbackReason,
+        out bool hadPendingChanges,
+        out bool pendingChangesOverflowed)
+    {
+        hadPendingChanges = false;
+        pendingChangesOverflowed = false;
+        _indexLock.EnterWriteLock();
+        try
+        {
+            if (_isDisposed ||
+                !_settingsService.Settings.SearchCustomIndexerEnabled)
+            {
+                return false;
+            }
+
+            pendingChangesOverflowed = _pendingChanges.IsOverflowed;
+            if (!pendingChangesOverflowed)
+            {
+                foreach (var (path, change) in _pendingChanges.Entries)
+                {
+                    if (change.IsDeleted)
+                    {
+                        loaded.Index.Remove(path);
+                        continue;
+                    }
+
+                    loaded.Index[path] = CreateIndexedEntry(
+                        path,
+                        change.IsDirectory,
+                        change.LastModified,
+                        change.ScanGeneration,
+                        loaded.DirectoryPool);
+                }
+            }
+
+            hadPendingChanges = _pendingChanges.Count > 0;
+            _pendingChanges.Reset();
+            DisposeNativeIndexLocked();
+            _index = loaded.Index;
+            _directoryPool = loaded.DirectoryPool;
+            _persistedEntryCount = _index.Count;
+            _nativeScanMutations.Clear();
+            _nativeTombstoneCount = 0;
+            Volatile.Write(ref _nativeScanCapacityLimited, 0);
+            _rustPreviewFallbackReason = fallbackReason;
+            Volatile.Write(ref _isIndexResident, true);
+            return true;
+        }
+        finally
+        {
+            _indexLock.ExitWriteLock();
+        }
+    }
+
     /// <summary>
     /// Saves and releases the resident index while keeping file-system watchers alive.
     /// Changes that arrive while unloaded are retained in a small delta map and merged
@@ -374,6 +566,7 @@ public sealed class SearchIndexService : IDisposable
             return false;
         }
 
+        IdleUnloadResult result = default;
         await _residencyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -385,7 +578,7 @@ public sealed class SearchIndexService : IDisposable
                 return false;
             }
 
-            return await Task.Run(
+            result = await Task.Run(
                 UnloadResidentIndexCore,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -393,9 +586,24 @@ public sealed class SearchIndexService : IDisposable
         {
             _residencyGate.Release();
         }
+
+        if (result.FailedBackend is not null && result.Failure is not null &&
+            !TryRecoverManagedIndexFromNativeFailure(
+                result.FailedBackend,
+                "idle unload",
+                result.Failure))
+        {
+            App.Log(
+                "[SearchIndex] Rust idle unload failed and managed recovery " +
+                $"was unavailable: {result.Failure.Message}");
+        }
+
+        // A failed native unload leaves the recovered managed owner resident;
+        // the normal idle timer can retry releasing it on its next pass.
+        return result.Unloaded;
     }
 
-    private bool UnloadResidentIndexCore()
+    private IdleUnloadResult UnloadResidentIndexCore()
     {
         lock (_saveLock)
         {
@@ -405,30 +613,43 @@ public sealed class SearchIndexService : IDisposable
                 if (!IsIndexResident ||
                     IsScanning ||
                     IsReconciliationPending ||
-                    _index.Count == 0)
+                    _persistedEntryCount == 0)
                 {
-                    return false;
+                    return default;
                 }
 
                 // The compact cache becomes the stable base for any watcher deltas
                 // collected while the large in-memory dictionary is absent.
-                SaveCompactIndexCore();
-                int releasedEntryCount = _index.Count;
+                FlushNativeScanMutationsLocked();
+                SaveResidentIndexCore(compactNativeAfterSave: false);
+                int releasedEntryCount = _persistedEntryCount;
                 _persistedEntryCount = releasedEntryCount;
+                DisposeNativeIndexLocked();
                 _index = new Dictionary<string, IndexedFileEntry>(
                     StringComparer.OrdinalIgnoreCase);
                 _directoryPool = new Dictionary<string, string>(
                     StringComparer.OrdinalIgnoreCase);
+                _nativeScanMutations.Clear();
+                _nativeTombstoneCount = 0;
                 Volatile.Write(ref _isIndexResident, false);
                 App.Log(
                     $"[SearchIndex] Unloaded {releasedEntryCount} idle entries; " +
                     "watchers remain active.");
-                return true;
+                return new IdleUnloadResult(Unloaded: true, null, null);
             }
             catch (Exception ex)
             {
+                if (_nativeIndex is { } nativeBackend &&
+                    IsRecoverableNativeRuntimeFailure(ex))
+                {
+                    return new IdleUnloadResult(
+                        Unloaded: false,
+                        nativeBackend,
+                        ex);
+                }
+
                 App.Log($"[SearchIndex] Idle unload failed: {ex.Message}");
-                return false;
+                return default;
             }
             finally
             {
@@ -472,7 +693,9 @@ public sealed class SearchIndexService : IDisposable
                 }
             }
 
-            var persisted = JsonSerializer.Deserialize<PersistedIndex>(stream, s_jsonOptions);
+            PersistedIndex? persisted = JsonSerializer.Deserialize(
+                stream,
+                SearchIndexJsonContext.Default.LegacyPersistedIndex);
             if (persisted?.Entries is not { Count: > 0 })
             {
                 return null;
@@ -594,26 +817,49 @@ public sealed class SearchIndexService : IDisposable
     /// </summary>
     public void SaveIndex()
     {
+        SearchCoreNativeBackend? failedBackend = null;
+        Exception? nativeFailure = null;
         lock (_saveLock)
         {
-            _indexLock.EnterReadLock();
+            _indexLock.EnterWriteLock();
             try
             {
-                if (!IsIndexResident || _index.Count == 0)
+                if (!IsIndexResident || _persistedEntryCount == 0)
                 {
                     return;
                 }
 
-                SaveCompactIndexCore();
+                FlushNativeScanMutationsLocked();
+                SaveResidentIndexCore(compactNativeAfterSave: true);
             }
             catch (Exception ex)
             {
-                App.Log($"[SearchIndex] Failed to save index: {ex.Message}");
+                if (_nativeIndex is { } nativeBackend &&
+                    IsRecoverableNativeRuntimeFailure(ex))
+                {
+                    failedBackend = nativeBackend;
+                    nativeFailure = ex;
+                }
+                else
+                {
+                    App.Log($"[SearchIndex] Failed to save index: {ex.Message}");
+                }
             }
             finally
             {
-                _indexLock.ExitReadLock();
+                _indexLock.ExitWriteLock();
             }
+        }
+
+        if (failedBackend is not null && nativeFailure is not null &&
+            !TryRecoverManagedIndexFromNativeFailure(
+                failedBackend,
+                "save",
+                nativeFailure))
+        {
+            App.Log(
+                $"[SearchIndex] Failed to save the Rust index and managed recovery " +
+                $"was unavailable: {nativeFailure.Message}");
         }
     }
 
@@ -670,7 +916,12 @@ public sealed class SearchIndexService : IDisposable
                         fullPath.AsSpan(entry.FileNameStart),
                         ref utf8Buffer);
                     writer.Write(entry.IsDirectory);
-                    writer.Write(entry.LastModified.ToBinary());
+                    DateTime persistedLastModified =
+                        entry.LastModified.Kind == DateTimeKind.Unspecified &&
+                        entry.LastModified != DateTime.MinValue
+                            ? DateTime.SpecifyKind(entry.LastModified, DateTimeKind.Local)
+                            : entry.LastModified;
+                    writer.Write(persistedLastModified.ToBinary());
                 }
             }
 
@@ -815,6 +1066,62 @@ public sealed class SearchIndexService : IDisposable
         }
     }
 
+    private void SaveResidentIndexCore(bool compactNativeAfterSave)
+    {
+        if (_nativeIndex is not null)
+        {
+            SaveNativeIndexCore(_nativeIndex, compactNativeAfterSave);
+            return;
+        }
+
+        SaveCompactIndexCore();
+    }
+
+    private void SaveNativeIndexCore(
+        SearchCoreNativeBackend backend,
+        bool compactAfterSave)
+    {
+        SearchCoreDbixSaveInfo info = backend.SaveDbix(_storePath);
+        if (File.Exists(_dirtyMarkerPath))
+        {
+            File.Delete(_dirtyMarkerPath);
+        }
+
+        _persistedEntryCount = checked((int)info.EntryCount);
+        App.Log(
+            $"[SearchIndex] Persisted {info.EntryCount} entries from the Rust " +
+            $"SearchCore preview ({info.FileBytes} bytes).");
+
+        int compactThreshold = Math.Max(4096, _persistedEntryCount / 8);
+        if (!compactAfterSave || _nativeTombstoneCount < compactThreshold)
+        {
+            return;
+        }
+
+        bool reopened = SearchCoreNativeBackend.TryOpenDbix(
+            _searchCoreModulePath,
+            _storePath,
+            MaxIndexEntries,
+            out SearchCoreNativeBackend? compacted,
+            out SearchCoreDbixLoadInfo loadInfo,
+            out string error);
+        if (!reopened || compacted is null)
+        {
+            App.Log(
+                $"[SearchIndex] Rust resident compaction was deferred: {error}");
+            return;
+        }
+
+        int staleRevisionCount = _nativeTombstoneCount;
+        _nativeIndex = compacted;
+        _persistedEntryCount = checked((int)loadInfo.EntryCount);
+        _nativeTombstoneCount = 0;
+        backend.Dispose();
+        App.Log(
+            $"[SearchIndex] Compacted the Rust resident index after " +
+            $"{staleRevisionCount} stale revisions.");
+    }
+
     private async Task RunDeferredFreshIndexReconciliationAsync(
         long epoch,
         CancellationToken token,
@@ -880,6 +1187,255 @@ public sealed class SearchIndexService : IDisposable
             return true;
         }
     }
+
+    private NativeDbixLoadAttempt TryLoadNativeDbix(CancellationToken cancellationToken)
+    {
+        bool loaded = SearchCoreNativeBackend.TryOpenDbix(
+            _searchCoreModulePath,
+            _storePath,
+            MaxIndexEntries,
+            out SearchCoreNativeBackend? backend,
+            out SearchCoreDbixLoadInfo loadInfo,
+            out string error,
+            cancellationToken);
+        return loaded && backend is not null
+            ? new NativeDbixLoadAttempt(backend, loadInfo, string.Empty)
+            : new NativeDbixLoadAttempt(null, default, error);
+    }
+
+    private bool TryActivateNativeLoadedIndex(
+        SearchCoreNativeBackend backend,
+        SearchCoreDbixLoadInfo loadInfo,
+        out bool hadPendingChanges,
+        out bool pendingChangesOverflowed,
+        out string error)
+    {
+        hadPendingChanges = false;
+        pendingChangesOverflowed = false;
+        error = string.Empty;
+        _indexLock.EnterWriteLock();
+        try
+        {
+            if (_isDisposed ||
+                !_settingsService.Settings.SearchCustomIndexerEnabled ||
+                !_settingsService.Settings.SearchRustIndexerPreviewEnabled)
+            {
+                error = "Rust SearchCore preview was disabled before activation completed.";
+                return false;
+            }
+
+            var emptyIndex = new Dictionary<string, IndexedFileEntry>(
+                StringComparer.OrdinalIgnoreCase);
+            var emptyDirectoryPool = new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+
+            pendingChangesOverflowed = _pendingChanges.IsOverflowed;
+            hadPendingChanges = _pendingChanges.Count > 0;
+            _persistedEntryCount = checked((int)loadInfo.EntryCount);
+            _nativeTombstoneCount = 0;
+            Volatile.Write(ref _nativeScanCapacityLimited, 0);
+            if (!pendingChangesOverflowed && hadPendingChanges)
+            {
+                var mutations = new List<SearchCoreMutation>(_pendingChanges.Count);
+                foreach (var (path, change) in _pendingChanges.Entries)
+                {
+                    mutations.Add(change.IsDeleted
+                        ? new SearchCoreMutation(
+                            change.IsDirectory
+                                ? SearchCoreMutationKind.RemoveTree
+                                : SearchCoreMutationKind.RemoveExact,
+                            path)
+                        : new SearchCoreMutation(
+                            SearchCoreMutationKind.Upsert,
+                            path,
+                            change.IsDirectory,
+                            change.LastModified,
+                            change.ScanGeneration));
+                }
+
+                ApplyNativeMutationBatchWithCapacityLocked(backend, mutations);
+            }
+
+            _pendingChanges.Reset();
+            DisposeNativeIndexLocked();
+            _nativeIndex = backend;
+            _index = emptyIndex;
+            _directoryPool = emptyDirectoryPool;
+            _nativeScanMutations.Clear();
+            if (_persistedEntryCount < MaxIndexEntries)
+            {
+                Volatile.Write(ref _nativeScanCapacityLimited, 0);
+            }
+            _rustPreviewFallbackReason = null;
+            Volatile.Write(ref _isIndexResident, true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Rust SearchCore activation failed: {ex.Message}";
+            return false;
+        }
+        finally
+        {
+            _indexLock.ExitWriteLock();
+        }
+    }
+
+    private void SetRustPreviewFallbackReason(string reason)
+    {
+        _indexLock.EnterWriteLock();
+        try
+        {
+            _rustPreviewFallbackReason = reason;
+        }
+        finally
+        {
+            _indexLock.ExitWriteLock();
+        }
+        App.Log($"[SearchIndex] Rust preview fallback: {reason}");
+    }
+
+    private bool TryRecoverManagedIndexFromNativeFailure(
+        SearchCoreNativeBackend failedBackend,
+        string operation,
+        Exception exception)
+    {
+        if (_isDisposed || !IsRecoverableNativeRuntimeFailure(exception))
+        {
+            return false;
+        }
+
+        string reason =
+            $"Rust SearchCore runtime {operation} failure: {exception.Message}";
+        try
+        {
+            _residencyGate.Wait();
+            try
+            {
+                if (_isDisposed)
+                {
+                    return false;
+                }
+
+                bool flushSucceeded = true;
+                bool saveSucceeded = true;
+                lock (_saveLock)
+                {
+                    _indexLock.EnterWriteLock();
+                    try
+                    {
+                        if (!ReferenceEquals(_nativeIndex, failedBackend))
+                        {
+                            return IsIndexResident && _nativeIndex is null;
+                        }
+
+                        Volatile.Write(ref _rustPreviewSuppressedForSession, 1);
+                        _rustPreviewFallbackReason = reason;
+                        try
+                        {
+                            FlushNativeScanMutationsLocked();
+                        }
+                        catch (Exception flushException)
+                        {
+                            flushSucceeded = false;
+                            App.Log(
+                                "[SearchIndex] Rust runtime recovery could not flush " +
+                                $"pending mutations: {flushException.Message}");
+                        }
+
+                        try
+                        {
+                            SaveNativeIndexCore(failedBackend, compactAfterSave: false);
+                        }
+                        catch (Exception saveException)
+                        {
+                            saveSucceeded = false;
+                            App.Log(
+                                "[SearchIndex] Rust runtime recovery is using the last " +
+                                $"valid DBIX snapshot: {saveException.Message}");
+                        }
+
+                        DisposeNativeIndexLocked();
+                        _index = new Dictionary<string, IndexedFileEntry>(
+                            StringComparer.OrdinalIgnoreCase);
+                        _directoryPool = new Dictionary<string, string>(
+                            StringComparer.OrdinalIgnoreCase);
+                        _nativeScanMutations.Clear();
+                        _nativeTombstoneCount = 0;
+                        Volatile.Write(ref _nativeScanCapacityLimited, 0);
+                        Volatile.Write(ref _isIndexResident, false);
+                    }
+                    finally
+                    {
+                        _indexLock.ExitWriteLock();
+                    }
+                }
+
+                LoadedIndex? loaded = LoadPersistedIndexCore(CancellationToken.None);
+                bool requiresReconciliation = !flushSucceeded || !saveSucceeded;
+                if (loaded is null)
+                {
+                    loaded = new LoadedIndex(
+                        new Dictionary<string, IndexedFileEntry>(
+                            StringComparer.OrdinalIgnoreCase),
+                        new Dictionary<string, string>(
+                            StringComparer.OrdinalIgnoreCase),
+                        WasLegacyJson: false);
+                    requiresReconciliation = true;
+                }
+                else
+                {
+                    LoadRootManifest();
+                }
+
+                if (!TryActivateManagedLoadedIndex(
+                        loaded,
+                        reason,
+                        out bool hadPendingChanges,
+                        out bool pendingChangesOverflowed))
+                {
+                    return false;
+                }
+
+                Interlocked.Increment(ref _nativeRuntimeRecoveryCount);
+                App.Log(
+                    $"[SearchIndex] Rust preview fallback recovered {EntryCount} " +
+                    $"managed entries after {operation}; Rust is suppressed for this session.");
+
+                if (pendingChangesOverflowed || requiresReconciliation)
+                {
+                    MarkIndexDirty();
+                    ScheduleWatcherRecovery("rust-runtime-fallback");
+                }
+                else if (hadPendingChanges)
+                {
+                    _ = Task.Run(SaveIndex);
+                }
+
+                IndexUpdated?.Invoke();
+                return true;
+            }
+            finally
+            {
+                _residencyGate.Release();
+            }
+        }
+        catch (Exception recoveryException)
+        {
+            App.Log(
+                $"[SearchIndex] Rust runtime fallback failed after {operation}: " +
+                recoveryException.Message);
+            return false;
+        }
+    }
+
+    private static bool IsRecoverableNativeRuntimeFailure(Exception exception) =>
+        exception is SearchCoreNativeOperationException or
+            ObjectDisposedException or
+            InvalidDataException or
+            InvalidOperationException or
+            IOException or
+            OverflowException;
 
     private bool TryGetFreshPersistedIndexTime(out DateTime persistedAt)
     {
@@ -948,57 +1504,124 @@ public sealed class SearchIndexService : IDisposable
             return [];
         }
 
-        _indexLock.EnterReadLock();
-        try
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            if (_index.Count == 0)
+            SearchCoreNativeBackend? failedBackend = null;
+            Exception? nativeFailure = null;
+            _indexLock.EnterReadLock();
+            try
             {
-                return [];
-            }
-
-            var topResults = new PriorityQueue<SearchCandidate, (double Score, long ModifiedTicks)>();
-            ReadOnlySpan<char> querySpan = normalizedQuery.AsSpan();
-            foreach (var (fullPath, entry) in _index)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                ReadOnlySpan<char> fileName = fullPath.AsSpan(entry.FileNameStart);
-                double score = ComputeRelevance(fileName, querySpan);
-                if (score <= 0)
+                if (_persistedEntryCount == 0)
                 {
-                    continue;
+                    return [];
                 }
 
-                long modifiedTicks = entry.LastModified.ToUniversalTime().Ticks;
-                topResults.Enqueue(
-                    new SearchCandidate(fullPath, entry, score),
-                    (score, modifiedTicks));
-                if (topResults.Count > maxResults)
+                if (_nativeIndex is { } nativeBackend)
                 {
-                    topResults.Dequeue();
+                    try
+                    {
+                        SearchCoreQuerySnapshot snapshot = nativeBackend.Query(
+                            normalizedQuery,
+                            maxResults,
+                            cancellationToken);
+                        return snapshot.Items
+                            .Select(item => new SearchResultItem
+                            {
+                                Kind = item.IsDirectory
+                                    ? SearchResultKind.Folder
+                                    : SearchResultKind.File,
+                                Title = item.FileName,
+                                Subtitle = item.DirectoryPath,
+                                DetailPath = item.FullPath,
+                                ModifiedAt = item.LastModifiedUtc.ToLocalTime(),
+                                RelevanceScore = item.RelevanceScore,
+                                Glyph = item.IsDirectory ? "\uE8B7" : null
+                            })
+                            .ToList();
+                    }
+                    catch (Exception ex) when (IsRecoverableNativeRuntimeFailure(ex))
+                    {
+                        failedBackend = nativeBackend;
+                        nativeFailure = ex;
+                    }
+                }
+                else
+                {
+                    return SearchManagedIndexLocked(
+                        normalizedQuery,
+                        maxResults,
+                        cancellationToken);
                 }
             }
+            finally
+            {
+                _indexLock.ExitReadLock();
+            }
 
-            return topResults.UnorderedItems
-                .Select(item => item.Element)
-                .OrderByDescending(candidate => candidate.Score)
-                .ThenByDescending(candidate => candidate.Entry.LastModified)
-                .Take(maxResults)
-                .Select(candidate => new SearchResultItem
-                {
-                    Kind = candidate.Entry.IsDirectory ? SearchResultKind.Folder : SearchResultKind.File,
-                    Title = candidate.FullPath[candidate.Entry.FileNameStart..],
-                    Subtitle = candidate.Entry.DirectoryPath,
-                    DetailPath = candidate.FullPath,
-                    ModifiedAt = candidate.Entry.LastModified,
-                    RelevanceScore = candidate.Score,
-                    Glyph = candidate.Entry.IsDirectory ? "\uE8B7" : null
-                })
-                .ToList();
+            if (attempt == 0 &&
+                failedBackend is not null &&
+                nativeFailure is not null &&
+                TryRecoverManagedIndexFromNativeFailure(
+                    failedBackend,
+                    "query",
+                    nativeFailure))
+            {
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                "Rust SearchCore query failed and managed recovery was unavailable.",
+                nativeFailure);
         }
-        finally
+
+        return [];
+    }
+
+    private IReadOnlyList<SearchResultItem> SearchManagedIndexLocked(
+        string normalizedQuery,
+        int maxResults,
+        CancellationToken cancellationToken)
+    {
+        var topResults = new PriorityQueue<SearchCandidate, (double Score, long ModifiedTicks)>();
+        ReadOnlySpan<char> querySpan = normalizedQuery.AsSpan();
+        foreach (var (fullPath, entry) in _index)
         {
-            _indexLock.ExitReadLock();
+            cancellationToken.ThrowIfCancellationRequested();
+            ReadOnlySpan<char> fileName = fullPath.AsSpan(entry.FileNameStart);
+            double score = ComputeRelevance(fileName, querySpan);
+            if (score <= 0)
+            {
+                continue;
+            }
+
+            long modifiedTicks = entry.LastModified.ToUniversalTime().Ticks;
+            topResults.Enqueue(
+                new SearchCandidate(fullPath, entry, score),
+                (score, modifiedTicks));
+            if (topResults.Count > maxResults)
+            {
+                topResults.Dequeue();
+            }
         }
+
+        return topResults.UnorderedItems
+            .Select(item => item.Element)
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenByDescending(candidate => candidate.Entry.LastModified)
+            .Take(maxResults)
+            .Select(candidate => new SearchResultItem
+            {
+                Kind = candidate.Entry.IsDirectory
+                    ? SearchResultKind.Folder
+                    : SearchResultKind.File,
+                Title = candidate.FullPath[candidate.Entry.FileNameStart..],
+                Subtitle = candidate.Entry.DirectoryPath,
+                DetailPath = candidate.FullPath,
+                ModifiedAt = candidate.Entry.LastModified,
+                RelevanceScore = candidate.Score,
+                Glyph = candidate.Entry.IsDirectory ? "\uE8B7" : null
+            })
+            .ToList();
     }
 
     /// <summary>
@@ -1006,28 +1629,82 @@ public sealed class SearchIndexService : IDisposable
     /// </summary>
     public IReadOnlyList<SearchResultItem> GetRecentFiles(int count)
     {
-        _indexLock.EnterReadLock();
-        try
+        if (!IsIndexResident || count <= 0)
         {
-            return _index
-                .Where(item => !item.Value.IsDirectory)
-                .OrderByDescending(item => item.Value.LastModified)
-                .Take(count)
-                .Select(item => new SearchResultItem
+            return [];
+        }
+
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            SearchCoreNativeBackend? failedBackend = null;
+            Exception? nativeFailure = null;
+            _indexLock.EnterReadLock();
+            try
+            {
+                if (_nativeIndex is { } nativeBackend)
                 {
-                    Kind = SearchResultKind.File,
-                    Title = item.Key[item.Value.FileNameStart..],
-                    Subtitle = item.Value.DirectoryPath,
-                    DetailPath = item.Key,
-                    ModifiedAt = item.Value.LastModified
-                })
-                .ToList();
+                    try
+                    {
+                        return nativeBackend.GetRecentFiles(count)
+                            .Select(item => new SearchResultItem
+                            {
+                                Kind = SearchResultKind.File,
+                                Title = Path.GetFileName(item.FullPath),
+                                Subtitle = Path.GetDirectoryName(item.FullPath),
+                                DetailPath = item.FullPath,
+                                ModifiedAt = item.LastModifiedUtc.ToLocalTime()
+                            })
+                            .ToList();
+                    }
+                    catch (Exception ex) when (IsRecoverableNativeRuntimeFailure(ex))
+                    {
+                        failedBackend = nativeBackend;
+                        nativeFailure = ex;
+                    }
+                }
+                else
+                {
+                    return GetRecentManagedFilesLocked(count);
+                }
+            }
+            finally
+            {
+                _indexLock.ExitReadLock();
+            }
+
+            if (attempt == 0 &&
+                failedBackend is not null &&
+                nativeFailure is not null &&
+                TryRecoverManagedIndexFromNativeFailure(
+                    failedBackend,
+                    "recent projection",
+                    nativeFailure))
+            {
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                "Rust SearchCore recent projection failed and managed recovery was unavailable.",
+                nativeFailure);
         }
-        finally
-        {
-            _indexLock.ExitReadLock();
-        }
+
+        return [];
     }
+
+    private IReadOnlyList<SearchResultItem> GetRecentManagedFilesLocked(int count) =>
+        _index
+            .Where(item => !item.Value.IsDirectory)
+            .OrderByDescending(item => item.Value.LastModified)
+            .Take(count)
+            .Select(item => new SearchResultItem
+            {
+                Kind = SearchResultKind.File,
+                Title = item.Key[item.Value.FileNameStart..],
+                Subtitle = item.Value.DirectoryPath,
+                DetailPath = item.Key,
+                ModifiedAt = item.Value.LastModified
+            })
+            .ToList();
 
     /// <summary>
     /// Derives the most frequently occurring parent folders from the index.
@@ -1041,39 +1718,89 @@ public sealed class SearchIndexService : IDisposable
             return [];
         }
 
-        _indexLock.EnterReadLock();
-        try
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            return _index
-                .Where(item =>
-                    !item.Value.IsDirectory &&
-                    !string.IsNullOrWhiteSpace(item.Value.DirectoryPath))
-                .GroupBy(item => item.Value.DirectoryPath, StringComparer.OrdinalIgnoreCase)
-                .Select(g => new
+            SearchCoreNativeBackend? failedBackend = null;
+            Exception? nativeFailure = null;
+            _indexLock.EnterReadLock();
+            try
+            {
+                if (_nativeIndex is { } nativeBackend)
                 {
-                    Path = g.Key,
-                    FileCount = g.Count(),
-                    LastModified = g.Max(item => item.Value.LastModified)
-                })
-                .OrderByDescending(f => f.FileCount)
-                .ThenByDescending(f => f.LastModified)
-                .Take(count)
-                .Select(f => new SearchResultItem
+                    try
+                    {
+                        return nativeBackend.GetFrequentFolders(count)
+                            .Select(item => new SearchResultItem
+                            {
+                                Kind = SearchResultKind.Folder,
+                                Title = Path.GetFileName(item.FullPath),
+                                Subtitle = item.FullPath,
+                                DetailPath = item.FullPath,
+                                ModifiedAt = item.LastModifiedUtc.ToLocalTime(),
+                                Glyph = "\uE8B7"
+                            })
+                            .ToList();
+                    }
+                    catch (Exception ex) when (IsRecoverableNativeRuntimeFailure(ex))
+                    {
+                        failedBackend = nativeBackend;
+                        nativeFailure = ex;
+                    }
+                }
+                else
                 {
-                    Kind = SearchResultKind.Folder,
-                    Title = Path.GetFileName(f.Path),
-                    Subtitle = f.Path,
-                    DetailPath = f.Path,
-                    ModifiedAt = f.LastModified,
-                    Glyph = "\uE8B7"
-                })
-                .ToList();
+                    return GetFrequentManagedFoldersLocked(count);
+                }
+            }
+            finally
+            {
+                _indexLock.ExitReadLock();
+            }
+
+            if (attempt == 0 &&
+                failedBackend is not null &&
+                nativeFailure is not null &&
+                TryRecoverManagedIndexFromNativeFailure(
+                    failedBackend,
+                    "frequent projection",
+                    nativeFailure))
+            {
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                "Rust SearchCore frequent projection failed and managed recovery was unavailable.",
+                nativeFailure);
         }
-        finally
-        {
-            _indexLock.ExitReadLock();
-        }
+
+        return [];
     }
+
+    private IReadOnlyList<SearchResultItem> GetFrequentManagedFoldersLocked(int count) =>
+        _index
+            .Where(item =>
+                !item.Value.IsDirectory &&
+                !string.IsNullOrWhiteSpace(item.Value.DirectoryPath))
+            .GroupBy(item => item.Value.DirectoryPath, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                Path = g.Key,
+                FileCount = g.Count(),
+                LastModified = g.Max(item => item.Value.LastModified)
+            })
+            .OrderByDescending(f => f.FileCount)
+            .ThenByDescending(f => f.LastModified)
+            .Take(count)
+            .Select(f => new SearchResultItem
+            {
+                Kind = SearchResultKind.Folder,
+                Title = Path.GetFileName(f.Path),
+                Subtitle = f.Path,
+                DetailPath = f.Path,
+                ModifiedAt = f.LastModified,
+                Glyph = "\uE8B7"
+            })
+            .ToList();
 
     private async Task ScanDirectoriesAsync(
         long epoch,
@@ -1119,6 +1846,7 @@ public sealed class SearchIndexService : IDisposable
                 }
             }
             int scanGeneration = Interlocked.Increment(ref _scanGeneration);
+            Volatile.Write(ref _nativeScanCapacityLimited, 0);
 
             // Arm watchers before the first directory is enumerated. Events
             // that arrive during the scan are queued and applied after the
@@ -1319,6 +2047,9 @@ public sealed class SearchIndexService : IDisposable
         }
 
         var staleKeys = new List<string>();
+        int staleEntryCount = 0;
+        SearchCoreNativeBackend? failedBackend = null;
+        Exception? nativeFailure = null;
 
         _indexLock.EnterWriteLock();
         try
@@ -1328,25 +2059,56 @@ public sealed class SearchIndexService : IDisposable
                 return;
             }
 
-            foreach (var (path, entry) in _index)
+            if (_nativeIndex is { } nativeBackend)
             {
-                if (entry.ScanGeneration == scanGeneration)
+                try
                 {
-                    continue;
+                    FlushNativeScanMutationsLocked();
+                    if (scannedRoots.Count > 0)
+                    {
+                        int before = _persistedEntryCount;
+                        var mutations = scannedRoots
+                            .Select(root => new SearchCoreMutation(
+                                SearchCoreMutationKind.RemoveStaleTree,
+                                root,
+                                ScanGeneration: scanGeneration))
+                            .ToList();
+                        SearchCoreMutationResult result = nativeBackend.ApplyMutations(mutations);
+                        _persistedEntryCount = checked((int)result.LiveEntryCount);
+                        _nativeTombstoneCount = checked((int)result.TombstoneCount);
+                        staleEntryCount = Math.Max(0, before - _persistedEntryCount);
+                    }
                 }
-
-                bool underScannedRoot = scannedRoots.Any(root =>
-                    IsSameOrDescendant(path, root));
-
-                if (underScannedRoot)
+                catch (Exception ex) when (IsRecoverableNativeRuntimeFailure(ex))
                 {
-                    staleKeys.Add(path);
+                    failedBackend = nativeBackend;
+                    nativeFailure = ex;
                 }
             }
-
-            foreach (string key in staleKeys)
+            else
             {
-                _index.Remove(key);
+                foreach (var (path, entry) in _index)
+                {
+                    if (entry.ScanGeneration == scanGeneration)
+                    {
+                        continue;
+                    }
+
+                    bool underScannedRoot = scannedRoots.Any(root =>
+                        IsSameOrDescendant(path, root));
+
+                    if (underScannedRoot)
+                    {
+                        staleKeys.Add(path);
+                    }
+                }
+
+                foreach (string key in staleKeys)
+                {
+                    _index.Remove(key);
+                }
+                _persistedEntryCount = _index.Count;
+                staleEntryCount = staleKeys.Count;
             }
         }
         finally
@@ -1354,9 +2116,29 @@ public sealed class SearchIndexService : IDisposable
             _indexLock.ExitWriteLock();
         }
 
-        if (staleKeys.Count > 0)
+        if (failedBackend is not null && nativeFailure is not null)
         {
-            App.Log($"[SearchIndex] Reconciled {staleKeys.Count} stale entries.");
+            if (!TryRecoverManagedIndexFromNativeFailure(
+                    failedBackend,
+                    "scan reconciliation",
+                    nativeFailure))
+            {
+                MarkIndexDirty();
+                ScheduleWatcherRecovery("rust-runtime-reconciliation-failure");
+                App.Log(
+                    "[SearchIndex] Rust scan reconciliation failed and managed recovery " +
+                    $"was unavailable: {nativeFailure.Message}");
+            }
+
+            // A compact DBIX snapshot does not persist scan-generation markers.
+            // Recovery therefore schedules a fresh reconciliation instead of
+            // applying this pass's stale-generation removal to managed entries.
+            return;
+        }
+
+        if (staleEntryCount > 0)
+        {
+            App.Log($"[SearchIndex] Reconciled {staleEntryCount} stale entries.");
         }
     }
 
@@ -1560,7 +2342,9 @@ public sealed class SearchIndexService : IDisposable
             }
 
             string json = File.ReadAllText(_rootsManifestPath);
-            RootManifest? manifest = JsonSerializer.Deserialize<RootManifest>(json, s_jsonOptions);
+            RootManifest? manifest = JsonSerializer.Deserialize(
+                json,
+                SearchIndexJsonContext.Default.RootManifest);
             if (manifest?.Roots is not { Count: > 0 })
             {
                 return;
@@ -1594,7 +2378,7 @@ public sealed class SearchIndexService : IDisposable
             string tempPath = _rootsManifestPath + ".tmp";
             string json = JsonSerializer.Serialize(
                 new RootManifest { Roots = NormalizeRoots(roots) },
-                s_jsonOptions);
+                SearchIndexJsonContext.Default.RootManifest);
             File.WriteAllText(tempPath, json);
             File.Move(tempPath, _rootsManifestPath, overwrite: true);
         }
@@ -1619,7 +2403,22 @@ public sealed class SearchIndexService : IDisposable
         bool isDirectory,
         int? scanGeneration,
         long? sessionEpoch,
-        CancellationToken token)
+        CancellationToken token) =>
+        TryAddEntryCore(
+            path,
+            isDirectory,
+            scanGeneration,
+            sessionEpoch,
+            token,
+            allowNativeRecovery: true);
+
+    private IndexEntryResult TryAddEntryCore(
+        string path,
+        bool isDirectory,
+        int? scanGeneration,
+        long? sessionEpoch,
+        CancellationToken token,
+        bool allowNativeRecovery)
     {
         if (Volatile.Read(ref _indexingEnabled) == 0 ||
             (sessionEpoch is long epoch && !IsCurrentSession(epoch, token)))
@@ -1627,6 +2426,7 @@ public sealed class SearchIndexService : IDisposable
             return new IndexEntryResult(IndexEntryStatus.SessionExpired, ResidentMutation: false);
         }
 
+        SearchCoreNativeBackend? failedBackend = null;
         try
         {
             var info = new FileInfo(path);
@@ -1646,18 +2446,61 @@ public sealed class SearchIndexService : IDisposable
                 residentMutation = IsIndexResident;
                 if (residentMutation)
                 {
-                    if (_index.Count >= MaxIndexEntries &&
-                        !_index.ContainsKey(path))
+                    if (_nativeIndex is { } nativeBackend)
                     {
-                        return new IndexEntryResult(IndexEntryStatus.CapacityLimited, ResidentMutation: false);
-                    }
+                        failedBackend = nativeBackend;
+                        if (Volatile.Read(ref _nativeScanCapacityLimited) != 0)
+                        {
+                            return new IndexEntryResult(
+                                IndexEntryStatus.CapacityLimited,
+                                ResidentMutation: false);
+                        }
 
-                    _index[path] = CreateIndexedEntry(
-                        path,
-                        isDirectory,
-                        lastModified,
-                        generation,
-                        _directoryPool);
+                        var mutation = new SearchCoreMutation(
+                            SearchCoreMutationKind.Upsert,
+                            path,
+                            isDirectory,
+                            lastModified,
+                            generation);
+                        if (scanGeneration.HasValue && sessionEpoch.HasValue)
+                        {
+                            _nativeScanMutations.Add(mutation);
+                            if (_nativeScanMutations.Count >= NativeMutationBatchSize)
+                            {
+                                FlushNativeScanMutationsLocked();
+                            }
+                        }
+                        else
+                        {
+                            FlushNativeScanMutationsLocked();
+                            ApplyNativeMutationBatchWithCapacityLocked(
+                                nativeBackend,
+                                [mutation]);
+                        }
+
+                        if (Volatile.Read(ref _nativeScanCapacityLimited) != 0)
+                        {
+                            return new IndexEntryResult(
+                                IndexEntryStatus.CapacityLimited,
+                                ResidentMutation: false);
+                        }
+                    }
+                    else
+                    {
+                        if (_index.Count >= MaxIndexEntries &&
+                            !_index.ContainsKey(path))
+                        {
+                            return new IndexEntryResult(IndexEntryStatus.CapacityLimited, ResidentMutation: false);
+                        }
+
+                        _index[path] = CreateIndexedEntry(
+                            path,
+                            isDirectory,
+                            lastModified,
+                            generation,
+                            _directoryPool);
+                        _persistedEntryCount = _index.Count;
+                    }
                 }
                 else
                 {
@@ -1680,8 +2523,25 @@ public sealed class SearchIndexService : IDisposable
 
             return new IndexEntryResult(IndexEntryStatus.Added, residentMutation);
         }
-        catch
+        catch (Exception ex)
         {
+            if (allowNativeRecovery &&
+                failedBackend is not null &&
+                IsRecoverableNativeRuntimeFailure(ex) &&
+                TryRecoverManagedIndexFromNativeFailure(
+                    failedBackend,
+                    "upsert mutation",
+                    ex))
+            {
+                return TryAddEntryCore(
+                    path,
+                    isDirectory,
+                    scanGeneration,
+                    sessionEpoch,
+                    token,
+                    allowNativeRecovery: false);
+            }
+
             // The caller performing a scan must retain the previous entry by
             // marking its root partial. Event handlers simply ignore the item
             // and wait for the next watcher/lifecycle reconciliation pass.
@@ -1717,34 +2577,72 @@ public sealed class SearchIndexService : IDisposable
             scanGeneration);
     }
 
-    private bool RemoveEntry(string path)
+    private bool RemoveEntry(string path) =>
+        RemoveEntry(path, allowNativeRecovery: true);
+
+    private bool RemoveEntry(string path, bool allowNativeRecovery)
     {
         if (Volatile.Read(ref _indexingEnabled) == 0)
         {
             return false;
         }
 
-        bool residentMutation;
-        _indexLock.EnterWriteLock();
+        bool residentMutation = false;
+        SearchCoreNativeBackend? failedBackend = null;
         try
         {
-            residentMutation = IsIndexResident;
-            if (residentMutation)
+            _indexLock.EnterWriteLock();
+            try
             {
-                _index.Remove(path);
+                residentMutation = IsIndexResident;
+                if (residentMutation)
+                {
+                    if (_nativeIndex is { } nativeBackend)
+                    {
+                        failedBackend = nativeBackend;
+                        FlushNativeScanMutationsLocked();
+                        SearchCoreMutationResult result = nativeBackend.ApplyMutations(
+                            [new SearchCoreMutation(SearchCoreMutationKind.RemoveExact, path)]);
+                        _persistedEntryCount = checked((int)result.LiveEntryCount);
+                        _nativeTombstoneCount = checked((int)result.TombstoneCount);
+                    }
+                    else
+                    {
+                        _index.Remove(path);
+                        _persistedEntryCount = _index.Count;
+                    }
+                }
+                else
+                {
+                    QueuePendingChange(path, new PendingIndexChange(
+                        IsDeleted: true,
+                        IsDirectory: false,
+                        LastModified: DateTime.MinValue,
+                        ScanGeneration: Volatile.Read(ref _scanGeneration)));
+                }
             }
-            else
+            finally
             {
-                QueuePendingChange(path, new PendingIndexChange(
-                    IsDeleted: true,
-                    IsDirectory: false,
-                    LastModified: DateTime.MinValue,
-                    ScanGeneration: Volatile.Read(ref _scanGeneration)));
+                _indexLock.ExitWriteLock();
             }
         }
-        finally
+        catch (Exception ex) when (
+            allowNativeRecovery &&
+            failedBackend is not null &&
+            IsRecoverableNativeRuntimeFailure(ex))
         {
-            _indexLock.ExitWriteLock();
+            if (TryRecoverManagedIndexFromNativeFailure(
+                    failedBackend,
+                    "remove mutation",
+                    ex))
+            {
+                return RemoveEntry(path, allowNativeRecovery: false);
+            }
+
+            App.Log(
+                "[SearchIndex] Rust remove mutation failed and managed recovery " +
+                $"was unavailable: {ex.Message}");
+            return false;
         }
 
         if (!residentMutation)
@@ -1774,6 +2672,53 @@ public sealed class SearchIndexService : IDisposable
         catch
         {
             // The in-memory delta still preserves this session's correctness.
+        }
+    }
+
+    private void FlushNativeScanMutationsLocked()
+    {
+        if (_nativeIndex is not { } backend || _nativeScanMutations.Count == 0)
+        {
+            return;
+        }
+
+        ApplyNativeMutationBatchWithCapacityLocked(backend, _nativeScanMutations);
+        _nativeScanMutations.Clear();
+    }
+
+    private void ApplyNativeMutationBatchWithCapacityLocked(
+        SearchCoreNativeBackend backend,
+        IReadOnlyList<SearchCoreMutation> mutations)
+    {
+        try
+        {
+            SearchCoreMutationResult result = backend.ApplyMutations(mutations);
+            _persistedEntryCount = checked((int)result.LiveEntryCount);
+            _nativeTombstoneCount = checked((int)result.TombstoneCount);
+        }
+        catch (SearchCoreNativeOperationException ex)
+            when (ex.Status == SearchCoreNativeBackend.InvalidArgumentStatus)
+        {
+            if (mutations.Count == 1)
+            {
+                Volatile.Write(ref _nativeScanCapacityLimited, 1);
+                return;
+            }
+
+            int midpoint = mutations.Count / 2;
+            var first = new SearchCoreMutation[midpoint];
+            var second = new SearchCoreMutation[mutations.Count - midpoint];
+            for (int index = 0; index < first.Length; index++)
+            {
+                first[index] = mutations[index];
+            }
+            for (int index = 0; index < second.Length; index++)
+            {
+                second[index] = mutations[midpoint + index];
+            }
+
+            ApplyNativeMutationBatchWithCapacityLocked(backend, first);
+            ApplyNativeMutationBatchWithCapacityLocked(backend, second);
         }
     }
 
@@ -2384,7 +3329,18 @@ public sealed class SearchIndexService : IDisposable
     private bool RemoveEntriesUnderPath(
         string path,
         long? sessionEpoch = null,
-        CancellationToken token = default)
+        CancellationToken token = default) =>
+        RemoveEntriesUnderPathCore(
+            path,
+            sessionEpoch,
+            token,
+            allowNativeRecovery: true);
+
+    private bool RemoveEntriesUnderPathCore(
+        string path,
+        long? sessionEpoch,
+        CancellationToken token,
+        bool allowNativeRecovery)
     {
         if (sessionEpoch is long epoch && !IsCurrentSession(epoch, token))
         {
@@ -2401,60 +3357,99 @@ public sealed class SearchIndexService : IDisposable
             return false;
         }
 
-        bool residentMutation;
-        _indexLock.EnterWriteLock();
+        bool residentMutation = false;
+        SearchCoreNativeBackend? failedBackend = null;
         try
         {
-            if (sessionEpoch is long lockedEpoch && !IsCurrentSession(lockedEpoch, token))
+            _indexLock.EnterWriteLock();
+            try
             {
-                return false;
-            }
-
-            residentMutation = IsIndexResident;
-            List<string> matchingPaths = (residentMutation
-                    ? _index.Keys.ToList()
-                    : _pendingChanges.Keys.ToList())
-                .Where(candidate => IsSameOrDescendant(candidate, normalizedPath))
-                .ToList();
-
-            if (residentMutation)
-            {
-                foreach (string matchingPath in matchingPaths)
+                if (sessionEpoch is long lockedEpoch && !IsCurrentSession(lockedEpoch, token))
                 {
-                    _index.Remove(matchingPath);
-                }
-            }
-            else
-            {
-                foreach (string matchingPath in matchingPaths)
-                {
-                    QueuePendingChange(matchingPath, new PendingIndexChange(
-                        IsDeleted: true,
-                        IsDirectory: false,
-                        LastModified: DateTime.MinValue,
-                        ScanGeneration: Volatile.Read(ref _scanGeneration)));
+                    return false;
                 }
 
-                if (matchingPaths.Count == 0)
+                residentMutation = IsIndexResident;
+                if (residentMutation && _nativeIndex is { } nativeBackend)
                 {
-                    QueuePendingChange(normalizedPath, new PendingIndexChange(
-                        IsDeleted: true,
-                        IsDirectory: true,
-                        LastModified: DateTime.MinValue,
-                        ScanGeneration: Volatile.Read(ref _scanGeneration)));
+                    failedBackend = nativeBackend;
+                    FlushNativeScanMutationsLocked();
+                    int before = _persistedEntryCount;
+                    SearchCoreMutationResult result = nativeBackend.ApplyMutations(
+                        [new SearchCoreMutation(SearchCoreMutationKind.RemoveTree, normalizedPath)]);
+                    _persistedEntryCount = checked((int)result.LiveEntryCount);
+                    _nativeTombstoneCount = checked((int)result.TombstoneCount);
+                    return _persistedEntryCount != before;
+                }
+
+                List<string> matchingPaths = (residentMutation
+                        ? _index.Keys.ToList()
+                        : _pendingChanges.Keys.ToList())
+                    .Where(candidate => IsSameOrDescendant(candidate, normalizedPath))
+                    .ToList();
+
+                if (residentMutation)
+                {
+                    foreach (string matchingPath in matchingPaths)
+                    {
+                        _index.Remove(matchingPath);
+                    }
+                    _persistedEntryCount = _index.Count;
+                }
+                else
+                {
+                    foreach (string matchingPath in matchingPaths)
+                    {
+                        QueuePendingChange(matchingPath, new PendingIndexChange(
+                            IsDeleted: true,
+                            IsDirectory: false,
+                            LastModified: DateTime.MinValue,
+                            ScanGeneration: Volatile.Read(ref _scanGeneration)));
+                    }
+
+                    if (matchingPaths.Count == 0)
+                    {
+                        QueuePendingChange(normalizedPath, new PendingIndexChange(
+                            IsDeleted: true,
+                            IsDirectory: true,
+                            LastModified: DateTime.MinValue,
+                            ScanGeneration: Volatile.Read(ref _scanGeneration)));
+                    }
+                }
+
+                if (matchingPaths.Count == 0 && residentMutation)
+                {
+                    // Keep the original mutation semantics: a missing exact key
+                    // is not a persistence change.
+                    return false;
                 }
             }
-
-            if (matchingPaths.Count == 0 && residentMutation)
+            finally
             {
-                // Keep the original mutation semantics: a missing exact key
-                // is not a persistence change.
-                return false;
+                _indexLock.ExitWriteLock();
             }
         }
-        finally
+        catch (Exception ex) when (
+            allowNativeRecovery &&
+            failedBackend is not null &&
+            IsRecoverableNativeRuntimeFailure(ex))
         {
-            _indexLock.ExitWriteLock();
+            if (TryRecoverManagedIndexFromNativeFailure(
+                    failedBackend,
+                    "tree removal mutation",
+                    ex))
+            {
+                return RemoveEntriesUnderPathCore(
+                    path,
+                    sessionEpoch,
+                    token,
+                    allowNativeRecovery: false);
+            }
+
+            App.Log(
+                "[SearchIndex] Rust tree removal mutation failed and managed recovery " +
+                $"was unavailable: {ex.Message}");
+            return false;
         }
 
         if (!residentMutation)
@@ -2556,7 +3551,11 @@ public sealed class SearchIndexService : IDisposable
         try
         {
             return IsIndexResident
-                ? _index.Count
+                ? _nativeIndex is not null
+                    ? Math.Min(
+                        MaxIndexEntries,
+                        _persistedEntryCount + _nativeScanMutations.Count)
+                    : _index.Count
                 : _persistedEntryCount;
         }
         finally
@@ -2570,7 +3569,16 @@ public sealed class SearchIndexService : IDisposable
         _indexLock.EnterReadLock();
         try
         {
-            return IsIndexResident ? _index.Count : 0;
+            if (!IsIndexResident)
+            {
+                return 0;
+            }
+
+            return _nativeIndex is not null
+                ? Math.Min(
+                    MaxIndexEntries,
+                    _persistedEntryCount + _nativeScanMutations.Count)
+                : _index.Count;
         }
         finally
         {
@@ -2583,12 +3591,17 @@ public sealed class SearchIndexService : IDisposable
         _indexLock.EnterWriteLock();
         try
         {
+            DisposeNativeIndexLocked();
             _index = new Dictionary<string, IndexedFileEntry>(
                 StringComparer.OrdinalIgnoreCase);
             _directoryPool = new Dictionary<string, string>(
                 StringComparer.OrdinalIgnoreCase);
+            _nativeScanMutations.Clear();
             _pendingChanges.Reset();
             _persistedEntryCount = 0;
+            _nativeTombstoneCount = 0;
+            Volatile.Write(ref _nativeScanCapacityLimited, 0);
+            _ = TryCreateEmptyNativeIndexLocked();
             Volatile.Write(ref _isIndexResident, true);
         }
         finally
@@ -2609,12 +3622,17 @@ public sealed class SearchIndexService : IDisposable
         {
             if (!IsIndexResident)
             {
+                DisposeNativeIndexLocked();
                 _index = new Dictionary<string, IndexedFileEntry>(
                     StringComparer.OrdinalIgnoreCase);
                 _directoryPool = new Dictionary<string, string>(
                     StringComparer.OrdinalIgnoreCase);
+                _nativeScanMutations.Clear();
                 _pendingChanges.Reset();
                 _persistedEntryCount = 0;
+                _nativeTombstoneCount = 0;
+                Volatile.Write(ref _nativeScanCapacityLimited, 0);
+                _ = TryCreateEmptyNativeIndexLocked();
                 Volatile.Write(ref _isIndexResident, true);
             }
         }
@@ -2629,18 +3647,76 @@ public sealed class SearchIndexService : IDisposable
         _indexLock.EnterWriteLock();
         try
         {
+            DisposeNativeIndexLocked();
             _index = new Dictionary<string, IndexedFileEntry>(
                 StringComparer.OrdinalIgnoreCase);
             _directoryPool = new Dictionary<string, string>(
                 StringComparer.OrdinalIgnoreCase);
+            _nativeScanMutations.Clear();
             _pendingChanges.Reset();
             _persistedEntryCount = 0;
+            _nativeTombstoneCount = 0;
+            Volatile.Write(ref _nativeScanCapacityLimited, 0);
             Volatile.Write(ref _isIndexResident, false);
         }
         finally
         {
             _indexLock.ExitWriteLock();
         }
+    }
+
+    private bool TryCreateEmptyNativeIndexLocked()
+    {
+        if (!_settingsService.Settings.SearchRustIndexerPreviewEnabled)
+        {
+            _rustPreviewFallbackReason = null;
+            return false;
+        }
+
+        if (IsRustPreviewSuppressedForSession)
+        {
+            App.Log(
+                "[SearchIndex] Skipped empty Rust SearchCore creation because the " +
+                "preview is suppressed for this session.");
+            return false;
+        }
+
+        if (!SearchCoreNativeBackend.TryCreate(
+                _searchCoreModulePath,
+                initialEntryCapacity: 0,
+                initialUtf16CapacityChars: 0,
+                out SearchCoreNativeBackend? backend,
+                out string error) ||
+            backend is null)
+        {
+            _rustPreviewFallbackReason = error;
+            App.Log($"[SearchIndex] Rust preview fallback: {error}");
+            return false;
+        }
+
+        try
+        {
+            backend.Seal();
+            _nativeIndex = backend;
+            _nativeTombstoneCount = 0;
+            _rustPreviewFallbackReason = null;
+            App.Log("[SearchIndex] Created an empty Rust SearchCore preview index.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            backend.Dispose();
+            _rustPreviewFallbackReason = ex.Message;
+            App.Log($"[SearchIndex] Rust preview fallback: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void DisposeNativeIndexLocked()
+    {
+        SearchCoreNativeBackend? backend = _nativeIndex;
+        _nativeIndex = null;
+        backend?.Dispose();
     }
 
     private static void WriteUtf8StringSegment(
@@ -2747,6 +3823,16 @@ public sealed class SearchIndexService : IDisposable
         Dictionary<string, string> DirectoryPool,
         bool WasLegacyJson);
 
+    private readonly record struct NativeDbixLoadAttempt(
+        SearchCoreNativeBackend? Backend,
+        SearchCoreDbixLoadInfo LoadInfo,
+        string Error);
+
+    private readonly record struct IdleUnloadResult(
+        bool Unloaded,
+        SearchCoreNativeBackend? FailedBackend,
+        Exception? Failure);
+
     private readonly record struct PendingIndexChange(
         bool IsDeleted,
         bool IsDirectory,
@@ -2821,5 +3907,17 @@ public sealed class SearchIndexService : IDisposable
     private sealed class RootManifest
     {
         public List<string> Roots { get; set; } = [];
+    }
+
+    [JsonSourceGenerationOptions(
+        GenerationMode = JsonSourceGenerationMode.Metadata,
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+        WriteIndented = false)]
+    [JsonSerializable(
+        typeof(PersistedIndex),
+        TypeInfoPropertyName = "LegacyPersistedIndex")]
+    [JsonSerializable(typeof(RootManifest), TypeInfoPropertyName = "RootManifest")]
+    private sealed partial class SearchIndexJsonContext : JsonSerializerContext
+    {
     }
 }

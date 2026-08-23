@@ -81,11 +81,17 @@ public sealed partial class TodoWidgetContent
         object? sender,
         AttachmentTileEventArgs e)
     {
+        await DeleteDetailAttachmentAsync(e.Attachment);
+    }
+
+    private async Task<bool> DeleteDetailAttachmentAsync(
+        TodoAttachmentViewModel attachment)
+    {
         if (ViewModel?.SelectedDetailItem is not { } item)
         {
-            return;
+            return false;
         }
 
-        await ViewModel.DeleteAttachmentAsync(item.Id, e.Attachment.Id);
+        return await ViewModel.DeleteAttachmentAsync(item.Id, attachment.Id);
     }
 }

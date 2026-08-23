@@ -88,6 +88,9 @@ public partial class SettingsViewModel
         .. AvailableFileStackGroupByOptions
     ];
 
+    public object[] AvailableFileStackModeOptionItems =>
+        AvailableFileStackModeOptions.Cast<object>().ToArray();
+
     public bool FileStacksEnabled
     {
         get => _fileStacksEnabled;
@@ -392,6 +395,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableFileStackOrderByDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackUnmatchedBehaviorDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackModeOptions));
+        OnPropertyChanged(nameof(AvailableFileStackModeOptionItems));
         OnPropertyChanged(nameof(SelectedFileStackMode));
         OnPropertyChanged(nameof(FileStackSettingsSummaryText));
         UpdateFileStackRulePriorities();

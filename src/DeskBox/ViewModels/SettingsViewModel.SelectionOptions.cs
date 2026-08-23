@@ -201,9 +201,11 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableAccentColorSourceOptions));
         OnPropertyChanged(nameof(AvailableFileOpenMethodOptions));
         OnPropertyChanged(nameof(AvailableFileWidgetFolderOpenBehaviorOptions));
+        OnPropertyChanged(nameof(AvailableFileWidgetFolderOpenBehaviorOptionItems));
         OnPropertyChanged(nameof(AvailableShowDesktopBehaviorOptions));
         OnPropertyChanged(nameof(AvailableWeatherLocationModeOptions));
         OnPropertyChanged(nameof(AvailableFileStackModeOptions));
+        OnPropertyChanged(nameof(AvailableFileStackModeOptionItems));
         OnPropertyChanged(nameof(AvailableTrayIconStyleOptions));
         OnPropertyChanged(nameof(AvailableLanguageOptions));
         OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceOptions));

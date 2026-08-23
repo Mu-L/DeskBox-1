@@ -1,5 +1,8 @@
 using System.Runtime.InteropServices;
 using DeskBox.Helpers;
+#if DESKBOX_NATIVE_AOT
+using DeskBox.Services;
+#endif
 
 namespace DeskBox.Helpers;
 
@@ -296,8 +299,45 @@ public static class ShellContextMenuHelper
     /// </summary>
     public static bool ShowProperties(IntPtr hwnd, string filePath)
     {
-        return !string.IsNullOrWhiteSpace(filePath) &&
-               SHObjectProperties(hwnd, SHOP_FILEPATH, filePath, null);
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return false;
+        }
+
+#if DESKBOX_NATIVE_AOT
+        bool trackedInvocation =
+            AotFilePropertiesFixture.TryBeginInvocation(hwnd, filePath);
+#endif
+        try
+        {
+            bool invoked = SHObjectProperties(
+                hwnd,
+                SHOP_FILEPATH,
+                filePath,
+                null);
+#if DESKBOX_NATIVE_AOT
+            if (trackedInvocation)
+            {
+                AotFilePropertiesFixture.RecordInvocationResult(
+                    invoked,
+                    error: null);
+            }
+#endif
+            return invoked;
+        }
+        catch (Exception ex)
+        {
+            _ = ex;
+#if DESKBOX_NATIVE_AOT
+            if (trackedInvocation)
+            {
+                AotFilePropertiesFixture.RecordInvocationResult(
+                    invoked: false,
+                    ex.ToString());
+            }
+#endif
+            throw;
+        }
     }
 
     /// <summary>

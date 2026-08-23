@@ -434,7 +434,7 @@ public sealed partial class WeatherWidgetContent : UserControl
 /// Converts a WeatherDayViewModel to a Thickness for the temperature range bar.
 /// Left = TempBarOffset * BarWidth, Right = (1 - TempBarOffset - TempBarWidth) * BarWidth.
 /// </summary>
-internal sealed class TempBarMarginConverter : IValueConverter
+internal sealed partial class TempBarMarginConverter : IValueConverter
 {
     public double BarWidth { get; set; } = 80;
 
@@ -458,7 +458,7 @@ internal sealed class TempBarMarginConverter : IValueConverter
 /// Converts a boolean to Visibility. Set Invert to reverse the logic
 /// (true -> Collapsed, false -> Visible).
 /// </summary>
-internal sealed class BoolToVisibilityConverter : IValueConverter
+internal sealed partial class BoolToVisibilityConverter : IValueConverter
 {
     public bool Invert { get; set; }
 

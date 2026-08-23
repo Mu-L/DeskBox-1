@@ -5,6 +5,18 @@ using DeskBox.Models;
 
 namespace DeskBox.Services;
 
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    UseStringEnumConverter = true,
+    WriteIndented = true)]
+[JsonSerializable(
+    typeof(GlanceWidgetData),
+    TypeInfoPropertyName = "Preferences")]
+internal sealed partial class GlancePreferencesJsonContext : JsonSerializerContext
+{
+}
+
 /// <summary>
 /// Owns the preferences for one Glance widget instance. The store is
 /// deliberately separate from AppSettings so a future sync layer can classify
@@ -14,12 +26,6 @@ public sealed class GlanceWidgetStore
 {
     private static readonly ConcurrentDictionary<string, GlanceWidgetStore> WidgetStores =
         new(StringComparer.Ordinal);
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _storePath;
@@ -84,7 +90,9 @@ public sealed class GlanceWidgetStore
             await MigrateLegacyStoreIfNeededLockedAsync();
             _cached ??= await ResilientJsonStore.LoadAsync(
                 _storePath,
-                json => Normalize(JsonSerializer.Deserialize<GlanceWidgetData>(json, JsonOptions)),
+                json => Normalize(JsonSerializer.Deserialize(
+                    json,
+                    GlancePreferencesJsonContext.Default.Preferences)),
                 () => new GlanceWidgetData(),
                 nameof(GlanceWidgetStore));
             return Clone(_cached);
@@ -121,7 +129,9 @@ public sealed class GlanceWidgetStore
             await MigrateLegacyStoreIfNeededLockedAsync();
             _cached ??= await ResilientJsonStore.LoadAsync(
                 _storePath,
-                json => Normalize(JsonSerializer.Deserialize<GlanceWidgetData>(json, JsonOptions)),
+                json => Normalize(JsonSerializer.Deserialize(
+                    json,
+                    GlancePreferencesJsonContext.Default.Preferences)),
                 () => new GlanceWidgetData(),
                 nameof(GlanceWidgetStore));
             update(_cached);
@@ -177,10 +187,14 @@ public sealed class GlanceWidgetStore
         {
             string legacyJson = await File.ReadAllTextAsync(_legacyStorePath);
             GlanceWidgetData migrated = Normalize(
-                JsonSerializer.Deserialize<GlanceWidgetData>(legacyJson, JsonOptions));
+                JsonSerializer.Deserialize(
+                    legacyJson,
+                    GlancePreferencesJsonContext.Default.Preferences));
             await ResilientJsonStore.SaveAsync(
                 _storePath,
-                JsonSerializer.Serialize(migrated, JsonOptions));
+                JsonSerializer.Serialize(
+                    migrated,
+                    GlancePreferencesJsonContext.Default.Preferences));
             TryDeleteFile(_legacyStorePath);
             TryDeleteFile(ResilientJsonStore.GetBackupPath(_legacyStorePath));
             App.Log($"[GlanceWidgetStore] Migrated legacy preferences to '{_storePath}'.");
@@ -193,7 +207,9 @@ public sealed class GlanceWidgetStore
 
     private async Task PersistLockedAsync()
     {
-        string json = JsonSerializer.Serialize(_cached, JsonOptions);
+        string json = JsonSerializer.Serialize(
+            _cached,
+            GlancePreferencesJsonContext.Default.Preferences);
         await ResilientJsonStore.SaveAsync(_storePath, json);
     }
 
@@ -264,8 +280,13 @@ public sealed class GlanceWidgetStore
 
     private static GlanceWidgetData Clone(GlanceWidgetData data)
     {
-        string json = JsonSerializer.Serialize(data, JsonOptions);
-        return JsonSerializer.Deserialize<GlanceWidgetData>(json, JsonOptions) ?? new GlanceWidgetData();
+        string json = JsonSerializer.Serialize(
+            data,
+            GlancePreferencesJsonContext.Default.Preferences);
+        return JsonSerializer.Deserialize(
+                   json,
+                   GlancePreferencesJsonContext.Default.Preferences) ??
+               new GlanceWidgetData();
     }
 
     private static string GetSafeWidgetFileName(string widgetId)

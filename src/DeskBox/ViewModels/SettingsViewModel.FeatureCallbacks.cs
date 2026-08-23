@@ -359,13 +359,9 @@ public partial class SettingsViewModel
         if (value)
         {
             FeatureWidgetSettings.SetEnabled(_settingsService.Settings, WidgetKind.QuickCapture, true);
-            bool shouldSyncQuickCapture = !QuickCaptureEnabled;
-            if (shouldSyncQuickCapture)
+            if (!QuickCaptureEnabled)
             {
-                _quickCaptureEnabled = true;
-                OnPropertyChanged(nameof(QuickCaptureEnabled));
-                OnPropertyChanged(nameof(QuickCaptureStatusText));
-                OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
+                EnableQuickCaptureForRecordingDependency();
             }
 
             _ = SyncQuickCaptureEnabledAsync(true);
@@ -396,13 +392,9 @@ public partial class SettingsViewModel
         {
             ApplyQuickCaptureRecordingState(clipboardEnabled: true, imageEnabled: true);
             FeatureWidgetSettings.SetEnabled(_settingsService.Settings, WidgetKind.QuickCapture, true);
-            bool shouldSyncQuickCapture = !QuickCaptureEnabled;
-            if (shouldSyncQuickCapture)
+            if (!QuickCaptureEnabled)
             {
-                _quickCaptureEnabled = true;
-                OnPropertyChanged(nameof(QuickCaptureEnabled));
-                OnPropertyChanged(nameof(QuickCaptureStatusText));
-                OnPropertyChanged(nameof(QuickCaptureDependencyStatusText));
+                EnableQuickCaptureForRecordingDependency();
             }
 
             _ = SyncQuickCaptureEnabledAsync(true);
@@ -420,6 +412,20 @@ public partial class SettingsViewModel
         if (value)
         {
             App.Current?.QuickCaptureClipboardService?.CaptureCurrent();
+        }
+    }
+
+    private void EnableQuickCaptureForRecordingDependency()
+    {
+        bool wasApplyingSnapshot = _isApplyingSettingsSnapshot;
+        _isApplyingSettingsSnapshot = true;
+        try
+        {
+            QuickCaptureEnabled = true;
+        }
+        finally
+        {
+            _isApplyingSettingsSnapshot = wasApplyingSnapshot;
         }
     }
 

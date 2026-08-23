@@ -131,7 +131,7 @@
                         x:Name="RuleDetailPath"
                         Style="{StaticResource SettingDescriptionTextStyle}"
                         TextTrimming="CharacterEllipsis"
-                        ToolTipService.ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                        ToolTipService.ToolTip="{x:Bind RuleDetailPath.Text, Mode=OneWay}" />
                 </StackPanel>
             </Grid>
 

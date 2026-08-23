@@ -42,7 +42,7 @@ public sealed class DeskBoxDataPathIsolationTests
 
         Assert.Contains("DESKBOX_DEV_DATA_ROOT", source, StringComparison.Ordinal);
         Assert.Contains("#if DEBUG", source, StringComparison.Ordinal);
-        Assert.Contains("ResolveDevelopmentRoot", source, StringComparison.Ordinal);
+        Assert.Contains("ResolveConfiguredRoot", source, StringComparison.Ordinal);
     }
 
     [Theory]

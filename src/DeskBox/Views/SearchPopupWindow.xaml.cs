@@ -1285,8 +1285,23 @@ public sealed partial class SearchPopupWindow : Window
         RecommendedAppsRepeater.ItemsSource = _viewModel.CurrentResults;
         
         // Bind recommendation panels (favorites and recent searches)
-        var favorites = _viewModel.FavoriteQueries.Select(q => new { Title = q }).ToList();
-        var recent = _viewModel.RecentQueries.Take(8).Select(q => new { Title = q }).ToList();
+        var favorites = _viewModel.FavoriteQueries
+            .Select(query => new SearchRecommendationItem
+            {
+                Kind = SearchResultKind.Favorite,
+                Title = query,
+                HistoryQuery = query
+            })
+            .ToList();
+        var recent = _viewModel.RecentQueries
+            .Take(8)
+            .Select(query => new SearchRecommendationItem
+            {
+                Kind = SearchResultKind.History,
+                Title = query,
+                HistoryQuery = query
+            })
+            .ToList();
         FavoritesRepeater.ItemsSource = favorites;
         RecentSearchesRepeater.ItemsSource = recent;
 
@@ -1775,25 +1790,21 @@ public sealed partial class SearchPopupWindow : Window
     /// </summary>
     private void UpdateRecItemClickEvent(DependencyObject element)
     {
-        if (element is FrameworkElement fe && fe.DataContext is { } dc)
+        if (element is FrameworkElement fe &&
+            fe.DataContext is SearchRecommendationItem)
         {
-            if (dc.GetType().GetProperty("Title")?.GetValue(dc) is string queryText)
-            {
-                fe.PointerPressed -= OnRecommendationItem_PointerPressed;
-                fe.PointerPressed += OnRecommendationItem_PointerPressed;
-            }
+            fe.PointerPressed -= OnRecommendationItem_PointerPressed;
+            fe.PointerPressed += OnRecommendationItem_PointerPressed;
         }
     }
 
     private void OnRecommendationItem_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is FrameworkElement fe && fe.DataContext is { } dc)
+        if (sender is FrameworkElement fe &&
+            fe.DataContext is SearchRecommendationItem { HistoryQuery: { } queryText })
         {
-            if (dc.GetType().GetProperty("Title")?.GetValue(dc) is string queryText)
-            {
-                _viewModel.ApplyQuery(queryText);
-                e.Handled = true;
-            }
+            _viewModel.ApplyQuery(queryText);
+            e.Handled = true;
         }
     }
 
@@ -2886,6 +2897,16 @@ public sealed partial class SearchPopupWindow : Window
             return;
         }
 
+        // ElementPrepared can run before the DataTemplate root receives its inherited
+        // DataContext. Resolve the item from the repeater index so the one-time compiled
+        // bindings never get refreshed against a transient null value. The DataContext
+        // fallback keeps this safe if the source changes while an element is recycled.
+        SearchResultItem? preparedItem = args.Index >= 0 &&
+                                         args.Index < _viewModel.CurrentResults.Count
+            ? _viewModel.CurrentResults[args.Index]
+            : row.DataContext as SearchResultItem;
+        row.PrepareItem(preparedItem);
+
         // Lazy shell icon: show the real icon once resolved, otherwise the glyph block.
         // Recycled rows can be re-bound to the same item instance (no DataContextChanged),
         // so this must run on every prepare.
@@ -2897,7 +2918,7 @@ public sealed partial class SearchPopupWindow : Window
         }
 
         bool isSelectedRow = _viewModel.SelectedItem is { } selected &&
-                             ReferenceEquals(row.DataContext, selected);
+                             ReferenceEquals(row.Item, selected);
         if (isSelectedRow && !ReferenceEquals(row, _selectedRow))
         {
             if (_selectedRow is not null)
@@ -3929,7 +3950,8 @@ public sealed partial class SearchPopupWindow : Window
         for (int i = 0; i < count; i++)
         {
             var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
-            if (child is SearchResultRowControl { DataContext: var dc } row && ReferenceEquals(dc, data))
+            if (child is SearchResultRowControl row &&
+                (ReferenceEquals(row.Item, data) || ReferenceEquals(row.DataContext, data)))
             {
                 return row;
             }

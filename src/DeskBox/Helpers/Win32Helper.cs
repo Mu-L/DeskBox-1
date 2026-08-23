@@ -275,6 +275,7 @@ public static partial class Win32Helper
     public const uint GW_HWNDLAST = 1;
     public const uint GW_HWNDNEXT = 2;
     public const uint GW_HWNDPREV = 3;
+    public const uint GW_OWNER = 4;
 
     [LibraryImport("user32.dll")]
     public static partial IntPtr GetForegroundWindow();
@@ -1828,7 +1829,7 @@ public static partial class Win32Helper
         {
             DispatcherQueueOptions options = new DispatcherQueueOptions
             {
-                dwSize = Marshal.SizeOf(typeof(DispatcherQueueOptions)),
+                dwSize = Marshal.SizeOf<DispatcherQueueOptions>(),
                 threadType = 2, // DQTYPE_THREAD_CURRENT
                 apartmentType = 2 // DQTAT_COM_STA
             };

@@ -677,21 +677,26 @@
                 </StackPanel>
             </Border>
 
+            </Grid>
+        </Grid>
+
             <!-- Hallmark · component: file import progress card · genre: modern-minimal · theme: DeskBox native -->
             <!-- Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 -->
             <Border
                 x:Name="ImportProgressCard"
-                Canvas.ZIndex="50"
+                Grid.Row="0"
+                Canvas.ZIndex="1000"
                 Margin="0,4,0,0"
                 Padding="12,8"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 AutomationProperties.LiveSetting="Polite"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                Background="{ThemeResource SystemControlAcrylicElementBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0"
-                CornerRadius="0"
+                BorderThickness="1,1,1,0"
+                CornerRadius="8,8,0,0"
                 SizeChanged="ImportProgressCard_SizeChanged"
+                Translation="0,0,64"
                 Visibility="Collapsed">
                 <Grid ColumnSpacing="8" RowSpacing="4">
                     <Grid.ColumnDefinitions>
@@ -774,8 +779,6 @@
                         TextWrapping="NoWrap" />
                 </Grid>
             </Border>
-            </Grid>
-        </Grid>
 
         <CommandBar
             x:Name="SelectionCommandBar"

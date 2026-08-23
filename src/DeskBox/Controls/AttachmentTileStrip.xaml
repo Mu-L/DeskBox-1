@@ -2,7 +2,8 @@
 <UserControl
     x:Class="DeskBox.Controls.AttachmentTileStrip"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:viewModels="using:DeskBox.ViewModels">
 
     <ScrollViewer
         x:Name="AttachmentScrollViewer"
@@ -18,7 +19,7 @@
                 </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
-                <DataTemplate>
+                <DataTemplate x:DataType="viewModels:TodoAttachmentViewModel">
                     <Grid
                         Width="76"
                         Height="76"
@@ -36,10 +37,10 @@
                             Padding="0"
                             HorizontalContentAlignment="Stretch"
                             VerticalContentAlignment="Stretch"
-                            AutomationProperties.Name="{Binding DisplayName}"
+                            AutomationProperties.Name="{x:Bind DisplayName, Mode=OneWay}"
                             Click="OpenAttachmentButton_Click"
                             Style="{StaticResource SubtleButtonStyle}"
-                            ToolTipService.ToolTip="{Binding DisplayName}">
+                            ToolTipService.ToolTip="{x:Bind DisplayName, Mode=OneWay}">
                             <Border
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -51,13 +52,13 @@
                                         VerticalAlignment="Center"
                                         FontSize="24"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Glyph="{Binding Glyph}"
-                                        Visibility="{Binding FileIconVisibility}" />
+                                        Glyph="{x:Bind Glyph, Mode=OneWay}"
+                                        Visibility="{x:Bind FileIconVisibility, Mode=OneWay}" />
                                     <Image
                                         AutomationProperties.AccessibilityView="Raw"
-                                        Source="{Binding Thumbnail}"
+                                        Source="{x:Bind Thumbnail, Mode=OneWay}"
                                         Stretch="UniformToFill"
-                                        Visibility="{Binding ThumbnailVisibility}" />
+                                        Visibility="{x:Bind ThumbnailVisibility, Mode=OneWay}" />
                                     <Border
                                         Padding="5,3"
                                         HorizontalAlignment="Stretch"
@@ -66,7 +67,7 @@
                                         <TextBlock
                                             FontSize="11"
                                             MaxLines="1"
-                                            Text="{Binding DisplayName}"
+                                            Text="{x:Bind DisplayName, Mode=OneWay}"
                                             TextTrimming="CharacterEllipsis" />
                                     </Border>
                                 </Grid>

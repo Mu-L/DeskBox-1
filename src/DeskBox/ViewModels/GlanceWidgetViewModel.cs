@@ -13,7 +13,7 @@ using Launcher = Windows.System.Launcher;
 
 namespace DeskBox.ViewModels;
 
-public sealed class GlanceWidgetViewModel : ObservableObject, IDisposable
+public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposable
 {
     private const double CalendarPanelMaximumWidth = 360;
     private const double CalendarPanelHorizontalInset = 28;
@@ -490,6 +490,31 @@ public sealed class GlanceWidgetViewModel : ObservableObject, IDisposable
     {
         return _store.UpdateAsync(settings =>
             GlanceWidgetSettingsPolicy.SetLayout(settings, layout));
+    }
+
+    public Task SetLocalImageFilesAsync(IEnumerable<string> imagePaths)
+    {
+        return _store.UpdateAsync(settings =>
+            GlanceWidgetSettingsPolicy.SetLocalImageFiles(settings, imagePaths));
+    }
+
+    public Task SetPhotoPlaybackAsync(
+        double rotationIntervalMinutes,
+        bool randomOrder,
+        GlanceTransitionMode transition,
+        GlanceTransitionSpeed transitionSpeed,
+        GlanceReadabilityMode readability,
+        bool showPhotoControls)
+    {
+        return _store.UpdateAsync(settings =>
+            GlanceWidgetSettingsPolicy.SetPhotoPlayback(
+                settings,
+                rotationIntervalMinutes,
+                randomOrder,
+                transition,
+                transitionSpeed,
+                readability,
+                showPhotoControls));
     }
 
     private async Task ReloadSettingsAsync()

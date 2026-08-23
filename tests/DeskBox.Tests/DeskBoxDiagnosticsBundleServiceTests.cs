@@ -48,7 +48,11 @@ public sealed class DeskBoxDiagnosticsBundleServiceTests : IDisposable
         Assert.Contains("<REDACTED>", log, StringComparison.Ordinal);
 
         string diagnostics = await ReadEntryAsync(archive, "diagnostics.json");
-        Assert.Contains("\"schemaVersion\": 4", diagnostics, StringComparison.Ordinal);
+        Assert.Contains("\"schemaVersion\": 5", diagnostics, StringComparison.Ordinal);
+        Assert.Contains("\"loadRecoveryState\": \"Primary\"", diagnostics, StringComparison.Ordinal);
+        Assert.Contains("\"shortcutNative\"", diagnostics, StringComparison.Ordinal);
+        Assert.Contains("\"moduleName\": \"deskbox_native.dll\"", diagnostics, StringComparison.Ordinal);
+        Assert.DoesNotContain(AppContext.BaseDirectory, diagnostics, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"toggleReservedHookThreadId\"", diagnostics, StringComparison.Ordinal);
         Assert.Contains("\"toggleReservedHookInputFailureCount\"", diagnostics, StringComparison.Ordinal);
         Assert.Contains("\"widgetManager\"", diagnostics, StringComparison.Ordinal);
@@ -74,7 +78,7 @@ public sealed class DeskBoxDiagnosticsBundleServiceTests : IDisposable
     private static DeskBoxDiagnosticSnapshot CreateSnapshot()
     {
         return new DeskBoxDiagnosticSnapshot(
-            4,
+            5,
             new DateTimeOffset(2026, 8, 5, 12, 30, 0, TimeSpan.Zero),
             "1.3.6",
             "Direct",
@@ -104,6 +108,16 @@ public sealed class DeskBoxDiagnosticsBundleServiceTests : IDisposable
             new DeskBoxSettingsDiagnostic(
                 SettingsLoadRecoveryState.Primary,
                 false,
+                null,
+                null),
+            new DeskBoxShortcutNativeDiagnostic(
+                "CSharp",
+                "deskbox_native.dll",
+                true,
+                "X64",
+                new string('A', 64),
+                false,
+                "NotProbed",
                 null,
                 null),
             null,

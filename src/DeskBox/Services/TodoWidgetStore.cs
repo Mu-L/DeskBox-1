@@ -4,15 +4,20 @@ using DeskBox.Models;
 
 namespace DeskBox.Services;
 
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    UseStringEnumConverter = true,
+    WriteIndented = true)]
+[JsonSerializable(
+    typeof(TodoWidgetData),
+    TypeInfoPropertyName = "StoreData")]
+internal sealed partial class TodoJsonContext : JsonSerializerContext
+{
+}
+
 public sealed class TodoWidgetStore
 {
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
-
     private readonly string _storePath;
 
     public TodoWidgetStore(string widgetId)
@@ -45,7 +50,9 @@ public sealed class TodoWidgetStore
     {
         return await ResilientJsonStore.LoadAsync(
             _storePath,
-            json => Normalize(JsonSerializer.Deserialize<TodoWidgetData>(json, s_jsonOptions)),
+            json => Normalize(JsonSerializer.Deserialize(
+                json,
+                TodoJsonContext.Default.StoreData)),
             () => new TodoWidgetData(),
             nameof(TodoWidgetStore));
     }
@@ -53,7 +60,9 @@ public sealed class TodoWidgetStore
     public async Task SaveAsync(TodoWidgetData data)
     {
         data = Normalize(data);
-        string json = JsonSerializer.Serialize(data, s_jsonOptions);
+        string json = JsonSerializer.Serialize(
+            data,
+            TodoJsonContext.Default.StoreData);
         await ResilientJsonStore.SaveAsync(_storePath, json);
     }
 

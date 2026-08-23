@@ -149,6 +149,7 @@
             Padding="20,22,20,18"
             Visibility="{Binding IsForegroundVisible, Converter={StaticResource BoolToVisibility}}">
             <StackPanel
+                x:Name="ImmersiveLayoutRoot"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Bottom"
                 Spacing="-2"
@@ -178,6 +179,7 @@
             </StackPanel>
 
             <StackPanel
+                x:Name="CenteredLayoutRoot"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Spacing="2"
@@ -197,7 +199,9 @@
                 </StackPanel>
             </StackPanel>
 
-            <Grid Visibility="{Binding IsEditorialLayout, Converter={StaticResource BoolToVisibility}}">
+            <Grid
+                x:Name="EditorialLayoutRoot"
+                Visibility="{Binding IsEditorialLayout, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Spacing="2">
                     <TextBlock FontSize="16" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Text="{Binding DateText}" Visibility="{Binding ShowDate, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding WeekdayText}" Visibility="{Binding ShowWeekday, Converter={StaticResource BoolToVisibility}}" />
@@ -214,7 +218,9 @@
                     Visibility="{Binding ShowTime, Converter={StaticResource BoolToVisibility}}" />
             </Grid>
 
-            <Grid Visibility="{Binding IsCalendarLayout, Converter={StaticResource BoolToVisibility}}">
+            <Grid
+                x:Name="CalendarLayoutRoot"
+                Visibility="{Binding IsCalendarLayout, Converter={StaticResource BoolToVisibility}}">
                 <Border
                     IsHitTestVisible="False"
                     Margin="-20,-22,-20,-18"

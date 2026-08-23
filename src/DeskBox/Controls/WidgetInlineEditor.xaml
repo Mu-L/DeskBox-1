@@ -27,9 +27,9 @@
                 <TextBlock
                     x:Name="TitleTextBlockElement"
                     Grid.Column="0"
-                    FontSize="{Binding TitleFontSize, ElementName=InlineEditorRoot}"
+                    FontSize="{x:Bind TitleFontSize, Mode=OneWay}"
                     Style="{StaticResource WidgetInlineEditorTitleTextStyle}"
-                    Text="{Binding Title, ElementName=InlineEditorRoot}" />
+                    Text="{x:Bind Title, Mode=OneWay}" />
 
                 <Button
                     x:Name="CloseButtonElement"
@@ -43,9 +43,9 @@
             <TextBox
                 x:Name="EditorTextBoxElement"
                 Grid.Row="1"
-                FontSize="{Binding EditorFontSize, ElementName=InlineEditorRoot}"
+                FontSize="{x:Bind EditorFontSize, Mode=OneWay}"
                 Style="{StaticResource WidgetEditorTextBoxStyle}"
-                Text="{Binding Text, ElementName=InlineEditorRoot, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                Text="{x:Bind Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
             <StackPanel
                 Grid.Row="2"
@@ -55,14 +55,14 @@
                 <Button
                     x:Name="CancelButtonElement"
                     Click="CancelButton_Click"
-                    Content="{Binding CancelText, ElementName=InlineEditorRoot}"
-                    FontSize="{Binding CommandFontSize, ElementName=InlineEditorRoot}"
+                    Content="{x:Bind CancelText, Mode=OneWay}"
+                    FontSize="{x:Bind CommandFontSize, Mode=OneWay}"
                     Style="{StaticResource WidgetEditorCommandButtonStyle}" />
                 <Button
                     x:Name="SaveButtonElement"
                     Click="SaveButton_Click"
-                    Content="{Binding SaveText, ElementName=InlineEditorRoot}"
-                    FontSize="{Binding CommandFontSize, ElementName=InlineEditorRoot}"
+                    Content="{x:Bind SaveText, Mode=OneWay}"
+                    FontSize="{x:Bind CommandFontSize, Mode=OneWay}"
                     Style="{StaticResource WidgetEditorCommandButtonStyle}" />
             </StackPanel>
         </Grid>

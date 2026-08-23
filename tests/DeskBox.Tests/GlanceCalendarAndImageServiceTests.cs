@@ -727,9 +727,22 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
 
         GlanceImageInfo image = Assert.Single(images);
         Assert.True(File.Exists(image.LocalPath));
-        Assert.True(File.Exists(Path.Combine(cacheDirectory, "catalog.json")));
+        string catalogPath = Path.Combine(cacheDirectory, "catalog.json");
+        Assert.True(File.Exists(catalogPath));
         Assert.Equal([1, 2, 3, 4], await File.ReadAllBytesAsync(image.LocalPath!));
         Assert.Empty(Directory.EnumerateFiles(cacheDirectory, "*.tmp", SearchOption.AllDirectories));
+        using (JsonDocument catalog = JsonDocument.Parse(await File.ReadAllTextAsync(catalogPath)))
+        {
+            JsonElement catalogImage = Assert.Single(catalog.RootElement.EnumerateArray());
+            Assert.Equal(JsonValueKind.Number, catalogImage.GetProperty("onlineCategory").ValueKind);
+            Assert.Equal(
+                (int)GlanceOnlineImageCategory.Featured,
+                catalogImage.GetProperty("onlineCategory").GetInt32());
+            Assert.Equal(JsonValueKind.Number, catalogImage.GetProperty("onlineProvider").ValueKind);
+            Assert.Equal(
+                (int)GlanceOnlineImageProvider.Wikimedia,
+                catalogImage.GetProperty("onlineProvider").GetInt32());
+        }
         using var exclusiveProbe = new FileStream(
             image.LocalPath!,
             FileMode.Open,

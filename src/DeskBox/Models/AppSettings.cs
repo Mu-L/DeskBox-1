@@ -5,6 +5,14 @@ namespace DeskBox.Models;
 /// </summary>
 public class AppSettings
 {
+#if DESKBOX_SEARCH_CORE_DEFAULT
+    /// <summary>Default SearchCore backend policy for this build.</summary>
+    public const bool SearchRustIndexerDefaultEnabled = true;
+#else
+    /// <summary>Default SearchCore backend policy for this build.</summary>
+    public const bool SearchRustIndexerDefaultEnabled = false;
+#endif
+
     /// <summary>
     /// Settings schema version for migration purposes.
     /// New or legacy settings without this field begin at version 1 and are
@@ -692,6 +700,14 @@ public class AppSettings
 
     /// <summary>Whether to enable the custom file indexer for broader coverage.</summary>
     public bool SearchCustomIndexerEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Whether the custom file index should use the Rust resident backend.
+    /// Direct x64 module builds default to Rust. Unsupported builds and runtime
+    /// native failures use the compatible C# backend.
+    /// </summary>
+    public bool SearchRustIndexerPreviewEnabled { get; set; } =
+        SearchRustIndexerDefaultEnabled;
 
     /// <summary>Additional directories for the custom file indexer to scan.</summary>
     public List<string> SearchCustomIndexPaths { get; set; } = [];

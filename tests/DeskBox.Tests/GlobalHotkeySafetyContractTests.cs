@@ -67,6 +67,42 @@ public sealed class GlobalHotkeySafetyContractTests
     }
 
     [Fact]
+    public void SearchGestureChange_UsesTheRealRegistrationAsCommitPointAndRestoresPreviousGesture()
+    {
+        string source = Read("src/DeskBox/Services/SearchHotkeyService.cs");
+        string apply = Slice(
+            source,
+            "public bool TryApplyGesture",
+            "public void SetEnabled");
+
+        Assert.Contains("int previousModifiers", apply, StringComparison.Ordinal);
+        Assert.Contains("int previousVirtualKey", apply, StringComparison.Ordinal);
+        Assert.Contains("bool shouldBeActive", apply, StringComparison.Ordinal);
+        Assert.Contains("RefreshRegistration();", apply, StringComparison.Ordinal);
+        Assert.Contains("settings.SearchHotkeyModifiers = previousModifiers", apply, StringComparison.Ordinal);
+        Assert.Contains("settings.SearchHotkeyKey = previousVirtualKey", apply, StringComparison.Ordinal);
+        Assert.Contains("if (IsRegistered)", apply, StringComparison.Ordinal);
+        Assert.Contains("return false;", apply, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HotkeyServices_ExposeReceiveInvokeAndDispatchFailureCounters()
+    {
+        string global = Read("src/DeskBox/Services/GlobalHotkeyService.cs");
+        string search = Read("src/DeskBox/Services/SearchHotkeyService.cs");
+
+        foreach (string source in new[] { global, search })
+        {
+            Assert.Contains("public long ReceivedCount", source, StringComparison.Ordinal);
+            Assert.Contains("public long InvocationCount", source, StringComparison.Ordinal);
+            Assert.Contains("public long DispatchFailureCount", source, StringComparison.Ordinal);
+            Assert.Contains("Interlocked.Increment(ref _receivedSequence)", source, StringComparison.Ordinal);
+            Assert.Contains("Interlocked.Increment(ref _invocationSequence)", source, StringComparison.Ordinal);
+            Assert.Contains("Interlocked.Increment(ref _dispatchFailureSequence)", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void ReservedHook_IgnoresInjectedInputAndFailsOpenWhenDeliveryFails()
     {
         string hook = Read("src/DeskBox/Services/ReservedHotkeyHookService.cs");

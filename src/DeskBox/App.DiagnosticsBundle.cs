@@ -29,9 +29,11 @@ public partial class App
             GlobalHotkeyService.NormalizeGesture(
                 SettingsService.Settings.SearchHotkeyModifiers,
                 SettingsService.Settings.SearchHotkeyKey);
+        ShortcutNativeDiagnosticState shortcutNative =
+            ShortcutNativeBackend.CaptureDiagnosticState();
 
         return new DeskBoxDiagnosticSnapshot(
-            SchemaVersion: 4,
+            SchemaVersion: 5,
             GeneratedAtUtc: DateTimeOffset.UtcNow,
             AppVersion: GetDiagnosticVersion(),
             DistributionChannel: DistributionService.ChannelName,
@@ -63,6 +65,16 @@ public partial class App
                 SettingsService.HasPendingSave,
                 saveFailure?.Operation,
                 saveFailure?.OccurredAt.ToUniversalTime()),
+            ShortcutNative: new DeskBoxShortcutNativeDiagnostic(
+                shortcutNative.SelectedBackend,
+                shortcutNative.ModuleName,
+                shortcutNative.ModuleExists,
+                shortcutNative.ModuleArchitecture,
+                shortcutNative.ModuleSha256,
+                shortcutNative.LoadAttempted,
+                shortcutNative.LoadState,
+                shortcutNative.AbiVersion,
+                shortcutNative.Capabilities),
             RuntimeHealth: runtimeHealth,
             WidgetManager: widgetManager,
             Displays: displays);

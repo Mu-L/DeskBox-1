@@ -86,27 +86,52 @@ public sealed partial class TodoWidgetContent
 
     private async void DetailStepCheckBox_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not CheckBox { DataContext: TodoStepViewModel step } checkBox ||
+        if (sender is CheckBox checkBox)
+        {
+            await SetDetailStepCompletedAsync(checkBox);
+        }
+    }
+
+    private async Task<bool> SetDetailStepCompletedAsync(CheckBox checkBox)
+    {
+        if (checkBox.DataContext is not TodoStepViewModel step ||
             ViewModel?.SelectedDetailItem is not { } item)
         {
-            return;
+            return false;
         }
 
-        await ViewModel.SetStepCompletedAsync(item.Id, step.Id, checkBox.IsChecked == true);
+        return await ViewModel.SetStepCompletedAsync(
+            item.Id,
+            step.Id,
+            checkBox.IsChecked == true);
     }
 
     private async void DetailStepTextBox_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (sender is not TextBox { DataContext: TodoStepViewModel step } textBox ||
+        if (sender is TextBox textBox)
+        {
+            await SaveDetailStepTextAsync(textBox);
+        }
+    }
+
+    private async Task<bool> SaveDetailStepTextAsync(TextBox textBox)
+    {
+        if (textBox.DataContext is not TodoStepViewModel step ||
             ViewModel?.SelectedDetailItem is not { } item)
         {
-            return;
+            return false;
         }
 
-        if (!await ViewModel.UpdateStepTextAsync(item.Id, step.Id, textBox.Text))
+        bool saved = await ViewModel.UpdateStepTextAsync(
+            item.Id,
+            step.Id,
+            textBox.Text);
+        if (!saved)
         {
             textBox.Text = step.Text;
         }
+
+        return saved;
     }
 
     private void DetailStepTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -127,13 +152,21 @@ public sealed partial class TodoWidgetContent
 
     private async void DetailDeleteStepButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: TodoStepViewModel step } ||
+        if (sender is FrameworkElement element)
+        {
+            await DeleteDetailStepAsync(element);
+        }
+    }
+
+    private async Task<bool> DeleteDetailStepAsync(FrameworkElement element)
+    {
+        if (element.DataContext is not TodoStepViewModel step ||
             ViewModel?.SelectedDetailItem is not { } item)
         {
-            return;
+            return false;
         }
 
-        await ViewModel.DeleteStepAsync(item.Id, step.Id);
+        return await ViewModel.DeleteStepAsync(item.Id, step.Id);
     }
 
     private async void DetailNotesReaderHost_Tapped(object sender, TappedRoutedEventArgs e)
@@ -180,6 +213,11 @@ public sealed partial class TodoWidgetContent
     }
 
     private void DetailNotesEditor_EditorTextChanged(object? sender, EventArgs e)
+    {
+        ScheduleNotesAutoSave();
+    }
+
+    private void ScheduleNotesAutoSave()
     {
         if (_notesEditingItemId is null)
         {

@@ -1,5 +1,6 @@
 using DeskBox.Models;
 using DeskBox.Services;
+using System.Text.Json;
 
 namespace DeskBox.Tests;
 
@@ -74,6 +75,75 @@ public sealed class DeskBoxAttachmentHealthServiceTests : IDisposable
 
         Assert.Equal(1, report.UnreadableStoreCount);
         Assert.False(report.IsHealthy);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AcceptsMixedCasePropertiesAndStringAndLegacyNumericEnums()
+    {
+        string quickCaptureRoot = Directory.CreateDirectory(
+            Path.Combine(_dataRoot, "quick-capture")).FullName;
+        string todoRoot = Directory.CreateDirectory(
+            Path.Combine(_dataRoot, "widgets", "todo-widget")).FullName;
+        string missingLinked = Path.Combine(_tempRoot, "mixed-linked.txt");
+        string missingManaged = Path.Combine(todoRoot, "attachments", "mixed-managed.txt");
+        string missingLinkedJson = JsonSerializer.Serialize(missingLinked);
+        string missingManagedJson = JsonSerializer.Serialize(missingManaged);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(quickCaptureRoot, "quick-capture.json"),
+            $$"""
+            {
+              "VERSION": 4,
+              "cUrReNtViEw": "Pinned",
+              "ITEMS": [
+                {
+                  "ID": "mixed-note",
+                  "tYpE": 1,
+                  "APPEARANCEPRESET": "Paper",
+                  "SOURCEKIND": "Clipboard",
+                  "ATTACHMENTS": [
+                    {
+                      "FILEPATH": {{missingLinkedJson}},
+                      "STORAGEMODE": "linked",
+                      "FUTUREATTACHMENTFIELD": true
+                    }
+                  ],
+                  "FUTUREITEMFIELD": "ignored"
+                }
+              ],
+              "FUTUREROOTFIELD": { "ignored": true }
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(todoRoot, "todo.json"),
+            $$"""
+            {
+              "VERSION": 3,
+              "iTeMs": [
+                {
+                  "ID": "mixed-task",
+                  "TEXT": "Mixed case task",
+                  "ATTACHMENTS": [
+                    {
+                      "FILEPATH": {{missingManagedJson}},
+                      "STORAGEMODE": "managed",
+                      "FUTUREATTACHMENTFIELD": true
+                    }
+                  ],
+                  "FUTUREITEMFIELD": "ignored"
+                }
+              ],
+              "FUTUREROOTFIELD": true
+            }
+            """);
+        var service = new DeskBoxAttachmentHealthService(_dataRoot);
+
+        DeskBoxAttachmentHealthReport report = await service.ScanAsync();
+
+        Assert.Equal(2, report.ReferencedFileCount);
+        Assert.Equal(missingLinked, Assert.Single(report.MissingLinkedFiles), ignoreCase: true);
+        Assert.Equal(missingManaged, Assert.Single(report.MissingManagedFiles), ignoreCase: true);
+        Assert.Equal(0, report.UnreadableStoreCount);
     }
 
     private static QuickCaptureItem CreateItem(params TodoAttachment[] attachments)

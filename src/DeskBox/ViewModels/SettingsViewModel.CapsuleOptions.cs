@@ -1005,7 +1005,8 @@ public partial class SettingsViewModel
         };
 }
 
-public sealed record CapsuleOverrideSettingsItem(
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial record CapsuleOverrideSettingsItem(
     string WidgetId,
     string DisplayName,
     string Summary,

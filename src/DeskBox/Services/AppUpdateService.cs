@@ -10,16 +10,11 @@ using DeskBox.Models;
 
 namespace DeskBox.Services;
 
-public sealed class AppUpdateService : IAppUpdateService
+public sealed partial class AppUpdateService : IAppUpdateService
 {
     public const string DefaultManifestUrl = "https://deskbox.fun/update/stable.json";
     public const string DefaultGitHubLatestReleaseApiUrl = "https://api.github.com/repos/Tianyu199509/DeskBox/releases/latest";
     public const string DefaultManualDownloadUrl = "https://deskbox.fun/download";
-
-    private static readonly JsonSerializerOptions s_jsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNameCaseInsensitive = true
-    };
 
     private readonly HttpClient _httpClient;
     private readonly string _manifestUrl;
@@ -87,7 +82,10 @@ public sealed class AppUpdateService : IAppUpdateService
             response.EnsureSuccessStatusCode();
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var manifest = await JsonSerializer.DeserializeAsync<AppUpdateManifest>(stream, s_jsonOptions, cancellationToken);
+            var manifest = await JsonSerializer.DeserializeAsync(
+                stream,
+                AppUpdateJsonContext.Default.UpdateManifest,
+                cancellationToken);
             if (manifest is null ||
                 !TrySelectInstallerForArchitecture(
                     manifest,
@@ -120,7 +118,10 @@ public sealed class AppUpdateService : IAppUpdateService
             response.EnsureSuccessStatusCode();
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var release = await JsonSerializer.DeserializeAsync<GitHubReleaseResponse>(stream, s_jsonOptions, cancellationToken);
+            var release = await JsonSerializer.DeserializeAsync(
+                stream,
+                AppUpdateJsonContext.Default.GitHubRelease,
+                cancellationToken);
             var manifest = await CreateManifestFromGitHubReleaseAsync(release, cancellationToken);
             if (!IsManifestUsable(manifest) || string.IsNullOrWhiteSpace(manifest!.Sha256))
             {
@@ -718,5 +719,15 @@ public sealed class AppUpdateService : IAppUpdateService
         public long Size { get; set; }
 
         public string Digest { get; set; } = string.Empty;
+    }
+
+    [JsonSourceGenerationOptions(
+        JsonSerializerDefaults.Web,
+        GenerationMode = JsonSourceGenerationMode.Metadata,
+        PropertyNameCaseInsensitive = true)]
+    [JsonSerializable(typeof(AppUpdateManifest), TypeInfoPropertyName = "UpdateManifest")]
+    [JsonSerializable(typeof(GitHubReleaseResponse), TypeInfoPropertyName = "GitHubRelease")]
+    private sealed partial class AppUpdateJsonContext : JsonSerializerContext
+    {
     }
 }

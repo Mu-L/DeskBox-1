@@ -1091,7 +1091,7 @@ public sealed partial class GlanceWidgetContent : UserControl
     private async void PhotoInfoButton_Click(object sender, RoutedEventArgs e) => await _viewModel.OpenPhotoInfoAsync();
 }
 
-public sealed class GlanceBoolToVisibilityConverter : IValueConverter
+public sealed partial class GlanceBoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
         => value is true ? Visibility.Visible : Visibility.Collapsed;
@@ -1100,7 +1100,7 @@ public sealed class GlanceBoolToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-public sealed class GlanceInverseBoolToVisibilityConverter : IValueConverter
+public sealed partial class GlanceInverseBoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
         => value is true ? Visibility.Collapsed : Visibility.Visible;
@@ -1109,7 +1109,7 @@ public sealed class GlanceInverseBoolToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-public sealed class GlanceBoolToFontWeightConverter : IValueConverter
+public sealed partial class GlanceBoolToFontWeightConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
         => value is true

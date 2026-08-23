@@ -133,13 +133,17 @@ public sealed partial class SettingsWindow
         string normalizedQuery = query?.Trim() ?? string.Empty;
         if (normalizedQuery.Length == 0)
         {
-            SettingsSearchBox.ItemsSource = Array.Empty<SettingsSearchResult>();
+            // NativeAOT cannot project an empty array of this private managed
+            // suggestion type through the WinRT object-valued ItemsSource ABI.
+            // Null is the native empty-state contract and is behaviorally
+            // identical while avoiding construction-time E_INVALIDARG.
+            SettingsSearchBox.ItemsSource = null;
             SettingsSearchBox.IsSuggestionListOpen = false;
             return;
         }
 
         SettingsSearchResult[] matches = FindSettingsSearchMatches(normalizedQuery, 10);
-        SettingsSearchBox.ItemsSource = matches;
+        SettingsSearchBox.ItemsSource = matches.Cast<object>().ToArray();
         SettingsSearchBox.IsSuggestionListOpen = matches.Length > 0;
     }
 
@@ -259,6 +263,13 @@ public sealed partial class SettingsWindow
             return;
         }
 
+        ActivateSettingsSearchResult(result, sender);
+    }
+
+    private void ActivateSettingsSearchResult(
+        SettingsSearchResult result,
+        AutoSuggestBox sender)
+    {
         NavigateToSettingsSection(result.SectionTag);
         ScheduleSettingsSearchTarget(result);
         sender.Text = string.Empty;
@@ -565,7 +576,7 @@ public sealed partial class SettingsWindow
             return;
         }
 
-        SettingsBreadcrumbBar.ItemsSource = new[]
+        SettingsBreadcrumbBar.ItemsSource = new object[]
         {
             new SettingsBreadcrumbItem(parentRoute.Tag, _localizationService.T(parentRoute.TitleKey), 0.62),
             new SettingsBreadcrumbItem(route.Tag, _localizationService.T(route.TitleKey), 1.0)
@@ -576,8 +587,15 @@ public sealed partial class SettingsWindow
 
     private void SettingsBreadcrumbBar_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
     {
-        if (args.Item is not SettingsBreadcrumbItem item ||
-            string.Equals(item.SectionTag, _currentSettingsSection, StringComparison.Ordinal))
+        if (args.Item is SettingsBreadcrumbItem item)
+        {
+            NavigateFromSettingsBreadcrumbItem(item);
+        }
+    }
+
+    private void NavigateFromSettingsBreadcrumbItem(SettingsBreadcrumbItem item)
+    {
+        if (string.Equals(item.SectionTag, _currentSettingsSection, StringComparison.Ordinal))
         {
             return;
         }

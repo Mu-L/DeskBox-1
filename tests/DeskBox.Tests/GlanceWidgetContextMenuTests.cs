@@ -53,6 +53,48 @@ public sealed class GlanceWidgetContextMenuTests
     }
 
     [Fact]
+    public void LocalImagePolicy_NormalizesPathsAndKeepsLocalFilesSource()
+    {
+        var settings = new GlanceWidgetData
+        {
+            BackgroundSource = GlanceBackgroundSource.Bing
+        };
+
+        GlanceWidgetSettingsPolicy.SetLocalImageFiles(
+            settings,
+            [" C:\\Pictures\\one.png ", "c:\\pictures\\ONE.png", ""]);
+
+        Assert.Equal(GlanceBackgroundSource.LocalFiles, settings.BackgroundSource);
+        Assert.Equal([@"C:\Pictures\one.png"], settings.LocalImagePaths);
+
+        GlanceWidgetSettingsPolicy.ClearLocalSource(settings);
+        Assert.Equal(GlanceBackgroundSource.LocalFiles, settings.BackgroundSource);
+        Assert.Empty(settings.LocalImagePaths);
+    }
+
+    [Fact]
+    public void PhotoPlaybackPolicy_AppliesOneCoherentPreferenceSet()
+    {
+        var settings = new GlanceWidgetData();
+
+        GlanceWidgetSettingsPolicy.SetPhotoPlayback(
+            settings,
+            rotationIntervalMinutes: 0,
+            randomOrder: false,
+            GlanceTransitionMode.None,
+            GlanceTransitionSpeed.Fast,
+            GlanceReadabilityMode.Strong,
+            showPhotoControls: true);
+
+        Assert.Equal(0, settings.RotationIntervalMinutes);
+        Assert.False(settings.RandomOrder);
+        Assert.Equal(GlanceTransitionMode.None, settings.Transition);
+        Assert.Equal(GlanceTransitionSpeed.Fast, settings.TransitionSpeed);
+        Assert.Equal(GlanceReadabilityMode.Strong, settings.Readability);
+        Assert.True(settings.ShowPhotoControls);
+    }
+
+    [Fact]
     public void ContextMenu_KeepsOnlyDisplayAndLayoutBeforeSharedWidgetCommands()
     {
         string builder = File.ReadAllText(TestPaths.FromRepository(

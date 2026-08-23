@@ -46,17 +46,37 @@ public sealed class ExclusiveDropHighlightCoordinatorTests
     }
 
     [Fact]
-    public void NativeDropBridge_KeepsFallbackTrackingWithoutWindowHighlight()
+    public void NativeDropBridge_TracksSurfaceCleanupWithoutWindowHighlight()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Views/ContentWidgetWindow.NativeDragDrop.cs"));
 
-        Assert.DoesNotContain(
+        Assert.Contains(
+            "DragEnterEvent +=",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DragOverEvent +=",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "DragLeaveEvent +=",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ObserveNativeDragPointer",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ClearDragSessionVisualState",
             source,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "ClearNativeFileDropHighlight",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SetExclusiveWindowDropTarget",
             source,
             StringComparison.Ordinal);
         Assert.Contains(

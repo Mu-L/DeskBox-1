@@ -91,6 +91,17 @@ public sealed record DeskBoxSettingsDiagnostic(
     string? LastSaveFailureOperation,
     DateTimeOffset? LastSaveFailureAtUtc);
 
+public sealed record DeskBoxShortcutNativeDiagnostic(
+    string SelectedBackend,
+    string ModuleName,
+    bool ModuleExists,
+    string? ModuleArchitecture,
+    string? ModuleSha256,
+    bool LoadAttempted,
+    string LoadState,
+    uint? AbiVersion,
+    ulong? Capabilities);
+
 public sealed record DeskBoxHotkeyDiagnostic(
     bool ToggleEnabled,
     bool ToggleRegistered,
@@ -122,9 +133,22 @@ public sealed record DeskBoxDiagnosticSnapshot(
     string UiCulture,
     DeskBoxHotkeyDiagnostic Hotkeys,
     DeskBoxSettingsDiagnostic Settings,
+    DeskBoxShortcutNativeDiagnostic ShortcutNative,
     AppRuntimeHealthSnapshot? RuntimeHealth,
     DeskBoxWidgetManagerDiagnostic WidgetManager,
     IReadOnlyList<DeskBoxDisplayDiagnostic> Displays);
+
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    UseStringEnumConverter = true,
+    WriteIndented = true)]
+[JsonSerializable(
+    typeof(DeskBoxDiagnosticSnapshot),
+    TypeInfoPropertyName = "DiagnosticSnapshot")]
+internal sealed partial class DiagnosticsJsonContext : JsonSerializerContext
+{
+}
 
 /// <summary>
 /// Exports a deliberately narrow, privacy-filtered support package. It never
@@ -147,13 +171,6 @@ public sealed partial class DeskBoxDiagnosticsBundleService
         本压缩包只包含运行状态快照和经过脱敏的应用日志末尾，不包含设置文件、格子内容、文件列表、剪贴板记录、待办或附件。
         路径、账户名、电子邮箱和 Windows 安全标识符会自动隐藏。发送给支持人员前仍建议快速检查一次。
         """;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
 
     [GeneratedRegex(
         "(?imx)\\b([a-z0-9_]*(?:path|folder|root|directory|dir|file|exe|commandline)[a-z0-9_]*)\\s*=\\s*(?:'[^'\\r\\n]*'|\"[^\"\\r\\n]*\"|[^\\r\\n]*?)(?=\\s+[a-z0-9_]+\\s*=|\\r?$)")]
@@ -249,7 +266,11 @@ public sealed partial class DeskBoxDiagnosticsBundleService
     {
         ZipArchiveEntry entry = archive.CreateEntry("diagnostics.json", CompressionLevel.Optimal);
         await using Stream stream = entry.Open();
-        await JsonSerializer.SerializeAsync(stream, snapshot, JsonOptions, cancellationToken);
+        await JsonSerializer.SerializeAsync(
+            stream,
+            snapshot,
+            DiagnosticsJsonContext.Default.DiagnosticSnapshot,
+            cancellationToken);
     }
 
     private static async Task WriteTextEntryAsync(

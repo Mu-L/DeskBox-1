@@ -1,0 +1,10 @@
+[package]
+name = "deskbox-search-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[lib]
+name = "deskbox_search_core"
+crate-type = ["cdylib", "rlib"]

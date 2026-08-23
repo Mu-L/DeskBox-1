@@ -27,7 +27,7 @@ public sealed partial class SettingsWindow
             return;
         }
 
-        string? folderPath = FolderPickerService.PickFolder(_hWnd);
+        string? folderPath = await FolderPickerService.PickFolderAsync(_hWnd);
         if (string.IsNullOrWhiteSpace(folderPath))
         {
             return;

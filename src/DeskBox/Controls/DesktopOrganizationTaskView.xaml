@@ -99,7 +99,7 @@
                                             x:Name="StoragePathText"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                             TextTrimming="CharacterEllipsis"
-                                            ToolTipService.ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                                            ToolTipService.ToolTip="{x:Bind StoragePathText.Text, Mode=OneWay}" />
                                     </StackPanel>
                                     <Button
                                         x:Name="ChangePathButton"

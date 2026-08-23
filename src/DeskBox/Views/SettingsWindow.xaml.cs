@@ -136,6 +136,8 @@ public sealed partial class SettingsWindow : Window
         RefreshSettingsSearchResults();
 
         SettingsRoot.DataContext = ViewModel;
+        AppearanceDetailSection.ViewModel = ViewModel;
+        CapsuleModeSection.ViewModel = ViewModel;
         SettingsRoot.AddHandler(
             UIElement.PointerPressedEvent,
             _settingsRootPointerPressedHandler,
@@ -258,6 +260,8 @@ public sealed partial class SettingsWindow : Window
             hotkeyService.RegistrationChanged -= OnGlobalHotkeyRegistrationChanged;
         }
 
+        AppearanceDetailSection.ViewModel = null;
+        CapsuleModeSection.ViewModel = null;
         Bindings.StopTracking();
         Localized.UntrackTree(SettingsRoot);
         SettingsRoot.DataContext = null;
@@ -666,7 +670,8 @@ public sealed partial class SettingsWindow : Window
         string? ParentTag,
         string NavTag);
 
-    private sealed record SettingsBreadcrumbItem(string SectionTag, string Title, double Opacity)
+    [WinRT.GeneratedBindableCustomProperty]
+    private sealed partial record SettingsBreadcrumbItem(string SectionTag, string Title, double Opacity)
     {
         public override string ToString()
         {
@@ -674,7 +679,8 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    private sealed record SettingsSearchResult(
+    [WinRT.GeneratedBindableCustomProperty]
+    private sealed partial record SettingsSearchResult(
         string SectionTag,
         string Title,
         string Breadcrumb,
@@ -689,7 +695,8 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    private sealed record BackupSnapshotListItem(
+    [WinRT.GeneratedBindableCustomProperty]
+    private sealed partial record BackupSnapshotListItem(
         string Path,
         string Title,
         string Details,

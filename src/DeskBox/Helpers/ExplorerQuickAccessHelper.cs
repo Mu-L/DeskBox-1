@@ -1,5 +1,7 @@
 using System.Diagnostics;
+#if !DESKBOX_NATIVE_AOT
 using System.Runtime.InteropServices;
+#endif
 
 namespace DeskBox.Helpers;
 
@@ -19,10 +21,12 @@ public readonly record struct QuickAccessOperationResult(bool Succeeded, string?
 /// </summary>
 public static class ExplorerQuickAccessHelper
 {
+#if !DESKBOX_NATIVE_AOT
     private const string QuickAccessNamespace = "shell:::{679F85CB-0220-4080-B29B-5540CC05AAB6}";
     private const string PinVerb = "pintohome";
     private const string UnpinVerb = "unpinfromhome";
     private const string IsPinnedProperty = "System.IsPinnedToNameSpaceTree";
+#endif
 
     public static Task<QuickAccessStateResult> GetQuickAccessPinStateAsync(string folderPath)
     {
@@ -36,6 +40,273 @@ public static class ExplorerQuickAccessHelper
     }
 
     public static QuickAccessPinState GetQuickAccessPinState(string folderPath, out string? error)
+    {
+#if DESKBOX_NATIVE_AOT
+        return GetQuickAccessPinStateRust(folderPath, out error);
+#else
+        return QuickAccessBackendPolicy.Current == QuickAccessBackendMode.Rust
+            ? GetQuickAccessPinStateRust(folderPath, out error)
+            : GetQuickAccessPinStateCSharp(folderPath, out error);
+#endif
+    }
+
+    public static Task<QuickAccessOperationResult> TryPinFolderToQuickAccessAsync(string folderPath)
+    {
+        return RunShellStaAsync(
+            () =>
+            {
+                bool succeeded = TryPinFolderToQuickAccess(folderPath, out string? error);
+                return new QuickAccessOperationResult(succeeded, error);
+            },
+            "PinFolder");
+    }
+
+    public static bool TryPinFolderToQuickAccess(string folderPath, out string? error)
+    {
+#if DESKBOX_NATIVE_AOT
+        return TryInvokeFolderVerbRust(
+            folderPath,
+            QuickAccessNativeOperation.Pin,
+            createFolder: true,
+            out error);
+#else
+        return QuickAccessBackendPolicy.Current == QuickAccessBackendMode.Rust
+            ? TryInvokeFolderVerbRust(
+                folderPath,
+                QuickAccessNativeOperation.Pin,
+                createFolder: true,
+                out error)
+            : TryInvokeFolderVerbCSharp(folderPath, PinVerb, createFolder: true, out error);
+#endif
+    }
+
+    public static Task<QuickAccessOperationResult> TryUnpinFolderFromQuickAccessAsync(string folderPath)
+    {
+        return RunShellStaAsync(
+            () =>
+            {
+                bool succeeded = TryUnpinFolderFromQuickAccess(folderPath, out string? error);
+                return new QuickAccessOperationResult(succeeded, error);
+            },
+            "UnpinFolder");
+    }
+
+    public static bool TryUnpinFolderFromQuickAccess(string folderPath, out string? error)
+    {
+#if DESKBOX_NATIVE_AOT
+        return TryUnpinFolderFromQuickAccessRust(folderPath, out error);
+#else
+        return QuickAccessBackendPolicy.Current == QuickAccessBackendMode.Rust
+            ? TryUnpinFolderFromQuickAccessRust(folderPath, out error)
+            : TryUnpinFolderFromQuickAccessCSharp(folderPath, out error);
+#endif
+    }
+
+    private static QuickAccessPinState GetQuickAccessPinStateRust(
+        string folderPath,
+        out string? error)
+    {
+        error = null;
+        if (!TryNormalizeFolderPath(folderPath, out string fullPath, out error))
+        {
+            return QuickAccessPinState.Unknown;
+        }
+
+        if (!Directory.Exists(fullPath))
+        {
+            return QuickAccessPinState.NotPinned;
+        }
+
+        QuickAccessNativeCallResult result = QuickAccessNativeBackend.Invoke(
+            QuickAccessNativeOperation.QueryPinState,
+            fullPath,
+            string.Empty,
+            string.Empty);
+        if (!result.Success)
+        {
+            error = result.Detail;
+            return QuickAccessPinState.Unknown;
+        }
+
+        return result.PinState;
+    }
+
+    private static bool TryUnpinFolderFromQuickAccessRust(string folderPath, out string? error)
+    {
+        QuickAccessPinState state = GetQuickAccessPinStateRust(folderPath, out error);
+        if (state == QuickAccessPinState.NotPinned)
+        {
+            error = null;
+            return true;
+        }
+
+        return TryInvokeFolderVerbRust(
+            folderPath,
+            QuickAccessNativeOperation.Unpin,
+            createFolder: false,
+            out error);
+    }
+
+    private static bool TryInvokeFolderVerbRust(
+        string folderPath,
+        QuickAccessNativeOperation operation,
+        bool createFolder,
+        out string? error)
+    {
+        error = null;
+        try
+        {
+            if (!TryPrepareFolderItem(
+                    folderPath,
+                    createFolder,
+                    out string fullPath,
+                    out string parentPath,
+                    out string folderName,
+                    out error))
+            {
+                return false;
+            }
+
+            QuickAccessNativeCallResult result = QuickAccessNativeBackend.Invoke(
+                operation,
+                fullPath,
+                parentPath,
+                folderName);
+            if (!result.Success)
+            {
+                error = result.Detail;
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static bool TryPrepareFolderItem(
+        string folderPath,
+        bool createFolder,
+        out string fullPath,
+        out string parentPath,
+        out string folderName,
+        out string? error)
+    {
+        parentPath = string.Empty;
+        folderName = string.Empty;
+        if (!TryNormalizeFolderPath(folderPath, out fullPath, out error))
+        {
+            return false;
+        }
+
+        if (createFolder)
+        {
+            Directory.CreateDirectory(fullPath);
+        }
+        else if (!Directory.Exists(fullPath))
+        {
+            error = "Folder does not exist.";
+            return false;
+        }
+
+        parentPath = Path.GetDirectoryName(fullPath) ?? string.Empty;
+        folderName = Path.GetFileName(
+            fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(parentPath) || string.IsNullOrWhiteSpace(folderName))
+        {
+            error = "Folder path is invalid.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static Task<T> RunShellStaAsync<T>(Func<T> action, string operationName)
+    {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var thread = new Thread(() =>
+        {
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                T result = action();
+                LogShellTiming(operationName, stopwatch.Elapsed);
+                completion.TrySetResult(result);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                App.Log($"[QuickAccess] {operationName} failed after {stopwatch.ElapsedMilliseconds}ms: {ex}");
+                completion.TrySetException(ex);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = $"DeskBox QuickAccess {operationName}"
+        };
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return completion.Task;
+    }
+
+    private static void LogShellTiming(string operationName, TimeSpan elapsed)
+    {
+        string message = $"[QuickAccess] {operationName} completed in {elapsed.TotalMilliseconds:0}ms";
+        if (elapsed >= TimeSpan.FromSeconds(1))
+        {
+            App.Log(message);
+            return;
+        }
+
+        App.LogVerbose(message);
+    }
+
+    private static bool TryNormalizeFolderPath(string folderPath, out string fullPath, out string? error)
+    {
+        fullPath = string.Empty;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            error = "Folder path is empty.";
+            return false;
+        }
+
+        try
+        {
+            fullPath = Path.GetFullPath(folderPath);
+            string trimmedPath = fullPath.TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+            if (!string.IsNullOrWhiteSpace(trimmedPath) &&
+                !string.Equals(
+                    trimmedPath,
+                    Path.GetPathRoot(fullPath)?.TrimEnd(
+                        Path.DirectorySeparatorChar,
+                        Path.AltDirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                fullPath = trimmedPath;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+#if !DESKBOX_NATIVE_AOT
+    private static QuickAccessPinState GetQuickAccessPinStateCSharp(
+        string folderPath,
+        out string? error)
     {
         error = null;
 
@@ -92,38 +363,13 @@ public static class ExplorerQuickAccessHelper
         }
     }
 
-    public static Task<QuickAccessOperationResult> TryPinFolderToQuickAccessAsync(string folderPath)
-    {
-        return RunShellStaAsync(
-            () =>
-            {
-                bool succeeded = TryPinFolderToQuickAccess(folderPath, out string? error);
-                return new QuickAccessOperationResult(succeeded, error);
-            },
-            "PinFolder");
-    }
-
-    public static bool TryPinFolderToQuickAccess(string folderPath, out string? error)
-    {
-        return TryInvokeFolderVerb(folderPath, PinVerb, createFolder: true, out error);
-    }
-
-    public static Task<QuickAccessOperationResult> TryUnpinFolderFromQuickAccessAsync(string folderPath)
-    {
-        return RunShellStaAsync(
-            () =>
-            {
-                bool succeeded = TryUnpinFolderFromQuickAccess(folderPath, out string? error);
-                return new QuickAccessOperationResult(succeeded, error);
-            },
-            "UnpinFolder");
-    }
-
-    public static bool TryUnpinFolderFromQuickAccess(string folderPath, out string? error)
+    private static bool TryUnpinFolderFromQuickAccessCSharp(
+        string folderPath,
+        out string? error)
     {
         error = null;
 
-        QuickAccessPinState state = GetQuickAccessPinState(folderPath, out error);
+        QuickAccessPinState state = GetQuickAccessPinStateCSharp(folderPath, out error);
         if (state == QuickAccessPinState.NotPinned)
         {
             error = null;
@@ -154,7 +400,11 @@ public static class ExplorerQuickAccessHelper
                 }
             }
 
-            return TryInvokeFolderVerb(folderPath, UnpinVerb, createFolder: false, out error);
+            return TryInvokeFolderVerbCSharp(
+                folderPath,
+                UnpinVerb,
+                createFolder: false,
+                out error);
         }
         catch (COMException ex)
         {
@@ -168,49 +418,11 @@ public static class ExplorerQuickAccessHelper
         }
     }
 
-    private static Task<T> RunShellStaAsync<T>(Func<T> action, string operationName)
-    {
-        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var thread = new Thread(() =>
-        {
-            var stopwatch = Stopwatch.StartNew();
-            try
-            {
-                T result = action();
-                LogShellTiming(operationName, stopwatch.Elapsed);
-                completion.TrySetResult(result);
-            }
-            catch (Exception ex)
-            {
-                stopwatch.Stop();
-                App.Log($"[QuickAccess] {operationName} failed after {stopwatch.ElapsedMilliseconds}ms: {ex}");
-                completion.TrySetException(ex);
-            }
-        })
-        {
-            IsBackground = true,
-            Name = $"DeskBox QuickAccess {operationName}"
-        };
-
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        return completion.Task;
-    }
-
-    private static void LogShellTiming(string operationName, TimeSpan elapsed)
-    {
-        string message = $"[QuickAccess] {operationName} completed in {elapsed.TotalMilliseconds:0}ms";
-        if (elapsed >= TimeSpan.FromSeconds(1))
-        {
-            App.Log(message);
-            return;
-        }
-
-        App.LogVerbose(message);
-    }
-
-    private static bool TryInvokeFolderVerb(string folderPath, string verb, bool createFolder, out string? error)
+    private static bool TryInvokeFolderVerbCSharp(
+        string folderPath,
+        string verb,
+        bool createFolder,
+        out string? error)
     {
         error = null;
 
@@ -218,7 +430,12 @@ public static class ExplorerQuickAccessHelper
         {
             if (!TryCreateShellApplication(out object? shellObject, out error) ||
                 shellObject is null ||
-                !TryGetFolderItem(shellObject, folderPath, createFolder, out object? folderItemObject, out error) ||
+                !TryGetFolderItem(
+                    shellObject,
+                    folderPath,
+                    createFolder,
+                    out object? folderItemObject,
+                    out error) ||
                 folderItemObject is null)
             {
                 return false;
@@ -288,7 +505,8 @@ public static class ExplorerQuickAccessHelper
         }
 
         string? parentPath = Path.GetDirectoryName(fullPath);
-        string folderName = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        string folderName = Path.GetFileName(
+            fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         if (string.IsNullOrWhiteSpace(parentPath) || string.IsNullOrWhiteSpace(folderName))
         {
             error = "Folder path is invalid.";
@@ -305,35 +523,6 @@ public static class ExplorerQuickAccessHelper
         }
 
         return true;
-    }
-
-    private static bool TryNormalizeFolderPath(string folderPath, out string fullPath, out string? error)
-    {
-        fullPath = string.Empty;
-        error = null;
-
-        if (string.IsNullOrWhiteSpace(folderPath))
-        {
-            error = "Folder path is empty.";
-            return false;
-        }
-
-        try
-        {
-            fullPath = Path.GetFullPath(folderPath);
-            string trimmedPath = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (!string.IsNullOrWhiteSpace(trimmedPath) && !string.Equals(trimmedPath, Path.GetPathRoot(fullPath)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
-            {
-                fullPath = trimmedPath;
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            error = ex.Message;
-            return false;
-        }
     }
 
     private static bool TryGetFolderItemPath(dynamic item, out string path)
@@ -392,4 +581,5 @@ public static class ExplorerQuickAccessHelper
             right.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
             StringComparison.OrdinalIgnoreCase);
     }
+#endif
 }

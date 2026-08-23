@@ -1,5 +1,8 @@
+using DeskBox.Helpers;
+#if !DESKBOX_NATIVE_AOT
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+#endif
 
 namespace DeskBox.Services;
 
@@ -10,35 +13,139 @@ public sealed record MusicVolumeSnapshot(
 
 public sealed class MusicVolumeService
 {
+    private readonly MusicVolumeBackendMode _backendMode;
+
+    public MusicVolumeService()
+        : this(MusicVolumeBackendPolicy.Current)
+    {
+    }
+
+    internal MusicVolumeService(MusicVolumeBackendMode backendMode)
+    {
+        _backendMode = backendMode;
+    }
+
     public Task<MusicVolumeSnapshot> GetVolumeAsync(string sourceAppUserModelId, string sourceDisplayName)
     {
-        return Task.Run(() =>
-        {
-            double systemVolume = GetSystemMasterVolume();
-            double? sessionVolume = TryGetSessionVolume(sourceAppUserModelId, sourceDisplayName);
-
-            return new MusicVolumeSnapshot(
-                systemVolume,
-                sessionVolume ?? 0.0,
-                sessionVolume.HasValue);
-        });
+        return Task.Run(() => GetVolume(sourceAppUserModelId, sourceDisplayName));
     }
 
     public Task<double> GetSystemMasterVolumeAsync()
     {
-        return Task.Run(GetSystemMasterVolume);
+        return Task.Run(GetSystemMasterVolumeCore);
     }
 
     public Task<bool> TrySetSystemMasterVolumeAsync(double volume)
     {
-        return Task.Run(() => TrySetSystemMasterVolume(volume));
+        return Task.Run(() => TrySetSystemMasterVolumeCore(volume));
     }
 
     public Task<bool> TrySetSessionVolumeAsync(string sourceAppUserModelId, string sourceDisplayName, double volume)
     {
-        return Task.Run(() => TrySetSessionVolume(sourceAppUserModelId, sourceDisplayName, volume));
+        return Task.Run(() => TrySetSessionVolumeCore(
+            sourceAppUserModelId,
+            sourceDisplayName,
+            volume));
     }
 
+    private MusicVolumeSnapshot GetVolume(string sourceAppUserModelId, string sourceDisplayName)
+    {
+#if !DESKBOX_NATIVE_AOT
+        if (_backendMode == MusicVolumeBackendMode.CSharp)
+        {
+            double systemVolume = GetSystemMasterVolume();
+            double? sessionVolume = TryGetSessionVolume(sourceAppUserModelId, sourceDisplayName);
+            return new MusicVolumeSnapshot(
+                systemVolume,
+                sessionVolume ?? 0.0,
+                sessionVolume.HasValue);
+        }
+#endif
+
+        MusicVolumeNativeCallResult result = MusicVolumeNativeBackend.GetSnapshot(
+            sourceAppUserModelId,
+            sourceDisplayName);
+        if (!result.Success)
+        {
+            LogNativeFailure("get snapshot", result);
+            return new MusicVolumeSnapshot(0.0, 0.0, false);
+        }
+
+        return new MusicVolumeSnapshot(
+            result.SystemVolume,
+            result.SessionVolume,
+            result.HasSessionVolume);
+    }
+
+    private double GetSystemMasterVolumeCore()
+    {
+#if !DESKBOX_NATIVE_AOT
+        if (_backendMode == MusicVolumeBackendMode.CSharp)
+        {
+            return GetSystemMasterVolume();
+        }
+#endif
+
+        MusicVolumeNativeCallResult result = MusicVolumeNativeBackend.GetSystemVolume();
+        if (!result.Success)
+        {
+            LogNativeFailure("get system volume", result);
+            return 0.0;
+        }
+
+        return result.SystemVolume;
+    }
+
+    private bool TrySetSystemMasterVolumeCore(double volume)
+    {
+#if !DESKBOX_NATIVE_AOT
+        if (_backendMode == MusicVolumeBackendMode.CSharp)
+        {
+            return TrySetSystemMasterVolume(volume);
+        }
+#endif
+
+        MusicVolumeNativeCallResult result = MusicVolumeNativeBackend.SetSystemVolume(volume);
+        if (!result.Success)
+        {
+            LogNativeFailure("set system volume", result);
+        }
+
+        return result.Success;
+    }
+
+    private bool TrySetSessionVolumeCore(
+        string sourceAppUserModelId,
+        string sourceDisplayName,
+        double volume)
+    {
+#if !DESKBOX_NATIVE_AOT
+        if (_backendMode == MusicVolumeBackendMode.CSharp)
+        {
+            return TrySetSessionVolume(sourceAppUserModelId, sourceDisplayName, volume);
+        }
+#endif
+
+        MusicVolumeNativeCallResult result = MusicVolumeNativeBackend.SetSessionVolume(
+            sourceAppUserModelId,
+            sourceDisplayName,
+            volume);
+        if (!result.Success)
+        {
+            LogNativeFailure("set session volume", result);
+        }
+
+        return result.Success;
+    }
+
+    private static void LogNativeFailure(string operation, MusicVolumeNativeCallResult result)
+    {
+        App.Log(
+            $"[MusicVolume] Rust {operation} failed: {result.Failure}; {result.Detail} " +
+            $"status={result.Status}, HRESULT=0x{result.OperationHResult:X8}.");
+    }
+
+#if !DESKBOX_NATIVE_AOT
     private static double GetSystemMasterVolume()
     {
         if (TryGetEndpointVolume(out var endpointVolume))
@@ -676,4 +783,5 @@ public sealed class MusicVolumeService
         [PreserveSig]
         int GetMute([MarshalAs(UnmanagedType.Bool)] out bool isMuted);
     }
+#endif
 }

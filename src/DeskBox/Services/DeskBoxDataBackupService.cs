@@ -2,11 +2,12 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
 
-public sealed class DeskBoxDataBackupService
+public sealed partial class DeskBoxDataBackupService
 {
     private const int BackupSchemaVersion = 2;
     private const int MinimumSupportedBackupSchemaVersion = 1;
@@ -17,18 +18,12 @@ public sealed class DeskBoxDataBackupService
     private const long MaxRestoreTotalSizeBytes = 16L * 1024 * 1024 * 1024;
     private const int MaxSnapshotCopyAttempts = 4;
     private static readonly TimeSpan AutomaticSnapshotInterval = TimeSpan.FromDays(1);
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-    private static readonly JsonSerializerOptions s_dataJsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
+    private static readonly SettingsJsonContext s_settingsDataJsonContext =
+        new(CreateDataJsonOptions());
+    private static readonly QuickCaptureJsonContext s_quickCaptureDataJsonContext =
+        new(CreateDataJsonOptions());
+    private static readonly TodoJsonContext s_todoDataJsonContext =
+        new(CreateDataJsonOptions());
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _rootPath;
@@ -194,7 +189,10 @@ public sealed class DeskBoxDataBackupService
                 DateTimeOffset.UtcNow,
                 archiveInfo.Manifest.CreatedAtUtc,
                 archiveInfo.Manifest.AppVersion);
-            await WriteJsonAtomicallyAsync(PendingRestoreMarkerPath, marker, cancellationToken);
+            await WritePendingRestoreMarkerAtomicallyAsync(
+                PendingRestoreMarkerPath,
+                marker,
+                cancellationToken);
             App.Log($"[DataBackup] Prepared restore from '{archivePath}'.");
             return new DeskBoxRestorePreparation(
                 archiveInfo.Manifest.CreatedAtUtc,
@@ -344,9 +342,9 @@ public sealed class DeskBoxDataBackupService
         DeskBoxBackupManifest manifest;
         await using (Stream manifestStream = manifestEntry.Open())
         {
-            manifest = await JsonSerializer.DeserializeAsync<DeskBoxBackupManifest>(
+            manifest = await JsonSerializer.DeserializeAsync(
                            manifestStream,
-                           s_jsonOptions,
+                           BackupJsonContext.Default.BackupManifest,
                            cancellationToken) ??
                        throw new InvalidDataException("The backup manifest is invalid.");
         }
@@ -473,9 +471,12 @@ public sealed class DeskBoxDataBackupService
             throw new InvalidDataException("The backup is missing settings.json.");
         }
 
-        ValidateJsonFileIfPresent<AppSettings>(settingsPath);
+        ValidateJsonFileIfPresent<AppSettings>(
+            settingsPath,
+            s_settingsDataJsonContext.AppSettings);
         ValidateJsonFileIfPresent<QuickCaptureStoreData>(
-            Path.Combine(dataDirectory, "quick-capture", "quick-capture.json"));
+            Path.Combine(dataDirectory, "quick-capture", "quick-capture.json"),
+            s_quickCaptureDataJsonContext.StoreData);
 
         string widgetsDirectory = Path.Combine(dataDirectory, "widgets");
         if (Directory.Exists(widgetsDirectory))
@@ -485,12 +486,16 @@ public sealed class DeskBoxDataBackupService
                          "todo.json",
                          SearchOption.AllDirectories))
             {
-                ValidateJsonFileIfPresent<TodoWidgetData>(todoPath);
+                ValidateJsonFileIfPresent<TodoWidgetData>(
+                    todoPath,
+                    s_todoDataJsonContext.StoreData);
             }
         }
     }
 
-    private static void ValidateJsonFileIfPresent<T>(string path)
+    private static void ValidateJsonFileIfPresent<T>(
+        string path,
+        JsonTypeInfo<T> jsonTypeInfo)
     {
         if (!File.Exists(path))
         {
@@ -500,7 +505,7 @@ public sealed class DeskBoxDataBackupService
         try
         {
             string json = File.ReadAllText(path);
-            if (JsonSerializer.Deserialize<T>(json, s_dataJsonOptions) is null)
+            if (JsonSerializer.Deserialize(json, jsonTypeInfo) is null)
             {
                 throw new JsonException("The JSON document contains null.");
             }
@@ -589,9 +594,9 @@ public sealed class DeskBoxDataBackupService
         string? sourceDataPath,
         CancellationToken cancellationToken)
     {
-        QuickCaptureStoreData data = JsonSerializer.Deserialize<QuickCaptureStoreData>(
+        QuickCaptureStoreData data = JsonSerializer.Deserialize(
                                          await File.ReadAllTextAsync(path, cancellationToken),
-                                         s_dataJsonOptions) ??
+                                         s_quickCaptureDataJsonContext.StoreData) ??
                                      throw new InvalidDataException("Quick Capture backup data is invalid.");
         foreach (QuickCaptureItem item in (data.Items ?? []).Concat(data.RecentItems ?? []))
         {
@@ -630,7 +635,7 @@ public sealed class DeskBoxDataBackupService
 
         await File.WriteAllTextAsync(
             path,
-            JsonSerializer.Serialize(data, s_dataJsonOptions),
+            JsonSerializer.Serialize(data, s_quickCaptureDataJsonContext.StoreData),
             cancellationToken);
     }
 
@@ -640,9 +645,9 @@ public sealed class DeskBoxDataBackupService
         string? sourceDataPath,
         CancellationToken cancellationToken)
     {
-        TodoWidgetData data = JsonSerializer.Deserialize<TodoWidgetData>(
+        TodoWidgetData data = JsonSerializer.Deserialize(
                                   await File.ReadAllTextAsync(path, cancellationToken),
-                                  s_dataJsonOptions) ??
+                                  s_todoDataJsonContext.StoreData) ??
                               throw new InvalidDataException("Todo backup data is invalid.");
         string storeRelativePath = Path.GetRelativePath(
                 stagedDataDirectory,
@@ -662,7 +667,7 @@ public sealed class DeskBoxDataBackupService
 
         await File.WriteAllTextAsync(
             path,
-            JsonSerializer.Serialize(data, s_dataJsonOptions),
+            JsonSerializer.Serialize(data, s_todoDataJsonContext.StoreData),
             cancellationToken);
     }
 
@@ -698,6 +703,13 @@ public sealed class DeskBoxDataBackupService
 
         return Path.GetFullPath(Path.Combine(DataDirectory, relativePath));
     }
+
+    private static JsonSerializerOptions CreateDataJsonOptions() => new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
 
     private static string? TryGetStoreRelativePath(string originalPath, string storeRelativePath)
     {
@@ -743,7 +755,9 @@ public sealed class DeskBoxDataBackupService
         try
         {
             string json = await File.ReadAllTextAsync(PendingRestoreMarkerPath, cancellationToken);
-            return JsonSerializer.Deserialize<PendingRestoreMarker>(json, s_jsonOptions) ??
+            return JsonSerializer.Deserialize(
+                       json,
+                       BackupJsonContext.Default.PendingRestoreMarker) ??
                    throw new InvalidDataException("The pending restore marker is invalid.");
         }
         catch (JsonException ex)
@@ -759,9 +773,9 @@ public sealed class DeskBoxDataBackupService
             try
             {
                 string json = File.ReadAllText(PendingRestoreMarkerPath);
-                PendingRestoreMarker? marker = JsonSerializer.Deserialize<PendingRestoreMarker>(
+                PendingRestoreMarker? marker = JsonSerializer.Deserialize(
                     json,
-                    s_jsonOptions);
+                    BackupJsonContext.Default.PendingRestoreMarker);
                 if (marker is not null &&
                     IsPathInsideDirectory(marker.StagingRoot, RestoreStagingDirectory))
                 {
@@ -778,9 +792,9 @@ public sealed class DeskBoxDataBackupService
         TryDeleteDirectory(RestoreStagingDirectory);
     }
 
-    private static async Task WriteJsonAtomicallyAsync<T>(
+    private static async Task WritePendingRestoreMarkerAtomicallyAsync(
         string path,
-        T value,
+        PendingRestoreMarker marker,
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -789,7 +803,9 @@ public sealed class DeskBoxDataBackupService
         {
             await File.WriteAllTextAsync(
                 tempPath,
-                JsonSerializer.Serialize(value, s_jsonOptions),
+                JsonSerializer.Serialize(
+                    marker,
+                    BackupJsonContext.Default.PendingRestoreMarker),
                 cancellationToken);
             File.Move(tempPath, path, overwrite: true);
         }
@@ -974,9 +990,9 @@ public sealed class DeskBoxDataBackupService
             }
 
             await using Stream manifestStream = manifestEntry.Open();
-            DeskBoxBackupManifest? manifest = await JsonSerializer.DeserializeAsync<DeskBoxBackupManifest>(
+            DeskBoxBackupManifest? manifest = await JsonSerializer.DeserializeAsync(
                 manifestStream,
-                s_jsonOptions,
+                BackupJsonContext.Default.BackupManifest,
                 cancellationToken);
             return manifest is null
                 ? SnapshotManifestSummary.Unreadable
@@ -1085,7 +1101,7 @@ public sealed class DeskBoxDataBackupService
                         await JsonSerializer.SerializeAsync(
                             manifestStream,
                             manifest,
-                            s_jsonOptions,
+                            BackupJsonContext.Default.BackupManifest,
                             cancellationToken);
                     }
                 }
@@ -1391,6 +1407,23 @@ public sealed class DeskBoxDataBackupService
         DateTimeOffset PreparedAtUtc,
         DateTimeOffset BackupCreatedAtUtc,
         string AppVersion);
+
+    [JsonSourceGenerationOptions(
+        GenerationMode = JsonSourceGenerationMode.Metadata,
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+        WriteIndented = true)]
+    [JsonSerializable(
+        typeof(DeskBoxBackupManifest),
+        TypeInfoPropertyName = "BackupManifest")]
+    [JsonSerializable(
+        typeof(DeskBoxBackupFileManifest),
+        TypeInfoPropertyName = "BackupFileManifest")]
+    [JsonSerializable(
+        typeof(PendingRestoreMarker),
+        TypeInfoPropertyName = "PendingRestoreMarker")]
+    private sealed partial class BackupJsonContext : JsonSerializerContext
+    {
+    }
 }
 
 public sealed record DeskBoxBackupSnapshotInfo(

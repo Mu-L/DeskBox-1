@@ -688,7 +688,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.DescriptionKey="Settings.DisplayWidgetChrome.Description"
                                     svc:Localized.HeaderKey="Settings.DisplayWidgetChrome.Title">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Command="{Binding ResetDisplayWidgetChromeOverridesCommand}" Style="{StaticResource IconActionButtonStyle}" svc:Localized.ToolTipKey="Settings.DisplayWidgetChrome.ResetTooltip">
+                                        <Button Command="{x:Bind ViewModel.ResetDisplayWidgetChromeOverridesCommand, Mode=OneWay}" Style="{StaticResource IconActionButtonStyle}" svc:Localized.ToolTipKey="Settings.DisplayWidgetChrome.ResetTooltip">
                                             <FontIcon FontSize="14" Glyph="&#xE72C;" />
                                         </Button>
                                         <ComboBox MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableDisplayWidgetChromeModeOptions}" controls:SettingsComboBox.Value="{Binding SelectedDisplayWidgetChromeMode, Mode=TwoWay}" />
@@ -700,7 +700,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     svc:Localized.DescriptionKey="Settings.InteractiveWidgetChrome.Description"
                                     svc:Localized.HeaderKey="Settings.InteractiveWidgetChrome.Title">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Command="{Binding ResetInteractiveWidgetChromeOverridesCommand}" Style="{StaticResource IconActionButtonStyle}" svc:Localized.ToolTipKey="Settings.InteractiveWidgetChrome.ResetTooltip">
+                                        <Button Command="{x:Bind ViewModel.ResetInteractiveWidgetChromeOverridesCommand, Mode=OneWay}" Style="{StaticResource IconActionButtonStyle}" svc:Localized.ToolTipKey="Settings.InteractiveWidgetChrome.ResetTooltip">
                                             <FontIcon FontSize="14" Glyph="&#xE72C;" />
                                         </Button>
                                         <ComboBox MinWidth="{StaticResource SettingsControlMinWidth}" ItemsSource="{Binding AvailableInteractiveWidgetChromeModeOptions}" controls:SettingsComboBox.Value="{Binding SelectedInteractiveWidgetChromeMode, Mode=TwoWay}" />
@@ -1059,7 +1059,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <toolkit:SettingsCard Visibility="{Binding CapsuleOverridesListVisibility}" HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.Capsule.Overrides.ResetAll.Description" svc:Localized.HeaderKey="Settings.Capsule.Overrides.ResetAll.Title">
-                            <Button Command="{Binding ResetAllCapsuleOverridesCommand}">
+                            <Button Command="{x:Bind ViewModel.ResetAllCapsuleOverridesCommand, Mode=OneWay}">
                                 <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon FontSize="13" Glyph="&#xE777;" /><TextBlock svc:Localized.Key="Settings.Capsule.Overrides.ResetAll.Action" /></StackPanel>
                             </Button>
                         </toolkit:SettingsCard>
@@ -1231,7 +1231,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                         CanReorderItems="True"
                                         DragItemsCompleted="FileStackRulesListView_DragItemsCompleted"
                                         IsEnabled="{Binding FileStacksEnabled}"
-                                        ItemsSource="{Binding FileStackCustomRules}"
+                                        ItemsSource="{x:Bind ViewModel.FileStackCustomRules, Mode=OneWay}"
                                         ReorderMode="Enabled"
                                         SelectionMode="None"
                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -1909,7 +1909,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     x:Name="WeatherCitySearchBox"
                                     PlaceholderText="{Binding WeatherCitySearchPlaceholder}"
                                     Text="{Binding WeatherCitySearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    ItemsSource="{Binding WeatherCitySuggestions}"
+                                    ItemsSource="{Binding WeatherCitySuggestionItems}"
                                     TextChanged="WeatherCitySearchBox_TextChanged"
                                     SuggestionChosen="WeatherCitySearchBox_SuggestionChosen"
                                     QuerySubmitted="WeatherCitySearchBox_QuerySubmitted"

@@ -54,6 +54,9 @@ public sealed class SearchEngineService : IDisposable
 
     public DateTime? LastScanTime => _indexService.LastScanTime;
     public bool IsCustomIndexResident => _indexService.IsIndexResident;
+    public bool IsRustIndexPreviewActive => _indexService.IsRustPreviewActive;
+    public string? RustIndexPreviewFallbackReason =>
+        _indexService.RustPreviewFallbackReason;
 
     public bool IsUsnIndexAvailable => _usnIndexService?.IsAvailable == true;
     public bool IsUsnIndexScanning => _usnIndexService?.IsScanning == true;
@@ -81,9 +84,25 @@ public sealed class SearchEngineService : IDisposable
         }
         else
         {
+            _indexService.SaveIndex();
             _indexService.StopIndexing();
             _usnIndexService?.StopIndexing();
         }
+    }
+
+    public async Task ReconfigureCustomIndexBackendAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_isDisposed ||
+            !_settingsService.Settings.SearchCustomIndexerEnabled)
+        {
+            return;
+        }
+
+        _indexService.ResetRustPreviewRuntimeFallback();
+        _indexService.SaveIndex();
+        _indexService.StopIndexing();
+        await StartCustomIndexingAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

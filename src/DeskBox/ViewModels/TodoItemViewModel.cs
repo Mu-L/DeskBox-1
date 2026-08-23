@@ -80,7 +80,17 @@ public sealed partial class TodoItemViewModel : ObservableObject
 
     public ObservableCollection<TodoStepViewModel> Steps { get; } = [];
 
+    // ItemsSource crosses the WinRT object-valued dependency-property ABI.
+    // Keep the typed collection for product logic and expose a concrete object
+    // array only at the UI boundary so populated steps remain Native AOT safe.
+    public object[] StepItemsSource => Steps.Cast<object>().ToArray();
+
     public ObservableCollection<TodoAttachmentViewModel> Attachments { get; } = [];
+
+    // AttachmentTileStrip.ItemsSource is object-valued and therefore crosses
+    // the WinRT ABI. Keep the typed collection for product logic, but expose a
+    // concrete object array at the UI boundary just like populated Todo steps.
+    public object[] AttachmentItemsSource => Attachments.Cast<object>().ToArray();
 
     public string Notes => _item.Notes ?? string.Empty;
 
@@ -584,6 +594,8 @@ public sealed partial class TodoItemViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Notes));
         OnPropertyChanged(nameof(NotesPlaceholderVisibility));
+        OnPropertyChanged(nameof(StepItemsSource));
+        OnPropertyChanged(nameof(AttachmentItemsSource));
         OnPropertyChanged(nameof(CompletedStepCount));
         OnPropertyChanged(nameof(StepProgressText));
         OnPropertyChanged(nameof(StepProgressVisibility));

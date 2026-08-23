@@ -171,7 +171,11 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 
     public ObservableCollection<WeatherDayViewModel> DailyForecast { get; } = [];
 
+    public object[] DailyForecastItemsSource => DailyForecast.Cast<object>().ToArray();
+
     public ObservableCollection<WeatherHourViewModel> HourlyForecast { get; } = [];
+
+    public object[] HourlyForecastItemsSource => HourlyForecast.Cast<object>().ToArray();
 
     public string CurrentTemperatureText
     {

@@ -152,14 +152,8 @@ public partial class WidgetViewModel
     }
 
     /// <summary>
-    /// Open an item using the default shell handler.
+    /// Open an item using the host window as the owner of any Shell UI.
     /// </summary>
-    [RelayCommand]
-    public void OpenItem(WidgetItem item)
-    {
-        FileService.OpenItem(item);
-    }
-
     public FileService.OpenItemResult OpenItem(WidgetItem item, IntPtr ownerHwnd)
     {
         var result = FileService.OpenItem(item, ownerHwnd);
@@ -180,14 +174,22 @@ public partial class WidgetViewModel
         FileService.ShowInExplorer(item);
     }
 
-    public async Task<int> MoveItemBackToDesktopAsync(WidgetItem item, bool useShellProgress = false)
+    public async Task<int> MoveItemBackToDesktopAsync(
+        WidgetItem item,
+        bool useShellProgress = false,
+        IntPtr ownerWindowHandle = default)
     {
         if (string.IsNullOrWhiteSpace(MappedFolderPath))
         {
             return 0;
         }
 
-        var historyEntry = await _organizerService.MoveItemBackToDesktopAsync(Config, Name, item, useShellProgress);
+        var historyEntry = await _organizerService.MoveItemBackToDesktopAsync(
+            Config,
+            Name,
+            item,
+            useShellProgress,
+            ownerWindowHandle);
         if (historyEntry.Items.Any(entry => string.Equals(entry.SourcePath, item.Path, StringComparison.OrdinalIgnoreCase)))
         {
             RemoveItemByPath(item.Path);
@@ -197,7 +199,10 @@ public partial class WidgetViewModel
         return 0;
     }
 
-    public async Task<int> MoveItemsBackToDesktopAsync(IEnumerable<WidgetItem> items, bool useShellProgress = false)
+    public async Task<int> MoveItemsBackToDesktopAsync(
+        IEnumerable<WidgetItem> items,
+        bool useShellProgress = false,
+        IntPtr ownerWindowHandle = default)
     {
         if (string.IsNullOrWhiteSpace(MappedFolderPath))
         {
@@ -217,7 +222,8 @@ public partial class WidgetViewModel
             Config,
             Name,
             targets.Select(item => item.Path),
-            useShellProgress);
+            useShellProgress,
+            ownerWindowHandle);
 
         var movedSourcePaths = historyEntry.Items
             .Select(item => item.SourcePath)

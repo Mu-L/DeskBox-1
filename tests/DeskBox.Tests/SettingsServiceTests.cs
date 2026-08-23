@@ -351,6 +351,46 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SourceGeneratedStore_ReadsLegacyNumericEnumsAndWritesNames()
+    {
+        string settingsPath = Path.Combine(_settingsRoot, "settings.json");
+        await File.WriteAllTextAsync(
+            settingsPath,
+            """
+            {
+              "widgets": [
+                {
+                  "id": "legacy-enums",
+                  "name": "Legacy",
+                  "widgetKind": 0,
+                  "viewMode": 1,
+                  "sortMode": 4,
+                  "futureWidgetField": "ignored"
+                }
+              ],
+              "futureRootField": true
+            }
+            """);
+        var service = new SettingsService(_settingsRoot);
+
+        await service.LoadAsync();
+
+        WidgetConfig widget = Assert.Single(service.Settings.Widgets);
+        Assert.Equal(WidgetKind.File, widget.WidgetKind);
+        Assert.Equal(ViewMode.List, widget.ViewMode);
+        Assert.Equal(WidgetSortMode.Manual, widget.SortMode);
+
+        await service.SaveAsync(notifySubscribers: false);
+        using JsonDocument saved = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPath));
+        JsonElement savedWidget = Assert.Single(
+            saved.RootElement.GetProperty("widgets").EnumerateArray());
+        Assert.Equal("File", savedWidget.GetProperty("widgetKind").GetString());
+        Assert.Equal("List", savedWidget.GetProperty("viewMode").GetString());
+        Assert.Equal("Manual", savedWidget.GetProperty("sortMode").GetString());
+        Assert.False(saved.RootElement.TryGetProperty("Widgets", out _));
+    }
+
+    [Fact]
     public async Task LoadAsync_NormalizesQuickCaptureRecentLimit()
     {
         var settings = new AppSettings

@@ -2,6 +2,7 @@
 using System.Reflection;
 using Microsoft.Win32;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
@@ -476,6 +477,58 @@ public sealed class LocalizationService
         }
         using var reader = new StreamReader(stream);
         var json = reader.ReadToEnd();
-        return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
+        return JsonSerializer.Deserialize(
+            json,
+            LocalizationJsonContext.Default.LocalizedStrings) ?? [];
     }
+
+#if DESKBOX_NATIVE_AOT
+    internal static IReadOnlyList<AotLocaleResourceDiagnostic> CaptureAotSmokeResourceDiagnostics()
+    {
+        return
+        [
+            CaptureAotSmokeResource("zh-CN", ZhCn),
+            CaptureAotSmokeResource("zh-TW", ZhTw),
+            CaptureAotSmokeResource("en-US", EnUs),
+            CaptureAotSmokeResource("ja-JP", JaJp),
+            CaptureAotSmokeResource("de-DE", DeDe),
+            CaptureAotSmokeResource("pt-BR", PtBr),
+            CaptureAotSmokeResource("hi-IN", HiIn),
+            CaptureAotSmokeResource("es-ES", EsEs),
+            CaptureAotSmokeResource("fr-FR", FrFr),
+            CaptureAotSmokeResource("ar-SA", ArSa),
+            CaptureAotSmokeResource("bn-BD", BnBd),
+            CaptureAotSmokeResource("ru-RU", RuRu)
+        ];
+    }
+
+    private static AotLocaleResourceDiagnostic CaptureAotSmokeResource(
+        string locale,
+        IReadOnlyDictionary<string, string> resources)
+    {
+        return new AotLocaleResourceDiagnostic(
+            locale,
+            resources.Count,
+            resources.TryGetValue("Window.Settings.Title", out string? settingsTitle) &&
+                !string.IsNullOrWhiteSpace(settingsTitle),
+            resources.TryGetValue("Search.Action.OpenSettings", out string? openSettings) &&
+                !string.IsNullOrWhiteSpace(openSettings));
+    }
+#endif
+}
+
+#if DESKBOX_NATIVE_AOT
+internal sealed record AotLocaleResourceDiagnostic(
+    string Locale,
+    int ResourceCount,
+    bool HasSettingsTitle,
+    bool HasOpenSettingsAction);
+#endif
+
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(
+    typeof(Dictionary<string, string>),
+    TypeInfoPropertyName = "LocalizedStrings")]
+internal sealed partial class LocalizationJsonContext : JsonSerializerContext
+{
 }

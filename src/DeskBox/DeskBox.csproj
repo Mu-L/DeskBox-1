@@ -22,10 +22,66 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <AppxPackage>false</AppxPackage>
     <DeskBoxDistribution Condition="'$(DeskBoxDistribution)' == ''">Direct</DeskBoxDistribution>
+    <DeskBoxAotAudit Condition="'$(DeskBoxAotAudit)' == ''">false</DeskBoxAotAudit>
+    <!-- Build/package the selected native module for explicit JIT/AOT use;
+         ordinary JIT feature backends still default to C#. -->
+    <DeskBoxRustNative Condition="'$(DeskBoxRustNative)' == ''">false</DeskBoxRustNative>
+    <!-- Stage 7C0 keeps CRT linkage explicit so A/B outputs cannot be reused
+         across incompatible native dependency policies. -->
+    <DeskBoxRustCrtLinkage Condition="'$(DeskBoxRustCrtLinkage)' == ''">Dynamic</DeskBoxRustCrtLinkage>
+    <!-- Stage 7A packages SearchCore in Direct x64 and ARM64 builds. Only x64
+         defaults to it until the Stage 7B ARM64 device matrix is complete. -->
+    <DeskBoxSearchCorePreviewModule Condition="'$(DeskBoxSearchCorePreviewModule)' == '' and '$(DeskBoxDistribution)' == 'Direct'">true</DeskBoxSearchCorePreviewModule>
+    <DeskBoxSearchCorePreviewModule Condition="'$(DeskBoxSearchCorePreviewModule)' == ''">false</DeskBoxSearchCorePreviewModule>
+    <DeskBoxSearchCoreDefaultEnabled Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == '' and '$(DeskBoxSearchCorePreviewModule)' == 'true' and '$(DeskBoxDistribution)' == 'Direct' and '$(Platform)' != 'ARM64' and '$(RuntimeIdentifier)' != 'win-arm64'">true</DeskBoxSearchCoreDefaultEnabled>
+    <DeskBoxSearchCoreDefaultEnabled Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == ''">false</DeskBoxSearchCoreDefaultEnabled>
+    <DefineConstants Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true' and '$(DeskBoxDistribution)' == 'Direct' and '$(Platform)' != 'ARM64' and '$(RuntimeIdentifier)' != 'win-arm64'">$(DefineConstants);DESKBOX_SEARCH_CORE_DEFAULT</DefineConstants>
     <DefineConstants Condition="'$(DeskBoxDistribution)' == 'Store'">$(DefineConstants);DESKBOX_STORE</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\deskbox.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!--
+    Opt-in Native AOT audit profile. Keep ordinary Debug/Release behavior
+    unchanged until the application-level AOT compatibility work is complete.
+  -->
+  <PropertyGroup Condition="'$(DeskBoxAotAudit)' == 'true'">
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <!--
+    Native AOT must not compile the legacy shortcut, music-volume, dynamic
+    Explorer-shell, or Quick Access oracles. Keep this driven by PublishAot so direct AOT
+    publishes and the audit profile agree.
+  -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <DefineConstants>$(DefineConstants);DESKBOX_NATIVE_AOT</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+    Native AOT compiles out the legacy shortcut, music-volume, Explorer-shell,
+    and Quick Access COM oracles and uses Rust for exact Recycle Bin recovery, so every supported AOT build must package a matching Rust backend.
+    Reject incomplete and not-yet-supported architecture combinations before compilation.
+  -->
+  <Target
+    Name="ValidateDeskBoxNativeAotConfiguration"
+    BeforeTargets="PrepareForBuild;Publish"
+    Condition="'$(DesignTimeBuild)' != 'true' and '$(PublishAot)' == 'true'">
+    <Error
+      Condition="('$(Platform)' != 'x64' or '$(RuntimeIdentifier)' != 'win-x64') and ('$(Platform)' != 'ARM64' or '$(RuntimeIdentifier)' != 'win-arm64')"
+      Text="DeskBox Native AOT stage 7A requires a matching Platform/RuntimeIdentifier pair: x64/win-x64 or ARM64/win-arm64." />
+    <Error
+      Condition="'$(DeskBoxRustNative)' != 'true'"
+      Text="DeskBox Native AOT stage 5B-4C3B2B2B requires DeskBoxRustNative=true so the Rust-only shortcut, music-volume, Explorer-shell, Quick Access, and exact Recycle Bin recovery paths cannot be published without deskbox_native.dll; completed gates retained by this profile include the shortcut AOT-to-Rust smoke, Explorer and Quick Access read-only, Quick Access pin/unpin, music-volume read-only smoke, system master-volume setter, session-volume recovery, the 5B-4A basic managed UI matrix, the 5B-4B1 deep settings matrix, the 5B-4B2A settings/widget persistence restart matrix, the 5B-4B2B1 Quick Capture content-store persistence restart/delete matrix, the 5B-4B2B2A Todo core task/title/notes/completion/delete persistence restart matrix, the 5B-4B2B2B1 Todo steps create/edit/complete/reload/delete persistence restart matrix, the 5B-4B2B2B2 Todo managed attachments import/project/reload/delete persistence restart matrix, the 5B-4B2C1 Glance owned-local-image/preferences/reload/restore/postflight matrix, the 5B-4B2C2A Weather local settings/view-mode/reload/restore/postflight matrix, the 5B-4B2C2B deterministic non-empty WeatherData/current/hourly/week/skin/unit/view-mode/reload/restore/postflight real-surface matrix, the 5B-4C1A owned local-file surface/navigation/watcher/copy/move/rename/conflict/reload/restore/postflight matrix, the 5B-4C1B1 real single/multi File Widget menu deletion, watcher/UI removal, cross-process exact Recycle Bin query, Rust recovery, content-hash, compensation and postflight matrix, the 5B-4C1B2A real Move Back to Desktop menu, propagated owner HWND, actual SHFileOperationW, deterministic partial/cancel/late-return, persisted history, content-hash, compensation and postflight matrix, the 5B-4C1B2B real File Properties menu, exact owned target, propagated host HWND, actual SHObjectProperties dialog, owner-chain observation, controlled WM_CLOSE, content-hash, natural-exit and isolation matrix, the 5B-4C1C1 modern FileOpenPicker owner, real cancel/select dialog, isolated file import, file/folder StorageItems DataPackage parsing, restart, hash, postflight, natural-exit and no-global-clipboard-mutation matrix, the 5B-4C1C2A registered generated IDropTarget CCW, HDROP callback, native pointer/leave cleanup, copy/move, large-file progress-card layering/acrylic, restart and postflight matrix, the 5B-4C2A standard global/search RegisterHotKey dispatch, conflict rollback, disable/re-enable, reserved-hook lifecycle and cross-process release matrix, the 5B-4C3A deterministic Todo due-candidate, reminder-control, snooze, recurrence generation, completion, cross-process dismissal, restore and postflight matrix, the 5B-4C3B1 three-process Todo native-notification registration, single/aggregate payload, real display, cross-process history, exact tag/group cleanup, unregister and postflight matrix, the 5B-4C3B2A deterministic semicolon/ampersand activation grammar, body/open, complete, four snooze choices, legacy snooze10, invalid-input no-mutation, cross-process persistence/clear and postflight matrix, the 5B-4C3B2B1 source-generated typed activation envelope, atomic multi-entry spool, duplicate/corrupt/legacy handling, startup-ready drain, full UserInput preservation, cold-start recovery, real second-process single-instance forwarding, natural-exit and isolation matrix, the 5B-4C3B2B2A content-ready Todo body target plus Complete/Snooze visible-refresh real-surface matrix, and the 5B-4C3B2B2B genuine Notification Center body/Complete/Snooze running-process and cold-start click provenance matrix; physical Explorer mouse drag/drop, global clipboard session mutation, physical standard/Win+Space keyboard input and Settings/Onboarding recorder validation, real Windows notification click provenance is now covered for running and cold-start paths, while remaining target-device notification delivery variations, real Weather network/location, and online Glance images remain deferred; tray reflection, search-history XAML WMC1506, twenty-two prior leaf compiled bindings, fourteen typed DataTemplate bindings, five typed ViewModel bridge bindings, eight compiled search-result row bindings, and subsequent narrow generated ViewModel bridges are resolved in managed code, while AOT preview data-root isolation, normal application shutdown, owned-root cleanup, deterministic fixture-only Weather service injection, real Weather and File Widget HWND/XamlRoot and DataTemplate projection, independent owned-file hashing, exact recovery identity, system-dialog ownership and close gates, deferred-path log exclusion, and production-data fingerprint gates are enforced by the preview tooling." />
+    <!-- Native AOT stage 5B-4C3B2B1 and Native AOT stage 5B-4C3B2B2A remain retained by the current profile. -->
+  </Target>
 
   <!--
     .NET's COM-wrapper debugger table is intentionally append-only. WinUI apps
@@ -35,6 +91,61 @@
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebuggerSupport>false</DebuggerSupport>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(DeskBoxRustNative)' == 'true'">
+    <DeskBoxRustNativePlatform Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</DeskBoxRustNativePlatform>
+    <DeskBoxRustNativePlatform Condition="'$(RuntimeIdentifier)' == 'win-arm64'">ARM64</DeskBoxRustNativePlatform>
+    <DeskBoxRustNativePlatform Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">ARM64</DeskBoxRustNativePlatform>
+    <DeskBoxRustNativePlatform Condition="'$(RuntimeIdentifier)' == '' and ('$(Platform)' == 'x64' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == '')">x64</DeskBoxRustNativePlatform>
+    <DeskBoxRustNativeBuildPlatform Condition="'$(Platform)' != ''">$(Platform)</DeskBoxRustNativeBuildPlatform>
+    <DeskBoxRustNativeBuildPlatform Condition="'$(Platform)' == ''">AnyCPU</DeskBoxRustNativeBuildPlatform>
+    <DeskBoxRustNativeRuntimeSegment Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</DeskBoxRustNativeRuntimeSegment>
+    <DeskBoxRustNativeRuntimeSegment Condition="'$(RuntimeIdentifier)' == ''">no-rid</DeskBoxRustNativeRuntimeSegment>
+    <DeskBoxRustNativeIntermediateDir Condition="'$(DeskBoxRustNativeIntermediateDir)' == ''">$(MSBuildProjectDirectory)\obj\rust-native\$(Configuration)\$(DeskBoxRustNativeBuildPlatform)\$(DeskBoxRustNativeRuntimeSegment)\$(DeskBoxRustCrtLinkage)</DeskBoxRustNativeIntermediateDir>
+    <DeskBoxRustNativeCargoTargetDir Condition="'$(DeskBoxRustNativeCargoTargetDir)' == ''">$(DeskBoxRustNativeIntermediateDir)\cargo-target</DeskBoxRustNativeCargoTargetDir>
+    <DeskBoxRustNativeDll>$(DeskBoxRustNativeIntermediateDir)\deskbox_native.dll</DeskBoxRustNativeDll>
+    <DeskBoxRustNativePdb>$(DeskBoxRustNativeIntermediateDir)\deskbox_native.pdb</DeskBoxRustNativePdb>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(DeskBoxRustNative)' == 'true'">
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\rust-toolchain.toml" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.toml" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.lock" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\native\README.md" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-native\Cargo.toml" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-native\src\**\*" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\native\include\deskbox_native.h" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\scripts\build-rust-native.ps1" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\scripts\native-pe-contract.ps1" />
+    <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\scripts\rust-arm64-msvc-environment.ps1" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(DeskBoxSearchCorePreviewModule)' == 'true'">
+    <DeskBoxSearchCorePlatform Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</DeskBoxSearchCorePlatform>
+    <DeskBoxSearchCorePlatform Condition="'$(RuntimeIdentifier)' == 'win-arm64'">ARM64</DeskBoxSearchCorePlatform>
+    <DeskBoxSearchCorePlatform Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">ARM64</DeskBoxSearchCorePlatform>
+    <DeskBoxSearchCorePlatform Condition="'$(RuntimeIdentifier)' == '' and ('$(Platform)' == 'x64' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == '')">x64</DeskBoxSearchCorePlatform>
+    <DeskBoxSearchCoreBuildPlatform Condition="'$(Platform)' != ''">$(Platform)</DeskBoxSearchCoreBuildPlatform>
+    <DeskBoxSearchCoreBuildPlatform Condition="'$(Platform)' == ''">AnyCPU</DeskBoxSearchCoreBuildPlatform>
+    <DeskBoxSearchCoreRuntimeSegment Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</DeskBoxSearchCoreRuntimeSegment>
+    <DeskBoxSearchCoreRuntimeSegment Condition="'$(RuntimeIdentifier)' == ''">no-rid</DeskBoxSearchCoreRuntimeSegment>
+    <DeskBoxSearchCoreIntermediateDir Condition="'$(DeskBoxSearchCoreIntermediateDir)' == ''">$(MSBuildProjectDirectory)\obj\rust-search-core\$(Configuration)\$(DeskBoxSearchCoreBuildPlatform)\$(DeskBoxSearchCoreRuntimeSegment)\$(DeskBoxRustCrtLinkage)</DeskBoxSearchCoreIntermediateDir>
+    <DeskBoxSearchCoreCargoTargetDir Condition="'$(DeskBoxSearchCoreCargoTargetDir)' == ''">$(DeskBoxSearchCoreIntermediateDir)\cargo-target</DeskBoxSearchCoreCargoTargetDir>
+    <DeskBoxSearchCoreDll>$(DeskBoxSearchCoreIntermediateDir)\deskbox_search_core.dll</DeskBoxSearchCoreDll>
+    <DeskBoxSearchCorePdb>$(DeskBoxSearchCoreIntermediateDir)\deskbox_search_core.pdb</DeskBoxSearchCorePdb>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(DeskBoxSearchCorePreviewModule)' == 'true'">
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\rust-toolchain.toml" />
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.toml" />
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.lock" />
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-search-core\Cargo.toml" />
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-search-core\src\**\*" />
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\include\deskbox_search_core.h" />
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\scripts\build-rust-search-core.ps1" />
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\scripts\native-pe-contract.ps1" />
+    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\scripts\rust-arm64-msvc-environment.ps1" />
+  </ItemGroup>
 
   <PropertyGroup Condition="'$(DeskBoxDistribution)' == 'Store'">
     <WindowsPackageType>MSIX</WindowsPackageType>
@@ -120,14 +231,14 @@
     <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
   </PropertyGroup>
 
-  <Target Name="BuildDeskBoxUpdater" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxDistribution)' != 'Store'">
+  <Target Name="BuildDeskBoxUpdater" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxDistribution)' != 'Store' and '$(PublishAot)' != 'true'">
     <MSBuild
       Projects="..\DeskBox.Updater\DeskBox.Updater.csproj"
       Targets="Build"
       Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)" />
   </Target>
 
-  <Target Name="CopyDeskBoxUpdater" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxDistribution)' != 'Store'">
+  <Target Name="CopyDeskBoxUpdater" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxDistribution)' != 'Store' and '$(PublishAot)' != 'true'">
     <ItemGroup>
       <DeskBoxUpdaterOutput Include="..\DeskBox.Updater\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\DeskBox.Updater.*" Condition="'$(RuntimeIdentifier)' != ''" />
       <DeskBoxUpdaterOutput Include="..\DeskBox.Updater\bin\$(Platform)\$(Configuration)\$(TargetFramework)\DeskBox.Updater.*" Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' != 'AnyCPU' and '$(Platform)' != ''" />
@@ -140,7 +251,101 @@
     <MSBuild
       Projects="..\DeskBox.Updater\DeskBox.Updater.csproj"
       Targets="Publish"
-      Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishSingleFile=false;PublishDir=$(PublishDir)" />
+      Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);DeskBoxAotAudit=$(DeskBoxAotAudit);PublishAot=$(PublishAot);IlcUseEnvironmentalTools=$(IlcUseEnvironmentalTools);SelfContained=$(SelfContained);PublishSingleFile=false;PublishDir=$(PublishDir)" />
+  </Target>
+
+  <Target
+    Name="BuildDeskBoxRustNative"
+    BeforeTargets="CoreCompile"
+    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxRustNative)' == 'true'"
+    Inputs="@(DeskBoxRustNativeInput)"
+    Outputs="$(DeskBoxRustNativeDll);$(DeskBoxRustNativePdb)">
+    <Error
+      Condition="'$(DeskBoxRustCrtLinkage)' != 'Dynamic' and '$(DeskBoxRustCrtLinkage)' != 'Static'"
+      Text="DeskBox Rust CRT linkage must be Dynamic or Static." />
+    <Error
+      Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64' and '$(RuntimeIdentifier)' != 'win-arm64'"
+      Text="DeskBox Rust native stage 7A supports RuntimeIdentifier=win-x64 or win-arm64." />
+    <Error
+      Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU' and '$(Platform)' != 'x64' and '$(Platform)' != 'ARM64'"
+      Text="DeskBox Rust native stage 7A supports Platform=x64, ARM64, or canonical AnyCPU without a conflicting RID." />
+    <Error
+      Condition="('$(Platform)' == 'x64' and '$(RuntimeIdentifier)' == 'win-arm64') or ('$(Platform)' == 'ARM64' and '$(RuntimeIdentifier)' == 'win-x64')"
+      Text="DeskBox Rust native stage 7A requires matching Platform and RuntimeIdentifier architectures." />
+    <Error
+      Condition="'$(DeskBoxRustNativePlatform)' == ''"
+        Text="DeskBox Rust native stage 7A could not resolve an x64 or ARM64 target." />
+    <Exec
+      Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-rust-native.ps1&quot; -Platform $(DeskBoxRustNativePlatform) -Configuration $(Configuration) -CrtLinkage $(DeskBoxRustCrtLinkage) -OutputDirectory &quot;$(DeskBoxRustNativeIntermediateDir)&quot; -CargoTargetDirectory &quot;$(DeskBoxRustNativeCargoTargetDir)&quot;" />
+  </Target>
+
+  <Target
+    Name="CopyDeskBoxRustNativeToOutput"
+    AfterTargets="Build"
+    DependsOnTargets="BuildDeskBoxRustNative"
+    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxRustNative)' == 'true'">
+    <Copy
+      SourceFiles="$(DeskBoxRustNativeDll);$(DeskBoxRustNativePdb)"
+      DestinationFolder="$(TargetDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target
+    Name="CopyDeskBoxRustNativeToPublish"
+    AfterTargets="Publish"
+    DependsOnTargets="BuildDeskBoxRustNative"
+    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxRustNative)' == 'true'">
+    <Copy
+      SourceFiles="$(DeskBoxRustNativeDll);$(DeskBoxRustNativePdb)"
+      DestinationFolder="$(PublishDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target
+    Name="BuildDeskBoxSearchCorePreviewModule"
+    BeforeTargets="CoreCompile"
+    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true'"
+    Inputs="@(DeskBoxSearchCoreInput)"
+    Outputs="$(DeskBoxSearchCoreDll);$(DeskBoxSearchCorePdb)">
+    <Error
+      Condition="'$(DeskBoxRustCrtLinkage)' != 'Dynamic' and '$(DeskBoxRustCrtLinkage)' != 'Static'"
+      Text="DeskBox Rust CRT linkage must be Dynamic or Static." />
+    <Error
+      Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64' and '$(RuntimeIdentifier)' != 'win-arm64'"
+      Text="DeskBox SearchCore stage 7A supports RuntimeIdentifier=win-x64 or win-arm64." />
+    <Error
+      Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU' and '$(Platform)' != 'x64' and '$(Platform)' != 'ARM64'"
+      Text="DeskBox SearchCore stage 7A supports Platform=x64, ARM64, or the canonical AnyCPU Debug host." />
+    <Error
+      Condition="('$(Platform)' == 'x64' and '$(RuntimeIdentifier)' == 'win-arm64') or ('$(Platform)' == 'ARM64' and '$(RuntimeIdentifier)' == 'win-x64')"
+      Text="DeskBox SearchCore stage 7A requires matching Platform and RuntimeIdentifier architectures." />
+    <Error
+      Condition="'$(DeskBoxSearchCorePlatform)' == ''"
+      Text="DeskBox SearchCore stage 7A could not resolve an x64 or ARM64 target." />
+    <Exec
+      Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-rust-search-core.ps1&quot; -Platform $(DeskBoxSearchCorePlatform) -Configuration $(Configuration) -CrtLinkage $(DeskBoxRustCrtLinkage) -OutputDirectory &quot;$(DeskBoxSearchCoreIntermediateDir)&quot; -CargoTargetDirectory &quot;$(DeskBoxSearchCoreCargoTargetDir)&quot;" />
+  </Target>
+
+  <Target
+    Name="CopyDeskBoxSearchCorePreviewToOutput"
+    AfterTargets="Build"
+    DependsOnTargets="BuildDeskBoxSearchCorePreviewModule"
+    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true'">
+    <Copy
+      SourceFiles="$(DeskBoxSearchCoreDll);$(DeskBoxSearchCorePdb)"
+      DestinationFolder="$(TargetDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target
+    Name="CopyDeskBoxSearchCorePreviewToPublish"
+    AfterTargets="Publish"
+    DependsOnTargets="BuildDeskBoxSearchCorePreviewModule"
+    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true'">
+    <Copy
+      SourceFiles="$(DeskBoxSearchCoreDll);$(DeskBoxSearchCorePdb)"
+      DestinationFolder="$(PublishDir)"
+      SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

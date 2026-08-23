@@ -69,7 +69,7 @@
                             <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE81E;" IsHitTestVisible="False" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.FileStacks.Title" />
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding FileStackSettingsSummaryText}" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{x:Bind ViewModel.FileStackSettingsSummaryText, Mode=OneWay}" />
                             </StackPanel>
                         </Grid>
                     </Button>
@@ -77,8 +77,8 @@
                         Grid.Column="1"
                         MinWidth="176"
                         VerticalAlignment="Center"
-                        ItemsSource="{Binding AvailableFileStackModeOptions}"
-                        controls:SettingsComboBox.Value="{Binding SelectedFileStackMode, Mode=TwoWay}" />
+                        ItemsSource="{x:Bind ViewModel.AvailableFileStackModeOptionItems, Mode=OneWay}"
+                        controls:SettingsComboBox.Value="{x:Bind ViewModel.SelectedFileStackMode, Mode=TwoWay}" />
                     <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                 </Grid>
             </Border>
@@ -100,8 +100,8 @@
                         Grid.Column="1"
                         MinWidth="{StaticResource SettingsControlMinWidth}"
                         VerticalAlignment="Center"
-                        ItemsSource="{Binding AvailableFileWidgetFolderOpenBehaviorOptions}"
-                        controls:SettingsComboBox.Value="{Binding SelectedFileWidgetFolderOpenBehavior, Mode=TwoWay}" />
+                        ItemsSource="{x:Bind ViewModel.AvailableFileWidgetFolderOpenBehaviorOptionItems, Mode=OneWay}"
+                        controls:SettingsComboBox.Value="{x:Bind ViewModel.SelectedFileWidgetFolderOpenBehavior, Mode=TwoWay}" />
                 </Grid>
             </Border>
 

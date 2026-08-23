@@ -127,7 +127,7 @@ public sealed class MusicWidgetContentLayoutTests
         Assert.Contains("Data=\"M20 14.5L9 20.75", transportXaml, StringComparison.Ordinal);
         Assert.Contains("Data=\"M9.5 14.5L17.75 19.25", transportXaml, StringComparison.Ordinal);
         Assert.Contains("Data=\"M16.25 14.5L8.125 19.25", transportXaml, StringComparison.Ordinal);
-        Assert.Equal(7, CountOccurrences(transportXaml, "Fill=\"{Binding Foreground, ElementName=Root}\""));
+        Assert.Equal(7, CountOccurrences(transportXaml, "Fill=\"{x:Bind Foreground, Mode=OneWay}\""));
         Assert.DoesNotContain("Stroke=", transportXaml, StringComparison.OrdinalIgnoreCase);
     }
 

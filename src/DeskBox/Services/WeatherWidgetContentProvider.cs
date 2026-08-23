@@ -17,9 +17,14 @@ internal sealed class WeatherWidgetContentProvider : IWidgetContentProvider
             throw new ArgumentException("Weather content requires a Weather widget config.", nameof(config));
         }
 
+        WeatherService? weatherService = null;
+#if DESKBOX_NATIVE_AOT
+        weatherService = AotWeatherSurfaceFixture.TryCreateService(config);
+#endif
         return new WeatherWidgetContentAdapter(
             config,
             context.LocalizationService,
-            context.SettingsService);
+            context.SettingsService,
+            weatherService);
     }
 }

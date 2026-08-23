@@ -63,6 +63,7 @@ public sealed partial class SearchSettingsSection : UserControl
             SearchDeskBoxContentToggle.IsOn = settings.SearchIncludeDeskBoxContent;
             SearchSystemIndexToggle.IsOn = settings.SearchIncludeSystemIndex;
             SearchCustomIndexerToggle.IsOn = settings.SearchCustomIndexerEnabled;
+            SearchRustPreviewToggle.IsOn = settings.SearchRustIndexerPreviewEnabled;
             SearchRecommendationsToggle.IsOn = settings.SearchShowRecommendations;
             SearchDefaultTabComboBox.SelectedItem = SearchDefaultTabComboBox.Items
                 .OfType<ComboBoxItem>()
@@ -167,6 +168,7 @@ public sealed partial class SearchSettingsSection : UserControl
             SearchIndexStatusText.Text = Localization.T("Settings.Search.Index.Status.Disabled");
             SearchIndexCountText.Text = string.Empty;
             SearchIndexStorageText.Text = string.Empty;
+            SearchIndexBackendText.Text = string.Empty;
             HideProgressBar();
             IndexPauseResumeButton.IsEnabled = false;
             UpdateDashboardVisibility();
@@ -209,6 +211,30 @@ public sealed partial class SearchSettingsSection : UserControl
 
         // Storage info (throttled: refresh at most every 5 seconds to avoid disk I/O)
         RefreshStorageInfo(engine);
+        ToolTipService.SetToolTip(SearchIndexBackendText, null);
+        if (!Settings.Settings.SearchRustIndexerPreviewEnabled)
+        {
+            SearchIndexBackendText.Text =
+                Localization.T("Settings.Search.Index.Backend.Managed");
+        }
+        else if (engine?.IsRustIndexPreviewActive == true)
+        {
+            SearchIndexBackendText.Text =
+                Localization.T("Settings.Search.Index.Backend.Rust");
+        }
+        else if (!string.IsNullOrWhiteSpace(engine?.RustIndexPreviewFallbackReason))
+        {
+            SearchIndexBackendText.Text =
+                Localization.T("Settings.Search.Index.Backend.Fallback");
+            ToolTipService.SetToolTip(
+                SearchIndexBackendText,
+                engine.RustIndexPreviewFallbackReason);
+        }
+        else
+        {
+            SearchIndexBackendText.Text =
+                Localization.T("Settings.Search.Index.Backend.Preparing");
+        }
 
         // Pause/Resume button (always visible when indexer enabled, disabled when idle)
         IndexPauseResumeButton.IsEnabled = isScanning || isPaused;
@@ -278,6 +304,8 @@ public sealed partial class SearchSettingsSection : UserControl
         IndexDashboardCard.Visibility = Settings.Settings.SearchCustomIndexerEnabled
             ? Visibility.Visible
             : Visibility.Collapsed;
+        SearchRustPreviewCard.Visibility = IndexDashboardCard.Visibility;
+        SearchRustPreviewToggle.IsEnabled = Settings.Settings.SearchCustomIndexerEnabled;
     }
 
     private void OnIndexProgressChanged(int count)
@@ -322,6 +350,32 @@ public sealed partial class SearchSettingsSection : UserControl
     {
         App.Current.SearchEngineService?.RebuildIndex();
         RefreshIndexStatus();
+    }
+
+    private async void SearchRustPreviewToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading || !IsLoaded)
+        {
+            return;
+        }
+
+        Settings.Settings.SearchRustIndexerPreviewEnabled = SearchRustPreviewToggle.IsOn;
+        Settings.SaveDebounced();
+        try
+        {
+            if (App.Current.SearchEngineService is { } engine)
+            {
+                await engine.ReconfigureCustomIndexBackendAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[SearchSettings] Failed to reconfigure the custom index backend: {ex.Message}");
+        }
+        finally
+        {
+            RefreshIndexStatus();
+        }
     }
 
     private void RefreshSearchHotkeyControls()

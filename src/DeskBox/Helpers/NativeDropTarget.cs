@@ -10,58 +10,11 @@ namespace DeskBox.Helpers;
 /// </summary>
 public sealed class NativeDropTarget : IDisposable
 {
-    // ── COM Interface definitions ──
-
-    [ComImport]
-    [Guid("00000122-0000-0000-C000-000000000046")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IDropTarget
-    {
-        [PreserveSig] int DragEnter(IntPtr pDataObj, uint grfKeyState, POINT pt, ref uint pdwEffect);
-        [PreserveSig] int DragOver(uint grfKeyState, POINT pt, ref uint pdwEffect);
-        [PreserveSig] int DragLeave();
-        [PreserveSig] int Drop(IntPtr pDataObj, uint grfKeyState, POINT pt, ref uint pdwEffect);
-    }
-
-    [ComImport]
-    [Guid("0000010E-0000-0000-C000-000000000046")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface COMIDataObject
-    {
-        [PreserveSig] int GetData(ref FORMATETC format, out STGMEDIUM medium);
-        [PreserveSig] int GetDataHere(ref FORMATETC format, ref STGMEDIUM medium);
-        [PreserveSig] int QueryGetData(ref FORMATETC format);
-        [PreserveSig] int GetCanonicalFormatEtc(ref FORMATETC formatIn, out FORMATETC formatOut);
-        [PreserveSig] int SetData(ref FORMATETC formatIn, ref STGMEDIUM medium, [MarshalAs(UnmanagedType.Bool)] bool fRelease);
-        [PreserveSig] int EnumFormatEtc(uint dwDirection, out IntPtr enumFormatEtc);
-        [PreserveSig] int DAdvise(ref FORMATETC format, uint advf, IntPtr pAdvSink, out uint connection);
-        [PreserveSig] int DUnadvise(uint connection);
-        [PreserveSig] int EnumDAdvise(out IntPtr enumAdvise);
-    }
-
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {
         public int X;
         public int Y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct FORMATETC
-    {
-        public ushort cfFormat;
-        public IntPtr ptd;
-        public uint dwAspect;
-        public int lindex;
-        public uint tymed;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct STGMEDIUM
-    {
-        public uint tymed;
-        public IntPtr unionMember;
-        public IntPtr pUnkForRelease;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -107,12 +60,6 @@ public sealed class NativeDropTarget : IDisposable
 
     // ── P/Invoke ──
 
-    [DllImport("ole32.dll", PreserveSig = false)]
-    private static extern void RegisterDragDrop(IntPtr hwnd, IDropTarget dropTarget);
-
-    [DllImport("ole32.dll", PreserveSig = false)]
-    private static extern void RevokeDragDrop(IntPtr hwnd);
-
     [DllImport("ole32.dll")]
     private static extern int OleInitialize(IntPtr reserved);
 
@@ -123,7 +70,7 @@ public sealed class NativeDropTarget : IDisposable
     private static extern uint RegisterClipboardFormatW(string lpszFormat);
 
     [DllImport("ole32.dll")]
-    private static extern void ReleaseStgMedium(ref STGMEDIUM medium);
+    private static extern void ReleaseStgMedium(ref NativeStorageMedium medium);
 
     [DllImport("kernel32.dll")]
     private static extern IntPtr GlobalLock(IntPtr hMem);
@@ -145,7 +92,7 @@ public sealed class NativeDropTarget : IDisposable
     // ── State ──
 
     private readonly IntPtr _hwnd;
-    private readonly DropTargetComObject _comObject;
+    private readonly NativeDropTargetComObject _comObject;
     private bool _registered;
 
     /// <summary>Fired when a drag enters the window. Provides screen coordinates and whether file data is available.</summary>
@@ -158,7 +105,7 @@ public sealed class NativeDropTarget : IDisposable
     public event Action? DragLeaveEvent;
 
     /// <summary>Fired when files are dropped. Provides the list of file paths and screen coordinates.</summary>
-    public event Action<IReadOnlyList<string>, int, int, bool>? DropEvent;
+    public event Action<IReadOnlyList<string>, int, int, bool, bool>? DropEvent;
 
     /// <summary>
     /// Whether the current drag payload contains file drop data (CF_HDROP).
@@ -167,6 +114,8 @@ public sealed class NativeDropTarget : IDisposable
     public bool HasFileData { get; private set; }
 
     public bool HasVirtualFileData { get; private set; }
+
+    internal bool IsRegistered => _registered;
 
     static NativeDropTarget()
     {
@@ -187,7 +136,7 @@ public sealed class NativeDropTarget : IDisposable
     public NativeDropTarget(IntPtr hwnd)
     {
         _hwnd = hwnd;
-        _comObject = new DropTargetComObject(this);
+        _comObject = new NativeDropTargetComObject(this);
     }
 
     public void Register()
@@ -199,7 +148,7 @@ public sealed class NativeDropTarget : IDisposable
 
         try
         {
-            RegisterDragDrop(_hwnd, _comObject);
+            NativeDropTargetComInterop.Register(_hwnd, _comObject);
             _registered = true;
             App.Log($"[DropTarget] Registered IDropTarget for hwnd=0x{_hwnd.ToInt64():X}");
         }
@@ -218,7 +167,7 @@ public sealed class NativeDropTarget : IDisposable
 
         try
         {
-            RevokeDragDrop(_hwnd);
+            NativeDropTargetComInterop.Revoke(_hwnd);
         }
         catch
         {
@@ -231,84 +180,95 @@ public sealed class NativeDropTarget : IDisposable
         Unregister();
     }
 
-    // ── Inner COM object ──
-
-    /// <summary>
-    /// The actual COM IDropTarget implementation. .NET creates a CCW
-    /// (COM Callable Wrapper) for this class automatically.
-    /// </summary>
-    [ComVisible(true)]
-    [Guid("00000122-0000-0000-C000-000000000046")]
-    private sealed class DropTargetComObject : IDropTarget
+#if DESKBOX_NATIVE_AOT
+    internal nint AcquireAotSmokeInterfacePointer()
     {
-        private readonly NativeDropTarget _owner;
+        return NativeDropTargetComInterop.AcquireInterfacePointer(_comObject);
+    }
+#endif
 
-        public DropTargetComObject(NativeDropTarget owner)
+    internal int OnDragEnter(
+        nint dataObject,
+        uint keyState,
+        POINT point,
+        ref uint effect)
+    {
+        uint allowedEffects = effect;
+        HasVirtualFileData = TryHasVirtualFileData(dataObject);
+        HasFileData = HasVirtualFileData || TryHasHDropData(dataObject);
+        DragEnterEvent?.Invoke(point.X, point.Y, HasFileData);
+
+        effect = NativeDropEffectPolicy.ResolveFeedbackEffect(
+            HasFileData,
+            HasVirtualFileData,
+            keyState,
+            allowedEffects);
+        return S_OK;
+    }
+
+    internal int OnDragOver(
+        uint keyState,
+        POINT point,
+        ref uint effect)
+    {
+        uint allowedEffects = effect;
+        DragOverEvent?.Invoke(point.X, point.Y);
+
+        effect = NativeDropEffectPolicy.ResolveFeedbackEffect(
+            HasFileData,
+            HasVirtualFileData,
+            keyState,
+            allowedEffects);
+        return S_OK;
+    }
+
+    internal int OnDragLeave()
+    {
+        HasFileData = false;
+        HasVirtualFileData = false;
+        DragLeaveEvent?.Invoke();
+        return S_OK;
+    }
+
+    internal int OnDrop(
+        nint dataObject,
+        uint keyState,
+        POINT point,
+        ref uint effect)
+    {
+        uint allowedEffects = effect;
+        bool copyRequested =
+            NativeDropEffectPolicy.ResolveFeedbackEffect(
+                hasFileData: true,
+                HasVirtualFileData,
+                keyState,
+                allowedEffects) != NativeDropEffectPolicy.Move;
+        var (paths, containsTemporaryFiles) = TryExtractFilePaths(dataObject);
+        HasFileData = false;
+        HasVirtualFileData = false;
+
+        // Always log so we can tell whether the native OLE drop target receives
+        // CF_HDROP drops (WeChat / Explorer) at all, and what it extracted.
+        App.Log($"[DropTarget] NativeDrop received count={paths.Count} temp={containsTemporaryFiles}");
+
+        if (paths.Count > 0)
         {
-            _owner = owner;
-        }
-
-        public int DragEnter(IntPtr pDataObj, uint grfKeyState, POINT pt, ref uint pdwEffect)
-        {
-            uint allowedEffects = pdwEffect;
-            _owner.HasVirtualFileData = _owner.TryHasVirtualFileData(pDataObj);
-            _owner.HasFileData = _owner.HasVirtualFileData || _owner.TryHasHDropData(pDataObj);
-            _owner.DragEnterEvent?.Invoke(pt.X, pt.Y, _owner.HasFileData);
-
-            pdwEffect = NativeDropEffectPolicy.ResolveFeedbackEffect(
-                _owner.HasFileData,
-                _owner.HasVirtualFileData,
-                grfKeyState,
+            DropEvent?.Invoke(
+                paths,
+                point.X,
+                point.Y,
+                containsTemporaryFiles,
+                copyRequested);
+            effect = NativeDropEffectPolicy.ResolveCompletionEffect(
+                hasExtractedPaths: true,
                 allowedEffects);
-            return S_OK;
         }
-
-        public int DragOver(uint grfKeyState, POINT pt, ref uint pdwEffect)
+        else
         {
-            uint allowedEffects = pdwEffect;
-            _owner.DragOverEvent?.Invoke(pt.X, pt.Y);
-
-            pdwEffect = NativeDropEffectPolicy.ResolveFeedbackEffect(
-                _owner.HasFileData,
-                _owner.HasVirtualFileData,
-                grfKeyState,
-                allowedEffects);
-            return S_OK;
+            effect = NativeDropEffectPolicy.None;
         }
 
-        public int DragLeave()
-        {
-            _owner.HasFileData = false;
-            _owner.HasVirtualFileData = false;
-            _owner.DragLeaveEvent?.Invoke();
-            return S_OK;
-        }
-
-        public int Drop(IntPtr pDataObj, uint grfKeyState, POINT pt, ref uint pdwEffect)
-        {
-            uint allowedEffects = pdwEffect;
-            var (paths, containsTemporaryFiles) = _owner.TryExtractFilePaths(pDataObj);
-            _owner.HasFileData = false;
-            _owner.HasVirtualFileData = false;
-
-            // Always log so we can tell whether the native OLE drop target receives
-            // CF_HDROP drops (WeChat / Explorer) at all, and what it extracted.
-            App.Log($"[DropTarget] NativeDrop received count={paths.Count} temp={containsTemporaryFiles}");
-
-            if (paths.Count > 0)
-            {
-                _owner.DropEvent?.Invoke(paths, pt.X, pt.Y, containsTemporaryFiles);
-                pdwEffect = NativeDropEffectPolicy.ResolveCompletionEffect(
-                    hasExtractedPaths: true,
-                    allowedEffects);
-            }
-            else
-            {
-                pdwEffect = NativeDropEffectPolicy.None;
-            }
-
-            return S_OK;
-        }
+        return S_OK;
     }
 
     // ── Data extraction helpers ──
@@ -320,31 +280,23 @@ public sealed class NativeDropTarget : IDisposable
             return false;
         }
 
-        COMIDataObject? dataObj = null;
         try
         {
-            dataObj = (COMIDataObject)Marshal.GetObjectForIUnknown(pDataObj);
-            var format = new FORMATETC
+            var dataObject = new NativeOleDataObject(pDataObj);
+            var format = new NativeFormatEtc
             {
-                cfFormat = (ushort)CF_HDROP,
-                ptd = IntPtr.Zero,
-                dwAspect = DVASPECT_CONTENT,
-                lindex = -1,
-                tymed = TYMED_HGLOBAL,
+                ClipboardFormat = (ushort)CF_HDROP,
+                TargetDevice = IntPtr.Zero,
+                Aspect = DVASPECT_CONTENT,
+                Index = -1,
+                MediumType = TYMED_HGLOBAL,
             };
 
-            return dataObj.QueryGetData(ref format) == S_OK;
+            return dataObject.QueryGetData(ref format) == S_OK;
         }
         catch
         {
             return false;
-        }
-        finally
-        {
-            if (dataObj is not null)
-            {
-                try { Marshal.ReleaseComObject(dataObj); } catch { }
-            }
         }
     }
 
@@ -360,30 +312,22 @@ public sealed class NativeDropTarget : IDisposable
             return false;
         }
 
-        COMIDataObject? dataObj = null;
         try
         {
-            dataObj = (COMIDataObject)Marshal.GetObjectForIUnknown(pDataObj);
-            var format = new FORMATETC
+            var dataObject = new NativeOleDataObject(pDataObj);
+            var format = new NativeFormatEtc
             {
-                cfFormat = clipboardFormat,
-                ptd = IntPtr.Zero,
-                dwAspect = DVASPECT_CONTENT,
-                lindex = index,
-                tymed = tymed,
+                ClipboardFormat = clipboardFormat,
+                TargetDevice = IntPtr.Zero,
+                Aspect = DVASPECT_CONTENT,
+                Index = index,
+                MediumType = tymed,
             };
-            return dataObj.QueryGetData(ref format) == S_OK;
+            return dataObject.QueryGetData(ref format) == S_OK;
         }
         catch
         {
             return false;
-        }
-        finally
-        {
-            if (dataObj is not null)
-            {
-                try { Marshal.ReleaseComObject(dataObj); } catch { }
-            }
         }
     }
 
@@ -394,25 +338,24 @@ public sealed class NativeDropTarget : IDisposable
             return ([], false);
         }
 
-        COMIDataObject? dataObj = null;
         try
         {
-            dataObj = (COMIDataObject)Marshal.GetObjectForIUnknown(pDataObj);
-            var format = new FORMATETC
+            var dataObject = new NativeOleDataObject(pDataObj);
+            var format = new NativeFormatEtc
             {
-                cfFormat = (ushort)CF_HDROP,
-                ptd = IntPtr.Zero,
-                dwAspect = DVASPECT_CONTENT,
-                lindex = -1,
-                tymed = TYMED_HGLOBAL,
+                ClipboardFormat = (ushort)CF_HDROP,
+                TargetDevice = IntPtr.Zero,
+                Aspect = DVASPECT_CONTENT,
+                Index = -1,
+                MediumType = TYMED_HGLOBAL,
             };
 
-            int hr = dataObj.GetData(ref format, out STGMEDIUM medium);
-            if (hr == S_OK && medium.unionMember != IntPtr.Zero)
+            int hr = dataObject.GetData(ref format, out NativeStorageMedium medium);
+            if (hr == S_OK && medium.Content != IntPtr.Zero)
             {
                 try
                 {
-                    IReadOnlyList<string> paths = GetDroppedFiles(medium.unionMember);
+                    IReadOnlyList<string> paths = GetDroppedFiles(medium.Content);
                     if (paths.Count > 0)
                     {
                         return (paths, false);
@@ -424,20 +367,13 @@ public sealed class NativeDropTarget : IDisposable
                 }
             }
 
-            IReadOnlyList<string> virtualPaths = ExtractVirtualFiles(dataObj);
+            IReadOnlyList<string> virtualPaths = ExtractVirtualFiles(dataObject);
             return (virtualPaths, virtualPaths.Count > 0);
         }
         catch (Exception ex)
         {
             App.Log($"[DropTarget] Failed to extract file paths: {ex.Message}");
             return ([], false);
-        }
-        finally
-        {
-            if (dataObj is not null)
-            {
-                try { Marshal.ReleaseComObject(dataObj); } catch { }
-            }
         }
     }
 
@@ -464,18 +400,20 @@ public sealed class NativeDropTarget : IDisposable
         return paths;
     }
 
-    private static IReadOnlyList<string> ExtractVirtualFiles(COMIDataObject dataObj)
+    private static IReadOnlyList<string> ExtractVirtualFiles(NativeOleDataObject dataObject)
     {
-        var descriptorFormat = new FORMATETC
+        var descriptorFormat = new NativeFormatEtc
         {
-            cfFormat = s_fileGroupDescriptorFormat,
-            ptd = IntPtr.Zero,
-            dwAspect = DVASPECT_CONTENT,
-            lindex = -1,
-            tymed = TYMED_HGLOBAL,
+            ClipboardFormat = s_fileGroupDescriptorFormat,
+            TargetDevice = IntPtr.Zero,
+            Aspect = DVASPECT_CONTENT,
+            Index = -1,
+            MediumType = TYMED_HGLOBAL,
         };
-        if (dataObj.GetData(ref descriptorFormat, out STGMEDIUM descriptorMedium) != S_OK ||
-            descriptorMedium.unionMember == IntPtr.Zero)
+        if (dataObject.GetData(
+                ref descriptorFormat,
+                out NativeStorageMedium descriptorMedium) != S_OK ||
+            descriptorMedium.Content == IntPtr.Zero)
         {
             return [];
         }
@@ -483,7 +421,7 @@ public sealed class NativeDropTarget : IDisposable
         List<FILEDESCRIPTORW> descriptors;
         try
         {
-            descriptors = ReadVirtualFileDescriptors(descriptorMedium.unionMember);
+            descriptors = ReadVirtualFileDescriptors(descriptorMedium.Content);
         }
         finally
         {
@@ -519,7 +457,7 @@ public sealed class NativeDropTarget : IDisposable
 
             string destinationPath = FileService.GetAvailablePath(
                 Path.Combine(temporaryDirectory, fileName));
-            if (TrySaveVirtualFileContents(dataObj, index, destinationPath))
+            if (TrySaveVirtualFileContents(dataObject, index, destinationPath))
             {
                 string resolvedPath =
                     VirtualDropFileNameResolver.AddMissingExtensionFromContent(
@@ -580,7 +518,7 @@ public sealed class NativeDropTarget : IDisposable
     }
 
     private static bool TrySaveVirtualFileContents(
-        COMIDataObject dataObj,
+        NativeOleDataObject dataObject,
         int index,
         string destinationPath)
     {
@@ -591,29 +529,29 @@ public sealed class NativeDropTarget : IDisposable
         // outright (returning DV_E_FORMATETC), which made the widget silently
         // ignore browser drops even though DragEnter/Drop fired. Fall back to
         // TYMED_HGLOBAL for sources that provide the contents as a memory blob.
-        STGMEDIUM contentsMedium = default;
+        NativeStorageMedium contentsMedium = default;
         uint actualTymed = 0;
         IntPtr actualMedium = IntPtr.Zero;
         foreach (uint tymed in new uint[] { TYMED_ISTREAM, TYMED_HGLOBAL })
         {
-            var contentsFormat = new FORMATETC
+            var contentsFormat = new NativeFormatEtc
             {
-                cfFormat = s_fileContentsFormat,
-                ptd = IntPtr.Zero,
-                dwAspect = DVASPECT_CONTENT,
-                lindex = index,
-                tymed = tymed,
+                ClipboardFormat = s_fileContentsFormat,
+                TargetDevice = IntPtr.Zero,
+                Aspect = DVASPECT_CONTENT,
+                Index = index,
+                MediumType = tymed,
             };
-            int hr = dataObj.GetData(ref contentsFormat, out contentsMedium);
-            if (hr == S_OK && contentsMedium.unionMember != IntPtr.Zero)
+            int hr = dataObject.GetData(ref contentsFormat, out contentsMedium);
+            if (hr == S_OK && contentsMedium.Content != IntPtr.Zero)
             {
-                actualTymed = contentsMedium.tymed;
-                actualMedium = contentsMedium.unionMember;
+                actualTymed = contentsMedium.MediumType;
+                actualMedium = contentsMedium.Content;
                 break;
             }
             // Release any partially populated medium before retrying with a
             // different tymed (GetData may have set unionMember on failure).
-            if (contentsMedium.unionMember != IntPtr.Zero)
+            if (contentsMedium.Content != IntPtr.Zero)
             {
                 ReleaseStgMedium(ref contentsMedium);
                 contentsMedium = default;
@@ -661,29 +599,8 @@ public sealed class NativeDropTarget : IDisposable
 
     private static void SaveComStream(IntPtr streamPointer, string destinationPath)
     {
-        var source = (IStream)Marshal.GetObjectForIUnknown(streamPointer);
         using var destination = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        var buffer = new byte[81920];
-        IntPtr bytesReadPointer = Marshal.AllocCoTaskMem(sizeof(int));
-        try
-        {
-            while (true)
-            {
-                Marshal.WriteInt32(bytesReadPointer, 0);
-                source.Read(buffer, buffer.Length, bytesReadPointer);
-                int bytesRead = Marshal.ReadInt32(bytesReadPointer);
-                if (bytesRead <= 0)
-                {
-                    break;
-                }
-
-                destination.Write(buffer, 0, bytesRead);
-            }
-        }
-        finally
-        {
-            Marshal.FreeCoTaskMem(bytesReadPointer);
-        }
+        NativeComStreamReader.CopyTo(streamPointer, destination);
     }
 
     private static void SaveGlobalMemory(IntPtr memoryHandle, string destinationPath)

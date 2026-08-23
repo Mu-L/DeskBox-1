@@ -117,22 +117,11 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
         catch (Exception ex)
         {
-            string details = string.Join(
-                ", ",
-                ex.GetType().GetProperties()
-                    .Where(property => property.GetIndexParameters().Length == 0)
-                    .Select(property =>
-                    {
-                        try
-                        {
-                            return $"{property.Name}={property.GetValue(ex)}";
-                        }
-                        catch
-                        {
-                            return $"{property.Name}=<unavailable>";
-                        }
-                    }));
-            App.Log($"[QuickCaptureSurface] XAML initialization failed: {details}");
+            string exceptionType = ex.GetType().FullName ?? ex.GetType().Name;
+            App.Log(
+                $"[QuickCaptureSurface] XAML initialization failed: " +
+                $"Type={exceptionType}, HResult=0x{ex.HResult:X8}, Message={ex.Message}, " +
+                $"InnerException={ex.InnerException}, StackTrace={ex.StackTrace}");
             throw;
         }
         ResponsiveContentGrid.DataContext = ViewModel;
@@ -1713,7 +1702,10 @@ public sealed partial class QuickCaptureSurfaceContent :
                     Type = AttachmentStorageService.GetAttachmentType(file.Path)
                 }))
                 .ToArray();
-        DetailAttachmentStrip.ItemsSource = attachments;
+        // ItemsSource crosses the WinRT object-valued dependency-property ABI.
+        // Project the typed read-only list to a concrete object array so the
+        // empty and populated attachment states both remain Native AOT safe.
+        DetailAttachmentStrip.ItemsSource = attachments.Cast<object>().ToArray();
         DetailAttachmentStrip.CanRemove = _isDetailEditing && _detailItem?.IsRecent != true;
         DetailAttachmentStrip.Visibility = attachments.Count > 0
             ? Visibility.Visible
