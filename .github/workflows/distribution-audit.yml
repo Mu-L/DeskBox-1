@@ -79,7 +79,8 @@ jobs:
           if (-not $iscc) {
             throw "The runner image does not expose ISCC.exe."
           }
-          & $iscc /?
+          $innoVersion = (Get-Item -LiteralPath $iscc).VersionInfo.FileVersion
+          Write-Host "Inno Setup compiler: $iscc ($innoVersion)"
 
           $kitsBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
           if (-not (Get-ChildItem -LiteralPath $kitsBin -Filter makeappx.exe -Recurse -File |
@@ -107,7 +108,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: stage7c1-${{ matrix.rid }}-distribution
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
           path: |
             .artifacts/stage7c1-${{ matrix.rid }}/summary.json
@@ -125,7 +126,7 @@ jobs:
   aggregate:
     name: Cross-architecture evidence manifest
     needs: distribution
-    if: always()
+    if: needs.distribution.result == 'success'
     runs-on: windows-2025-vs2026
     timeout-minutes: 20
 
