@@ -249,7 +249,7 @@ $innoLogPath = Join-Path $OutputDirectory "inno-compile.log"
 $innoArguments = @(
     "/Qp",
     "/DDeskBoxNativeAot=1",
-    "/DMyAppReleaseDir=`"$directPublishDirectory`"",
+    "/DMyAppReleaseDir=$directPublishDirectory",
     "/F$installerOutputBaseName",
     "/O$installerOutputDirectory",
     $installerScript
