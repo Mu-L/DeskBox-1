@@ -268,13 +268,13 @@ if ($null -eq $installer -or $installer.Name -notmatch 'NativeAot') {
 }
 
 $storeOutputDirectory = Join-Path $OutputDirectory "store"
-$storeBuildArguments = @(
-    "-Configuration", $configuration,
-    "-Platform", $Platform,
-    "-NativeAot",
-    "-PackageBuildMode", "StoreUpload",
-    "-OutputDir", $storeOutputDirectory
-)
+$storeBuildArguments = @{
+    Configuration = $configuration
+    Platform = $Platform
+    NativeAot = $true
+    PackageBuildMode = "StoreUpload"
+    OutputDir = $storeOutputDirectory
+}
 Write-Host "Building the Store Native AOT MSIX/upload for $Platform..." -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot "build-store-msix.ps1") @storeBuildArguments | Out-Host
 

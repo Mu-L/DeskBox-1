@@ -128,7 +128,8 @@ public sealed class AotStage7C1ContractTests
                      "DeskBoxNativeAot=1",
                      "/DMyAppReleaseDir=$directPublishDirectory",
                      "/F$installerOutputBaseName",
-                     "PackageBuildMode\", \"StoreUpload",
+                     "$storeBuildArguments = @{",
+                     "PackageBuildMode = \"StoreUpload\"",
                      "installerInstallationExecuted = $false",
                      "msixInstallationExecuted = $false",
                      "storeFlightExecuted = $false"
