@@ -124,8 +124,10 @@ public sealed class AotStage7AContractTests
         foreach (string token in new[]
                  {
                      "cross-compiled-static-only",
+                     "native-arm64-runtime-plus-static",
                      "targetDeviceExecuted = $false",
-                     "runtimeAbiProbeExecuted = $false",
+                     "physicalUserDeviceExecuted = $false",
+                     "runtimeAbiProbeExecuted = $runtimeAbiProbeExecuted",
                      "Enter-DeskBoxArm64MsvcEnvironment",
                      "Exit-DeskBoxArm64MsvcEnvironment",
                      "aarch64-pc-windows-msvc",

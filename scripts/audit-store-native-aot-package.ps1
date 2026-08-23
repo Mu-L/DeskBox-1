@@ -229,15 +229,17 @@ $forbiddenPatterns = @(
     'store-assets-html'
 )
 $forbiddenFiles = @(
-    foreach ($fileEntry in $fileEntries) {
-        foreach ($pattern in $forbiddenPatterns) {
-            if ($fileEntry -match $pattern) {
-                $fileEntry
-                break
+    @(
+        foreach ($fileEntry in $fileEntries) {
+            foreach ($pattern in $forbiddenPatterns) {
+                if ($fileEntry -match $pattern) {
+                    $fileEntry
+                    break
+                }
             }
         }
-    }
-) | Sort-Object -Unique
+    ) | Sort-Object -Unique
+)
 foreach ($forbiddenFile in $forbiddenFiles) {
     Add-AuditFailure "Forbidden Store AOT payload is present: '$forbiddenFile'."
 }

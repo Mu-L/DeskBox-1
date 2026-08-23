@@ -7,12 +7,14 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $auditStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$auditProfileVersion = 1
+$auditProfileVersion = 2
 $summarySchemaVersion = 1
 $platform = "ARM64"
 $runtimeIdentifier = "win-arm64"
 $targetTriple = "aarch64-pc-windows-msvc"
 $expectedMachine = 0xAA64
+$processArchitecture =
+    [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $project = Join-Path $repoRoot "src\DeskBox\DeskBox.csproj"
@@ -333,9 +335,27 @@ $searchCoreValidation = & (Join-Path $PSScriptRoot "build-rust-search-core.ps1")
     -Configuration Release `
     -OutputDirectory $searchCoreIntermediateDir `
     -ValidateOnly
-if ($nativeValidation.RuntimeProbeExecuted -or
+$runtimeAbiProbeExecuted =
+    $nativeValidation.RuntimeProbeExecuted -and
+    $searchCoreValidation.RuntimeProbeExecuted
+if ($nativeValidation.RuntimeProbeExecuted -ne
     $searchCoreValidation.RuntimeProbeExecuted) {
-    throw "An ARM64 cross-audit must not execute a target DLL on the x64 host."
+    throw "The two ARM64 Rust modules did not use the same runtime-probe policy."
+}
+if ($processArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
+    if (-not $runtimeAbiProbeExecuted) {
+        throw "A native ARM64 audit must execute both target Rust ABI probes."
+    }
+    $evidenceLevel = "native-arm64-runtime-plus-static"
+}
+elseif ($processArchitecture -eq [System.Runtime.InteropServices.Architecture]::X64) {
+    if ($runtimeAbiProbeExecuted) {
+        throw "An ARM64 cross-audit must not execute a target DLL on the x64 host."
+    }
+    $evidenceLevel = "cross-compiled-static-only"
+}
+else {
+    throw "The ARM64 audit supports only native ARM64 or x64 cross-build hosts; actual=$processArchitecture."
 }
 
 $requiredFiles = @(
@@ -475,7 +495,7 @@ $auditStopwatch.Stop()
 $summary = [ordered]@{
     schemaVersion = $summarySchemaVersion
     auditProfileVersion = $auditProfileVersion
-    evidenceLevel = "cross-compiled-static-only"
+    evidenceLevel = $evidenceLevel
     generatedAtUtc = [DateTime]::UtcNow.ToString("O")
     durationMilliseconds = $auditStopwatch.ElapsedMilliseconds
     gitCommit = $sourceSnapshotBefore.GitCommit
@@ -489,7 +509,9 @@ $summary = [ordered]@{
     platform = $platform
     runtimeIdentifier = $runtimeIdentifier
     targetDeviceExecuted = $false
-    runtimeAbiProbeExecuted = $false
+    physicalUserDeviceExecuted = $false
+    processArchitecture = $processArchitecture.ToString()
+    runtimeAbiProbeExecuted = $runtimeAbiProbeExecuted
     publishDirectory = $publishDir
     symbolsDirectory = $symbolsDir
     publishFileCount = $publishedFiles.Count

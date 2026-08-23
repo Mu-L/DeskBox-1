@@ -152,15 +152,17 @@ $directForbiddenPatterns = @(
     'store-assets-html'
 )
 $forbiddenDirectFiles = @(
-    foreach ($directFile in $directFiles) {
-        foreach ($pattern in $directForbiddenPatterns) {
-            if ($directFile -match $pattern) {
-                $directFile
-                break
+    @(
+        foreach ($directFile in $directFiles) {
+            foreach ($pattern in $directForbiddenPatterns) {
+                if ($directFile -match $pattern) {
+                    $directFile
+                    break
+                }
             }
         }
-    }
-) | Sort-Object -Unique
+    ) | Sort-Object -Unique
+)
 if ($missingDirectFiles.Count -gt 0) {
     throw "The Direct AOT publish is missing required files: $($missingDirectFiles -join ', ')."
 }
