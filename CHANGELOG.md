@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.4.5 - Unreleased
+
+### English
+
+#### Native AOT compatibility and interaction
+
+- Restored settings values and interaction paths for Glance, Music, file stacks, Quick Capture, and Todo in Native AOT builds.
+- Multiple Glance widgets can now be switched safely in Settings, and a newly created Glance widget can be closed from its context menu.
+- Quick Capture and Todo now retain their projected lists in Native AOT. Image attachments use typed thumbnail bindings in both compact and full views.
+- The retained Native AOT audit now records 1,190 `WMC1510` warnings after ten runtime bindings were replaced with compiled or generated bindings.
+
+#### Persistence reliability
+
+- Fixed a Microsoft Store persistence failure that could cause settings and widget data to restart from an earlier state after reopening DeskBox.
+- When Windows cannot remove the destination during an atomic file replacement, DeskBox retries and then uses a verified backup before safely writing through the existing file.
+
+### 中文
+
+#### Native AOT 兼容性与交互
+
+- 修复 Native AOT 版本中时光、音乐、文件叠放、随记和待办的设置显示与交互路径。
+- 设置中可以安全切换多个时光格子，新建的时光格子也可以通过右键菜单正常关闭。
+- 随记和待办在 Native AOT 下会保留列表投影，紧凑视图与完整视图中的图片附件均改用类型化缩略图绑定。
+- 用编译绑定或生成绑定替换十处运行时绑定后，保留的 Native AOT 审计基线降至 1,190 条 `WMC1510` 警告。
+
+#### 数据保存可靠性
+
+- 修复 Microsoft Store 版本可能无法保存设置和格子数据，导致重新打开 DeskBox 后恢复到旧状态的问题。
+- Windows 无法在原子替换时删除目标文件时，DeskBox 会先重试，并在校验备份后通过现有文件安全写入。
+
 ## 1.4.3 - 2026-08-19
 
 ### English
