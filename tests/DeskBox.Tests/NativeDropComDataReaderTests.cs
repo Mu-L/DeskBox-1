@@ -1,0 +1,248 @@
+using System.Runtime.InteropServices;
+using DeskBox.Helpers;
+
+namespace DeskBox.Tests;
+
+public sealed class NativeDropComDataReaderTests
+{
+    [Fact]
+    public void OleStructLayouts_MatchTheWin64Abi()
+    {
+        Assert.Equal(32, Marshal.SizeOf<NativeFormatEtc>());
+        Assert.Equal(
+            0,
+            Marshal.OffsetOf<NativeFormatEtc>(nameof(NativeFormatEtc.ClipboardFormat)).ToInt32());
+        Assert.Equal(
+            8,
+            Marshal.OffsetOf<NativeFormatEtc>(nameof(NativeFormatEtc.TargetDevice)).ToInt32());
+        Assert.Equal(
+            16,
+            Marshal.OffsetOf<NativeFormatEtc>(nameof(NativeFormatEtc.Aspect)).ToInt32());
+        Assert.Equal(
+            20,
+            Marshal.OffsetOf<NativeFormatEtc>(nameof(NativeFormatEtc.Index)).ToInt32());
+        Assert.Equal(
+            24,
+            Marshal.OffsetOf<NativeFormatEtc>(nameof(NativeFormatEtc.MediumType)).ToInt32());
+
+        Assert.Equal(24, Marshal.SizeOf<NativeStorageMedium>());
+        Assert.Equal(
+            0,
+            Marshal.OffsetOf<NativeStorageMedium>(nameof(NativeStorageMedium.MediumType)).ToInt32());
+        Assert.Equal(
+            8,
+            Marshal.OffsetOf<NativeStorageMedium>(nameof(NativeStorageMedium.Content)).ToInt32());
+        Assert.Equal(
+            16,
+            Marshal.OffsetOf<NativeStorageMedium>(nameof(NativeStorageMedium.ReleaseUnknown)).ToInt32());
+    }
+
+    [Fact]
+    public void DataObject_GetDataUsesSlotThreeAndReturnsTheNativeMedium()
+    {
+        using var fake = new FakeComObject(slotCount: 6);
+        NativeFormatEtc capturedFormat = default;
+        nint capturedSelf = 0;
+        var expectedMedium = new NativeStorageMedium
+        {
+            MediumType = 4,
+            Content = (nint)0x1234,
+            ReleaseUnknown = (nint)0x5678,
+        };
+        GetDataCallback callback = (
+            nint self,
+            ref NativeFormatEtc format,
+            out NativeStorageMedium medium) =>
+        {
+            capturedSelf = self;
+            capturedFormat = format;
+            medium = expectedMedium;
+            return 0;
+        };
+        fake.SetSlot(3, callback);
+
+        var format = new NativeFormatEtc
+        {
+            ClipboardFormat = 15,
+            TargetDevice = (nint)0x42,
+            Aspect = 1,
+            Index = -1,
+            MediumType = 5,
+        };
+        var dataObject = new NativeOleDataObject(fake.Pointer);
+
+        int result = dataObject.GetData(ref format, out NativeStorageMedium medium);
+
+        Assert.Equal(0, result);
+        Assert.Equal(fake.Pointer, capturedSelf);
+        Assert.Equal(format.ClipboardFormat, capturedFormat.ClipboardFormat);
+        Assert.Equal(format.TargetDevice, capturedFormat.TargetDevice);
+        Assert.Equal(format.Aspect, capturedFormat.Aspect);
+        Assert.Equal(format.Index, capturedFormat.Index);
+        Assert.Equal(format.MediumType, capturedFormat.MediumType);
+        Assert.Equal(expectedMedium.MediumType, medium.MediumType);
+        Assert.Equal(expectedMedium.Content, medium.Content);
+        Assert.Equal(expectedMedium.ReleaseUnknown, medium.ReleaseUnknown);
+    }
+
+    [Fact]
+    public void DataObject_QueryGetDataUsesSlotFiveAndPreservesHresult()
+    {
+        const int expectedResult = unchecked((int)0x80040064); // DV_E_FORMATETC
+        using var fake = new FakeComObject(slotCount: 6);
+        NativeFormatEtc capturedFormat = default;
+        QueryGetDataCallback callback = (nint _, ref NativeFormatEtc format) =>
+        {
+            capturedFormat = format;
+            return expectedResult;
+        };
+        fake.SetSlot(5, callback);
+
+        var format = new NativeFormatEtc
+        {
+            ClipboardFormat = 49152,
+            Aspect = 1,
+            Index = 7,
+            MediumType = 1,
+        };
+        var dataObject = new NativeOleDataObject(fake.Pointer);
+
+        int result = dataObject.QueryGetData(ref format);
+
+        Assert.Equal(expectedResult, result);
+        Assert.Equal(format.ClipboardFormat, capturedFormat.ClipboardFormat);
+        Assert.Equal(format.Index, capturedFormat.Index);
+        Assert.Equal(format.MediumType, capturedFormat.MediumType);
+    }
+
+    [Fact]
+    public void StreamReader_CopiesChunksAndStopsOnSFalse()
+    {
+        byte[] payload = "native virtual drop"u8.ToArray();
+        int offset = 0;
+        int calls = 0;
+        using var fake = new FakeComObject(slotCount: 4);
+        ReadCallback callback = (nint _, nint buffer, uint bufferSize, nint bytesRead) =>
+        {
+            calls++;
+            int count = Math.Min(4, payload.Length - offset);
+            if (bufferSize < count)
+            {
+                return unchecked((int)0x8007007A); // HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER)
+            }
+            if (count > 0)
+            {
+                Marshal.Copy(payload, offset, buffer, count);
+                offset += count;
+            }
+
+            Marshal.WriteInt32(bytesRead, count);
+            return offset == payload.Length ? 1 : 0;
+        };
+        fake.SetSlot(3, callback);
+        using var destination = new MemoryStream();
+
+        NativeComStreamReader.CopyTo(fake.Pointer, destination);
+
+        Assert.Equal(payload, destination.ToArray());
+        Assert.Equal(5, calls);
+    }
+
+    [Fact]
+    public void StreamReader_ThrowsForFailedHresult()
+    {
+        const int expectedResult = unchecked((int)0x80004005);
+        using var fake = new FakeComObject(slotCount: 4);
+        ReadCallback callback = (nint _, nint _, uint _, nint bytesRead) =>
+        {
+            Marshal.WriteInt32(bytesRead, 0);
+            return expectedResult;
+        };
+        fake.SetSlot(3, callback);
+        using var destination = new MemoryStream();
+
+        COMException exception = Assert.Throws<COMException>(
+            () => NativeComStreamReader.CopyTo(fake.Pointer, destination));
+
+        Assert.Equal(expectedResult, exception.HResult);
+    }
+
+    [Fact]
+    public void StreamReader_RejectsAnOverreportedByteCount()
+    {
+        using var fake = new FakeComObject(slotCount: 4);
+        ReadCallback callback = (nint _, nint _, uint bufferSize, nint bytesRead) =>
+        {
+            Marshal.WriteInt32(bytesRead, checked((int)bufferSize + 1));
+            return 0;
+        };
+        fake.SetSlot(3, callback);
+        using var destination = new MemoryStream();
+
+        IOException exception = Assert.Throws<IOException>(
+            () => NativeComStreamReader.CopyTo(fake.Pointer, destination));
+
+        Assert.Contains("more bytes", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BorrowedPointerBoundariesRejectNullPointers()
+    {
+        Assert.Throws<ArgumentException>(() => new NativeOleDataObject(0));
+        Assert.Throws<ArgumentException>(
+            () => NativeComStreamReader.CopyTo(0, new MemoryStream()));
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetDataCallback(
+        nint self,
+        ref NativeFormatEtc format,
+        out NativeStorageMedium medium);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int QueryGetDataCallback(nint self, ref NativeFormatEtc format);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int ReadCallback(
+        nint self,
+        nint buffer,
+        uint bufferSize,
+        nint bytesRead);
+
+    private sealed class FakeComObject : IDisposable
+    {
+        private readonly List<Delegate> _callbacks = [];
+        private readonly nint _vtable;
+
+        public FakeComObject(int slotCount)
+        {
+            _vtable = Marshal.AllocHGlobal(checked(slotCount * IntPtr.Size));
+            Pointer = Marshal.AllocHGlobal(IntPtr.Size);
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                Marshal.WriteIntPtr(_vtable, slot * IntPtr.Size, IntPtr.Zero);
+            }
+
+            Marshal.WriteIntPtr(Pointer, _vtable);
+        }
+
+        public nint Pointer { get; }
+
+        public void SetSlot<TDelegate>(int slot, TDelegate callback)
+            where TDelegate : Delegate
+        {
+            _callbacks.Add(callback);
+            Marshal.WriteIntPtr(
+                _vtable,
+                checked(slot * IntPtr.Size),
+                Marshal.GetFunctionPointerForDelegate(callback));
+        }
+
+        public void Dispose()
+        {
+            Marshal.FreeHGlobal(Pointer);
+            Marshal.FreeHGlobal(_vtable);
+            GC.KeepAlive(_callbacks);
+        }
+    }
+}
