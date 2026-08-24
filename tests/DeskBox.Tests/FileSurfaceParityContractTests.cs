@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace DeskBox.Tests;
@@ -434,6 +435,89 @@ public sealed class FileSurfaceParityContractTests
             "App.Current.ShowSettings(\"FileStackSettings\")",
             menus,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FileStacks_NativeAotProviderCoversBothRuntimeTemplates()
+    {
+        string root = FindRepositoryRoot();
+        string xaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml"));
+        string stackItem = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/ViewModels/WidgetStackItem.cs"));
+        string bindableSource = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/ViewModels/WidgetStackItem.AotBindableProperties.cs"));
+
+        int stackTemplatesStart = xaml.IndexOf(
+            "<DataTemplate x:Key=\"SurfaceFileStackIconTemplate\">",
+            StringComparison.Ordinal);
+        int stackTemplatesEnd = xaml.IndexOf(
+            "<controls:WidgetItemTemplateSelector",
+            stackTemplatesStart,
+            StringComparison.Ordinal);
+        Assert.True(stackTemplatesStart >= 0);
+        Assert.True(stackTemplatesEnd > stackTemplatesStart);
+
+        string stackTemplates = xaml.Substring(
+            stackTemplatesStart,
+            stackTemplatesEnd - stackTemplatesStart);
+        string[] rootBindingPaths = Regex.Matches(
+                stackTemplates,
+                @"\{Binding\s+([A-Za-z_][A-Za-z0-9_.]*)(?<options>[^}]*)\}")
+            .Where(match => !match.Groups["options"].Value.Contains(
+                "ElementName=",
+                StringComparison.Ordinal))
+            .Select(match => match.Groups[1].Value.Split('.')[0])
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        string[] expectedPaths =
+        [
+            "AutomationState",
+            "ChevronGlyph",
+            "CollapsedPreviewVisibility",
+            "CountText",
+            "ExpandedAnchorVisibility",
+            "LabelFontSize",
+            "LabelMaxWidth",
+            "ListIconSize",
+            "ListMargin",
+            "ListPadding",
+            "Name",
+            "PreviewItemSize",
+            "PreviewOne",
+            "PreviewSize",
+            "PreviewThree",
+            "PreviewTwo",
+            "Summary",
+            "ThirdPreviewVisibility",
+            "TileHeight",
+            "TileMargin",
+            "TilePadding",
+            "TileWidth"
+        ];
+
+        Assert.Equal(expectedPaths, rootBindingPaths);
+        Assert.Contains(
+            "public sealed partial class WidgetStackItem : WidgetItem",
+            stackItem,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "[WinRT.GeneratedBindableCustomProperty([",
+            bindableSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public sealed partial class WidgetStackItem",
+            bindableSource,
+            StringComparison.Ordinal);
+        foreach (string path in rootBindingPaths)
+        {
+            Assert.Contains($"nameof({path})", bindableSource, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

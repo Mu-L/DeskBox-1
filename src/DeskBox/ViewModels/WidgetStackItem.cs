@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml;
 
 namespace DeskBox.ViewModels;
 
-public sealed class WidgetStackItem : WidgetItem
+public sealed partial class WidgetStackItem : WidgetItem
 {
     private IReadOnlyList<WidgetItem> _members = [];
     private string _summary = string.Empty;
