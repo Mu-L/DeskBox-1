@@ -53,7 +53,8 @@ public sealed class AotStage5B2BContractTests
     [Fact]
     public void MutationRunner_AlwaysCompensatesInsideFinallyAndRequiresNotPinnedAtExit()
     {
-        string source = ReadRepositoryFile("src/DeskBox/App.AotQuickAccessMutationSmoke.cs");
+        string source = ReadRepositoryFile("src/DeskBox/App.AotQuickAccessMutationSmoke.cs")
+            .ReplaceLineEndings("\n");
 
         int tryIndex = source.IndexOf("try\n        {", StringComparison.Ordinal);
         int finallyIndex = source.IndexOf("finally\n        {", StringComparison.Ordinal);

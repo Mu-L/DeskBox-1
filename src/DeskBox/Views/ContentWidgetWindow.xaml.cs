@@ -1266,7 +1266,14 @@ IsHideAnimationRunning = true;
 
     // ── Nested: title view model ───────────────────────────────
 
-    private sealed class ContentWidgetTitleViewModel : System.ComponentModel.INotifyPropertyChanged
+#if DESKBOX_NATIVE_AOT
+    [WinRT.GeneratedBindableCustomProperty([
+        nameof(DisplayName),
+        nameof(TitleIconSize),
+        nameof(TitleTextSize)
+    ], [])]
+#endif
+    private sealed partial class ContentWidgetTitleViewModel : System.ComponentModel.INotifyPropertyChanged
     {
         private readonly SettingsService _settingsService;
 
