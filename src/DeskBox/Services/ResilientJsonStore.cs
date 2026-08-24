@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace DeskBox.Services;
 
 internal enum ResilientJsonLoadSource
@@ -14,6 +16,17 @@ internal sealed record ResilientJsonLoadResult<T>(
 
 internal static class ResilientJsonStore
 {
+    // Win32 ERROR_UNABLE_TO_REMOVE_REPLACED (1175), surfaced by File.Replace.
+    // This has been observed for packaged Store data files even though the same
+    // files remain readable and writable through ordinary file handles.
+    internal const int UnableToRemoveReplacedFileHResult = unchecked((int)0x80070497);
+
+    private static readonly TimeSpan[] s_replaceRetryDelays =
+    [
+        TimeSpan.FromMilliseconds(50),
+        TimeSpan.FromMilliseconds(150)
+    ];
+
     internal static string GetBackupPath(string storePath) => $"{storePath}.bak";
 
     public static async Task<T> LoadAsync<T>(
@@ -100,10 +113,30 @@ internal static class ResilientJsonStore
             ResilientJsonLoadSource.Backup);
     }
 
-    public static async Task SaveAsync(string storePath, string json)
+    public static Task SaveAsync(string storePath, string json)
+    {
+        return SaveAsync(
+            storePath,
+            json,
+            static (sourcePath, destinationPath, backupPath, ignoreMetadataErrors) =>
+                File.Replace(
+                    sourcePath,
+                    destinationPath,
+                    backupPath,
+                    ignoreMetadataErrors),
+            Task.Delay);
+    }
+
+    internal static async Task SaveAsync(
+        string storePath,
+        string json,
+        Action<string, string, string?, bool> replaceFile,
+        Func<TimeSpan, Task> delayAsync)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
         ArgumentNullException.ThrowIfNull(json);
+        ArgumentNullException.ThrowIfNull(replaceFile);
+        ArgumentNullException.ThrowIfNull(delayAsync);
 
         Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
         string tempPath = $"{storePath}.{Guid.NewGuid():N}.tmp";
@@ -112,11 +145,13 @@ internal static class ResilientJsonStore
             await File.WriteAllTextAsync(tempPath, json);
             if (File.Exists(storePath))
             {
-                File.Replace(
+                await ReplaceOrFallbackAsync(
                     tempPath,
                     storePath,
                     GetBackupPath(storePath),
-                    ignoreMetadataErrors: true);
+                    json,
+                    replaceFile,
+                    delayAsync);
             }
             else
             {
@@ -126,6 +161,108 @@ internal static class ResilientJsonStore
         finally
         {
             TryDeleteFile(tempPath);
+        }
+    }
+
+    private static async Task ReplaceOrFallbackAsync(
+        string tempPath,
+        string storePath,
+        string backupPath,
+        string json,
+        Action<string, string, string?, bool> replaceFile,
+        Func<TimeSpan, Task> delayAsync)
+    {
+        for (int retryIndex = 0; ; retryIndex++)
+        {
+            try
+            {
+                replaceFile(
+                    tempPath,
+                    storePath,
+                    backupPath,
+                    true);
+                return;
+            }
+            catch (IOException ex) when (IsUnableToRemoveReplacedFile(ex))
+            {
+                if (retryIndex < s_replaceRetryDelays.Length)
+                {
+                    TimeSpan delay = s_replaceRetryDelays[retryIndex];
+                    App.Log(
+                        $"[ResilientJsonStore] Atomic replace could not remove the " +
+                        $"destination; retrying in {delay.TotalMilliseconds:0} ms. " +
+                        $"HResult=0x{ex.HResult:X8}, " +
+                        $"File='{Path.GetFileName(storePath)}'.");
+                    await delayAsync(delay);
+                    continue;
+                }
+
+                // ERROR_UNABLE_TO_REMOVE_REPLACED documents that both source and
+                // destination retain their original names. Guard that invariant
+                // before using the non-atomic path so other partial replace errors
+                // are never treated as safe fallbacks.
+                if (!File.Exists(tempPath) || !File.Exists(storePath))
+                {
+                    throw;
+                }
+
+                App.Log(
+                    $"[ResilientJsonStore] Atomic replace remained unavailable; " +
+                    $"using verified-backup in-place fallback. " +
+                    $"HResult=0x{ex.HResult:X8}, " +
+                    $"File='{Path.GetFileName(storePath)}'.");
+                await SaveInPlaceWithVerifiedBackupAsync(
+                    storePath,
+                    backupPath,
+                    json);
+                return;
+            }
+        }
+    }
+
+    private static bool IsUnableToRemoveReplacedFile(IOException exception) =>
+        exception.HResult == UnableToRemoveReplacedFileHResult;
+
+    private static async Task SaveInPlaceWithVerifiedBackupAsync(
+        string storePath,
+        string backupPath,
+        string json)
+    {
+        byte[] originalBytes = await File.ReadAllBytesAsync(storePath);
+        await WriteAllBytesInPlaceAsync(backupPath, originalBytes);
+        await VerifyFileContentsAsync(backupPath, originalBytes, "backup");
+
+        byte[] updatedBytes = Encoding.UTF8.GetBytes(json);
+        await WriteAllBytesInPlaceAsync(storePath, updatedBytes);
+        await VerifyFileContentsAsync(storePath, updatedBytes, "primary store");
+    }
+
+    private static async Task WriteAllBytesInPlaceAsync(
+        string path,
+        ReadOnlyMemory<byte> contents)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4096,
+            FileOptions.Asynchronous | FileOptions.WriteThrough);
+        await stream.WriteAsync(contents);
+        await stream.FlushAsync();
+        stream.Flush(flushToDisk: true);
+    }
+
+    private static async Task VerifyFileContentsAsync(
+        string path,
+        ReadOnlyMemory<byte> expected,
+        string description)
+    {
+        byte[] actual = await File.ReadAllBytesAsync(path);
+        if (!actual.AsSpan().SequenceEqual(expected.Span))
+        {
+            throw new IOException(
+                $"The {description} could not be verified after the in-place save.");
         }
     }
 
