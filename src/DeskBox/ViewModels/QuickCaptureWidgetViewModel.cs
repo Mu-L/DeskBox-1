@@ -54,6 +54,11 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
 
     public ObservableCollection<QuickCaptureItemViewModel> Items { get; } = [];
 
+    // ItemsControl.ItemsSource is object-valued at the WinRT ABI boundary.
+    // Keep the typed collection for product logic and project a concrete
+    // object array for runtime Binding in Native AOT builds.
+    public object[] VisibleItemsSource => Items.Cast<object>().ToArray();
+
     public WidgetConfig Config { get; }
 
     public bool IsInitialized { get; private set; }

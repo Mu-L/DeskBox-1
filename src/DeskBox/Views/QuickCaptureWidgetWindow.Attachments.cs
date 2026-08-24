@@ -192,7 +192,9 @@ public sealed partial class QuickCaptureWidgetWindow
                 Type = AttachmentStorageService.GetAttachmentType(file.Path),
                 StorageMode = TodoAttachment.LinkedStorageMode
             })).ToList();
-        DetailAttachmentsList.ItemsSource = attachments;
+        // ItemsSource is object-valued at the WinRT ABI boundary. Use the same
+        // concrete projection as the active embedded Quick Capture surface.
+        DetailAttachmentsList.ItemsSource = attachments.Cast<object>().ToArray();
         DetailAttachmentScroller.Visibility = attachments.Count > 0
             ? Visibility.Visible
             : Visibility.Collapsed;

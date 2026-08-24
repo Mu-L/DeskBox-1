@@ -93,6 +93,7 @@ public sealed partial class TodoWidgetViewModel
         desiredItems.AddRange(BuildCompletedVisibleItems(completedItems));
 
         SynchronizeVisibleItems(desiredItems, preferredMovedItem);
+        OnPropertyChanged(nameof(VisibleItemsSource));
         RefreshVisibleStateProperties();
     }
 

@@ -22,6 +22,58 @@ public sealed class AotStage5B4B2B1ContractTests
     }
 
     [Fact]
+    public void RuntimeBindingSurfaces_UseNativeAotProvidersAndObjectArrayItemsSource()
+    {
+        string bindable = ReadRepositoryFile(
+            "src/DeskBox/ViewModels/QuickCaptureViewModels.AotBindableProperties.cs");
+        string viewModel = ReadRepositoryFile(
+            "src/DeskBox/ViewModels/QuickCaptureWidgetViewModel.cs");
+        string itemSync = ReadRepositoryFile(
+            "src/DeskBox/ViewModels/QuickCaptureWidgetViewModel.ItemSync.cs");
+        string window = ReadRepositoryFile(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.xaml");
+        string surface = ReadRepositoryFile(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml");
+
+        Assert.Contains("#if DESKBOX_NATIVE_AOT", bindable, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(
+            bindable,
+            "[WinRT.GeneratedBindableCustomProperty]"));
+        Assert.Contains(
+            "public sealed partial class QuickCaptureWidgetViewModel",
+            bindable,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public sealed partial class QuickCaptureItemViewModel",
+            bindable,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public object[] VisibleItemsSource",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Items.Cast<object>().ToArray()",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "OnPropertyChanged(nameof(VisibleItemsSource))",
+            itemSync,
+            StringComparison.Ordinal);
+
+        foreach (string xaml in new[] { window, surface })
+        {
+            Assert.Contains(
+                "ItemsSource=\"{Binding VisibleItemsSource}\"",
+                xaml,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "ItemsSource=\"{Binding Items}\"",
+                xaml,
+                StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void SurfaceScenario_UsesMeaningfulDraftAndExplicitPendingSaveFlush()
     {
         string surface = ReadRepositoryFile(

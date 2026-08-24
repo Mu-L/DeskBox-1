@@ -61,6 +61,7 @@ public sealed partial class QuickCaptureWidgetViewModel
         }
 
         SyncVisibleItems(visibleItems, canShowPinnedSortControls);
+        OnPropertyChanged(nameof(VisibleItemsSource));
 
         UpdateEmptyStateText();
         bool hasItems = Items.Count > 0;

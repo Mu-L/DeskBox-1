@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:DeskBox.Controls"
+    xmlns:viewModels="using:DeskBox.ViewModels"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -162,7 +163,7 @@
                     DragItemsStarting="ItemsList_DragItemsStarting"
                     IsItemClickEnabled="True"
                     ItemClick="ItemsList_ItemClick"
-                    ItemsSource="{Binding Items}"
+                    ItemsSource="{Binding VisibleItemsSource}"
                     KeyDown="ItemsList_KeyDown"
                     SelectionMode="Extended"
                     Visibility="{Binding ListVisibility}">
@@ -209,7 +210,7 @@
                                         IsHitTestVisible="False"
                                         Visibility="{Binding ListImagePreviewVisibility}">
                                         <ContentControl.ContentTemplate>
-                                            <DataTemplate>
+                                            <DataTemplate x:DataType="viewModels:TodoAttachmentViewModel">
                                                 <Border
                                                     Width="64"
                                                     Height="48"
@@ -226,12 +227,12 @@
                                                             FontSize="16"
                                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                             Glyph="&#xEB9F;"
-                                                            Visibility="{Binding FileIconVisibility}" />
+                                                            Visibility="{x:Bind FileIconVisibility, Mode=OneWay}" />
                                                         <Image
                                                             AutomationProperties.AccessibilityView="Raw"
-                                                            Source="{Binding Thumbnail}"
+                                                            Source="{x:Bind Thumbnail, Mode=OneWay}"
                                                             Stretch="Uniform"
-                                                            Visibility="{Binding ThumbnailVisibility}" />
+                                                            Visibility="{x:Bind ThumbnailVisibility, Mode=OneWay}" />
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>

@@ -54,6 +54,38 @@ public sealed class AotStage5B4B2B2AContractTests
     }
 
     [Fact]
+    public void TodoListItemsSource_ProjectsTypedCollectionThroughObjectArrayAndRefreshes()
+    {
+        string viewModel = ReadRepositoryFile(
+            "src/DeskBox/ViewModels/TodoWidgetViewModel.cs");
+        string filtering = ReadRepositoryFile(
+            "src/DeskBox/ViewModels/TodoWidgetViewModel.FilteringAndAppearance.cs");
+        string xaml = ReadRepositoryFile(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.xaml");
+
+        Assert.Contains(
+            "public object[] VisibleItemsSource",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "VisibleItems.Cast<object>().ToArray()",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "OnPropertyChanged(nameof(VisibleItemsSource))",
+            filtering,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ItemsSource=\"{Binding VisibleItemsSource}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ItemsSource=\"{Binding VisibleItems}\"",
+            xaml,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SurfaceScenario_ExercisesRealSixHundredMillisecondNotesAutoSave()
     {
         string surface = ReadRepositoryFile(
