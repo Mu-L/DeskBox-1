@@ -29,12 +29,24 @@
 > Store/ARM64 继续不打包且默认关闭。审计升为 profile 58 / schema 55。下一代码阶段为 7A ARM64
 > 工具链、PE 与静态分发边界；Todo 通知中心真实点击/投递差异仍是独立外部门禁。
 
+> 2026-08-23 阶段 7A、7B 自动化边界与 7C0 状态校正：固定 Rust 1.96.0 与 ARM64 MSVC/SDK、两个
+> `0xAA64` DLL 和 ARM64 Native AOT 静态发布已完成；随后 GitHub Actions 原生 ARM64 Windows runner
+> 实际加载 ABI 2/能力 511 与 ABI 3 模块，并通过 11/11 产品绑定测试。x64/ARM64 CRT A/B 最终选择
+> Static，两个模块不再导入 `VCRUNTIME140.dll`。Direct x64/ARM64 现在默认启用 SearchCore，Store
+> 继续使用 managed。云端 runner 不替代实体 ARM64 的交互 UI、11 Widget 整进程内存和设备差异；下一
+> 代码阶段为 7C1 Direct/Store 双架构安装、升级、包内容、签名、WACK 与 flight。
+>
+> 2026-08-24 阶段 7C1 自动化分发矩阵完成：GitHub 原生 x64/ARM64 runner 均通过最终 Direct AOT
+> publish、Inno 安装器、Store MSIX/appxsym/msixupload 与包内容/哈希审计；Store AOT 明确包含静态
+> `deskbox_native.dll`，不包含 Updater、SearchCore、managed runtime 元数据或 PDB。该结果不包含签名、
+> WACK、安装、覆盖升级或实体设备。原始目标加权约 98%；下一阶段为 7C2 合并 Store 上传包和外部发布证据。
+
 ## 1. 结论摘要
 
 1. **Native AOT 应继续作为确定目标，但按兼容性批次推进。** 旧方案中的“冷启动收益不足 20% 就停止”不再适用。启动速度、内存和安装体积仍需测量，但这些指标用于选择发布方式和继续优化的位置，不用于决定是否放弃 AOT。
 2. **当前主程序已经可以完成 x64 AOT 编译、基础运行、四个 Rust 产品边界、内部 Rust 回收站恢复边界、设置与离线内容持久化矩阵、确定性 Weather surface、owned File Widget 核心操作、菜单删除、Shell move、系统 Properties、Picker、StorageItems、程序化 OLE/native drop、主/搜索热键自动注册生命周期、Todo recurrence/reminder 确定性状态矩阵、真实 Todo 系统通知的展示/历史恢复/精确清理、通知 grammar/确定性动作路由、保留完整 `UserInput` 的冷启动与单实例转发，以及受控 activation 后的真实 Todo surface 定位与可见刷新，但还不能视为可发布。** profile 56 / schema 53 已把传统 COM `always-throw`、IL2026、IL2050、IL2072、IL2075、IL3050 和 WMC1506 全部清零，WMC1510 保持 1211。真人 Explorer 物理鼠标、物理标准/Win+Space 键盘、设置/引导录制器、真实 Windows 通知点击/activation 来源、真实媒体会话、真实天气网络/定位、Quick Capture 图片/全局剪贴板传输、附件 Undo/孤立文件回收和真实安装升级仍未完成。
 3. **不需要先重做功能或测试体系。** 仓库现有测试足以作为分批修改基础；5B-4C3B2B2A 增加目标/刷新结果语义、5 条阶段契约和 1 条失败分支单元测试，并继续区分静态契约、实际 AOT 运行、真实第二应用实例、Windows 外部 activation 与目标系统人工验证。程序化 HDROP 不冒充真人 Explorer 鼠标，`SendInput` 只证明标准 `RegisterHotKey` 的 OS 分发，不冒充物理键盘或 Win+Space hook 触发；受控 activation 只证明真实 Todo surface 行为，不冒充通知中心真人点击。
-4. **Rust 适合选择性引入，不适合改写 WinUI、ViewModel 或所有 Win32 代码。** Rust 现已接管 Native AOT 中全部 `CLSID_ShellLink` 产品操作、音乐音量 Core Audio、Explorer 托管启动和 Quick Access 边界，并为 C1B1 提供完整粗粒度的回收站精确查询/恢复；产品删除仍保留更简单的 C# P/Invoke，普通 JIT 默认保留四个既有产品边界的 C# oracle。SearchCore 已通过 6D 稳定性和整机内存门禁，仅在 Direct x64 模块构建中默认启用；Store/ARM64 保持 managed。下一步是架构和分发验证，不扩大到 WinUI 重写。
+4. **Rust 适合选择性引入，不适合改写 WinUI、ViewModel 或所有 Win32 代码。** Rust 现已接管 Native AOT 中全部 `CLSID_ShellLink` 产品操作、音乐音量 Core Audio、Explorer 托管启动和 Quick Access 边界，并为 C1B1 提供完整粗粒度的回收站精确查询/恢复；产品删除仍保留更简单的 C# P/Invoke，普通 JIT 默认保留四个既有产品边界的 C# oracle。SearchCore 已通过 6D 稳定性、整机内存和 7B 原生 ARM64 后端门禁，在 Direct x64/ARM64 模块构建中默认启用；Store 保持 managed。两个 Rust DLL 的生产默认采用静态 CRT，不扩大到 WinUI 重写。
 5. **AOT 和 Rust 是两条可独立验收的路线。** AOT 兼容性清理不能依赖搜索核心已经 Rust 化；Rust 模块也不能以“主程序能 AOT 编译”代替自身的 ABI、架构和结果一致性验证。
 6. **第一项最小 AOT 交付物应是更新器。** `DeskBox.Updater` 已单独完成无警告 AOT 发布，且代码边界很小。主项目原先没有把 `PublishAot` 传给更新器，阶段 1 已修正这一问题，并消除了 AOT 目录中混入的 CoreCLR/JIT 更新器运行时。
 7. **3C-3-R 已封闭项目级 AOT/Rust 属性矛盾。** `ValidateDeskBoxNativeAotConfiguration` 在编译前要求 `Platform=x64`、`RuntimeIdentifier=win-x64` 和 `DeskBoxRustNative=true`；普通 JIT 默认仍为 `false`。审计脚本只保留受支持的 x64 路径，ARM64 会在解析 dotnet host、创建或清理产物前失败。真实 MSBuild 正反向组合、负向 `dotnet build` 和脚本提前失败均已验证。
@@ -2858,6 +2870,56 @@ Widget 全显示且视觉不变时的 managed/Rust 多轮内存；最后才决�
 
 原始目标当前加权约完成 94%，剩余约 6%。Todo 通知投递差异、真人 Explorer 拖放和物理热键等既有
 外部证据继续独立保留，不因 ARM64 静态构建成功而关闭。
+
+### 7B 自动化边界与 7C0 CRT 决策完成复盘
+
+在没有实体 ARM64 设备的条件下，7B 将可自动化部分迁移到 GitHub Actions 的原生 ARM64 Windows
+runner。OS、PowerShell、.NET 测试宿主和固定 Rust 1.96.0 host 均为 ARM64；两个 Rust DLL 被真实
+加载并完成 ABI probe，SearchCore 实际执行 Unicode add/seal/query，产品绑定测试 11/11 通过。产品
+加载器中遗留的 x64-only 前置判断已修正为允许 x64/ARM64，否则正确 DLL 会在产品层被提前拒绝。
+
+7C0 同时完成 x64/ARM64 动态与静态 CRT 对照。静态方案在两个 DLL 合计增加 187,392 B（x64）和
+190,976 B（ARM64）文件体积，SizeOfImage 增加 188,416 B 与 204,800 B；两种架构都移除
+`VCRUNTIME140.dll` 导入，运行时 ABI 与静态产品测试均通过。因此生产默认采用 Static：Direct 安装器
+无需因 Rust 增加 VC++ Redistributable，Store 也无需因 Rust 增加 VCLibs 依赖。Windows App SDK
+framework/runtime 仍是独立分发条件。
+
+Direct ARM64 的 SearchCore 默认值据此开放，与 Direct x64 一致；Store 继续 managed。完整证据见
+`docs/architecture/rust-stage-7b-arm64-actions-report.md` 和
+`docs/architecture/rust-stage-7c0-crt-distribution-report.md`。
+
+该结果没有关闭实体 ARM64 的交互窗口、托盘、系统 UI、全部 Widget 内存、GPU/驱动和休眠恢复，也没有
+完成正式包。原始“选择性 Rust + 主程序 Native AOT + 分发门禁”目标当前加权约完成 96%，剩余约 4%。
+下一阶段为 **7C1 Direct / Store x64 与 ARM64 分发矩阵**，复杂度高：最终 AOT publish、双架构安装器
+和 MSIX/upload、文件与框架依赖、无卸载升级和数据保留、签名/WACK/package flight。实体 ARM64 交互、
+真人 Explorer 拖放、物理热键和目标设备通知投递继续作为发布前外部证据，不与可自动化代码门禁混写。
+
+### 7C1 双架构自动化分发矩阵完成复盘
+
+7C1 新增 `distribution-audit.yml`，在 `windows-2025-vs2026` 原生 x64 与
+`windows-11-vs2026-arm` 原生 ARM64 runner 并行执行。最终运行
+[32650821484](https://github.com/Tianyu199509/DeskBox/actions/runs/32650821484) 对提交
+`ebbb8ecf341db9068b3bbf71c7101fd9c19ff886` 的两个架构全部通过，并由第三个 job 生成只有两边均通过
+才成立的跨架构摘要。
+
+Direct 侧重新执行完整 AOT publish，核对主程序、Updater、两个 Rust DLL、PE machine、ABI/导出、
+静态 CRT、PDB 排除和 publish 清单，再用 Inno 6 编译带 `NativeAot` 后缀的 x64/ARM64 安装器。AOT
+安装器只跳过 .NET Desktop Runtime 检测，继续保留 Windows App Runtime 2.2 依赖处理。
+
+Store 侧修正了 Windows App SDK AOT package payload：AOT `DeskBox.exe` 与静态
+`deskbox_native.dll` 进入 MSIX，两个 PDB 只进入 `.appxsym`；`DeskBox.deps.json`、
+`DeskBox.runtimeconfig.json`、Updater、SearchCore、CoreCLR/JIT 和 Direct 素材被禁止。拆包审计确认正式
+Partner Center identity、x64/ARM64 architecture、`Microsoft.WindowsAppRuntime.2` framework dependency、
+EXE 无 CLR header、Rust 导出/依赖、publish/package hash 和单架构 `.msixupload` 结构。
+
+本机最终定向契约为 12/12，x64 全量为 2535/2535。完整实现和 SHA-256 见
+`docs/architecture/rust-stage-7c1-distribution-report.md`。
+
+该阶段只完成可自动化的构建与包内容门禁。`physicalUserDeviceExecuted`、`signingExecuted`、
+`wackExecuted` 和 `inPlaceUpgradeExecuted` 均为 `false`。原始“选择性 Rust + 主程序 Native AOT +
+双架构分发门禁”目标加权约完成 98%，剩余约 2%。下一阶段调整为 **7C2 发布外部证据与合并上传包**：
+先在 Actions 复用两个已审计 MSIX 生成 x64+ARM64 `.msixbundle/.msixupload`，再做 WACK、x64 Direct
+首装/覆盖升级/卸载、Partner Center package flight；实体 ARM64 交互、系统集成和整进程内存以后补齐。
 
 ## 11. 参考资料
 

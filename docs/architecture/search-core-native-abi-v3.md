@@ -82,15 +82,16 @@ live entry 数、tombstone 数和目录数。
 
 ## 7. 产品启用与发布边界
 
-- Direct x64 Debug/Release 和受审计 x64 Native AOT 包含 SearchCore DLL；
-- `DESKBOX_SEARCH_CORE_DEFAULT` 只在 Direct x64、SearchCore 模块随构建存在时定义；该构建中
-  `SearchRustIndexerPreviewEnabled` 默认值为 `true`，Store/ARM64 中为 `false`；
+- Direct x64/ARM64 Debug/Release 和受审计 Native AOT 构建包含对应架构的 SearchCore DLL；
+- `DESKBOX_SEARCH_CORE_DEFAULT` 在 Direct、SearchCore 模块随构建存在时对 x64/ARM64 定义；该构建中
+  `SearchRustIndexerPreviewEnabled` 默认值为 `true`，Store 中为 `false`；
 - 已经落盘的显式用户选择优先于新的构建默认值，因此升级不会覆盖用户保存的 `false`；
 - DLL 缺失、架构、ABI、导出、DBIX 版本或时间语义失败会显示 managed fallback 原因；query、
   projection、save、idle unload、upsert、精确删除、树删除和扫描 reconciliation 的可恢复运行期
   异常会销毁 Rust owner、会话内隔离原生重试并恢复 managed snapshot；
 - 只有用户显式重新配置搜索后端时才清除会话隔离并重试 Rust，避免故障循环；
-- Store 与 ARM64 明确排除本模块，待阶段 7 单独验证工具链、PE 架构和包策略；
+- ARM64 已通过 GitHub 托管原生 ARM64 ABI、Unicode 查询和产品绑定门禁；Store 仍排除本模块，等待
+  7C1 单独验证 MSIX 内容、框架依赖和升级策略；
 - 普通 `deskbox_native.dll` 的选择策略与 ABI 完全不受 SearchCore 影响。
 
 ## 8. 阶段 6D 可靠性与默认决策
