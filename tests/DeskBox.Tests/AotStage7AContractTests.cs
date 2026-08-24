@@ -58,6 +58,9 @@ public sealed class AotStage7AContractTests
         {
             Assert.Contains(token, environment, StringComparison.Ordinal);
         }
+
+        Assert.Contains("if (@($linkerCandidates).Count -eq 0)", environment, StringComparison.Ordinal);
+        Assert.DoesNotContain("if ($linkerCandidates.Count -eq 0)", environment, StringComparison.Ordinal);
     }
 
     [Fact]

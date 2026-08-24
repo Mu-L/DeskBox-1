@@ -116,7 +116,7 @@ function Get-DeskBoxMsvcEnvironment {
         @{ Expression = { $_.HostPriority }; Ascending = $true }, `
         @{ Expression = { $_.Version }; Descending = $true }, `
         @{ Expression = { $_.LinkerPath }; Descending = $true }
-    if ($linkerCandidates.Count -eq 0) {
+    if (@($linkerCandidates).Count -eq 0) {
         throw "Visual Studio component $requiredComponent does not provide a complete $Platform linker/libcmt pair."
     }
 
