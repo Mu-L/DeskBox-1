@@ -15,7 +15,7 @@ public sealed class OrganizerService
     {
         _settingsService = settingsService;
         _fileService = fileService;
-        _desktopPathProvider = desktopPathProvider ?? (() => Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
+        _desktopPathProvider = desktopPathProvider ?? GetDefaultDesktopPath;
     }
 
     public IReadOnlyList<OrganizationHistoryEntry> GetRecentHistory(int maxCount = 6)
@@ -135,16 +135,23 @@ public sealed class OrganizerService
         WidgetConfig widget,
         string widgetName,
         WidgetItem item,
-        bool useShellProgress = false)
+        bool useShellProgress = false,
+        IntPtr ownerWindowHandle = default)
     {
-        return await MoveItemsBackToDesktopAsync(widget, widgetName, [item.Path], useShellProgress);
+        return await MoveItemsBackToDesktopAsync(
+            widget,
+            widgetName,
+            [item.Path],
+            useShellProgress,
+            ownerWindowHandle);
     }
 
     public async Task<OrganizationHistoryEntry> MoveItemsBackToDesktopAsync(
         WidgetConfig widget,
         string widgetName,
         IEnumerable<string> sourcePaths,
-        bool useShellProgress = false)
+        bool useShellProgress = false,
+        IntPtr ownerWindowHandle = default)
     {
         if (string.IsNullOrWhiteSpace(widget.MappedFolderPath))
         {
@@ -172,7 +179,11 @@ public sealed class OrganizerService
 
         try
         {
-            var results = await _fileService.ExecuteTransferPlanAsync(plans, move: true, useShellProgress);
+            var results = await _fileService.ExecuteTransferPlanAsync(
+                plans,
+                move: true,
+                useShellProgress,
+                ownerWindowHandle);
 
             var historyEntry = CreateHistoryEntry(
                 widget.Id,
@@ -203,6 +214,18 @@ public sealed class OrganizerService
                 ex.Message));
             throw;
         }
+    }
+
+    private static string GetDefaultDesktopPath()
+    {
+#if DESKBOX_NATIVE_AOT
+        if (AotShellMoveFixture.TryGetOwnedDesktopPath(out string ownedDesktopPath))
+        {
+            return ownedDesktopPath;
+        }
+#endif
+        return Environment.GetFolderPath(
+            Environment.SpecialFolder.DesktopDirectory);
     }
 
     public async Task<bool> UndoLatestAsync()

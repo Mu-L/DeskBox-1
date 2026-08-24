@@ -2,11 +2,23 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using DeskBox.Models;
 using Windows.Networking.Connectivity;
 
 namespace DeskBox.Services;
+
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    WriteIndented = true)]
+[JsonSerializable(
+    typeof(List<GlanceImageInfo>),
+    TypeInfoPropertyName = "ImageCatalog")]
+internal sealed partial class GlanceImageCatalogJsonContext : JsonSerializerContext
+{
+}
 
 public sealed class GlanceImageService
 {
@@ -21,11 +33,6 @@ public sealed class GlanceImageService
     private const long MaximumDownloadBytes = 18L * 1024 * 1024;
     private static readonly SemaphoreSlim OnlineRefreshGate = new(1, 1);
     private static readonly HttpClient SharedHttpClient = CreateHttpClient();
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
 
     private readonly string _cacheDirectory;
     private readonly string _imageDirectory;
@@ -326,7 +333,10 @@ public sealed class GlanceImageService
         try
         {
             string json = await File.ReadAllTextAsync(_catalogPath, cancellationToken);
-            return JsonSerializer.Deserialize<List<GlanceImageInfo>>(json, JsonOptions) ?? [];
+            return JsonSerializer.Deserialize(
+                       json,
+                       GlanceImageCatalogJsonContext.Default.ImageCatalog) ??
+                   [];
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -586,7 +596,9 @@ public sealed class GlanceImageService
         catalog.AddRange(kept);
 
         Directory.CreateDirectory(_cacheDirectory);
-        string json = JsonSerializer.Serialize(catalog, JsonOptions);
+        string json = JsonSerializer.Serialize(
+            catalog,
+            GlanceImageCatalogJsonContext.Default.ImageCatalog);
         string temporary = $"{_catalogPath}.{Guid.NewGuid():N}.tmp";
         try
         {

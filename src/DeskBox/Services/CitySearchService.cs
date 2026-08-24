@@ -49,11 +49,6 @@ internal sealed class PredefinedCity
 /// </summary>
 public sealed class CitySearchService : IDisposable
 {
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
     private static List<PredefinedCity>? s_predefined;
     private static readonly object s_lock = new();
 
@@ -86,7 +81,9 @@ public sealed class CitySearchService : IDisposable
 
                 using var reader = new StreamReader(stream);
                 var json = reader.ReadToEnd();
-                s_predefined = JsonSerializer.Deserialize<List<PredefinedCity>>(json, s_jsonOptions) ?? [];
+                s_predefined = JsonSerializer.Deserialize(
+                    json,
+                    WeatherJsonContext.Default.PredefinedCityList) ?? [];
                 App.Log($"[CitySearchService] Loaded {s_predefined.Count} predefined cities");
                 return s_predefined;
             }

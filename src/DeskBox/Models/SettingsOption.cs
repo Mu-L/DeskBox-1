@@ -1,6 +1,7 @@
 namespace DeskBox.Models;
 
-public sealed class SettingsOption
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class SettingsOption
 {
     public SettingsOption(object value, string displayName)
     {

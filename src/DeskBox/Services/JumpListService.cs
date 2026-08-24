@@ -128,7 +128,8 @@ public static class JumpListService
                 case ArgNewFolderWidget:
                     if (app.WidgetManager is not null)
                     {
-                        string? folderPath = FolderPickerService.PickFolder(IntPtr.Zero);
+                        string? folderPath = await FolderPickerService.PickFolderAsync(
+                            app.GetFolderPickerOwnerWindowHandle());
                         if (!string.IsNullOrWhiteSpace(folderPath))
                         {
                             await app.WidgetManager.CreateFolderWidgetAsync(folderPath);

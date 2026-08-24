@@ -1109,6 +1109,17 @@ public sealed partial class FileService
         }
 
         var stopwatch = Stopwatch.StartNew();
+        FileTransferPlan[] shellPlans = operations
+            .Select(operation => new FileTransferPlan(
+                operation.SourcePath,
+                operation.DestinationPath))
+            .ToArray();
+        TimeSpan recoveryProbeDelay = ShellMoveRecoveryProbeDelay;
+#if DESKBOX_NATIVE_AOT
+        recoveryProbeDelay = AotShellMoveFixture.GetRecoveryProbeDelay(
+            shellPlans,
+            recoveryProbeDelay);
+#endif
         App.Log(
             $"[FileTransfer] Shell move start count={operations.Count} " +
             $"owner=0x{ownerWindowHandle.ToInt64():X}");
@@ -1116,6 +1127,17 @@ public sealed partial class FileService
         Task shellMoveTask = Task.Run(() =>
         {
             EnsureSafeDirectoryTransfers(operations);
+#if DESKBOX_NATIVE_AOT
+            if (AotShellMoveFixture.TryExecute(
+                    shellPlans,
+                    ownerWindowHandle,
+                    () => MoveEntriesWithShellProgress(
+                        operations,
+                        ownerWindowHandle)))
+            {
+                return;
+            }
+#endif
             MoveEntriesWithShellProgress(
                 operations,
                 ownerWindowHandle);
@@ -1123,10 +1145,15 @@ public sealed partial class FileService
 
         Task firstCompletion = await Task.WhenAny(
             shellMoveTask,
-            Task.Delay(ShellMoveRecoveryProbeDelay));
+            Task.Delay(recoveryProbeDelay));
         if (ReferenceEquals(firstCompletion, shellMoveTask))
         {
             await shellMoveTask;
+#if DESKBOX_NATIVE_AOT
+            AotShellMoveFixture.RecordFileServiceOutcome(
+                shellPlans,
+                AotShellMoveFixture.ReturnedOutcome);
+#endif
             App.Log(
                 $"[FileTransfer] Shell move returned count={operations.Count} " +
                 $"elapsedMs={stopwatch.ElapsedMilliseconds}");
@@ -1148,6 +1175,11 @@ public sealed partial class FileService
                 App.Log(
                     $"[FileTransfer] Shell move recovered from pending call " +
                     $"count={operations.Count} elapsedMs={stopwatch.ElapsedMilliseconds}");
+#if DESKBOX_NATIVE_AOT
+                AotShellMoveFixture.RecordFileServiceOutcome(
+                    shellPlans,
+                    AotShellMoveFixture.RecoveredPendingOutcome);
+#endif
                 _ = ObserveLateShellMoveCompletionAsync(
                     shellMoveTask,
                     operations.Count,
@@ -1160,6 +1192,11 @@ public sealed partial class FileService
                     $"elapsedMs={stopwatch.ElapsedMilliseconds} " +
                     $"owner=0x{ownerWindowHandle.ToInt64():X}");
                 await shellMoveTask;
+#if DESKBOX_NATIVE_AOT
+                AotShellMoveFixture.RecordFileServiceOutcome(
+                    shellPlans,
+                    AotShellMoveFixture.ExtendedWaitOutcome);
+#endif
                 App.Log(
                     $"[FileTransfer] Shell move returned after extended wait " +
                     $"count={operations.Count} elapsedMs={stopwatch.ElapsedMilliseconds}");
@@ -1859,7 +1896,7 @@ public sealed partial class FileService
     /// <summary>
     /// Open a file or shortcut using the default application.
     /// </summary>
-    public static OpenItemResult OpenItem(WidgetItem item, IntPtr ownerHwnd = default)
+    public static OpenItemResult OpenItem(WidgetItem item, IntPtr ownerHwnd)
     {
         try
         {

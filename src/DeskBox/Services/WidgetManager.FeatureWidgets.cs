@@ -8,6 +8,7 @@ using DeskBox.Views;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 
 namespace DeskBox.Services;
 
@@ -15,6 +16,15 @@ public sealed record GlanceWidgetInstanceInfo(
     string Id,
     string Name,
     bool IsEnabled);
+
+internal sealed record TodoReminderTargetPresentationResult(
+    string WidgetId,
+    string? ItemId,
+    long WindowHandle,
+    bool Visible,
+    bool HasXamlRoot,
+    bool ItemPresented,
+    bool TargetPresented);
 
 /// <summary>
 /// Partial class containing FeatureWidgets logic for WidgetManager.
@@ -184,7 +194,10 @@ public sealed partial class WidgetManager
         }
     }
 
-    public async Task ShowTodoReminderTargetAsync(string? widgetId, string? itemId, bool preferTodayFilter)
+    internal async Task<TodoReminderTargetPresentationResult> ShowTodoReminderTargetAsync(
+        string? widgetId,
+        string? itemId,
+        bool preferTodayFilter)
     {
         ContentWidgetWindow? window = null;
         if (!string.IsNullOrWhiteSpace(widgetId))
@@ -206,9 +219,111 @@ public sealed partial class WidgetManager
         }
 
         window ??= await CreateTodoWidgetAsync();
+        await window.ContentReadyTask;
         if (window.CurrentContent?.View is TodoWidgetContent todoContent)
         {
-            todoContent.RevealReminderItem(itemId, preferTodayFilter);
+            bool surfaceLoaded = await WaitForTodoReminderSurfaceLoadedAsync(
+                todoContent);
+            bool itemPresented = todoContent.RevealReminderItem(
+                itemId,
+                preferTodayFilter);
+            bool surfaceReady = surfaceLoaded &&
+                await WaitForTodoReminderSurfaceCommitAsync(todoContent);
+            bool requiresItem = !string.IsNullOrWhiteSpace(itemId);
+            bool targetPresented = window.Visible &&
+                surfaceReady &&
+                (!requiresItem || itemPresented);
+            return new TodoReminderTargetPresentationResult(
+                window.Identity.WidgetId,
+                itemId,
+                window.WindowHandle.ToInt64(),
+                window.Visible,
+                HasXamlRoot: surfaceReady,
+                ItemPresented: itemPresented,
+                TargetPresented: targetPresented);
+        }
+
+        return new TodoReminderTargetPresentationResult(
+            window.Identity.WidgetId,
+            itemId,
+            window.WindowHandle.ToInt64(),
+            window.Visible,
+            HasXamlRoot: false,
+            ItemPresented: false,
+            TargetPresented: false);
+    }
+
+    private static async Task<bool> WaitForTodoReminderSurfaceLoadedAsync(
+        TodoWidgetContent content)
+    {
+        if (content.IsLoaded && content.XamlRoot is not null)
+        {
+            return true;
+        }
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        RoutedEventHandler loaded = (_, _) => completion.TrySetResult();
+        content.Loaded += loaded;
+        try
+        {
+            if (content.IsLoaded && content.XamlRoot is not null)
+            {
+                return true;
+            }
+
+            Task completed = await Task.WhenAny(
+                completion.Task,
+                Task.Delay(TimeSpan.FromSeconds(3)));
+            return ReferenceEquals(completed, completion.Task) &&
+                content.IsLoaded &&
+                content.XamlRoot is not null;
+        }
+        finally
+        {
+            content.Loaded -= loaded;
+        }
+    }
+
+    internal static async Task<bool> WaitForTodoReminderSurfaceCommitAsync(
+        TodoWidgetContent content)
+    {
+        if (!content.IsLoaded || content.XamlRoot is null)
+        {
+            return false;
+        }
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        int committedFrameCount = 0;
+        EventHandler<object>? rendering = null;
+        rendering = (_, _) =>
+        {
+            if (!content.IsLoaded || content.XamlRoot is null)
+            {
+                committedFrameCount = 0;
+                return;
+            }
+
+            if (++committedFrameCount >= 2)
+            {
+                completion.TrySetResult();
+            }
+        };
+
+        CompositionTarget.Rendering += rendering;
+        try
+        {
+            Task completed = await Task.WhenAny(
+                completion.Task,
+                Task.Delay(TimeSpan.FromSeconds(3)));
+            return ReferenceEquals(completed, completion.Task) &&
+                content.IsLoaded &&
+                content.XamlRoot is not null;
+        }
+        finally
+        {
+            CompositionTarget.Rendering -= rendering;
         }
     }
 

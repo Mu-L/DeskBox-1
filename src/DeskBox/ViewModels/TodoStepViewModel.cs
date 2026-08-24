@@ -3,7 +3,7 @@ using DeskBox.Models;
 
 namespace DeskBox.ViewModels;
 
-public sealed class TodoStepViewModel : ObservableObject
+public sealed partial class TodoStepViewModel : ObservableObject
 {
     private readonly TodoStep _step;
     private string _text;

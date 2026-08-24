@@ -576,7 +576,8 @@ public partial class SettingsViewModel
     private string T(string key) => _localizationService.T(key);
 }
 
-public sealed record WidgetGroupSettingsItem(
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial record WidgetGroupSettingsItem(
     string GroupId,
     string? FirstMemberId,
     string DisplayName,
@@ -596,7 +597,8 @@ public sealed record WidgetGroupSettingsItem(
     IReadOnlyList<SettingsOption> ChromeOptions,
     IReadOnlyList<WidgetGroupMemberSettingsItem> Members);
 
-public sealed record WidgetGroupMemberSettingsItem(
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial record WidgetGroupMemberSettingsItem(
     string GroupId,
     string WidgetId,
     string DisplayName,

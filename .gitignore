@@ -6,6 +6,7 @@ artifacts/
 Output/
 TestResults/
 .codex-temp/
+native/target/
 
 *.log
 stdout.txt

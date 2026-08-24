@@ -749,8 +749,9 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
             return;
         }
 
-        _settings.BackgroundSource = GlanceBackgroundSource.LocalFiles;
-        _settings.LocalImagePaths = files.Select(file => file.Path).ToList();
+        GlanceWidgetSettingsPolicy.SetLocalImageFiles(
+            _settings,
+            files.Select(file => file.Path));
         if (_store is not { } store)
         {
             return;
@@ -762,7 +763,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void ChooseFolderButton_Click(object sender, RoutedEventArgs e)
     {
-        string? folder = FolderPickerService.PickFolder(_ownerWindow);
+        string? folder = await FolderPickerService.PickFolderAsync(_ownerWindow);
         if (string.IsNullOrWhiteSpace(folder))
         {
             return;
@@ -781,14 +782,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void ClearLocalSourceButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_settings.BackgroundSource == GlanceBackgroundSource.LocalFolder)
-        {
-            _settings.LocalFolderPath = null;
-        }
-        else
-        {
-            _settings.LocalImagePaths.Clear();
-        }
+        GlanceWidgetSettingsPolicy.ClearLocalSource(_settings);
 
         if (_store is not { } store)
         {

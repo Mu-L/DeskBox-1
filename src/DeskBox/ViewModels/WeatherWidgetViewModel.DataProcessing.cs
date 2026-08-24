@@ -173,6 +173,7 @@ public sealed partial class WeatherWidgetViewModel
         else
         {
             DailyForecast.Clear();
+            OnPropertyChanged(nameof(DailyForecastItemsSource));
             UvIndexValueText = string.Empty;
             UvIndexText = string.Empty;
             PrecipitationValueText = string.Empty;
@@ -189,6 +190,7 @@ public sealed partial class WeatherWidgetViewModel
         else
         {
             HourlyForecast.Clear();
+            OnPropertyChanged(nameof(HourlyForecastItemsSource));
         }
 
         // Update rich skin gradient based on condition
@@ -313,6 +315,8 @@ public sealed partial class WeatherWidgetViewModel
                 TempBarWidth = barWidth
             });
         }
+
+        OnPropertyChanged(nameof(DailyForecastItemsSource));
     }
 
     private void PopulateHourlyForecast(WeatherHourly hourly)
@@ -346,6 +350,8 @@ public sealed partial class WeatherWidgetViewModel
                 IsCurrentHour = i == 0
             });
         }
+
+        OnPropertyChanged(nameof(HourlyForecastItemsSource));
     }
 
     private static int FindCurrentHourIndex(List<string> times)

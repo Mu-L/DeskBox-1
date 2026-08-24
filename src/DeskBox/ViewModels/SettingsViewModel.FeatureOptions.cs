@@ -159,6 +159,9 @@ public partial class SettingsViewModel
                 "Settings.FileWidget.FolderOpenBehavior.Embedded"))
     ];
 
+    public object[] AvailableFileWidgetFolderOpenBehaviorOptionItems =>
+        AvailableFileWidgetFolderOpenBehaviorOptions.Cast<object>().ToArray();
+
 
     public string SelectedQuickCaptureDefaultView
     {

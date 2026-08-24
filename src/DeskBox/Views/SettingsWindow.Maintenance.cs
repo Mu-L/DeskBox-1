@@ -27,7 +27,7 @@ public sealed partial class SettingsWindow
             return;
         }
 
-        string? folderPath = FolderPickerService.PickFolder(_hWnd);
+        string? folderPath = await FolderPickerService.PickFolderAsync(_hWnd);
         if (string.IsNullOrWhiteSpace(folderPath))
         {
             return;
@@ -121,7 +121,7 @@ public sealed partial class SettingsWindow
             return;
         }
 
-        string? folderPath = FolderPickerService.PickFolder(_hWnd);
+        string? folderPath = await FolderPickerService.PickFolderAsync(_hWnd);
         if (string.IsNullOrWhiteSpace(folderPath))
         {
             return;
@@ -338,7 +338,7 @@ public sealed partial class SettingsWindow
                 return new BackupSnapshotListItem(snapshot.Path, title, details, snapshot.IsReadable);
             }).ToArray();
 
-            BackupSnapshotsList.ItemsSource = rows;
+            BackupSnapshotsList.ItemsSource = rows.Cast<object>().ToArray();
             BackupSnapshotSummaryText.Text = rows.Length == 0
                 ? _localizationService.T("Settings.DataBackup.Snapshots.Empty")
                 : _localizationService.Format(
@@ -350,7 +350,7 @@ public sealed partial class SettingsWindow
         catch (Exception ex)
         {
             App.Log($"[DataBackup] Snapshot inventory failed: {ex}");
-            BackupSnapshotsList.ItemsSource = Array.Empty<BackupSnapshotListItem>();
+            BackupSnapshotsList.ItemsSource = null;
             BackupSnapshotSummaryText.Text = _localizationService.Format(
                 "Settings.DataBackup.FailedBody",
                 ex.Message);

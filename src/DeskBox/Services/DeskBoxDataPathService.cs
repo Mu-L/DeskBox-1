@@ -6,9 +6,10 @@ namespace DeskBox.Services;
 public sealed class DeskBoxDataPathService
 {
     public const string DevelopmentRootEnvironmentVariable = "DESKBOX_DEV_DATA_ROOT";
+    public const string AotPreviewRootEnvironmentVariable = "DESKBOX_AOT_PREVIEW_DATA_ROOT";
     private const string ProductionInstanceScope = "7F3A9B2E";
 
-    public static DeskBoxDataPathService Current { get; } = new(ResolveDevelopmentRoot());
+    public static DeskBoxDataPathService Current { get; } = new(ResolveConfiguredRoot());
 
     public DeskBoxDataPathService(string? rootPath = null)
     {
@@ -44,10 +45,12 @@ public sealed class DeskBoxDataPathService
             "DeskBox-Recovery");
     public string LogFilePath => Path.Combine(RootPath, "DeskBox.log");
 
-    private static string? ResolveDevelopmentRoot()
+    private static string? ResolveConfiguredRoot()
     {
 #if DEBUG
         return Environment.GetEnvironmentVariable(DevelopmentRootEnvironmentVariable);
+#elif DESKBOX_NATIVE_AOT
+        return Environment.GetEnvironmentVariable(AotPreviewRootEnvironmentVariable);
 #else
         return null;
 #endif

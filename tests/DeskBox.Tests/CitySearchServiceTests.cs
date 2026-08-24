@@ -57,6 +57,22 @@ public sealed class CitySearchServiceTests
     }
 
     [Theory]
+    [InlineData("春节", "春節")]
+    [InlineData("重阳", "重陽")]
+    [InlineData("腊八", "臘八")]
+    [InlineData("文件夹与台湾腊月闰月", "文件夾與臺灣臘月閏月")]
+    public void ChineseTextConverter_RepeatedConversionsDoNotAppendBufferData(
+        string simplified,
+        string traditional)
+    {
+        for (int iteration = 0; iteration < 256; iteration++)
+        {
+            Assert.Equal(traditional, ChineseTextConverter.ToTraditional(simplified));
+            Assert.Equal(simplified, ChineseTextConverter.ToSimplified(traditional));
+        }
+    }
+
+    [Theory]
     [InlineData("zh-TW", "zh")]
     [InlineData("zh-Hant", "zh")]
     [InlineData("de-DE", "de")]

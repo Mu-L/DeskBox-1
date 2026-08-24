@@ -10,6 +10,7 @@ using H.NotifyIcon.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using WinRT.Interop;
 using DrawingPoint = System.Drawing.Point;
 
@@ -32,6 +33,7 @@ public partial class App
             Width = TrayMenuItemWidth,
             Icon = new FontIcon { Glyph = "\uE74C" }
         };
+        organizeDesktopItem.Loaded += OnTrayMenuVisualLoaded;
         organizeDesktopItem.Click += async (_, _) =>
             await RunTraySettingsActionAsync(
                 contextMenu,
@@ -140,8 +142,8 @@ public partial class App
                 }
             })
         };
+        _trayIcon.SecondWindowContextMenuOpened += OnSecondWindowTrayContextMenuOpened;
         _trayIcon.ContextFlyout = contextMenu;
-        SynchronizeSecondWindowTrayFlyout(contextMenu);
 
         if (_trayWindow.Content is null)
         {
@@ -259,63 +261,95 @@ public partial class App
         return style;
     }
 
-    private void SynchronizeSecondWindowTrayFlyout(MenuFlyout contextMenu)
+    private void OnTrayMenuVisualLoaded(object sender, RoutedEventArgs args)
     {
-        if (_trayIcon is null)
+        if (sender is MenuFlyoutItemBase anchorItem)
+        {
+            ApplySecondWindowTrayPresenterSettings(anchorItem);
+        }
+    }
+
+    private void OnSecondWindowTrayContextMenuOpened(object? sender, EventArgs args)
+    {
+        if (_trayOrganizeDesktopItem is not null)
+        {
+            ApplySecondWindowTrayPresenterSettings(_trayOrganizeDesktopItem);
+        }
+    }
+
+    private void ApplySecondWindowTrayPresenterSettings(MenuFlyoutItemBase anchorItem)
+    {
+        MenuFlyoutPresenter? presenter = FindVisualAncestor<MenuFlyoutPresenter>(anchorItem);
+        if (presenter is null)
         {
             return;
         }
 
-        Style presenterStyle = contextMenu.MenuFlyoutPresenterStyle ??
-            CreateTrayMenuPresenterStyle();
-        contextMenu.MenuFlyoutPresenterStyle = presenterStyle;
+        presenter.SetValue(ScrollViewer.VerticalScrollModeProperty, ScrollMode.Disabled);
+        presenter.SetValue(
+            ScrollViewer.VerticalScrollBarVisibilityProperty,
+            ScrollBarVisibility.Disabled);
+        presenter.MaxHeight = double.PositiveInfinity;
 
-        MenuFlyout? secondWindowFlyout = TryGetSecondWindowContextMenuFlyout(_trayIcon);
-        if (secondWindowFlyout is null)
-        {
-            if (!_traySecondWindowSyncLogged)
-            {
-                Log("[Tray] SecondWindow flyout was not available for presenter synchronization");
-                _traySecondWindowSyncLogged = true;
-            }
-
-            return;
-        }
-
-        secondWindowFlyout.MenuFlyoutPresenterStyle = presenterStyle;
-        secondWindowFlyout.ShouldConstrainToRootBounds = false;
+        bool popupConfigured = ConfigureOwningPopup(presenter);
         if (!_traySecondWindowSyncLogged)
         {
-            Log("[Tray] Synchronized SecondWindow flyout presenter settings");
+            Log($"[Tray] Synchronized SecondWindow presenter through public visual tree; popup={popupConfigured}");
             _traySecondWindowSyncLogged = true;
         }
     }
 
-    private static MenuFlyout? TryGetSecondWindowContextMenuFlyout(TaskbarIcon trayIcon)
+    private static T? FindVisualAncestor<T>(DependencyObject child)
+        where T : DependencyObject
     {
-        const System.Reflection.BindingFlags flags =
-            System.Reflection.BindingFlags.Instance |
-            System.Reflection.BindingFlags.Public |
-            System.Reflection.BindingFlags.NonPublic |
-            System.Reflection.BindingFlags.DeclaredOnly;
-
-        try
+        for (DependencyObject? current = child; current is not null; current = VisualTreeHelper.GetParent(current))
         {
-            for (Type? type = trayIcon.GetType(); type is not null; type = type.BaseType)
+            if (current is T match)
             {
-                var property = type.GetProperty("ContextMenuFlyout", flags);
-                if (property?.GetValue(trayIcon) is MenuFlyout flyout)
-                {
-                    return flyout;
-                }
+                return match;
             }
-        }
-        catch (Exception ex)
-        {
-            Log($"[Tray] Failed to access SecondWindow flyout: {ex.Message}");
         }
 
         return null;
+    }
+
+    private static bool ConfigureOwningPopup(MenuFlyoutPresenter presenter)
+    {
+        XamlRoot? xamlRoot = presenter.XamlRoot;
+        if (xamlRoot is null)
+        {
+            return false;
+        }
+
+        foreach (Popup popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot))
+        {
+            if (popup.Child is not null && ContainsVisual(popup.Child, presenter))
+            {
+                popup.ShouldConstrainToRootBounds = false;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsVisual(DependencyObject root, DependencyObject target)
+    {
+        if (ReferenceEquals(root, target))
+        {
+            return true;
+        }
+
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < childCount; index++)
+        {
+            if (ContainsVisual(VisualTreeHelper.GetChild(root, index), target))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ShowTrayContextMenuFromTray()
@@ -329,7 +363,6 @@ public partial class App
         if (_trayContextMenu is not null)
         {
             PrepareTrayContextMenu(_trayContextMenu);
-            SynchronizeSecondWindowTrayFlyout(_trayContextMenu);
         }
 
         var point = new DrawingPoint(cursor.X, cursor.Y);
@@ -385,32 +418,9 @@ public partial class App
             return false;
         }
 
-        const System.Reflection.BindingFlags flags =
-            System.Reflection.BindingFlags.Instance |
-            System.Reflection.BindingFlags.Public |
-            System.Reflection.BindingFlags.NonPublic;
-
-        var trayIconProperty = _trayIcon.GetType().GetProperty("TrayIcon", flags);
-        object? trayIcon = trayIconProperty?.GetValue(_trayIcon);
-        if (trayIcon is null)
-        {
-            return false;
-        }
-
-        var trayIconType = trayIcon.GetType();
-        object? windowHandleValue = trayIconType.GetProperty("WindowHandle", flags)?.GetValue(trayIcon);
-        object? idValue = trayIconType.GetProperty("Id", flags)?.GetValue(trayIcon);
-
-        windowHandle = windowHandleValue switch
-        {
-            IntPtr ptr => ptr,
-            _ => IntPtr.Zero
-        };
-
-        if (idValue is Guid guid)
-        {
-            id = guid;
-        }
+        H.NotifyIcon.Core.TrayIcon trayIcon = _trayIcon.TrayIcon;
+        windowHandle = trayIcon.WindowHandle;
+        id = trayIcon.Id;
 
         return windowHandle != IntPtr.Zero && id != Guid.Empty;
     }
@@ -725,7 +735,8 @@ public partial class App
             return;
         }
 
-        string? folderPath = FolderPickerService.PickFolder(IntPtr.Zero);
+        string? folderPath = await FolderPickerService.PickFolderAsync(
+            GetFolderPickerOwnerWindowHandle());
         if (!string.IsNullOrWhiteSpace(folderPath))
         {
             try
@@ -759,6 +770,22 @@ public partial class App
                 }
             }
         }
+    }
+
+    internal IntPtr GetFolderPickerOwnerWindowHandle()
+    {
+        if (_trayWindow is null)
+        {
+            throw new InvalidOperationException("The tray owner window has not been created.");
+        }
+
+        IntPtr ownerHwnd = WindowNative.GetWindowHandle(_trayWindow);
+        if (ownerHwnd == IntPtr.Zero || !Win32Helper.IsWindow(ownerHwnd))
+        {
+            throw new InvalidOperationException("The tray owner window handle is unavailable.");
+        }
+
+        return ownerHwnd;
     }
 
     private void OpenSettingsFromTray()

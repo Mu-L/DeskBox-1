@@ -37,7 +37,7 @@ public sealed partial class OnboardingWindow
 
     private async Task<bool> ChangeStoragePathAsync()
     {
-        string? folderPath = FolderPickerService.PickFolder(_hWnd);
+        string? folderPath = await FolderPickerService.PickFolderAsync(_hWnd);
         if (string.IsNullOrWhiteSpace(folderPath))
         {
             return false;

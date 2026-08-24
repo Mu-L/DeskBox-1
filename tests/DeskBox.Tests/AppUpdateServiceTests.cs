@@ -135,14 +135,16 @@ public sealed class AppUpdateServiceTests : IDisposable
             Content = new StringContent(
                 """
                 {
-                  "schemaVersion": 1,
+                  "ScHeMaVeRsIoN": "1",
                   "version": "1.2.2",
                   "downloadUrl": "https://github.com/Tianyu199509/DeskBox/releases/download/v1.2.2/DeskBox_Setup_1.2.2_x64.exe",
                   "manualDownloadUrl": "https://pan.quark.cn/s/version-specific",
                   "sha256": "abc",
+                  "SiZe": "1234",
                   "summary": {
                     "zh-CN": "修复多屏定位"
-                  }
+                  },
+                  "futureManifestField": { "ignored": true }
                 }
                 """,
                 Encoding.UTF8,
@@ -155,7 +157,9 @@ public sealed class AppUpdateServiceTests : IDisposable
 
         Assert.Equal(AppUpdateCheckStatus.UpdateAvailable, result.Status);
         Assert.NotNull(result.Manifest);
+        Assert.Equal(1, result.Manifest.SchemaVersion);
         Assert.Equal("1.2.2", result.Manifest.Version);
+        Assert.Equal(1234, result.Manifest.Size);
         Assert.Equal("https://pan.quark.cn/s/version-specific", result.Manifest.ManualDownloadUrl);
         Assert.Same(result, service.LastCheckResult);
     }
@@ -373,8 +377,10 @@ public sealed class AppUpdateServiceTests : IDisposable
 
         string sourceExe = Path.Combine(appDirectory, "DeskBox.Updater.exe");
         string sourceRuntimeConfig = Path.Combine(appDirectory, "DeskBox.Updater.runtimeconfig.json");
+        string nativeModule = Path.Combine(appDirectory, "deskbox_native.dll");
         await File.WriteAllTextAsync(sourceExe, "exe");
         await File.WriteAllTextAsync(sourceRuntimeConfig, "{}");
+        await File.WriteAllTextAsync(nativeModule, "native");
 
         string detachedExe = AppUpdateService.PrepareDetachedUpdaterHelper(appDirectory, updateRoot);
 
@@ -383,6 +389,7 @@ public sealed class AppUpdateServiceTests : IDisposable
         Assert.StartsWith(Path.Combine(updateRoot, "helper"), detachedExe, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("exe", await File.ReadAllTextAsync(detachedExe));
         Assert.True(File.Exists(Path.Combine(Path.GetDirectoryName(detachedExe)!, "DeskBox.Updater.runtimeconfig.json")));
+        Assert.False(File.Exists(Path.Combine(Path.GetDirectoryName(detachedExe)!, "deskbox_native.dll")));
     }
 
     [Fact]

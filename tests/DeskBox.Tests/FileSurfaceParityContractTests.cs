@@ -122,8 +122,15 @@ public sealed class FileSurfaceParityContractTests
 
         XElement card = document.Descendants().Single(element =>
             (string?)element.Attribute(x + "Name") == "ImportProgressCard");
+        Assert.Equal(
+            "Root",
+            (string?)card.Parent?.Attribute(x + "Name"));
         Assert.Equal("Bottom", (string?)card.Attribute("VerticalAlignment"));
         Assert.Equal("Collapsed", (string?)card.Attribute("Visibility"));
+        Assert.Equal("1000", (string?)card.Attribute("Canvas.ZIndex"));
+        Assert.Equal(
+            "{ThemeResource SystemControlAcrylicElementBrush}",
+            (string?)card.Attribute("Background"));
         Assert.Contains(card.Descendants(), element =>
             (string?)element.Attribute(x + "Name") == "ImportProgressBar");
         Assert.Contains(card.Descendants(), element =>
@@ -208,24 +215,38 @@ public sealed class FileSurfaceParityContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
-        string methodMarker = "private async Task " + methodName;
-        int methodStart = source.IndexOf(methodMarker, StringComparison.Ordinal);
-        Assert.True(methodStart >= 0);
-        int nextMethod = source.IndexOf(
-            "\n    private ",
-            methodStart + methodMarker.Length,
-            StringComparison.Ordinal);
-        string method = source[methodStart..(nextMethod < 0
-            ? source.Length
-            : nextMethod)];
+        string entry = ReadPrivateMethod(
+            source,
+            "private async Task " + methodName);
+        string progressOwner;
+        if (methodName == "PasteFromClipboardAsync")
+        {
+            Assert.Contains(
+                "PasteDataPackageAsync(",
+                entry,
+                StringComparison.Ordinal);
+            progressOwner = ReadPrivateMethod(
+                source,
+                "private async Task PasteDataPackageAsync");
+        }
+        else
+        {
+            Assert.Contains(
+                "PickAndImportFilesAsync(suggestedFolder: null)",
+                entry,
+                StringComparison.Ordinal);
+            progressOwner = ReadPrivateMethod(
+                source,
+                "private async Task<IReadOnlyList<string>> PickAndImportFilesAsync");
+        }
 
         Assert.Contains(
             "ImportPathsWithTrackedProgressAsync(",
-            method,
+            progressOwner,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "ViewModel.ImportPathsAsync(",
-            method,
+            progressOwner,
             StringComparison.Ordinal);
     }
 
@@ -627,6 +648,80 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
+    public void LargeSurfaceDrop_ReleasesShellDragBeforeLongTransfer()
+    {
+        string root = FindRepositoryRoot();
+        string surface = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+
+        int dropStart = surface.IndexOf(
+            "private async void Root_Drop(",
+            StringComparison.Ordinal);
+        int dropEnd = surface.IndexOf(
+            "private void SetImportBusy(",
+            dropStart,
+            StringComparison.Ordinal);
+        Assert.True(dropStart >= 0);
+        Assert.True(dropEnd > dropStart);
+        string drop = surface[dropStart..dropEnd];
+        int materialize = drop.IndexOf(
+            "GetSurfaceDropFilesAsync(e.DataView)",
+            StringComparison.Ordinal);
+        int release = drop.IndexOf(
+            "deferral.Complete();",
+            materialize,
+            StringComparison.Ordinal);
+        int transfer = drop.IndexOf(
+            "ImportDroppedFilesAsync(",
+            materialize,
+            StringComparison.Ordinal);
+
+        Assert.True(materialize >= 0);
+        Assert.True(release > materialize);
+        Assert.True(transfer > release);
+        Assert.Contains("deferral = null;", drop, StringComparison.Ordinal);
+        Assert.Contains("deferral?.Complete();", drop, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FolderDropHighlight_ObservesHandledChildDragBoundaries()
+    {
+        string root = FindRepositoryRoot();
+        string surface = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+
+        int initialize = surface.IndexOf(
+            "InitializeComponent();",
+            StringComparison.Ordinal);
+        int constructorEnd = surface.IndexOf(
+            "Root.DataContext = ViewModel;",
+            initialize,
+            StringComparison.Ordinal);
+        Assert.True(initialize >= 0);
+        Assert.True(constructorEnd > initialize);
+        string constructorWiring = surface[initialize..constructorEnd];
+        Assert.Contains("UIElement.DragOverEvent", constructorWiring, StringComparison.Ordinal);
+        Assert.Contains("Root_ObserveHandledDragOver", constructorWiring, StringComparison.Ordinal);
+        Assert.Contains("UIElement.DragLeaveEvent", constructorWiring, StringComparison.Ordinal);
+        Assert.Contains("Root_ObserveHandledDragLeave", constructorWiring, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "private void ClearStaleChildDropTargets(DragEventArgs e)",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IsPointerInsideDropElement(folderTarget, e)",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IsPointerInsideDropElement(stackTarget, e)",
+            surface,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FileDropSession_ClearsChildCachesAndDisablesWindowHighlight()
     {
         string root = FindRepositoryRoot();
@@ -654,6 +749,19 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("ContentDropHighlight", shell, StringComparison.Ordinal);
         Assert.DoesNotContain("ContentDropHighlight", shellXaml, StringComparison.Ordinal);
+    }
+
+    private static string ReadPrivateMethod(string source, string marker)
+    {
+        int methodStart = source.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(methodStart >= 0, $"Missing method marker: {marker}");
+        int nextMethod = source.IndexOf(
+            "\n    private ",
+            methodStart + marker.Length,
+            StringComparison.Ordinal);
+        return source[methodStart..(nextMethod < 0
+            ? source.Length
+            : nextMethod)];
     }
 
     private static string FindRepositoryRoot()

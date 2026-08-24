@@ -165,76 +165,76 @@ private string[]? _cachedWeatherSkinDisplayNames;
 private string[]? _cachedWeatherDataSourceDisplayNames;
 private string[]? _cachedWeatherRefreshIntervalDisplayNames;
 
-    [ObservableProperty] private bool _autoStart;
-    [ObservableProperty] private bool _autoCheckForUpdates = true;
-    [ObservableProperty] private bool _doubleClickToOpen;
-    [ObservableProperty] private double _defaultWidth;
-    [ObservableProperty] private double _defaultHeight;
-    [ObservableProperty] private bool _hideShortcutArrowOverlay;
-    [ObservableProperty] private bool _showImageFilesAsIcons;
-    [ObservableProperty] private bool _showHoverButtons = true;
-    [ObservableProperty] private bool _resizeSnapEnabled = true;
-    [ObservableProperty] private bool _keepWidgetsVisibleOnShowDesktop = true;
-    [ObservableProperty] private bool _showHoverActionLockPosition;
-    [ObservableProperty] private bool _showHoverActionLockSize;
-    [ObservableProperty] private bool _showHoverActionAdd = true;
-    [ObservableProperty] private bool _showHoverActionMore = true;
-    [ObservableProperty] private bool _showHoverActionDelete = true;
-    [ObservableProperty] private bool _showListItemDetails;
-    [ObservableProperty] private bool _showFileItemPathTooltips = true;
-    [ObservableProperty] private double _widgetOpacity = SettingsService.DefaultWidgetOpacity;
-    [ObservableProperty] private double _widgetMaterialIntensity = SettingsService.DefaultWidgetMaterialIntensity;
-    [ObservableProperty] private double _iconSize = SettingsService.DefaultIconSize;
-    [ObservableProperty] private double _textSize = SettingsService.DefaultTextSize;
-    [ObservableProperty] private double _layoutDensityScale = SettingsService.DefaultLayoutDensityScale;
-    [ObservableProperty] private double _horizontalSpacingScale = SettingsService.DefaultHorizontalSpacingScale;
-    [ObservableProperty] private double _verticalSpacingScale = SettingsService.DefaultVerticalSpacingScale;
-    [ObservableProperty] private double _fileNameWidthScale = SettingsService.DefaultFileNameWidthScale;
+    [ObservableProperty] public partial bool AutoStart { get; set; }
+    [ObservableProperty] public partial bool AutoCheckForUpdates { get; set; } = true;
+    [ObservableProperty] public partial bool DoubleClickToOpen { get; set; }
+    [ObservableProperty] public partial double DefaultWidth { get; set; }
+    [ObservableProperty] public partial double DefaultHeight { get; set; }
+    [ObservableProperty] public partial bool HideShortcutArrowOverlay { get; set; }
+    [ObservableProperty] public partial bool ShowImageFilesAsIcons { get; set; }
+    [ObservableProperty] public partial bool ShowHoverButtons { get; set; } = true;
+    [ObservableProperty] public partial bool ResizeSnapEnabled { get; set; } = true;
+    [ObservableProperty] public partial bool KeepWidgetsVisibleOnShowDesktop { get; set; } = true;
+    [ObservableProperty] public partial bool ShowHoverActionLockPosition { get; set; }
+    [ObservableProperty] public partial bool ShowHoverActionLockSize { get; set; }
+    [ObservableProperty] public partial bool ShowHoverActionAdd { get; set; } = true;
+    [ObservableProperty] public partial bool ShowHoverActionMore { get; set; } = true;
+    [ObservableProperty] public partial bool ShowHoverActionDelete { get; set; } = true;
+    [ObservableProperty] public partial bool ShowListItemDetails { get; set; }
+    [ObservableProperty] public partial bool ShowFileItemPathTooltips { get; set; } = true;
+    [ObservableProperty] public partial double WidgetOpacity { get; set; } = SettingsService.DefaultWidgetOpacity;
+    [ObservableProperty] public partial double WidgetMaterialIntensity { get; set; } = SettingsService.DefaultWidgetMaterialIntensity;
+    [ObservableProperty] public partial double IconSize { get; set; } = SettingsService.DefaultIconSize;
+    [ObservableProperty] public partial double TextSize { get; set; } = SettingsService.DefaultTextSize;
+    [ObservableProperty] public partial double LayoutDensityScale { get; set; } = SettingsService.DefaultLayoutDensityScale;
+    [ObservableProperty] public partial double HorizontalSpacingScale { get; set; } = SettingsService.DefaultHorizontalSpacingScale;
+    [ObservableProperty] public partial double VerticalSpacingScale { get; set; } = SettingsService.DefaultVerticalSpacingScale;
+    [ObservableProperty] public partial double FileNameWidthScale { get; set; } = SettingsService.DefaultFileNameWidthScale;
     private int _fileNameLineCount = SettingsService.DefaultFileNameLineCount;
-    [ObservableProperty] private bool _showFileExtensions;
-    [ObservableProperty] private bool _hideShortcutExtensionWhenShowingFileExtensions = true;
-    [ObservableProperty] private bool _quickCaptureEnabled;
-    [ObservableProperty] private bool _quickCaptureShowTabBar = true;
-    [ObservableProperty] private bool _quickCaptureShowRecordsTab = true;
-    [ObservableProperty] private bool _quickCaptureShowPinnedTab = true;
-    [ObservableProperty] private bool _quickCaptureShowRecentTab = true;
-    [ObservableProperty] private bool _todoEnabled;
-    [ObservableProperty] private bool _todoShowTabBar = true;
-    [ObservableProperty] private bool _todoShowAllTab = true;
-    [ObservableProperty] private bool _todoShowActiveTab;
-    [ObservableProperty] private bool _todoShowTodayTab = true;
-    [ObservableProperty] private bool _todoShowThisWeekTab;
-    [ObservableProperty] private bool _todoShowThisMonthTab;
-    [ObservableProperty] private bool _todoShowImportantTab = true;
-    [ObservableProperty] private bool _todoShowCompletedTab = true;
-    [ObservableProperty] private bool _todoShowCompletedTasks = true;
-    [ObservableProperty] private bool _todoShowFooterStats;
-    [ObservableProperty] private bool _todoShowClearCompletedButton = true;
-    [ObservableProperty] private bool _todoReminderEnabled = true;
-    [ObservableProperty] private bool _todoUseWideDetailPane = true;
-    [ObservableProperty] private bool _todoAutoSelectFirstInWideLayout = true;
-    [ObservableProperty] private bool _musicUseArtworkBackdrop = true;
-    [ObservableProperty] private bool _musicEnableCoverHoverMotion = true;
+    [ObservableProperty] public partial bool ShowFileExtensions { get; set; }
+    [ObservableProperty] public partial bool HideShortcutExtensionWhenShowingFileExtensions { get; set; } = true;
+    [ObservableProperty] public partial bool QuickCaptureEnabled { get; set; }
+    [ObservableProperty] public partial bool QuickCaptureShowTabBar { get; set; } = true;
+    [ObservableProperty] public partial bool QuickCaptureShowRecordsTab { get; set; } = true;
+    [ObservableProperty] public partial bool QuickCaptureShowPinnedTab { get; set; } = true;
+    [ObservableProperty] public partial bool QuickCaptureShowRecentTab { get; set; } = true;
+    [ObservableProperty] public partial bool TodoEnabled { get; set; }
+    [ObservableProperty] public partial bool TodoShowTabBar { get; set; } = true;
+    [ObservableProperty] public partial bool TodoShowAllTab { get; set; } = true;
+    [ObservableProperty] public partial bool TodoShowActiveTab { get; set; }
+    [ObservableProperty] public partial bool TodoShowTodayTab { get; set; } = true;
+    [ObservableProperty] public partial bool TodoShowThisWeekTab { get; set; }
+    [ObservableProperty] public partial bool TodoShowThisMonthTab { get; set; }
+    [ObservableProperty] public partial bool TodoShowImportantTab { get; set; } = true;
+    [ObservableProperty] public partial bool TodoShowCompletedTab { get; set; } = true;
+    [ObservableProperty] public partial bool TodoShowCompletedTasks { get; set; } = true;
+    [ObservableProperty] public partial bool TodoShowFooterStats { get; set; }
+    [ObservableProperty] public partial bool TodoShowClearCompletedButton { get; set; } = true;
+    [ObservableProperty] public partial bool TodoReminderEnabled { get; set; } = true;
+    [ObservableProperty] public partial bool TodoUseWideDetailPane { get; set; } = true;
+    [ObservableProperty] public partial bool TodoAutoSelectFirstInWideLayout { get; set; } = true;
+    [ObservableProperty] public partial bool MusicUseArtworkBackdrop { get; set; } = true;
+    [ObservableProperty] public partial bool MusicEnableCoverHoverMotion { get; set; } = true;
 
-[ObservableProperty] private bool _weatherAutoLocation = true;
-[ObservableProperty] private string _weatherCityName = string.Empty;
-[ObservableProperty] private bool _weatherShowForecast = true;
-[ObservableProperty] private bool _weatherShowSunrise = true;
-[ObservableProperty] private bool _weatherShowUvIndex = true;
-[ObservableProperty] private bool _weatherShowPrecipitation = true;
-[ObservableProperty] private bool _weatherShowHumidity = true;
-[ObservableProperty] private bool _weatherShowWind = true;
-[ObservableProperty] private bool _weatherShowPressure;
+    [ObservableProperty] public partial bool WeatherAutoLocation { get; set; } = true;
+    [ObservableProperty] public partial string WeatherCityName { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool WeatherShowForecast { get; set; } = true;
+    [ObservableProperty] public partial bool WeatherShowSunrise { get; set; } = true;
+    [ObservableProperty] public partial bool WeatherShowUvIndex { get; set; } = true;
+    [ObservableProperty] public partial bool WeatherShowPrecipitation { get; set; } = true;
+    [ObservableProperty] public partial bool WeatherShowHumidity { get; set; } = true;
+    [ObservableProperty] public partial bool WeatherShowWind { get; set; } = true;
+    [ObservableProperty] public partial bool WeatherShowPressure { get; set; }
 
-    [ObservableProperty] private bool _quickCaptureClipboardEnabled;
-    [ObservableProperty] private bool _quickCaptureImageClipboardEnabled;
-    [ObservableProperty] private int _quickCaptureRecentLimit = QuickCaptureService.DefaultRecentLimit;
-    [ObservableProperty] private bool _quickCaptureShowCreatedTime = true;
-    [ObservableProperty] private bool _isCheckingForUpdates;
-    [ObservableProperty] private bool _isDownloadingUpdate;
-    [ObservableProperty] private string _updateStatusText = string.Empty;
-    [ObservableProperty] private string _updateDetailText = string.Empty;
-    [ObservableProperty] private double _updateProgressValue;
+    [ObservableProperty] public partial bool QuickCaptureClipboardEnabled { get; set; }
+    [ObservableProperty] public partial bool QuickCaptureImageClipboardEnabled { get; set; }
+    [ObservableProperty] public partial int QuickCaptureRecentLimit { get; set; } = QuickCaptureService.DefaultRecentLimit;
+    [ObservableProperty] public partial bool QuickCaptureShowCreatedTime { get; set; } = true;
+    [ObservableProperty] public partial bool IsCheckingForUpdates { get; set; }
+    [ObservableProperty] public partial bool IsDownloadingUpdate { get; set; }
+    [ObservableProperty] public partial string UpdateStatusText { get; set; } = string.Empty;
+    [ObservableProperty] public partial string UpdateDetailText { get; set; } = string.Empty;
+    [ObservableProperty] public partial double UpdateProgressValue { get; set; }
 
     public SettingsViewModel(
         SettingsService settingsService,
@@ -247,11 +247,12 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _localizationService = localizationService ?? new LocalizationService(settingsService);
         _widgetContentFactory = new WidgetContentFactory(_localizationService);
         _appUpdateService = appUpdateService ?? new AppUpdateService();
+        _isRestoringDefaults = true;
         _quickCaptureImageCacheText = _localizationService.T("Settings.QuickCapture.ImageCacheLoading");
         _quickCaptureClipboardDiagnosticsText = _localizationService.T("Settings.QuickCapture.ClipboardDiagnosticsUnavailable");
         _dragDropPermissionRepairStatusText = string.Empty;
-        _updateStatusText = _localizationService.T("Settings.Update.Status.Ready");
-        _updateDetailText = GetReadyUpdateDetailText();
+        UpdateStatusText = _localizationService.T("Settings.Update.Status.Ready");
+        UpdateDetailText = GetReadyUpdateDetailText();
 
         var settings = settingsService.Settings;
         _selectedTheme = settings.Theme is ThemeLight or ThemeDark ? settings.Theme : ThemeSystem;
@@ -261,26 +262,26 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _selectedLanguage = LocalizationService.NormalizeLanguageSetting(settings.Language);
 
         _useSystemAccentColor = !string.Equals(settings.AccentColorMode, ThemeService.AccentModeCustom, StringComparison.OrdinalIgnoreCase);
-        _autoStart = StartupService.IsEnabled();
-        _autoCheckForUpdates = settings.AutoCheckForUpdates;
-        _doubleClickToOpen = settings.DoubleClickToOpen;
+        AutoStart = StartupService.IsEnabled();
+        AutoCheckForUpdates = settings.AutoCheckForUpdates;
+        DoubleClickToOpen = settings.DoubleClickToOpen;
         _selectedFileWidgetFolderOpenBehavior =
             FileWidgetFolderOpenBehaviorNames.NormalizeGlobal(
                 settings.FileWidgetFolderOpenBehavior);
-        _defaultWidth = settings.DefaultWidgetWidth;
-        _defaultHeight = settings.DefaultWidgetHeight;
-        _hideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
-        _showImageFilesAsIcons = settings.ShowImageFilesAsIcons;
-        _showHoverButtons = settings.ShowHoverButtons;
-        _resizeSnapEnabled = settings.ResizeSnapEnabled;
-        _keepWidgetsVisibleOnShowDesktop = settings.KeepWidgetsVisibleOnShowDesktop;
+        DefaultWidth = settings.DefaultWidgetWidth;
+        DefaultHeight = settings.DefaultWidgetHeight;
+        HideShortcutArrowOverlay = settings.HideShortcutArrowOverlay;
+        ShowImageFilesAsIcons = settings.ShowImageFilesAsIcons;
+        ShowHoverButtons = settings.ShowHoverButtons;
+        ResizeSnapEnabled = settings.ResizeSnapEnabled;
+        KeepWidgetsVisibleOnShowDesktop = settings.KeepWidgetsVisibleOnShowDesktop;
         ApplyHoverButtonActionSelection(settings.WidgetHoverButtonActions);
-        _showListItemDetails = settings.ShowListItemDetails;
-        _showFileItemPathTooltips = settings.ShowFileItemPathTooltips;
+        ShowListItemDetails = settings.ShowListItemDetails;
+        ShowFileItemPathTooltips = settings.ShowFileItemPathTooltips;
         InitializeFileStackSettings(settings);
         InitializeContentEditorSettings(settings);
-        _widgetOpacity = settings.WidgetOpacity;
-        _widgetMaterialIntensity = settings.WidgetMaterialIntensity;
+        WidgetOpacity = settings.WidgetOpacity;
+        WidgetMaterialIntensity = settings.WidgetMaterialIntensity;
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
             : CornerRound;
@@ -328,54 +329,54 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _selectedInteractiveWidgetChromeMode = NormalizeWidgetChromeModeSetting(settings.InteractiveWidgetChromeMode, WidgetChromeMode.Standard);
         _selectedWidgetTitleIconMode = NormalizeWidgetTitleIconModeSetting(settings.WidgetTitleIconMode);
         _selectedWidgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(settings.WidgetLayerMode);
-        _iconSize = settings.IconSize;
-        _textSize = settings.TextSize;
-        _layoutDensityScale = settings.LayoutDensityScale;
-        _horizontalSpacingScale = settings.HorizontalSpacingScale;
-        _verticalSpacingScale = settings.VerticalSpacingScale;
-        _fileNameWidthScale = settings.FileNameWidthScale;
+        IconSize = settings.IconSize;
+        TextSize = settings.TextSize;
+        LayoutDensityScale = settings.LayoutDensityScale;
+        HorizontalSpacingScale = settings.HorizontalSpacingScale;
+        VerticalSpacingScale = settings.VerticalSpacingScale;
+        FileNameWidthScale = settings.FileNameWidthScale;
         _fileNameLineCount = SettingsService.NormalizeFileNameLineCount(settings.FileNameLineCount);
         _selectedLayoutDensity = SettingsService.ResolveLayoutDensityPreset(settings);
-        _showFileExtensions = settings.ShowFileExtensions;
-        _hideShortcutExtensionWhenShowingFileExtensions = settings.HideShortcutExtensionWhenShowingFileExtensions;
-        _quickCaptureEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.QuickCapture);
-        _quickCaptureClipboardEnabled = settings.QuickCaptureClipboardEnabled;
-        _quickCaptureImageClipboardEnabled = settings.QuickCaptureImageClipboardEnabled;
-        _quickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
-        _quickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
+        ShowFileExtensions = settings.ShowFileExtensions;
+        HideShortcutExtensionWhenShowingFileExtensions = settings.HideShortcutExtensionWhenShowingFileExtensions;
+        QuickCaptureEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.QuickCapture);
+        QuickCaptureClipboardEnabled = settings.QuickCaptureClipboardEnabled;
+        QuickCaptureImageClipboardEnabled = settings.QuickCaptureImageClipboardEnabled;
+        QuickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
+        QuickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
         _selectedAttachmentStorageMode = SettingsService.NormalizeAttachmentStorageMode(settings.AttachmentStorageMode);
         _selectedManagedDropAction = settings.ManagedDropAction == SettingsService.ManagedDropActionMove
             ? SettingsService.ManagedDropActionMove
             : SettingsService.ManagedDropActionCopy;
         _selectedQuickCaptureDefaultView = NormalizeQuickCaptureDefaultView(settings.QuickCaptureDefaultView);
         _selectedQuickCaptureTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.QuickCaptureTabStyle);
-        _quickCaptureShowTabBar = settings.QuickCaptureShowTabBar;
-        _quickCaptureShowRecordsTab = settings.QuickCaptureShowRecordsTab;
-        _quickCaptureShowPinnedTab = settings.QuickCaptureShowPinnedTab;
-        _quickCaptureShowRecentTab = settings.QuickCaptureShowRecentTab;
-        _todoEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo);
-        _todoShowTabBar = settings.TodoShowTabBar;
-        _todoShowAllTab = settings.TodoShowAllTab;
-        _todoShowActiveTab = settings.TodoShowActiveTab;
-        _todoShowTodayTab = settings.TodoShowTodayTab;
-        _todoShowThisWeekTab = settings.TodoShowThisWeekTab;
-        _todoShowThisMonthTab = settings.TodoShowThisMonthTab;
-        _todoShowImportantTab = settings.TodoShowImportantTab;
-        _todoShowCompletedTab = settings.TodoShowCompletedTab;
-        _todoShowCompletedTasks = settings.TodoShowCompletedTasks;
-        _todoShowFooterStats = settings.TodoShowFooterStats;
-        _todoShowClearCompletedButton = settings.TodoShowClearCompletedButton;
+        QuickCaptureShowTabBar = settings.QuickCaptureShowTabBar;
+        QuickCaptureShowRecordsTab = settings.QuickCaptureShowRecordsTab;
+        QuickCaptureShowPinnedTab = settings.QuickCaptureShowPinnedTab;
+        QuickCaptureShowRecentTab = settings.QuickCaptureShowRecentTab;
+        TodoEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo);
+        TodoShowTabBar = settings.TodoShowTabBar;
+        TodoShowAllTab = settings.TodoShowAllTab;
+        TodoShowActiveTab = settings.TodoShowActiveTab;
+        TodoShowTodayTab = settings.TodoShowTodayTab;
+        TodoShowThisWeekTab = settings.TodoShowThisWeekTab;
+        TodoShowThisMonthTab = settings.TodoShowThisMonthTab;
+        TodoShowImportantTab = settings.TodoShowImportantTab;
+        TodoShowCompletedTab = settings.TodoShowCompletedTab;
+        TodoShowCompletedTasks = settings.TodoShowCompletedTasks;
+        TodoShowFooterStats = settings.TodoShowFooterStats;
+        TodoShowClearCompletedButton = settings.TodoShowClearCompletedButton;
         _selectedTodoLayoutMode = SettingsService.NormalizeTodoLayoutMode(
             settings.TodoLayoutMode,
             settings.TodoUseWideDetailPane);
-        _todoUseWideDetailPane = _selectedTodoLayoutMode != SettingsService.TodoLayoutModeSinglePane;
-        _todoAutoSelectFirstInWideLayout = settings.TodoAutoSelectFirstInWideLayout;
-        _todoReminderEnabled = settings.TodoReminderEnabled;
-        _musicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
-        _musicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
+        TodoUseWideDetailPane = _selectedTodoLayoutMode != SettingsService.TodoLayoutModeSinglePane;
+        TodoAutoSelectFirstInWideLayout = settings.TodoAutoSelectFirstInWideLayout;
+        TodoReminderEnabled = settings.TodoReminderEnabled;
+        MusicUseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
+        MusicEnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
         _selectedMusicDisplayMode = SettingsService.NormalizeMusicDisplayMode(settings.MusicDisplayMode);
-_weatherAutoLocation = settings.WeatherAutoLocation;
-_weatherCityName = settings.WeatherCityName;
+WeatherAutoLocation = settings.WeatherAutoLocation;
+WeatherCityName = settings.WeatherCityName;
 _weatherCitySearchText = settings.WeatherCityName;
 _selectedWeatherTemperatureUnit = settings.WeatherTemperatureUnit == SettingsService.WeatherTemperatureUnitFahrenheit
     ? SettingsService.WeatherTemperatureUnitFahrenheit
@@ -389,17 +390,18 @@ _selectedWeatherDefaultView = settings.WeatherDefaultView == SettingsService.Wea
 _selectedWeatherSkin = settings.WeatherSkin == SettingsService.WeatherSkinRich
     ? SettingsService.WeatherSkinRich
     : SettingsService.WeatherSkinStandard;
-_weatherShowForecast = settings.WeatherShowForecast;
-_weatherShowSunrise = settings.WeatherShowSunrise;
-_weatherShowUvIndex = settings.WeatherShowUvIndex;
-_weatherShowPrecipitation = settings.WeatherShowPrecipitation;
-_weatherShowHumidity = settings.WeatherShowHumidity;
-_weatherShowWind = settings.WeatherShowWind;
-_weatherShowPressure = settings.WeatherShowPressure;
+WeatherShowForecast = settings.WeatherShowForecast;
+WeatherShowSunrise = settings.WeatherShowSunrise;
+WeatherShowUvIndex = settings.WeatherShowUvIndex;
+WeatherShowPrecipitation = settings.WeatherShowPrecipitation;
+WeatherShowHumidity = settings.WeatherShowHumidity;
+WeatherShowWind = settings.WeatherShowWind;
+WeatherShowPressure = settings.WeatherShowPressure;
 _selectedWeatherRefreshInterval = Math.Clamp(
     settings.WeatherRefreshIntervalMinutes,
     SettingsService.WeatherRefreshMinMinutes,
     SettingsService.WeatherRefreshMaxMinutes);
+        _isRestoringDefaults = false;
         _selectedTodoNewTaskPosition = NormalizeTodoNewTaskPosition(settings.TodoNewTaskPosition);
         _selectedTodoDefaultFilter = NormalizeTodoDefaultFilter(settings.TodoDefaultFilter);
         _selectedTodoTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.TodoTabStyle);

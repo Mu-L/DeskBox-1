@@ -16,9 +16,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
-using Windows.Storage.Pickers;
 using Windows.UI.Core;
-using WinRT.Interop;
 using VirtualKey = Windows.System.VirtualKey;
 
 namespace DeskBox.Controls.WidgetContents;
@@ -147,6 +145,14 @@ public sealed partial class FileSurfaceContent :
             dispatcherQueue);
 
         InitializeComponent();
+        Root.AddHandler(
+            UIElement.DragOverEvent,
+            new DragEventHandler(Root_ObserveHandledDragOver),
+            handledEventsToo: true);
+        Root.AddHandler(
+            UIElement.DragLeaveEvent,
+            new DragEventHandler(Root_ObserveHandledDragLeave),
+            handledEventsToo: true);
         ItemsGrid.AddHandler(
             UIElement.PreviewKeyDownEvent,
             new KeyEventHandler(ItemsView_PreviewKeyDown),
@@ -1090,7 +1096,8 @@ public sealed partial class FileSurfaceContent :
         {
             int moved = await ViewModel.MoveItemsBackToDesktopAsync(
                 draggedItems,
-                useShellProgress: true);
+                useShellProgress: true,
+                ownerWindowHandle: _hostWindowHandle);
             _cutClipboardPaths = [];
             ApplyCutState();
             ShowFeedback(new WidgetFeedbackRequest(
@@ -1587,6 +1594,43 @@ public sealed partial class FileSurfaceContent :
             "file-delete"));
     }
 
+    private void Root_ObserveHandledDragOver(object sender, DragEventArgs e)
+    {
+        // Folder and stack targets intentionally handle DragOver before it
+        // reaches Root_DragOver. Observe those handled events as well so an
+        // older target cannot remain highlighted after a fast child crossing.
+        ClearStaleChildDropTargets(e);
+    }
+
+    private void Root_ObserveHandledDragLeave(object sender, DragEventArgs e)
+    {
+        // A child target also handles DragLeave. Without a handled-events-too
+        // observer, a direct child-to-outside transition can bypass the root
+        // cleanup path and strand its drop-target visual.
+        if (!IsPointerInsideRoot(e))
+        {
+            ClearDragSessionVisualState();
+            return;
+        }
+
+        ClearStaleChildDropTargets(e);
+    }
+
+    private void ClearStaleChildDropTargets(DragEventArgs e)
+    {
+        if (_folderDropTarget is { } folderTarget &&
+            !IsPointerInsideDropElement(folderTarget, e))
+        {
+            ClearFolderDropTarget();
+        }
+
+        if (_stackMemberDropTarget is { } stackTarget &&
+            !IsPointerInsideDropElement(stackTarget, e))
+        {
+            ClearStackMemberDropTarget();
+        }
+    }
+
     private void Root_DragOver(object sender, DragEventArgs e)
     {
         e.Handled = true;
@@ -1799,6 +1843,14 @@ public sealed partial class FileSurfaceContent :
                 string? sourceWidgetId = TryGetString(
                     e.DataView.Properties,
                     "DeskBoxSourceWidgetId");
+
+                // The data package has been fully materialized and every value
+                // needed below is now local. Release the shell drag before the
+                // potentially long filesystem transfer so Explorer's drag image
+                // does not remain layered over DeskBox's progress UI.
+                e.AcceptedOperation = accepted;
+                deferral.Complete();
+                deferral = null;
                 IReadOnlyList<string> completedSourcePaths =
                     await ImportDroppedFilesAsync(
                         droppedFiles,
@@ -1854,7 +1906,7 @@ public sealed partial class FileSurfaceContent :
             }
             ApplyDropVisual(FileDropVisualState.None);
             ResetDragPayloadCache();
-            deferral.Complete();
+            deferral?.Complete();
         }
     }
 
@@ -1996,6 +2048,93 @@ public sealed partial class FileSurfaceContent :
         ApplyDropVisual(FileDropVisualState.None);
         PersistSurfaceReorder();
         ResetDragPayloadCache();
+    }
+
+    internal bool HasActiveChildDropTargetVisual =>
+        _folderDropTarget is not null || _stackMemberDropTarget is not null;
+
+    /// <summary>
+    /// Uses the OLE IDropTarget screen coordinate as a fallback for routed
+    /// DragLeave. WinUI can omit or delay a child leave while the pointer moves
+    /// quickly or the host is resizing; the native callback still supplies the
+    /// current physical point. This path only clears stale state and never
+    /// creates a highlight, so routed XAML drag handling remains authoritative.
+    /// </summary>
+    internal void ObserveNativeDragPointer(
+        int screenX,
+        int screenY,
+        bool hasFileData)
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        if (!hasFileData)
+        {
+            ClearDragSessionVisualState();
+            return;
+        }
+
+        if (!HasActiveChildDropTargetVisual)
+        {
+            return;
+        }
+
+        if (!IsScreenPointInsideElement(Root, screenX, screenY))
+        {
+            ClearDragSessionVisualState();
+            return;
+        }
+
+        if (_folderDropTarget is { } folderTarget &&
+            !IsScreenPointInsideElement(folderTarget, screenX, screenY))
+        {
+            ClearFolderDropTarget();
+        }
+
+        if (_stackMemberDropTarget is { } stackTarget &&
+            !IsScreenPointInsideElement(stackTarget, screenX, screenY))
+        {
+            ClearStackMemberDropTarget();
+        }
+    }
+
+    private bool IsScreenPointInsideElement(
+        FrameworkElement element,
+        int screenX,
+        int screenY)
+    {
+        if (_hostWindowHandle == IntPtr.Zero ||
+            element.Visibility != Visibility.Visible ||
+            element.XamlRoot is null ||
+            element.ActualWidth <= 0 ||
+            element.ActualHeight <= 0 ||
+            !Win32Helper.GetWindowRect(
+                _hostWindowHandle,
+                out Win32Helper.RECT windowBounds))
+        {
+            return false;
+        }
+
+        try
+        {
+            Windows.Foundation.Point topLeft = element.TransformToVisual(null)
+                .TransformPoint(new Windows.Foundation.Point(0, 0));
+            double scale = element.XamlRoot.RasterizationScale;
+            double left = windowBounds.Left + (topLeft.X * scale);
+            double top = windowBounds.Top + (topLeft.Y * scale);
+            double right = left + (element.ActualWidth * scale);
+            double bottom = top + (element.ActualHeight * scale);
+            return screenX >= left &&
+                   screenX < right &&
+                   screenY >= top &&
+                   screenY < bottom;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static bool IsSameDragPayload(
@@ -2222,7 +2361,8 @@ public sealed partial class FileSurfaceContent :
     /// </summary>
     internal async Task<bool> ImportNativeDroppedFilesAsync(
         IReadOnlyList<string> paths,
-        bool containsTemporaryFiles)
+        bool containsTemporaryFiles,
+        bool? copyWhenMapped = null)
     {
         if (_isDisposed || _isImportBusy)
         {
@@ -2255,10 +2395,12 @@ public sealed partial class FileSurfaceContent :
         }
 
         bool mapped = !string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath);
+        bool copyRequested = containsTemporaryFiles ||
+            copyWhenMapped == true ||
+            (copyWhenMapped is null &&
+             Win32Helper.IsKeyPressed(VirtualKey.Control));
         bool? moveWhenMapped = mapped
-            ? containsTemporaryFiles || Win32Helper.IsKeyPressed(VirtualKey.Control)
-                ? false
-                : true
+            ? !copyRequested
             : null;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         string importId = Guid.NewGuid().ToString("N")[..8];
@@ -3069,13 +3211,28 @@ public sealed partial class FileSurfaceContent :
         }
 
         DataPackageView? clipboard = TryGetClipboardContent();
+        await PasteDataPackageAsync(
+            clipboard,
+            includeShellFileDropFallback: true);
+    }
+
+    private async Task PasteDataPackageAsync(
+        DataPackageView? clipboard,
+        bool includeShellFileDropFallback)
+    {
+        if (_isDisposed || _isImportBusy)
+        {
+            return;
+        }
+
         string[] sourcePaths = clipboard is null
             ? []
             : GetPackagePaths(clipboard);
         bool move = clipboard?.RequestedOperation.HasFlag(
             DataPackageOperation.Move) == true;
 
-        if (ShellClipboardHelper.TryGetFileDropList(
+        if (includeShellFileDropFallback &&
+            ShellClipboardHelper.TryGetFileDropList(
                 out string[] shellPaths,
                 out bool shellCut))
         {
@@ -3204,23 +3361,24 @@ public sealed partial class FileSurfaceContent :
 
     private async Task PickAndImportFilesAsync()
     {
-        var picker = new FileOpenPicker
-        {
-            SuggestedStartLocation = PickerLocationId.Desktop
-        };
-        picker.FileTypeFilter.Add("*");
-        IntPtr foreground = Win32Helper.GetForegroundWindow();
-        IntPtr owner = Win32Helper.GetAncestor(foreground, Win32Helper.GA_ROOT);
-        InitializeWithWindow.Initialize(
-            picker,
-            owner == IntPtr.Zero ? foreground : owner);
-        IReadOnlyList<StorageFile> files = await picker.PickMultipleFilesAsync();
-        if (files.Count > 0)
+        _ = await PickAndImportFilesAsync(suggestedFolder: null);
+    }
+
+    private async Task<IReadOnlyList<string>> PickAndImportFilesAsync(
+        string? suggestedFolder)
+    {
+        IReadOnlyList<string> paths =
+            await FileOpenPickerService.PickFilesAsync(
+                _hostWindowHandle,
+                suggestedFolder);
+        if (paths.Count > 0)
         {
             await ImportPathsWithTrackedProgressAsync(
-                files.Select(file => file.Path),
+                paths,
                 moveWhenMapped: null);
         }
+
+        return paths;
     }
 
     private async Task<IReadOnlyList<string>>

@@ -280,7 +280,7 @@ public sealed class TodoWidgetViewModelTests : IDisposable
     {
         var viewModel = CreateViewModel("todo-widget");
         await viewModel.InitializeAsync();
-        var current = await viewModel.AddItemAsync("current", dueDate: DateTimeOffset.Now.AddHours(1));
+        var current = await viewModel.AddItemAsync("current", dueDate: DateTimeOffset.Now.Date.AddHours(12));
         var future = await viewModel.AddItemAsync("future", dueDate: DateTimeOffset.Now.AddMonths(2));
         Assert.NotNull(current);
         Assert.NotNull(future);

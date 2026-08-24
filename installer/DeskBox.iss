@@ -1,6 +1,6 @@
 ; DeskBox 安装脚本
 ; 构建命令：
-; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\x64 -v:minimal
+; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:DeskBoxRustNative=true -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\x64 -v:minimal
 
 #define MyAppName "DeskBox"
 #define MyAppVersion "1.4.3"
@@ -15,6 +15,9 @@
 #ifndef DeskBoxBundledRuntime
 #define DeskBoxBundledRuntime 0
 #endif
+#ifndef DeskBoxNativeAot
+#define DeskBoxNativeAot 0
+#endif
 #ifndef MyAppReleaseDir
 #define MyAppReleaseDir "..\artifacts\publish\DeskBox\x64"
 #endif
@@ -27,6 +30,8 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 #if DeskBoxBundledRuntime
 AppComments=Includes private .NET and Windows App Runtime components for offline installation.
+#elif DeskBoxNativeAot
+AppComments=Native AOT build; Windows App Runtime is installed when missing.
 #else
 AppComments={cm:RuntimeDependencyComment}
 #endif
@@ -224,7 +229,8 @@ Type: files; Name: "{app}\onnxruntime.dll"
 Type: files; Name: "{userstartup}\{#MyAppName}.lnk"
 
 [Files]
-Source: "{#MyAppReleaseDir}\*"; DestDir: "{app}"; Excludes: "DeskBox.Updater.*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyAppReleaseDir}\*"; DestDir: "{app}"; Excludes: "DeskBox.Updater.*,deskbox_native.dll,deskbox_native.pdb,deskbox_search_core.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyAppReleaseDir}\deskbox_native.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyAppReleaseDir}\DeskBox.Updater.*"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

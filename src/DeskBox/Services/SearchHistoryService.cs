@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
@@ -8,16 +9,10 @@ namespace DeskBox.Services;
 /// History is recorded automatically as the user searches; favorites are toggled
 /// explicitly and always surface ahead of history in the empty-state view.
 /// </summary>
-public sealed class SearchHistoryService
+public sealed partial class SearchHistoryService
 {
     private const int MaxHistoryEntries = 20;
     private const int MaxRecentResultEntries = 12;
-
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
 
     private readonly string _storePath;
     private readonly object _gate = new();
@@ -262,7 +257,9 @@ public sealed class SearchHistoryService
             }
 
             string json = File.ReadAllText(_storePath);
-            var data = JsonSerializer.Deserialize<PersistedData>(json, s_jsonOptions);
+            PersistedData? data = JsonSerializer.Deserialize(
+                json,
+                SearchHistoryJsonContext.Default.PersistedData);
             if (data is not null)
             {
                 data.Recent ??= [];
@@ -298,7 +295,9 @@ public sealed class SearchHistoryService
                 Directory.CreateDirectory(directory);
             }
 
-            string json = JsonSerializer.Serialize(snapshot, s_jsonOptions);
+            string json = JsonSerializer.Serialize(
+                snapshot,
+                SearchHistoryJsonContext.Default.PersistedData);
             File.WriteAllText(_storePath, json);
         }
         catch (Exception ex)
@@ -350,5 +349,14 @@ public sealed class SearchHistoryService
             TodoItemId = TodoItemId,
             QuickCaptureItemId = QuickCaptureItemId
         };
+    }
+
+    [JsonSourceGenerationOptions(
+        GenerationMode = JsonSourceGenerationMode.Metadata,
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+        WriteIndented = true)]
+    [JsonSerializable(typeof(PersistedData), TypeInfoPropertyName = "PersistedData")]
+    private sealed partial class SearchHistoryJsonContext : JsonSerializerContext
+    {
     }
 }

@@ -1,7 +1,20 @@
 using DeskBox.Models;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DeskBox.Services;
+
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(
+    typeof(Dictionary<string, string>),
+    TypeInfoPropertyName = "StringMap")]
+[JsonSerializable(
+    typeof(Dictionary<string, List<string>>),
+    TypeInfoPropertyName = "StringListMap")]
+[JsonSerializable(typeof(List<string>), TypeInfoPropertyName = "StringList")]
+internal sealed partial class WidgetMetadataJsonContext : JsonSerializerContext
+{
+}
 
 public static class WidgetFileStackSettings
 {
@@ -185,7 +198,9 @@ public static class WidgetFileStackSettings
 
         try
         {
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ??
+            return JsonSerializer.Deserialize(
+                       json,
+                       WidgetMetadataJsonContext.Default.StringMap) ??
                 new Dictionary<string, string>(StringComparer.Ordinal);
         }
         catch (JsonException)
@@ -203,7 +218,13 @@ public static class WidgetFileStackSettings
             return;
         }
 
-        config.Metadata[StackNameOverridesMetadataKey] = JsonSerializer.Serialize(overrides);
+        Dictionary<string, string> values = overrides.ToDictionary(
+            entry => entry.Key,
+            entry => entry.Value,
+            StringComparer.Ordinal);
+        config.Metadata[StackNameOverridesMetadataKey] = JsonSerializer.Serialize(
+            values,
+            WidgetMetadataJsonContext.Default.StringMap);
     }
 
     /// <summary>
@@ -240,8 +261,9 @@ public static class WidgetFileStackSettings
         try
         {
             Dictionary<string, List<string>>? values =
-                JsonSerializer.Deserialize<
-                    Dictionary<string, List<string>>>(json);
+                JsonSerializer.Deserialize(
+                    json,
+                    WidgetMetadataJsonContext.Default.StringListMap);
             if (values is null)
             {
                 return new Dictionary<string, List<string>>(
@@ -297,7 +319,9 @@ public static class WidgetFileStackSettings
         }
 
         config.Metadata[StackMemberOverridesMetadataKey] =
-            JsonSerializer.Serialize(normalized);
+            JsonSerializer.Serialize(
+                normalized,
+                WidgetMetadataJsonContext.Default.StringListMap);
     }
 
     private static List<string> ReadStringList(
@@ -313,7 +337,9 @@ public static class WidgetFileStackSettings
 
         try
         {
-            return JsonSerializer.Deserialize<List<string>>(json) is
+            return JsonSerializer.Deserialize(
+                       json,
+                       WidgetMetadataJsonContext.Default.StringList) is
                 { } list
                 ? list
                     .Where(value =>
@@ -339,7 +365,9 @@ public static class WidgetFileStackSettings
 
         try
         {
-            return JsonSerializer.Deserialize<List<string>>(json) is { } list
+            return JsonSerializer.Deserialize(
+                       json,
+                       WidgetMetadataJsonContext.Default.StringList) is { } list
                 ? new HashSet<string>(list, StringComparer.Ordinal)
                 : new HashSet<string>(StringComparer.Ordinal);
         }
@@ -362,7 +390,9 @@ public static class WidgetFileStackSettings
             return;
         }
 
-        config.Metadata[key] = JsonSerializer.Serialize(list);
+        config.Metadata[key] = JsonSerializer.Serialize(
+            list,
+            WidgetMetadataJsonContext.Default.StringList);
     }
 
     public static bool NormalizeOverrides(WidgetConfig config)

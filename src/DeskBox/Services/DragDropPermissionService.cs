@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
+#if !DESKBOX_NATIVE_AOT
 using System.Text;
+#endif
+using DeskBox.Helpers;
 using Microsoft.Win32;
 
 namespace DeskBox.Services;
@@ -553,6 +556,46 @@ public static class DragDropPermissionService
 
     private static bool TryReadShortcut(string shortcutPath, out string targetPath, out string arguments)
     {
+#if DESKBOX_NATIVE_AOT
+        ShortcutNativeCallResult native =
+            ShortcutNativeBackend.ReadEffectiveDiagnostic(shortcutPath);
+        targetPath = native.Metadata?.TargetPath ?? string.Empty;
+        arguments = native.Metadata?.Arguments ?? string.Empty;
+        if (!native.Success)
+        {
+            App.Log(
+                $"[DragDropPermission] Rust shortcut read failed for " +
+                $"'{shortcutPath}': {native.Failure}; {native.Detail}");
+        }
+
+        return native.Success;
+#else
+        if (ShortcutBackendPolicy.Current == ShortcutBackendMode.Rust)
+        {
+            ShortcutNativeCallResult native =
+                ShortcutNativeBackend.ReadEffectiveDiagnostic(shortcutPath);
+            targetPath = native.Metadata?.TargetPath ?? string.Empty;
+            arguments = native.Metadata?.Arguments ?? string.Empty;
+            if (!native.Success)
+            {
+                App.Log(
+                    $"[DragDropPermission] Explicit Rust shortcut read failed for " +
+                    $"'{shortcutPath}': {native.Failure}; {native.Detail}");
+            }
+
+            return native.Success;
+        }
+
+        return TryReadShortcutWithCSharp(shortcutPath, out targetPath, out arguments);
+#endif
+    }
+
+#if !DESKBOX_NATIVE_AOT
+    internal static bool TryReadShortcutWithCSharp(
+        string shortcutPath,
+        out string targetPath,
+        out string arguments)
+    {
         targetPath = string.Empty;
         arguments = string.Empty;
 
@@ -585,8 +628,9 @@ public static class DragDropPermissionService
             return false;
         }
     }
+#endif
 
-    private static void CreateOrUpdateShortcut(string shortcutPath, string targetPath, string arguments)
+    internal static void CreateOrUpdateShortcut(string shortcutPath, string targetPath, string arguments)
     {
         string? directory = Path.GetDirectoryName(shortcutPath);
         if (!string.IsNullOrWhiteSpace(directory))
@@ -594,14 +638,78 @@ public static class DragDropPermissionService
             Directory.CreateDirectory(directory);
         }
 
+        string workingDirectory = Path.GetDirectoryName(targetPath) ?? AppContext.BaseDirectory;
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "deskbox.ico");
+#if DESKBOX_NATIVE_AOT
+        var metadata = new ShortcutInfo(
+            targetPath,
+            string.Empty,
+            arguments,
+            workingDirectory,
+            iconPath,
+            0);
+        ShortcutNativeWriteCallResult native =
+            ShortcutNativeBackend.WriteShortcut(shortcutPath, metadata);
+        if (!native.Success)
+        {
+            App.Log(
+                $"[DragDropPermission] Rust shortcut write failed for " +
+                $"'{shortcutPath}': {native.Failure}; {native.Detail}");
+            throw new InvalidOperationException(
+                $"Rust shortcut write failed: {native.Failure}; {native.Detail}");
+        }
+#else
+        if (ShortcutBackendPolicy.Current == ShortcutBackendMode.Rust)
+        {
+            var metadata = new ShortcutInfo(
+                targetPath,
+                string.Empty,
+                arguments,
+                workingDirectory,
+                iconPath,
+                0);
+            ShortcutNativeWriteCallResult native =
+                ShortcutNativeBackend.WriteShortcut(shortcutPath, metadata);
+            if (!native.Success)
+            {
+                App.Log(
+                    $"[DragDropPermission] Explicit Rust shortcut write failed for " +
+                    $"'{shortcutPath}': {native.Failure}; {native.Detail}");
+                throw new InvalidOperationException(
+                    $"Rust shortcut write failed: {native.Failure}; {native.Detail}");
+            }
+        }
+        else
+        {
+            CreateOrUpdateShortcutWithCSharp(
+                shortcutPath,
+                targetPath,
+                arguments,
+                workingDirectory,
+                iconPath);
+        }
+#endif
+
+        ShortcutHelper.InvalidateStoredMetadataCache(shortcutPath);
+    }
+
+#if !DESKBOX_NATIVE_AOT
+    internal static void CreateOrUpdateShortcutWithCSharp(
+        string shortcutPath,
+        string targetPath,
+        string arguments,
+        string workingDirectory,
+        string iconPath)
+    {
         var shellLink = (IShellLinkW)(object)new ShellLink();
         shellLink.SetPath(targetPath);
         shellLink.SetArguments(arguments);
-        shellLink.SetWorkingDirectory(Path.GetDirectoryName(targetPath) ?? AppContext.BaseDirectory);
-        shellLink.SetIconLocation(Path.Combine(AppContext.BaseDirectory, "Assets", "deskbox.ico"), 0);
+        shellLink.SetWorkingDirectory(workingDirectory);
+        shellLink.SetIconLocation(iconPath, 0);
         var persistFile = (System.Runtime.InteropServices.ComTypes.IPersistFile)shellLink;
         persistFile.Save(shortcutPath, true);
     }
+#endif
 
     private static ProcessTokenSnapshot GetCurrentProcessTokenSnapshot()
     {
@@ -935,6 +1043,7 @@ public static class DragDropPermissionService
         public int dwThreadId;
     }
 
+#if !DESKBOX_NATIVE_AOT
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Win32FindDataW
     {
@@ -987,6 +1096,7 @@ public static class DragDropPermissionService
         void Resolve(IntPtr hwnd, uint fFlags);
         void SetPath(string pszFile);
     }
+#endif
 
     private const uint ProcessCreateProcess = 0x0080;
     private const uint ExtendedStartupInfoPresent = 0x00080000;

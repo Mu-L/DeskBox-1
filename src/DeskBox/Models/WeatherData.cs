@@ -148,7 +148,8 @@ public sealed class WeatherGeocodingItem
 /// <summary>
 /// A simplified city search result for UI binding.
 /// </summary>
-public sealed class WeatherCitySearchResult
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class WeatherCitySearchResult
 {
     public string Name { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;

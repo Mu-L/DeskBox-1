@@ -78,42 +78,42 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     public IntPtr OwnerWindowHandle { get; set; }
 
     [ObservableProperty]
-    private string _query = string.Empty;
+    public partial string Query { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private bool _isSearching;
+    public partial bool IsSearching { get; set; }
 
     [ObservableProperty]
-    private bool _hasResults;
+    public partial bool HasResults { get; set; }
 
     /// <summary>True while a non-empty query is active; drives the tab strategy.</summary>
     [ObservableProperty]
-    private bool _isQueryActive;
+    public partial bool IsQueryActive { get; set; }
 
     /// <summary>Whether there are application recommendations to show.</summary>
     [ObservableProperty]
-    private SearchResultItem? _selectedItem;
+    public partial SearchResultItem? SelectedItem { get; set; }
 
     [ObservableProperty]
-    private int _selectedIndex = -1;
+    public partial int SelectedIndex { get; set; } = -1;
 
     [ObservableProperty]
-    private string _statusText = string.Empty;
+    public partial string StatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private SearchTabItem? _selectedTab;
+    public partial SearchTabItem? SelectedTab { get; set; }
 
     [ObservableProperty]
-    private ResultSortColumn _sortColumn = ResultSortColumn.Relevance;
+    public partial ResultSortColumn SortColumn { get; set; } = ResultSortColumn.Relevance;
 
     [ObservableProperty]
-    private bool _sortAscending = true;
+    public partial bool SortAscending { get; set; } = true;
 
     [ObservableProperty]
-    private SearchResultFilter _resultFilter = SearchResultFilter.All;
+    public partial SearchResultFilter ResultFilter { get; set; } = SearchResultFilter.All;
 
     [ObservableProperty]
-    private bool _hasCurrentResults;
+    public partial bool HasCurrentResults { get; set; }
 
     /// <summary>The dynamic tab bar. Rebuilt on every search / empty-state change.</summary>
     public ObservableCollection<SearchTabItem> Tabs { get; } = [];

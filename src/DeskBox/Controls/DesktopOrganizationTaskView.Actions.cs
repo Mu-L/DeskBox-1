@@ -164,7 +164,7 @@ public sealed partial class DesktopOrganizationTaskView
             return;
         }
 
-        string? folderPath = FolderPickerService.PickFolder(OwnerWindowHandle);
+        string? folderPath = await FolderPickerService.PickFolderAsync(OwnerWindowHandle);
         if (string.IsNullOrWhiteSpace(folderPath))
         {
             return;

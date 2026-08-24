@@ -1,4 +1,6 @@
+#if !DESKBOX_NATIVE_AOT
 using System.Runtime.InteropServices;
+#endif
 
 namespace DeskBox.Helpers;
 
@@ -8,11 +10,51 @@ namespace DeskBox.Helpers;
 /// </summary>
 internal static class ExplorerShellLaunchService
 {
+#if !DESKBOX_NATIVE_AOT
     private const int ShellWindowClassDesktop = 8;
     private const int ShellWindowFindNeedDispatch = 1;
     private const int ShowNormal = 1;
+#endif
 
     public static bool TryOpen(
+        string path,
+        string workingDirectory,
+        string verb,
+        out string? error)
+    {
+        return TryOpen(
+            path,
+            workingDirectory,
+            verb,
+            out error,
+            out _);
+    }
+
+    internal static bool TryOpen(
+        string path,
+        string workingDirectory,
+        string verb,
+        out string? error,
+        out ExplorerShellLaunchNativeCallResult? nativeResult)
+    {
+        nativeResult = null;
+#if !DESKBOX_NATIVE_AOT
+        if (ExplorerShellLaunchBackendPolicy.Current == ExplorerShellLaunchBackendMode.CSharp)
+        {
+            return TryOpenCSharp(path, workingDirectory, verb, out error);
+        }
+#endif
+
+        nativeResult = ExplorerShellLaunchNativeBackend.TryOpen(
+            path,
+            workingDirectory,
+            verb);
+        error = nativeResult.Success ? null : $"{nativeResult.Failure}: {nativeResult.Detail}";
+        return nativeResult.Success;
+    }
+
+#if !DESKBOX_NATIVE_AOT
+    private static bool TryOpenCSharp(
         string path,
         string workingDirectory,
         string verb,
@@ -130,4 +172,5 @@ internal static class ExplorerShellLaunchService
             // COM cleanup must never turn a successful launch into a user-visible failure.
         }
     }
+#endif
 }

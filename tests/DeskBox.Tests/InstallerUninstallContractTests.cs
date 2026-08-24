@@ -127,6 +127,26 @@ public sealed class InstallerUninstallContractTests
     }
 
     [Fact]
+    public void NativeShortcutModule_IsPackagedByX64AndArm64NativeAotInstallers()
+    {
+        string x64 = ReadRepositoryFile("installer/DeskBox.iss");
+        string arm64 = ReadRepositoryFile("installer/DeskBox.arm64.iss");
+        const string nativeSource =
+            "Source: \"{#MyAppReleaseDir}\\deskbox_native.dll\"; DestDir: \"{app}\"; Flags: ignoreversion";
+        const string nativeExclusions =
+            "Excludes: \"DeskBox.Updater.*,deskbox_native.dll,deskbox_native.pdb,deskbox_search_core.pdb\"";
+
+        Assert.Contains("-p:DeskBoxRustNative=true", x64, StringComparison.Ordinal);
+        Assert.Contains(nativeExclusions, x64, StringComparison.Ordinal);
+        Assert.Contains(nativeSource, x64, StringComparison.Ordinal);
+
+        Assert.Contains(nativeExclusions, arm64, StringComparison.Ordinal);
+        Assert.Contains("#if DeskBoxNativeAot", arm64, StringComparison.Ordinal);
+        Assert.Contains(nativeSource, arm64, StringComparison.Ordinal);
+        Assert.DoesNotContain("-p:DeskBoxRustNative=true", arm64, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CustomMessageKeysAndPlaceholders_AreAlignedAcrossLanguages()
     {
         string messages = string.Join(

@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace DeskBox.Controls;
 
-public sealed class WidgetItemTemplateSelector : DataTemplateSelector
+public sealed partial class WidgetItemTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? ItemTemplate { get; set; }
 

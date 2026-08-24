@@ -12,13 +12,13 @@
                 x:Name="UnpinnedPath"
                 Data="M4,1 L12,1 L12,3 L11,3 L10.5,7.5 L13,10 L13,11 L8.75,11 L8.4,15.5 L7.6,15.5 L7.25,11 L3,11 L3,10 L5.5,7.5 L5,3 L4,3 Z"
                 Fill="Transparent"
-                Stroke="{Binding Foreground, ElementName=Root}"
+                Stroke="{x:Bind Foreground, Mode=OneWay}"
                 StrokeLineJoin="Round"
                 StrokeThickness="1.15" />
             <Path
                 x:Name="PinnedPath"
                 Data="M4,1 L12,1 L12,3 L11,3 L10.5,7.5 L13,10 L13,11 L8.75,11 L8.4,15.5 L7.6,15.5 L7.25,11 L3,11 L3,10 L5.5,7.5 L5,3 L4,3 Z"
-                Fill="{Binding Foreground, ElementName=Root}"
+                Fill="{x:Bind Foreground, Mode=OneWay}"
                 Visibility="Collapsed" />
         </Grid>
     </Viewbox>

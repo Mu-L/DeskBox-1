@@ -26,6 +26,9 @@ public sealed class SearchHotkeyService : IDisposable
     private bool _isSubclassInstalled;
     private bool _isRegistered;
     private bool _isInvoking;
+    private long _receivedSequence;
+    private long _invocationSequence;
+    private long _dispatchFailureSequence;
 
     public SearchHotkeyService(
         SettingsService settingsService,
@@ -37,6 +40,9 @@ public sealed class SearchHotkeyService : IDisposable
     }
 
     public bool IsRegistered => _isRegistered;
+    public long ReceivedCount => Interlocked.Read(ref _receivedSequence);
+    public long InvocationCount => Interlocked.Read(ref _invocationSequence);
+    public long DispatchFailureCount => Interlocked.Read(ref _dispatchFailureSequence);
 
     public GlobalHotkeyGesture CurrentGesture => GlobalHotkeyService.NormalizeGesture(
         _settingsService.Settings.SearchHotkeyModifiers,
@@ -105,11 +111,55 @@ public sealed class SearchHotkeyService : IDisposable
         }
 
         var settings = _settingsService.Settings;
+        int previousModifiers = settings.SearchHotkeyModifiers;
+        int previousVirtualKey = settings.SearchHotkeyKey;
+        var previousGesture = GlobalHotkeyService.NormalizeGesture(
+            previousModifiers,
+            previousVirtualKey);
+        bool isCurrentGesture = gesture.Equals(previousGesture);
+        bool shouldBeActive = _windowHandle != IntPtr.Zero && settings.SearchHotkeyEnabled;
+
+        if (isCurrentGesture)
+        {
+            if (shouldBeActive && !IsRegistered)
+            {
+                RefreshRegistration();
+                return IsRegistered;
+            }
+
+            return true;
+        }
+
         settings.SearchHotkeyModifiers = (int)gesture.Modifiers;
         settings.SearchHotkeyKey = gesture.VirtualKey;
-        _settingsService.SaveDebounced();
+
+        if (!shouldBeActive)
+        {
+            _settingsService.SaveDebounced();
+            return true;
+        }
+
+        // As with the main hotkey, the real RegisterHotKey call is the commit
+        // point. Restore both settings and registration if the requested
+        // gesture is already owned by another process or hotkey id.
         RefreshRegistration();
-        return true;
+        if (IsRegistered)
+        {
+            _settingsService.SaveDebounced();
+            return true;
+        }
+
+        settings.SearchHotkeyModifiers = previousModifiers;
+        settings.SearchHotkeyKey = previousVirtualKey;
+        RefreshRegistration();
+        if (!IsRegistered)
+        {
+            App.Log(
+                $"[SearchHotkey] Rollback registration failed previousGesture=" +
+                $"{FormatGesture(previousGesture)}");
+        }
+
+        return false;
     }
 
     public void SetEnabled(bool enabled)
@@ -129,6 +179,7 @@ public sealed class SearchHotkeyService : IDisposable
         if (message == GlobalHotkeyService.WmHotkey &&
             wParam.ToUInt32() == SearchHotkeyId)
         {
+            long receivedId = Interlocked.Increment(ref _receivedSequence);
             // Immediately release all modifier keys to clear any stuck state.
             // In RDP sessions, the modifier key-up event can be lost or delayed,
             // leaving the system thinking Alt is still held.  This would cause
@@ -136,10 +187,16 @@ public sealed class SearchHotkeyService : IDisposable
             // intercepted as Alt+D by RegisterHotKey, making the key appear dead.
             Win32Helper.ReleaseAllModifiers();
 
-            App.UiDispatcherQueue.TryEnqueue(async () =>
+            if (App.UiDispatcherQueue.TryEnqueue(() =>
             {
-                await InvokeAsync();
-            });
+                _ = InvokeAsync();
+            }))
+            {
+                return IntPtr.Zero;
+            }
+
+            Interlocked.Increment(ref _dispatchFailureSequence);
+            App.Log($"[SearchHotkey] UI dispatch rejected id={receivedId}");
             return IntPtr.Zero;
         }
 
@@ -154,7 +211,8 @@ public sealed class SearchHotkeyService : IDisposable
         }
 
         _isInvoking = true;
-        App.Log("[SearchHotkey] Triggered");
+        long invocationId = Interlocked.Increment(ref _invocationSequence);
+        App.Log($"[SearchHotkey] Triggered id={invocationId}");
         try
         {
             await _invokeAsync();

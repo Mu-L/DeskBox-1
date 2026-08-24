@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     IsTabStop="False"
-    AutomationProperties.Name="{Binding Title}"
+    AutomationProperties.Name="{x:Bind Item.Title, Mode=OneTime}"
     mc:Ignorable="d">
 
     <!--
@@ -42,30 +42,30 @@
             <Border x:Name="GlyphBlock" Width="28" Height="28" CornerRadius="4"
                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
-                <FontIcon Glyph="{Binding DisplayGlyph}" FontSize="13"
+                <FontIcon Glyph="{x:Bind Item.DisplayGlyph, Mode=OneTime}" FontSize="13"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <Image x:Name="FileIcon" Source="{Binding Icon}" Width="26" Height="26"
+            <Image x:Name="FileIcon" Source="{x:Bind Item.Icon, Mode=OneTime}" Width="26" Height="26"
                    Visibility="Collapsed"
                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Grid>
         <StackPanel Grid.Column="2" VerticalAlignment="Center">
-            <TextBlock x:Name="TitleText" Text="{Binding Title}" FontSize="14"
+            <TextBlock x:Name="TitleText" Text="{x:Bind Item.Title, Mode=OneTime}" FontSize="14"
                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                        TextTrimming="CharacterEllipsis"/>
-            <TextBlock x:Name="SubtitleText" Text="{Binding Subtitle}" FontSize="10.5"
+            <TextBlock x:Name="SubtitleText" Text="{x:Bind Item.Subtitle, Mode=OneTime}" FontSize="10.5"
                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                        TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
         </StackPanel>
-        <TextBlock x:Name="TypeText" Grid.Column="3" Text="{Binding TypeDisplay}" FontSize="11.5"
+        <TextBlock x:Name="TypeText" Grid.Column="3" Text="{x:Bind Item.TypeDisplay, Mode=OneTime}" FontSize="11.5"
                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                    VerticalAlignment="Center" Margin="4,0,6,0"
                    TextTrimming="CharacterEllipsis"/>
-        <TextBlock x:Name="SizeText" Grid.Column="4" Text="{Binding SizeDisplay}" FontSize="12"
+        <TextBlock x:Name="SizeText" Grid.Column="4" Text="{x:Bind Item.SizeDisplay, Mode=OneTime}" FontSize="12"
                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                    VerticalAlignment="Center" Margin="6,0,6,0"/>
-        <TextBlock x:Name="DateText" Grid.Column="5" Text="{Binding DateDisplay}" FontSize="12"
+        <TextBlock x:Name="DateText" Grid.Column="5" Text="{x:Bind Item.DateDisplay, Mode=OneTime}" FontSize="12"
                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                    VerticalAlignment="Center"/>
     </Grid>

@@ -353,12 +353,8 @@ public sealed partial class FileSurfaceContent
 
     private void ShowFileProperties(WidgetItem item)
     {
-        IntPtr foreground = Win32Helper.GetForegroundWindow();
-        IntPtr owner = Win32Helper.GetAncestor(
-            foreground,
-            Win32Helper.GA_ROOT);
         if (!ShellContextMenuHelper.ShowProperties(
-                owner == IntPtr.Zero ? foreground : owner,
+                _hostWindowHandle,
                 item.Path))
         {
             ShowFeedback(new WidgetFeedbackRequest(
@@ -966,7 +962,8 @@ public sealed partial class FileSurfaceContent
         {
             int moved = await ViewModel.MoveItemsBackToDesktopAsync(
                 items,
-                useShellProgress: true);
+                useShellProgress: true,
+                ownerWindowHandle: _hostWindowHandle);
             _cutClipboardPaths = [];
             ApplyCutState();
             ShowFeedback(new WidgetFeedbackRequest(

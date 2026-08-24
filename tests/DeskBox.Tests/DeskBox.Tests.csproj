@@ -5,12 +5,44 @@
     <SupportedOSPlatformVersion>10.0.19044.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Platform>x64</Platform>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <DeskBoxNativeTestPlatform Condition="'$(Platform)' == 'ARM64' Or '$(RuntimeIdentifier)' == 'win-arm64'">ARM64</DeskBoxNativeTestPlatform>
+    <DeskBoxNativeTestPlatform Condition="'$(DeskBoxNativeTestPlatform)' == ''">x64</DeskBoxNativeTestPlatform>
+    <DeskBoxRustCrtLinkage Condition="'$(DeskBoxRustCrtLinkage)' == ''">Static</DeskBoxRustCrtLinkage>
+    <DeskBoxNativeTestIntermediateDir>$(MSBuildProjectDirectory)\obj\rust-native\$(Configuration)\$(Platform)\$(RuntimeIdentifier)\$(DeskBoxRustCrtLinkage)</DeskBoxNativeTestIntermediateDir>
+    <DeskBoxNativeTestCargoTargetDir>$(DeskBoxNativeTestIntermediateDir)\cargo-target</DeskBoxNativeTestCargoTargetDir>
+    <DeskBoxNativeTestDll>$(DeskBoxNativeTestIntermediateDir)\deskbox_native.dll</DeskBoxNativeTestDll>
+    <DeskBoxNativeTestPdb>$(DeskBoxNativeTestIntermediateDir)\deskbox_native.pdb</DeskBoxNativeTestPdb>
+    <DeskBoxSearchCoreTestIntermediateDir>$(MSBuildProjectDirectory)\obj\rust-search-core\$(Configuration)\$(Platform)\$(RuntimeIdentifier)\$(DeskBoxRustCrtLinkage)</DeskBoxSearchCoreTestIntermediateDir>
+    <DeskBoxSearchCoreTestCargoTargetDir>$(DeskBoxSearchCoreTestIntermediateDir)\cargo-target</DeskBoxSearchCoreTestCargoTargetDir>
+    <DeskBoxSearchCoreTestDll>$(DeskBoxSearchCoreTestIntermediateDir)\deskbox_search_core.dll</DeskBoxSearchCoreTestDll>
+    <DeskBoxSearchCoreTestPdb>$(DeskBoxSearchCoreTestIntermediateDir)\deskbox_search_core.pdb</DeskBoxSearchCoreTestPdb>
   </PropertyGroup>
+
+  <ItemGroup>
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\rust-toolchain.toml" />
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.toml" />
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.lock" />
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-native\Cargo.toml" />
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-native\src\**\*" />
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\native\include\deskbox_native.h" />
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\scripts\build-rust-native.ps1" />
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\scripts\native-pe-contract.ps1" />
+    <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\scripts\rust-arm64-msvc-environment.ps1" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\rust-toolchain.toml" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.toml" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.lock" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-search-core\Cargo.toml" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-search-core\src\**\*" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\native\include\deskbox_search_core.h" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\scripts\build-rust-search-core.ps1" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\scripts\native-pe-contract.ps1" />
+    <DeskBoxSearchCoreTestInput Include="$(MSBuildProjectDirectory)\..\..\scripts\rust-arm64-msvc-environment.ps1" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
@@ -27,5 +59,49 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <Target
+    Name="BuildDeskBoxNativeTestModule"
+    BeforeTargets="CoreCompile"
+    Inputs="@(DeskBoxNativeTestInput)"
+    Outputs="$(DeskBoxNativeTestDll);$(DeskBoxNativeTestPdb)">
+    <Error
+      Condition="'$(DeskBoxRustCrtLinkage)' != 'Dynamic' and '$(DeskBoxRustCrtLinkage)' != 'Static'"
+      Text="DeskBox test Rust CRT linkage must be Dynamic or Static." />
+    <Exec
+      Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-rust-native.ps1&quot; -Platform $(DeskBoxNativeTestPlatform) -Configuration $(Configuration) -CrtLinkage $(DeskBoxRustCrtLinkage) -OutputDirectory &quot;$(DeskBoxNativeTestIntermediateDir)&quot; -CargoTargetDirectory &quot;$(DeskBoxNativeTestCargoTargetDir)&quot;" />
+  </Target>
+
+  <Target
+    Name="CopyDeskBoxNativeTestModule"
+    AfterTargets="Build"
+    DependsOnTargets="BuildDeskBoxNativeTestModule">
+    <Copy
+      SourceFiles="$(DeskBoxNativeTestDll);$(DeskBoxNativeTestPdb)"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target
+    Name="BuildDeskBoxSearchCoreTestModule"
+    BeforeTargets="CoreCompile"
+    Inputs="@(DeskBoxSearchCoreTestInput)"
+    Outputs="$(DeskBoxSearchCoreTestDll);$(DeskBoxSearchCoreTestPdb)">
+    <Error
+      Condition="'$(DeskBoxRustCrtLinkage)' != 'Dynamic' and '$(DeskBoxRustCrtLinkage)' != 'Static'"
+      Text="DeskBox test Rust CRT linkage must be Dynamic or Static." />
+    <Exec
+      Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-rust-search-core.ps1&quot; -Platform $(DeskBoxNativeTestPlatform) -Configuration $(Configuration) -CrtLinkage $(DeskBoxRustCrtLinkage) -OutputDirectory &quot;$(DeskBoxSearchCoreTestIntermediateDir)&quot; -CargoTargetDirectory &quot;$(DeskBoxSearchCoreTestCargoTargetDir)&quot;" />
+  </Target>
+
+  <Target
+    Name="CopyDeskBoxSearchCoreTestModule"
+    AfterTargets="Build"
+    DependsOnTargets="BuildDeskBoxSearchCoreTestModule">
+    <Copy
+      SourceFiles="$(DeskBoxSearchCoreTestDll);$(DeskBoxSearchCoreTestPdb)"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

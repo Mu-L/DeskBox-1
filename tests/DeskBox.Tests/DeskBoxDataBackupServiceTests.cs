@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -45,13 +46,28 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
         Assert.Null(archive.GetEntry("data/quick-capture/thumbnails/cached.png"));
         Assert.Null(archive.GetEntry("data/quick-capture/exports/temporary.txt"));
         ZipArchiveEntry manifestEntry = Assert.IsType<ZipArchiveEntry>(archive.GetEntry("manifest.json"));
-        using Stream manifestStream = manifestEntry.Open();
-        using JsonDocument manifest = await JsonDocument.ParseAsync(manifestStream);
+        string manifestJson;
+        using (var reader = new StreamReader(manifestEntry.Open()))
+        {
+            manifestJson = await reader.ReadToEndAsync();
+        }
+
+        Assert.Contains("\n  \"schemaVersion\": 2", manifestJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"SchemaVersion\"", manifestJson, StringComparison.Ordinal);
+        using JsonDocument manifest = JsonDocument.Parse(manifestJson);
         Assert.Equal(2, manifest.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("manual", manifest.RootElement.GetProperty("kind").GetString());
         JsonElement[] files = manifest.RootElement.GetProperty("files").EnumerateArray().ToArray();
         Assert.Equal(2, files.Length);
-        Assert.All(files, file => Assert.Equal(64, file.GetProperty("sha256").GetString()!.Length));
+        Assert.All(files, file =>
+        {
+            Assert.Equal(JsonValueKind.String, file.GetProperty("path").ValueKind);
+            Assert.Equal(JsonValueKind.Number, file.GetProperty("length").ValueKind);
+            Assert.Equal(64, file.GetProperty("sha256").GetString()!.Length);
+            Assert.False(file.TryGetProperty("Path", out _));
+            Assert.False(file.TryGetProperty("Length", out _));
+            Assert.False(file.TryGetProperty("Sha256", out _));
+        });
         Assert.False(Directory.Exists(service.BackupSnapshotStagingDirectory));
     }
 
@@ -392,6 +408,244 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
         Assert.Equal(1, preparation.BackupSchemaVersion);
         Assert.False(preparation.HasIntegrityManifest);
         Assert.True(File.Exists(service.PendingRestoreMarkerPath));
+        await service.CancelPendingRestoreAsync();
+    }
+
+    [Fact]
+    public async Task PrepareRestoreAsync_AcceptsUnknownControlFieldsAndWritesCanonicalPendingMarker()
+    {
+        const string settingsJson = "{}";
+        byte[] settingsBytes = System.Text.Encoding.UTF8.GetBytes(settingsJson);
+        string settingsSha256 = Convert.ToHexString(SHA256.HashData(settingsBytes));
+        string archivePath = Path.Combine(_exportRoot, "future-control-fields.zip");
+        using (ZipArchive archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+        {
+            WriteEntry(
+                archive,
+                "manifest.json",
+                $$"""
+                {
+                  "schemaVersion": 2,
+                  "kind": "manual",
+                  "createdAtUtc": "2026-07-01T00:00:00Z",
+                  "appVersion": "1.2.9",
+                  "files": [
+                    {
+                      "path": "settings.json",
+                      "length": {{settingsBytes.Length}},
+                      "sha256": "{{settingsSha256}}",
+                      "futureFileField": { "ignored": true }
+                    }
+                  ],
+                  "futureManifestField": true
+                }
+                """);
+            WriteEntry(archive, "data/settings.json", settingsJson);
+        }
+        var service = new DeskBoxDataBackupService(_appDataRoot);
+
+        DeskBoxRestorePreparation preparation = await service.PrepareRestoreAsync(archivePath);
+
+        Assert.Equal(2, preparation.BackupSchemaVersion);
+        Assert.True(preparation.HasIntegrityManifest);
+        string markerJson = await File.ReadAllTextAsync(service.PendingRestoreMarkerPath);
+        Assert.Contains("\n  \"stagingRoot\":", markerJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"StagingRoot\"", markerJson, StringComparison.Ordinal);
+        using JsonDocument marker = JsonDocument.Parse(markerJson);
+        Assert.Equal(
+            new[]
+            {
+                "appVersion",
+                "archivePath",
+                "backupCreatedAtUtc",
+                "preparedAtUtc",
+                "stagingRoot"
+            },
+            marker.RootElement
+                .EnumerateObject()
+                .Select(property => property.Name)
+                .Order(StringComparer.Ordinal));
+        string stagingRoot = marker.RootElement.GetProperty("stagingRoot").GetString()!;
+        Assert.True(Directory.Exists(stagingRoot));
+
+        string trimmedMarker = markerJson.TrimEnd();
+        string markerWithUnknownField =
+            trimmedMarker[..^1] + ",\n  \"futureMarkerField\": true\n}";
+        await File.WriteAllTextAsync(service.PendingRestoreMarkerPath, markerWithUnknownField);
+        await service.CancelPendingRestoreAsync();
+
+        Assert.False(File.Exists(service.PendingRestoreMarkerPath));
+        Assert.False(Directory.Exists(stagingRoot));
+    }
+
+    [Fact]
+    public async Task PrepareRestoreAsync_RejectsPascalCaseControlManifestProperties()
+    {
+        string archivePath = Path.Combine(_exportRoot, "pascal-case-manifest.zip");
+        using (ZipArchive archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+        {
+            WriteEntry(
+                archive,
+                "manifest.json",
+                "{\"SchemaVersion\":1,\"Kind\":\"manual\",\"CreatedAtUtc\":\"2026-07-01T00:00:00Z\",\"AppVersion\":\"1.2.9\"}");
+            WriteEntry(archive, "data/settings.json", "{}");
+        }
+        var service = new DeskBoxDataBackupService(_appDataRoot);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.PrepareRestoreAsync(archivePath));
+
+        Assert.False(File.Exists(service.PendingRestoreMarkerPath));
+    }
+
+    [Fact]
+    public async Task PrepareRestoreAsync_PreservesCaseInsensitiveUserDataAndEnumCompatibility()
+    {
+        string archivePath = Path.Combine(_exportRoot, "mixed-case-user-data.zip");
+        string sourceDataPath = Path.Combine(_tempRoot, "legacy-source", "data");
+        string quickRelativePath = Path.Combine(
+            "quick-capture",
+            "attachments",
+            "mixed-note",
+            "image.png");
+        string todoRelativePath = Path.Combine(
+            "widgets",
+            "todo-widget",
+            "attachments",
+            "mixed-task",
+            "spec.pdf");
+        string sourceQuickAttachment = Path.Combine(sourceDataPath, quickRelativePath);
+        string sourceTodoAttachment = Path.Combine(sourceDataPath, todoRelativePath);
+        string sourceQuickAttachmentJson = JsonSerializer.Serialize(sourceQuickAttachment);
+        string sourceTodoAttachmentJson = JsonSerializer.Serialize(sourceTodoAttachment);
+        string manifestJson = JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            kind = "manual",
+            createdAtUtc = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            appVersion = "1.2.9",
+            sourceDataPath
+        });
+        using (ZipArchive archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+        {
+            WriteEntry(archive, "manifest.json", manifestJson);
+            WriteEntry(
+                archive,
+                "data/settings.json",
+                """
+                {
+                  "LANGUAGE": "zh-CN",
+                  "WIDGETS": [
+                    {
+                      "ID": "mixed-files",
+                      "WIDGETKIND": "File",
+                      "VIEWMODE": "List",
+                      "SORTMODE": 3,
+                      "FUTUREWIDGETFIELD": true
+                    }
+                  ],
+                  "FUTUREROOTFIELD": true
+                }
+                """);
+            WriteEntry(
+                archive,
+                "data/quick-capture/quick-capture.json",
+                $$"""
+                {
+                  "VERSION": 4,
+                  "CURRENTVIEW": "Pinned",
+                  "ITEMS": [
+                    {
+                      "ID": "mixed-note",
+                      "TYPE": "Link",
+                      "APPEARANCEPRESET": 1,
+                      "SOURCEKIND": "Clipboard",
+                      "ATTACHMENTS": [
+                        {
+                          "FILEPATH": {{sourceQuickAttachmentJson}},
+                          "STORAGEMODE": "managed",
+                          "FUTUREATTACHMENTFIELD": true
+                        }
+                      ],
+                      "FUTUREITEMFIELD": "ignored"
+                    }
+                  ],
+                  "FUTUREROOTFIELD": true
+                }
+                """);
+            WriteEntry(
+                archive,
+                "data/widgets/todo-widget/todo.json",
+                $$"""
+                {
+                  "VERSION": 3,
+                  "ITEMS": [
+                    {
+                      "ID": "mixed-task",
+                      "TEXT": "Mixed case task",
+                      "ATTACHMENTS": [
+                        {
+                          "FILEPATH": {{sourceTodoAttachmentJson}},
+                          "STORAGEMODE": "managed",
+                          "FUTUREATTACHMENTFIELD": true
+                        }
+                      ],
+                      "FUTUREITEMFIELD": "ignored"
+                    }
+                  ],
+                  "FUTUREROOTFIELD": true
+                }
+                """);
+            WriteEntry(
+                archive,
+                "data/quick-capture/attachments/mixed-note/image.png",
+                "quick attachment");
+            WriteEntry(
+                archive,
+                "data/widgets/todo-widget/attachments/mixed-task/spec.pdf",
+                "todo attachment");
+        }
+        var service = new DeskBoxDataBackupService(_appDataRoot);
+
+        DeskBoxRestorePreparation preparation = await service.PrepareRestoreAsync(archivePath);
+
+        Assert.Equal(1, preparation.BackupSchemaVersion);
+        using JsonDocument marker = JsonDocument.Parse(
+            await File.ReadAllTextAsync(service.PendingRestoreMarkerPath));
+        string stagingRoot = marker.RootElement.GetProperty("stagingRoot").GetString()!;
+        string stagedData = Path.Combine(stagingRoot, "data");
+        using JsonDocument quick = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(stagedData, "quick-capture", "quick-capture.json")));
+        JsonElement quickItem = Assert.Single(
+            quick.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal("Pinned", quick.RootElement.GetProperty("currentView").GetString());
+        Assert.Equal("Link", quickItem.GetProperty("type").GetString());
+        Assert.Equal("Paper", quickItem.GetProperty("appearancePreset").GetString());
+        Assert.Equal("Clipboard", quickItem.GetProperty("sourceKind").GetString());
+        Assert.False(quick.RootElement.TryGetProperty("CURRENTVIEW", out _));
+        Assert.False(quick.RootElement.TryGetProperty("FUTUREROOTFIELD", out _));
+        Assert.Equal(
+            Path.Combine(service.DataDirectory, quickRelativePath),
+            Assert.Single(quickItem.GetProperty("attachments").EnumerateArray())
+                .GetProperty("filePath")
+                .GetString(),
+            ignoreCase: true);
+
+        using JsonDocument todo = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(stagedData, "widgets", "todo-widget", "todo.json")));
+        JsonElement todoItem = Assert.Single(todo.RootElement.GetProperty("items").EnumerateArray());
+        Assert.False(todo.RootElement.TryGetProperty("ITEMS", out _));
+        Assert.False(todo.RootElement.TryGetProperty("FUTUREROOTFIELD", out _));
+        Assert.Equal(
+            Path.Combine(service.DataDirectory, todoRelativePath),
+            Assert.Single(todoItem.GetProperty("attachments").EnumerateArray())
+                .GetProperty("filePath")
+                .GetString(),
+            ignoreCase: true);
+        Assert.Contains(
+            "\"LANGUAGE\"",
+            await File.ReadAllTextAsync(Path.Combine(stagedData, "settings.json")),
+            StringComparison.Ordinal);
+
         await service.CancelPendingRestoreAsync();
     }
 

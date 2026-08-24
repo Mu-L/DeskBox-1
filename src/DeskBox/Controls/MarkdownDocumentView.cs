@@ -1,6 +1,7 @@
 using DeskBox.Models;
 using DeskBox.Services;
 using Markdig.Extensions.Tables;
+using Markdig.Extensions.TaskLists;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Microsoft.UI.Text;
@@ -19,7 +20,7 @@ namespace DeskBox.Controls;
 /// Safe native Markdown reader. All textual blocks share one RichTextBlock so
 /// users can select and copy across paragraphs, headings, lists, and tables.
 /// </summary>
-public sealed class MarkdownDocumentView : UserControl
+public sealed partial class MarkdownDocumentView : UserControl
 {
     private const double BodyLineHeightRatio = 1.72;
     private const double TaskLineHeightRatio = 2.16;
@@ -993,10 +994,9 @@ public sealed class MarkdownDocumentView : UserControl
     {
         foreach (LeafBlock leaf in item.Descendants<LeafBlock>())
         {
-            if (leaf.Inline?.FirstChild is { } first &&
-                string.Equals(first.GetType().Name, "TaskList", StringComparison.Ordinal))
+            if (leaf.Inline?.FirstChild is TaskList taskList)
             {
-                return first.GetType().GetProperty("Checked")?.GetValue(first) as bool?;
+                return taskList.Checked;
             }
         }
         return null;

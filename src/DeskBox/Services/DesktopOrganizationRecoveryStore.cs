@@ -1,16 +1,22 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
 
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    WriteIndented = true)]
+[JsonSerializable(
+    typeof(DesktopOrganizationRecoveryJournal),
+    TypeInfoPropertyName = "RecoveryJournal")]
+internal sealed partial class DesktopRecoveryJsonContext : JsonSerializerContext
+{
+}
+
 public sealed class DesktopOrganizationRecoveryStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     private readonly string _journalPath;
 
     public DesktopOrganizationRecoveryStore(string? journalPath = null)
@@ -30,7 +36,9 @@ public sealed class DesktopOrganizationRecoveryStore
         }
 
         string json = await File.ReadAllTextAsync(_journalPath);
-        return JsonSerializer.Deserialize<DesktopOrganizationRecoveryJournal>(json, JsonOptions);
+        return JsonSerializer.Deserialize(
+            json,
+            DesktopRecoveryJsonContext.Default.RecoveryJournal);
     }
 
     public async Task SaveAsync(DesktopOrganizationRecoveryJournal journal)
@@ -42,7 +50,9 @@ public sealed class DesktopOrganizationRecoveryStore
         }
 
         string temporaryPath = $"{_journalPath}.tmp";
-        string json = JsonSerializer.Serialize(journal, JsonOptions);
+        string json = JsonSerializer.Serialize(
+            journal,
+            DesktopRecoveryJsonContext.Default.RecoveryJournal);
         await File.WriteAllTextAsync(temporaryPath, json);
         File.Move(temporaryPath, _journalPath, overwrite: true);
     }

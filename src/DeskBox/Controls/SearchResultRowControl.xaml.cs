@@ -7,8 +7,8 @@ using Microsoft.UI.Xaml.Media;
 namespace DeskBox.Controls;
 
 /// <summary>
-/// A single row in the search popup result list. Binds to a
-/// <see cref="SearchResultItem"/> DataContext and owns its own hover and
+/// A single row in the search popup result list. Receives a typed
+/// <see cref="SearchResultItem"/> bridge while retaining the inherited DataContext and owns its own hover and
 /// keyboard-selection visuals, so the popup window only needs to flip
 /// <see cref="IsSelected"/> and call <see cref="RefreshIconVisuals"/> when the
 /// lazily resolved shell icon arrives.
@@ -65,10 +65,22 @@ public sealed partial class SearchResultRowControl : UserControl
     }
 
     /// <summary>
-    /// The bound result item, if any. Internal so the XAML type-info generator does not
-    /// try to emit an activator for SearchResultItem (which has required members).
+    /// Strongly typed projection of the inherited DataContext. It remains internal so
+    /// the XAML type-info generator does not emit an invalid parameterless activator
+    /// for SearchResultItem, whose Kind and Title members are required.
     /// </summary>
-    internal SearchResultItem? Item => DataContext as SearchResultItem;
+    internal SearchResultItem? Item { get; private set; }
+
+    /// <summary>
+    /// Rebinds all one-time compiled leaves whenever ItemsRepeater prepares or recycles
+    /// this element. Calling this even for the same object also preserves the lazy
+    /// metadata refresh boundary without making SearchResultItem artificially observable.
+    /// </summary>
+    internal void PrepareItem(SearchResultItem? item)
+    {
+        Item = item;
+        Bindings.Update();
+    }
 
     private static void OnIsSelectedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

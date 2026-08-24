@@ -38,8 +38,8 @@ public sealed class QuickCaptureAttachmentSurfaceContractTests
         Assert.Contains("Height=\"76\"", controlXaml, StringComparison.Ordinal);
         Assert.Contains("HorizontalScrollMode=\"Enabled\"", controlXaml, StringComparison.Ordinal);
         Assert.Contains("Orientation=\"Horizontal\"", controlXaml, StringComparison.Ordinal);
-        Assert.Contains("Source=\"{Binding Thumbnail}\"", controlXaml, StringComparison.Ordinal);
-        Assert.Contains("Glyph=\"{Binding Glyph}\"", controlXaml, StringComparison.Ordinal);
+        Assert.Contains("Source=\"{x:Bind Thumbnail, Mode=OneWay}\"", controlXaml, StringComparison.Ordinal);
+        Assert.Contains("Glyph=\"{x:Bind Glyph, Mode=OneWay}\"", controlXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"RemoveAttachmentButton\"", controlXaml, StringComparison.Ordinal);
         Assert.Contains("Opacity=\"0\"", controlXaml, StringComparison.Ordinal);
         Assert.Contains("PointerEntered=\"AttachmentTile_PointerEntered\"", controlXaml, StringComparison.Ordinal);

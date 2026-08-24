@@ -219,6 +219,24 @@ public sealed class WidgetFileStackSettingsTests
     }
 
     [Fact]
+    public void WidgetMetadataJson_PreservesDictionaryKeysAndCompactFormat()
+    {
+        var config = new WidgetConfig();
+        var names = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["MiXeD:Group"] = "Display name"
+        };
+
+        WidgetFileStackSettings.SetStackNameOverrides(config, names);
+
+        string json = config.Metadata[WidgetFileStackSettings.StackNameOverridesMetadataKey];
+        Assert.Equal("{\"MiXeD:Group\":\"Display name\"}", json);
+        Assert.Equal(
+            "Display name",
+            WidgetFileStackSettings.GetStackNameOverrides(config)["MiXeD:Group"]);
+    }
+
+    [Fact]
     public void AppSettings_CustomRulesRoundTripThroughJson()
     {
         var settings = new AppSettings

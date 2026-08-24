@@ -122,6 +122,22 @@
                     Toggled="SearchScopeToggle_Toggled" />
             </toolkit:SettingsCard>
 
+            <toolkit:SettingsCard
+                x:Name="SearchRustPreviewCard"
+                HorizontalContentAlignment="Right"
+                svc:Localized.DescriptionKey="Settings.Search.Index.RustPreview.Description"
+                svc:Localized.HeaderKey="Settings.Search.Index.RustPreview.Title">
+                <toolkit:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE950;" />
+                </toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch
+                    x:Name="SearchRustPreviewToggle"
+                    MinWidth="0"
+                    OffContent=""
+                    OnContent=""
+                    Toggled="SearchRustPreviewToggle_Toggled" />
+            </toolkit:SettingsCard>
+
             <!-- Index status dashboard (visible when custom indexer is enabled) -->
             <toolkit:SettingsCard
                 x:Name="IndexDashboardCard"
@@ -154,6 +170,10 @@
 
                     <!-- Storage + last scan info -->
                     <TextBlock x:Name="SearchIndexStorageText"
+                               Style="{StaticResource SettingDescriptionTextStyle}"
+                               Opacity="0.7" />
+
+                    <TextBlock x:Name="SearchIndexBackendText"
                                Style="{StaticResource SettingDescriptionTextStyle}"
                                Opacity="0.7" />
 

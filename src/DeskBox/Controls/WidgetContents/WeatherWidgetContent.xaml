@@ -207,6 +207,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                     <TextBlock
+                        x:Name="CompactLocationText"
                         FontSize="{Binding CaptionTextSize}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -253,11 +254,13 @@
                     Spacing="-1">
                     <StackPanel Orientation="Horizontal" Spacing="7">
                         <TextBlock
+                            x:Name="CompactTemperatureText"
                             FontSize="{Binding TemperatureTextSize}"
                             FontWeight="SemiBold"
                             Text="{Binding CurrentTemperatureText}"
                             TextWrapping="NoWrap" />
                         <TextBlock
+                            x:Name="CompactDescriptionText"
                             VerticalAlignment="Center"
                             FontSize="{Binding BodyTextSize}"
                             FontWeight="SemiBold"
@@ -299,6 +302,7 @@
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding HumidityLabel}" />
                         <TextBlock
+                            x:Name="CompactHumidityValueText"
                             HorizontalAlignment="Center"
                             FontSize="10"
                             FontWeight="SemiBold"
@@ -318,6 +322,7 @@
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding WindLabel}" />
                         <TextBlock
+                            x:Name="CompactWindText"
                             HorizontalAlignment="Center"
                             FontSize="10"
                             FontWeight="SemiBold"
@@ -337,6 +342,7 @@
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding PrecipitationLabel}" />
                         <TextBlock
+                            x:Name="CompactPrecipitationValueText"
                             HorizontalAlignment="Center"
                             FontSize="10"
                             FontWeight="SemiBold"
@@ -375,6 +381,7 @@
                     Spacing="4"
                     VerticalAlignment="Center">
                     <TextBlock
+                        x:Name="ExpandedLocationText"
                         FontSize="{Binding BodyTextSize}"
                         FontWeight="SemiBold"
                         Text="{Binding LocationDisplay}"
@@ -458,11 +465,13 @@
                     Spacing="-1">
                     <StackPanel Orientation="Horizontal" Spacing="9">
                         <TextBlock
+                            x:Name="ExpandedTemperatureText"
                             FontSize="{Binding TemperatureTextSize}"
                             FontWeight="SemiBold"
                             Text="{Binding CurrentTemperatureText}"
                             TextWrapping="NoWrap" />
                         <TextBlock
+                            x:Name="ExpandedDescriptionText"
                             VerticalAlignment="Center"
                             FontSize="{Binding TitleTextSize}"
                             FontWeight="SemiBold"
@@ -504,6 +513,7 @@
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding HumidityLabel}" />
                         <TextBlock
+                            x:Name="ExpandedHumidityValueText"
                             HorizontalAlignment="Center"
                             FontSize="{Binding BodyTextSize}"
                             FontWeight="SemiBold"
@@ -521,6 +531,7 @@
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding WindLabel}" />
                         <TextBlock
+                            x:Name="ExpandedWindText"
                             HorizontalAlignment="Center"
                             FontSize="{Binding BodyTextSize}"
                             FontWeight="SemiBold"
@@ -540,6 +551,7 @@
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding PrecipitationLabel}" />
                         <TextBlock
+                            x:Name="ExpandedPrecipitationValueText"
                             HorizontalAlignment="Center"
                             FontSize="{Binding BodyTextSize}"
                             FontWeight="SemiBold"
@@ -555,6 +567,7 @@
                 Spacing="24"
                 Visibility="{Binding ExpandedSecondaryMetricsVisibility}">
                 <StackPanel
+                    x:Name="ExpandedUvMetric"
                     Orientation="Horizontal"
                     Spacing="6"
                     Visibility="{Binding UvIndexVisibility}">
@@ -563,11 +576,13 @@
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Text="{Binding UvIndexLabel}" />
                     <TextBlock
+                        x:Name="ExpandedUvValueText"
                         FontSize="{Binding CaptionTextSize}"
                         FontWeight="SemiBold"
                         Text="{Binding UvIndexValueText}" />
                 </StackPanel>
                 <StackPanel
+                    x:Name="ExpandedPressureMetric"
                     Orientation="Horizontal"
                     Spacing="6"
                     Visibility="{Binding PressureVisibility}">
@@ -576,6 +591,7 @@
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Text="{Binding PressureLabel}" />
                     <TextBlock
+                        x:Name="ExpandedPressureValueText"
                         FontSize="{Binding CaptionTextSize}"
                         FontWeight="SemiBold"
                         Text="{Binding PressureValueText}" />
@@ -668,6 +684,7 @@
             </Grid>
 
             <Grid
+                x:Name="ExpandedHourlyForecastSection"
                 Grid.Row="5"
                 Visibility="{Binding ForecastVisibility}">
                 <Border
@@ -692,9 +709,10 @@
                     VerticalScrollBarVisibility="Disabled"
                     VerticalScrollMode="Disabled">
                     <ItemsControl
+                        x:Name="ExpandedHourlyItems"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Bottom"
-                        ItemsSource="{Binding HourlyForecast}">
+                        ItemsSource="{Binding HourlyForecastItemsSource}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal" />
@@ -714,6 +732,7 @@
                                             <RowDefinition Height="7" />
                                         </Grid.RowDefinitions>
                                         <TextBlock
+                                            x:Name="HourlyHourText"
                                             Grid.Row="0"
                                             HorizontalAlignment="Center"
                                             FontSize="9"
@@ -727,6 +746,7 @@
                                             FontSize="{Binding DataContext.ForecastEmojiSize, ElementName=ExpandedLayout}"
                                             Text="{Binding Emoji}" />
                                         <TextBlock
+                                            x:Name="HourlyTemperatureText"
                                             Grid.Row="2"
                                             HorizontalAlignment="Center"
                                             FontSize="{Binding DataContext.ForecastTempTextSize, ElementName=ExpandedLayout}"
@@ -757,6 +777,7 @@
             </Grid>
 
             <Border
+                x:Name="ExpandedWeekForecastSection"
                 Grid.Row="5"
                 Padding="0,2,0,0"
                 BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
@@ -775,7 +796,9 @@
                     PointerWheelChanged="WeekScroll_PointerWheelChanged"
                     VerticalScrollBarVisibility="Hidden"
                     VerticalScrollMode="Enabled">
-                    <ItemsControl ItemsSource="{Binding DailyForecast}">
+                    <ItemsControl
+                        x:Name="ExpandedDailyItems"
+                        ItemsSource="{Binding DailyForecastItemsSource}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border
@@ -793,6 +816,7 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock
+                                            x:Name="DailyDayText"
                                             Grid.Column="0"
                                             VerticalAlignment="Center"
                                             FontSize="{Binding DataContext.WeekDayLabelTextSize, ElementName=ExpandedLayout}"
@@ -825,12 +849,14 @@
                                             </Border>
                                         </Grid>
                                         <TextBlock
+                                            x:Name="DailyMaxText"
                                             Grid.Column="4"
                                             VerticalAlignment="Center"
                                             FontSize="{Binding DataContext.WeekTempMaxSize, ElementName=ExpandedLayout}"
                                             FontWeight="SemiBold"
                                             Text="{Binding TempMaxText}" />
                                         <TextBlock
+                                            x:Name="DailyMinText"
                                             Grid.Column="5"
                                             VerticalAlignment="Center"
                                             FontSize="{Binding DataContext.WeekTempMinSize, ElementName=ExpandedLayout}"

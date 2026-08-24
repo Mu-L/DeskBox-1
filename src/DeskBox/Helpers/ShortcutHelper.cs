@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
+#if !DESKBOX_NATIVE_AOT
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
+#endif
 
 namespace DeskBox.Helpers;
 
@@ -11,7 +13,9 @@ namespace DeskBox.Helpers;
 /// </summary>
 public static class ShortcutHelper
 {
+#if !DESKBOX_NATIVE_AOT
     private const int MAX_PATH = 260;
+#endif
     private const int MaxStoredMetadataCacheEntries = 512;
     private static readonly ConcurrentDictionary<string, StoredShortcutCacheEntry>
         s_storedMetadataCache = new(StringComparer.OrdinalIgnoreCase);
@@ -56,6 +60,33 @@ public static class ShortcutHelper
             return null;
         }
 
+#if DESKBOX_NATIVE_AOT
+        ShortcutNativeCallResult native = ShortcutNativeBackend.ResolveNoUi(shortcutPath);
+        if (!native.Success)
+        {
+            LogNativeFailure("resolve", shortcutPath, native);
+        }
+
+        return native.Metadata;
+#else
+        if (ShortcutBackendPolicy.Current == ShortcutBackendMode.Rust)
+        {
+            ShortcutNativeCallResult native = ShortcutNativeBackend.ResolveNoUi(shortcutPath);
+            if (!native.Success)
+            {
+                LogNativeFailure("resolve", shortcutPath, native);
+            }
+
+            return native.Metadata;
+        }
+
+        return ResolveWithCSharp(shortcutPath);
+#endif
+    }
+
+#if !DESKBOX_NATIVE_AOT
+    internal static ShortcutInfo? ResolveWithCSharp(string shortcutPath, ushort timeoutMs = 0)
+    {
         try
         {
             var link = (IShellLinkW)new ShellLink();
@@ -64,7 +95,9 @@ public static class ShortcutHelper
             file.Load(shortcutPath, 0); // STGM_READ
             try
             {
-                link.Resolve(IntPtr.Zero, SLR_FLAGS.SLR_NO_UI | SLR_FLAGS.SLR_NOSEARCH);
+                uint resolveFlags = (uint)(SLR_FLAGS.SLR_NO_UI | SLR_FLAGS.SLR_NOSEARCH) |
+                    ((uint)timeoutMs << 16);
+                link.Resolve(IntPtr.Zero, (SLR_FLAGS)resolveFlags);
             }
             catch
             {
@@ -78,6 +111,7 @@ public static class ShortcutHelper
             return null;
         }
     }
+#endif
 
     /// <summary>
     /// Reads metadata already stored in a shortcut without asking Windows to
@@ -136,12 +170,51 @@ public static class ShortcutHelper
             return null;
         }
 
+#if DESKBOX_NATIVE_AOT
+        ShortcutNativeCallResult native = ShortcutNativeBackend.ReadStoredRaw(shortcutPath);
+        if (!native.Success)
+        {
+            LogNativeFailure("stored read", shortcutPath, native);
+        }
+
+        return native.Metadata;
+#else
+        if (ShortcutBackendPolicy.Current == ShortcutBackendMode.Rust)
+        {
+            ShortcutNativeCallResult native = ShortcutNativeBackend.ReadStoredRaw(shortcutPath);
+            if (!native.Success)
+            {
+                LogNativeFailure("stored read", shortcutPath, native);
+            }
+
+            return native.Metadata;
+        }
+
+        return ReadStoredMetadataWithCSharpUncached(shortcutPath);
+#endif
+    }
+
+#if !DESKBOX_NATIVE_AOT
+    internal static ShortcutInfo ReadStoredMetadataWithCSharpUncached(string shortcutPath)
+    {
         var link = (IShellLinkW)new ShellLink();
         var file = (IPersistFile)link;
         file.Load(shortcutPath, 0); // STGM_READ
         return ReadShellLinkMetadata(link);
     }
+#endif
 
+    private static void LogNativeFailure(
+        string operation,
+        string shortcutPath,
+        ShortcutNativeCallResult result)
+    {
+        App.Log(
+            $"[ShortcutNative] Explicit Rust {operation} failed for '{shortcutPath}': " +
+            $"{result.Failure}; {result.Detail}");
+    }
+
+#if !DESKBOX_NATIVE_AOT
     private static ShortcutInfo ReadShellLinkMetadata(IShellLinkW link)
     {
         var targetBuilder = new StringBuilder(MAX_PATH);
@@ -168,6 +241,7 @@ public static class ShortcutHelper
             IconLocation: iconBuilder.ToString(),
             IconIndex: iconIndex);
     }
+#endif
 
     private static ShortcutInfo? ResolveInternetShortcut(string shortcutPath)
     {
@@ -244,27 +318,49 @@ public static class ShortcutHelper
 
         try
         {
-            var link = (IShellLinkW)new ShellLink();
-            var file = (IPersistFile)link;
-            file.Load(lnkPath, 0); // STGM_READ
+#if DESKBOX_NATIVE_AOT
+            ShortcutNativeUiResolveCallResult native =
+                ShortcutNativeBackend.ResolveWithUi(lnkPath, ownerHwnd);
+            if (!native.Success)
+            {
+                LogNativeUiResolveFailure(lnkPath, native);
+            }
+#else
+            if (ShortcutBackendPolicy.Current == ShortcutBackendMode.Rust)
+            {
+                ShortcutNativeUiResolveCallResult native =
+                    ShortcutNativeBackend.ResolveWithUi(lnkPath, ownerHwnd);
+                if (!native.Success)
+                {
+                    LogNativeUiResolveFailure(lnkPath, native);
+                }
+            }
+            else
+            {
+                var link = (IShellLinkW)new ShellLink();
+                var file = (IPersistFile)link;
+                file.Load(lnkPath, 0); // STGM_READ
 
-            link.Resolve(
-                ownerHwnd,
-                SLR_FLAGS.SLR_UPDATE |
-                SLR_FLAGS.SLR_NOSEARCH |
-                SLR_FLAGS.SLR_OFFER_DELETE_WITHOUT_FILE);
-
-            return File.Exists(lnkPath)
-                ? BrokenShortcutResolution.ResolvedOrKept
-                : BrokenShortcutResolution.ShortcutDeleted;
+                link.Resolve(
+                    ownerHwnd,
+                    SLR_FLAGS.SLR_UPDATE |
+                    SLR_FLAGS.SLR_NOSEARCH |
+                    SLR_FLAGS.SLR_OFFER_DELETE_WITHOUT_FILE);
+            }
+#endif
         }
         catch (Exception ex)
         {
             App.Log($"[Shortcut] Native broken-link resolution failed for '{lnkPath}': {ex}");
-            return File.Exists(lnkPath)
-                ? BrokenShortcutResolution.ResolvedOrKept
-                : BrokenShortcutResolution.ShortcutDeleted;
         }
+        finally
+        {
+            InvalidateStoredMetadataCache(lnkPath);
+        }
+
+        return File.Exists(lnkPath)
+            ? BrokenShortcutResolution.ResolvedOrKept
+            : BrokenShortcutResolution.ShortcutDeleted;
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -286,15 +382,100 @@ public static class ShortcutHelper
 
         Directory.CreateDirectory(shortcutDirectory);
 
+#if DESKBOX_NATIVE_AOT
+        var metadata = new ShortcutInfo(
+            normalizedTargetPath,
+            description,
+            string.Empty,
+            normalizedTargetPath,
+            string.Empty,
+            0);
+        ShortcutNativeWriteCallResult native =
+            ShortcutNativeBackend.WriteShortcut(normalizedShortcutPath, metadata);
+        if (!native.Success)
+        {
+            LogNativeWriteFailure("folder write", normalizedShortcutPath, native);
+            throw new InvalidOperationException(
+                $"Rust shortcut write failed: {native.Failure}; {native.Detail}");
+        }
+#else
+        if (ShortcutBackendPolicy.Current == ShortcutBackendMode.Rust)
+        {
+            var metadata = new ShortcutInfo(
+                normalizedTargetPath,
+                description,
+                string.Empty,
+                normalizedTargetPath,
+                string.Empty,
+                0);
+            ShortcutNativeWriteCallResult native =
+                ShortcutNativeBackend.WriteShortcut(normalizedShortcutPath, metadata);
+            if (!native.Success)
+            {
+                LogNativeWriteFailure("folder write", normalizedShortcutPath, native);
+                throw new InvalidOperationException(
+                    $"Rust shortcut write failed: {native.Failure}; {native.Detail}");
+            }
+        }
+        else
+        {
+            CreateOrUpdateFolderShortcutWithCSharp(
+                normalizedShortcutPath,
+                normalizedTargetPath,
+                description);
+        }
+#endif
+
+        InvalidateStoredMetadataCache(normalizedShortcutPath);
+    }
+
+#if !DESKBOX_NATIVE_AOT
+    internal static void CreateOrUpdateFolderShortcutWithCSharp(
+        string normalizedShortcutPath,
+        string normalizedTargetPath,
+        string description)
+    {
         var link = (IShellLinkW)new ShellLink();
         var file = (IPersistFile)link;
         link.SetPath(normalizedTargetPath);
         link.SetWorkingDirectory(normalizedTargetPath);
         link.SetDescription(description);
         file.Save(normalizedShortcutPath, true);
-        s_storedMetadataCache.TryRemove(normalizedShortcutPath, out _);
+    }
+#endif
+
+    internal static void InvalidateStoredMetadataCache(string shortcutPath)
+    {
+        try
+        {
+            s_storedMetadataCache.TryRemove(Path.GetFullPath(shortcutPath), out _);
+        }
+        catch
+        {
+            s_storedMetadataCache.TryRemove(shortcutPath, out _);
+        }
     }
 
+    private static void LogNativeWriteFailure(
+        string operation,
+        string shortcutPath,
+        ShortcutNativeWriteCallResult result)
+    {
+        App.Log(
+            $"[ShortcutNative] Explicit Rust {operation} failed for '{shortcutPath}': " +
+            $"{result.Failure}; {result.Detail}");
+    }
+
+    private static void LogNativeUiResolveFailure(
+        string shortcutPath,
+        ShortcutNativeUiResolveCallResult result)
+    {
+        App.Log(
+            $"[ShortcutNative] Explicit Rust Windows UI resolve failed for '{shortcutPath}': " +
+            $"{result.Failure}; {result.Detail}");
+    }
+
+#if !DESKBOX_NATIVE_AOT
     /// <summary>Shell Link CoClass (CLSID_ShellLink).</summary>
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]
@@ -399,6 +580,7 @@ public static class ShortcutHelper
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 14)]
         public string cAlternateFileName;
     }
+#endif
 }
 
 public enum BrokenShortcutResolution

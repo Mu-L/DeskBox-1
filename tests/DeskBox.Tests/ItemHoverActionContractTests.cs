@@ -60,7 +60,7 @@ public sealed class ItemHoverActionContractTests
         Assert.Contains("x:Class=\"DeskBox.Controls.PinStateIcon\"", pinControlXaml, StringComparison.Ordinal);
         Assert.Contains("L8.4,15.5 L7.6,15.5", pinControlXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"PinnedPath\"", pinControlXaml, StringComparison.Ordinal);
-        Assert.Contains("Fill=\"{Binding Foreground, ElementName=Root}\"", pinControlXaml, StringComparison.Ordinal);
+        Assert.Contains("Fill=\"{x:Bind Foreground, Mode=OneWay}\"", pinControlXaml, StringComparison.Ordinal);
         Assert.Contains("public bool IsPinned", pinControlCode, StringComparison.Ordinal);
         Assert.Contains("controls:PinStateIcon", surfaceXaml, StringComparison.Ordinal);
         Assert.Contains("IsPinned=\"{Binding IsPinned}\"", surfaceXaml, StringComparison.Ordinal);

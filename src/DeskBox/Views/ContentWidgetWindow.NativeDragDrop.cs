@@ -63,6 +63,12 @@ public sealed partial class ContentWidgetWindow
         try
         {
             _nativeFileDropTarget = new NativeDropTarget(HWnd);
+            _nativeFileDropTarget.DragEnterEvent +=
+                NativeFileDropTarget_DragEnterEvent;
+            _nativeFileDropTarget.DragOverEvent +=
+                NativeFileDropTarget_DragOverEvent;
+            _nativeFileDropTarget.DragLeaveEvent +=
+                NativeFileDropTarget_DragLeaveEvent;
             _nativeFileDropTarget.DropEvent += NativeFileDropTarget_DropEvent;
             _nativeFileDropTarget.Register();
         }
@@ -404,6 +410,12 @@ public sealed partial class ContentWidgetWindow
 
         if (_nativeFileDropTarget is not null)
         {
+            _nativeFileDropTarget.DragEnterEvent -=
+                NativeFileDropTarget_DragEnterEvent;
+            _nativeFileDropTarget.DragOverEvent -=
+                NativeFileDropTarget_DragOverEvent;
+            _nativeFileDropTarget.DragLeaveEvent -=
+                NativeFileDropTarget_DragLeaveEvent;
             _nativeFileDropTarget.DropEvent -= NativeFileDropTarget_DropEvent;
             _nativeFileDropTarget.Dispose();
             _nativeFileDropTarget = null;
@@ -425,28 +437,90 @@ public sealed partial class ContentWidgetWindow
             App.Log(
                 $"[DropDiagnostic] content id={_config.Id} stage=NativeDropFiles " +
                 $"count={paths.Count}");
-            QueueNativeFileDropImport(paths, containsTemporaryFiles: false);
+            QueueNativeFileDropImport(
+                paths,
+                containsTemporaryFiles: false,
+                copyWhenMapped: null);
             return IntPtr.Zero;
         }
 
         return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
     }
 
+    private void NativeFileDropTarget_DragEnterEvent(
+        int screenX,
+        int screenY,
+        bool hasFileData)
+    {
+        ObserveNativeFileDragPointer(screenX, screenY, hasFileData);
+    }
+
+    private void NativeFileDropTarget_DragOverEvent(int screenX, int screenY)
+    {
+        ObserveNativeFileDragPointer(
+            screenX,
+            screenY,
+            _nativeFileDropTarget?.HasFileData == true);
+    }
+
+    private void NativeFileDropTarget_DragLeaveEvent()
+    {
+        RunOnNativeFileDropUiThread(file =>
+            file.ClearDragSessionVisualState());
+    }
+
+    private void ObserveNativeFileDragPointer(
+        int screenX,
+        int screenY,
+        bool hasFileData)
+    {
+        RunOnNativeFileDropUiThread(file =>
+            file.ObserveNativeDragPointer(screenX, screenY, hasFileData));
+    }
+
+    private void RunOnNativeFileDropUiThread(Action<FileSurfaceContent> action)
+    {
+        void Invoke()
+        {
+            if (!IsClosing && CurrentContent is FileSurfaceContent file)
+            {
+                action(file);
+            }
+        }
+
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            Invoke();
+        }
+        else
+        {
+            DispatcherQueue.TryEnqueue(Invoke);
+        }
+    }
+
     private void NativeFileDropTarget_DropEvent(
         IReadOnlyList<string> paths,
         int screenX,
         int screenY,
-        bool containsTemporaryFiles)
+        bool containsTemporaryFiles,
+        bool copyWhenMapped)
     {
+        RunOnNativeFileDropUiThread(file =>
+            file.ClearDragSessionVisualState());
         App.Log(
             $"[DropDiagnostic] content id={_config.Id} stage=NativeIDropTargetDrop " +
-            $"count={paths.Count} temporary={containsTemporaryFiles}");
-        QueueNativeFileDropImport(paths, containsTemporaryFiles);
+            $"count={paths.Count} temporary={containsTemporaryFiles} " +
+            $"copyWhenMapped={copyWhenMapped}");
+        QueueNativeFileDropImport(
+            paths,
+            containsTemporaryFiles,
+            copyWhenMapped);
     }
 
     private void QueueNativeFileDropImport(
         IReadOnlyList<string> paths,
-        bool containsTemporaryFiles)
+        bool containsTemporaryFiles,
+        bool? copyWhenMapped)
     {
         if (paths.Count == 0)
         {
@@ -456,7 +530,8 @@ public sealed partial class ContentWidgetWindow
         if (!DispatcherQueue.TryEnqueue(
                 () => _ = ImportNativeFileDropAsync(
                     paths,
-                    containsTemporaryFiles)))
+                    containsTemporaryFiles,
+                    copyWhenMapped)))
         {
             if (containsTemporaryFiles)
             {
@@ -467,7 +542,8 @@ public sealed partial class ContentWidgetWindow
 
     private async Task ImportNativeFileDropAsync(
         IReadOnlyList<string> paths,
-        bool containsTemporaryFiles)
+        bool containsTemporaryFiles,
+        bool? copyWhenMapped)
     {
         try
         {
@@ -480,7 +556,10 @@ public sealed partial class ContentWidgetWindow
             }
 
             file.SetHostWindowHandle(HWnd);
-            await file.ImportNativeDroppedFilesAsync(paths, containsTemporaryFiles);
+            await file.ImportNativeDroppedFilesAsync(
+                paths,
+                containsTemporaryFiles,
+                copyWhenMapped);
         }
         finally
         {

@@ -95,11 +95,11 @@ public sealed partial class TodoWidgetContent : UserControl
         ViewModel = viewModel;
     }
 
-    public void RevealReminderItem(string? itemId, bool preferTodayFilter)
+    public bool RevealReminderItem(string? itemId, bool preferTodayFilter)
     {
         if (ViewModel is null)
         {
-            return;
+            return false;
         }
 
         var item = ViewModel.FocusReminderItem(itemId, preferTodayFilter);
@@ -111,6 +111,8 @@ public sealed partial class TodoWidgetContent : UserControl
             _copySelectionAnchorId = item.Id;
             TodoListView.ScrollIntoView(item);
         }
+
+        return item is not null;
     }
 
     public TodoWidgetViewModel? ViewModel

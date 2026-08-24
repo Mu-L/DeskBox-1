@@ -9,6 +9,11 @@ param(
 
     [switch]$SignPackage,
 
+    [switch]$NativeAot,
+
+    [ValidateSet("SideloadOnly", "StoreUpload", "CI")]
+    [string]$PackageBuildMode = "SideloadOnly",
+
     [string]$AppxBundle = "Never",
 
     [string]$OutputDir = ""
@@ -30,6 +35,10 @@ elseif (-not [System.IO.Path]::IsPathRooted($OutputDir)) {
 }
 
 $OutputDir = [System.IO.Path]::GetFullPath($OutputDir)
+$appxPackageDir = $OutputDir.TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar) +
+    [System.IO.Path]::DirectorySeparatorChar
 
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
@@ -41,12 +50,27 @@ $properties = @(
     "-p:DeskBoxDistribution=Store",
     "-p:DeskBoxCreateMsixPackage=true",
     "-p:SelfContained=true",
+    "-p:WindowsAppSDKSelfContained=false",
     "-p:PublishSingleFile=false",
     "-p:PublishTrimmed=false",
+    "-p:UapAppxPackageBuildMode=$PackageBuildMode",
     "-p:AppxBundle=$AppxBundle",
-    "-p:AppxPackageDir=$OutputDir",
+    "-p:AppxPackageDir=$appxPackageDir",
     "-p:AppxPackageSigningEnabled=$signingEnabled"
 )
+
+if ($NativeAot.IsPresent) {
+    $properties += @(
+        "-p:DeskBoxAotAudit=true",
+        "-p:PublishAot=true",
+        "-p:DeskBoxRustNative=true",
+        "-p:DeskBoxRustCrtLinkage=Static",
+        "-p:DeskBoxSearchCorePreviewModule=false",
+        "-p:JsonSerializerIsReflectionEnabledByDefault=false",
+        "-p:IlcUseEnvironmentalTools=true",
+        "-p:PublishTrimmed=true"
+    )
+}
 
 if (-not [string]::IsNullOrWhiteSpace($PackageCertificateKeyFile)) {
     $properties += "-p:PackageCertificateKeyFile=$PackageCertificateKeyFile"
@@ -78,10 +102,25 @@ if (-not [string]::IsNullOrWhiteSpace($vcToolsInstallDir)) {
     }
 }
 
-& $dotnet publish $project -c $Configuration @properties -v:minimal
+if ($NativeAot.IsPresent) {
+    $environmentScript = Join-Path $PSScriptRoot "rust-arm64-msvc-environment.ps1"
+    . $environmentScript
+    $msvcEnvironment = Get-DeskBoxMsvcEnvironment -Platform $Platform
+    $environmentState = Enter-DeskBoxMsvcEnvironment -Toolchain $msvcEnvironment
+}
 
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+try {
+    & $dotnet publish $project -c $Configuration @properties -v:minimal
+    $publishExitCode = $LASTEXITCODE
+}
+finally {
+    if ($NativeAot.IsPresent -and $null -ne $environmentState) {
+        Exit-DeskBoxMsvcEnvironment -State $environmentState
+    }
+}
+
+if ($publishExitCode -ne 0) {
+    exit $publishExitCode
 }
 
 Write-Host "Store MSIX output:" -ForegroundColor Cyan

@@ -38,6 +38,16 @@ public sealed record SettingsPersistenceFailure(
     string Message,
     DateTimeOffset OccurredAt);
 
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    UseStringEnumConverter = true,
+    WriteIndented = true)]
+[JsonSerializable(typeof(AppSettings), TypeInfoPropertyName = "AppSettings")]
+internal sealed partial class SettingsJsonContext : JsonSerializerContext
+{
+}
+
 /// <summary>
 /// Manages application settings persistence using JSON files stored in the application directory.
 /// </summary>
@@ -310,13 +320,6 @@ public const int WeatherRefreshMinMinutes = 15;
 public const int WeatherRefreshMaxMinutes = 180;
 public const int DefaultSearchMaxResults = 100;
 
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
-
     internal static IReadOnlyDictionary<string, DefaultPreferencePreservationReason>
         DefaultPreferencePreservationPolicy { get; } =
             new Dictionary<string, DefaultPreferencePreservationReason>(StringComparer.Ordinal)
@@ -494,6 +497,8 @@ settings.WeatherRefreshIntervalMinutes = 60;
         settings.SearchIncludeDeskBoxContent = true;
         settings.SearchIncludeSystemIndex = true;
         settings.SearchCustomIndexerEnabled = false;
+        settings.SearchRustIndexerPreviewEnabled =
+            AppSettings.SearchRustIndexerDefaultEnabled;
         settings.SearchCustomIndexPaths = [];
         settings.SearchShowRecommendations = true;
         settings.SearchMaxResults = DefaultSearchMaxResults;
@@ -557,7 +562,9 @@ settings.FocusClickedWidgetOnRaise = false;
             ResilientJsonLoadResult<AppSettings> loadResult =
                 await ResilientJsonStore.LoadWithResultAsync(
                     _settingsPath,
-                    json => JsonSerializer.Deserialize<AppSettings>(json, s_jsonOptions) ??
+                    json => JsonSerializer.Deserialize(
+                                json,
+                                SettingsJsonContext.Default.AppSettings) ??
                             throw new InvalidDataException("DeskBox settings JSON is empty."),
                     () => new AppSettings(),
                     "SettingsService");
@@ -734,7 +741,9 @@ settings.FocusClickedWidgetOnRaise = false;
                 NormalizeQuickCaptureSettings(_settings);
                 NormalizeTodoSettings(_settings);
                 NormalizeWeatherSettings(_settings);
-                json = JsonSerializer.Serialize(_settings, s_jsonOptions);
+                json = JsonSerializer.Serialize(
+                    _settings,
+                    SettingsJsonContext.Default.AppSettings);
             }
 
             await ResilientJsonStore.SaveAsync(_settingsPath, json);

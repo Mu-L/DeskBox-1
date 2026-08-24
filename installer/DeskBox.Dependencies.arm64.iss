@@ -124,7 +124,11 @@ end;
 
 procedure DetectDeskBoxDependencies;
 begin
+#if DeskBoxNativeAot
+  ShouldInstallDotNetRuntime := False;
+#else
   ShouldInstallDotNetRuntime := not IsDotNet10RuntimeInstalled;
+#endif
   ShouldInstallWindowsAppRuntime := not IsWindowsAppRuntime22Installed;
 
   Log('DeskBox dependency check: dotnet10Missing=' + IntToStr(Integer(ShouldInstallDotNetRuntime)));

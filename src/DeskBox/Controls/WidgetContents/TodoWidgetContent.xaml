@@ -792,7 +792,7 @@
                                 Visibility="{Binding StepProgressVisibility}" />
                         </Grid>
 
-                        <ItemsControl ItemsSource="{Binding Steps}">
+                        <ItemsControl x:Name="DetailStepsItemsControl" ItemsSource="{Binding StepItemsSource}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Grid MinHeight="36" ColumnSpacing="4">
@@ -802,6 +802,7 @@
                                             <ColumnDefinition Width="28" />
                                         </Grid.ColumnDefinitions>
                                         <CheckBox
+                                            x:Name="DetailStepCheckBox"
                                             Grid.Column="0"
                                             MinWidth="28"
                                             HorizontalAlignment="Center"
@@ -809,6 +810,7 @@
                                             Click="DetailStepCheckBox_Click"
                                             IsChecked="{Binding IsCompleted, Mode=OneWay}" />
                                         <TextBox
+                                            x:Name="DetailStepTextBox"
                                             Grid.Column="1"
                                             MinHeight="32"
                                             Padding="4,3"
@@ -821,6 +823,7 @@
                                             Opacity="{Binding ContentOpacity}"
                                             Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <Button
+                                            x:Name="DetailDeleteStepButton"
                                             Grid.Column="2"
                                             Width="28"
                                             Height="28"
@@ -962,9 +965,10 @@
                     <Border BorderThickness="0">
                         <StackPanel>
                             <controls:AttachmentTileStrip
+                                x:Name="DetailAttachmentStrip"
                                 Margin="8,3,8,0"
                                 CanRemove="True"
-                                ItemsSource="{Binding Attachments}"
+                                ItemsSource="{Binding AttachmentItemsSource}"
                                 OpenRequested="DetailAttachmentStrip_OpenRequested"
                                 RemoveAutomationName="{Binding ElementName=RootGrid, Path=DataContext.DetailRemoveAttachmentText}"
                                 RemoveRequested="DetailAttachmentStrip_RemoveRequested" />

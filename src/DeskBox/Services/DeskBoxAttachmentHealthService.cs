@@ -1,16 +1,15 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using DeskBox.Models;
 
 namespace DeskBox.Services;
 
 public sealed class DeskBoxAttachmentHealthService
 {
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
+    private static readonly QuickCaptureJsonContext s_quickCaptureDataJsonContext =
+        new(CreateDataJsonOptions());
+    private static readonly TodoJsonContext s_todoDataJsonContext =
+        new(CreateDataJsonOptions());
 
     private readonly string _dataDirectory;
 
@@ -46,7 +45,9 @@ public sealed class DeskBoxAttachmentHealthService
         {
             try
             {
-                QuickCaptureStoreData data = ReadJson<QuickCaptureStoreData>(quickCapturePath);
+                QuickCaptureStoreData data = ReadJson<QuickCaptureStoreData>(
+                    quickCapturePath,
+                    s_quickCaptureDataJsonContext.StoreData);
                 AddAttachments(
                     (data.Items ?? []).Concat(data.RecentItems ?? [])
                     .SelectMany(item => item.Attachments ?? []),
@@ -72,7 +73,9 @@ public sealed class DeskBoxAttachmentHealthService
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    TodoWidgetData data = ReadJson<TodoWidgetData>(todoPath);
+                    TodoWidgetData data = ReadJson<TodoWidgetData>(
+                        todoPath,
+                        s_todoDataJsonContext.StoreData);
                     AddAttachments(
                         (data.Items ?? []).SelectMany(item => item.Attachments ?? []),
                         referencedPaths,
@@ -135,9 +138,16 @@ public sealed class DeskBoxAttachmentHealthService
         }
     }
 
-    private static T ReadJson<T>(string path)
+    private static JsonSerializerOptions CreateDataJsonOptions() => new()
     {
-        return JsonSerializer.Deserialize<T>(File.ReadAllText(path), s_jsonOptions) ??
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
+    private static T ReadJson<T>(string path, JsonTypeInfo<T> jsonTypeInfo)
+    {
+        return JsonSerializer.Deserialize(File.ReadAllText(path), jsonTypeInfo) ??
                throw new JsonException("The JSON document contains null.");
     }
 

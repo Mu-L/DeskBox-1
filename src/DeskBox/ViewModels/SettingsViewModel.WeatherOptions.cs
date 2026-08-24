@@ -104,7 +104,9 @@ public string SelectedWeatherTemperatureUnit
             return;
         }
 
-        _settingsService.Settings.WeatherTemperatureUnit = _selectedWeatherTemperatureUnit;
+        WeatherSettingsPolicy.SetTemperatureUnit(
+            _settingsService.Settings,
+            _selectedWeatherTemperatureUnit);
         _settingsService.SaveDebounced();
     }
 }
@@ -138,7 +140,9 @@ public string SelectedWeatherWindSpeedUnit
             return;
         }
 
-        _settingsService.Settings.WeatherWindSpeedUnit = _selectedWeatherWindSpeedUnit;
+        WeatherSettingsPolicy.SetWindSpeedUnit(
+            _settingsService.Settings,
+            _selectedWeatherWindSpeedUnit);
         _settingsService.SaveDebounced();
     }
 }
@@ -171,7 +175,9 @@ public string SelectedWeatherDefaultView
             return;
         }
 
-        _settingsService.Settings.WeatherDefaultView = _selectedWeatherDefaultView;
+        WeatherSettingsPolicy.SetDefaultView(
+            _settingsService.Settings,
+            _selectedWeatherDefaultView);
         _settingsService.SaveDebounced();
     }
 }
@@ -204,7 +210,9 @@ public string SelectedWeatherSkin
             return;
         }
 
-        _settingsService.Settings.WeatherSkin = _selectedWeatherSkin;
+        WeatherSettingsPolicy.SetSkin(
+            _settingsService.Settings,
+            _selectedWeatherSkin);
         _settingsService.SaveDebounced();
     }
 }
@@ -270,7 +278,9 @@ public int SelectedWeatherRefreshInterval
             return;
         }
 
-        _settingsService.Settings.WeatherRefreshIntervalMinutes = _selectedWeatherRefreshInterval;
+        WeatherSettingsPolicy.SetRefreshInterval(
+            _settingsService.Settings,
+            _selectedWeatherRefreshInterval);
         _settingsService.SaveDebounced();
     }
 }
@@ -318,7 +328,7 @@ partial void OnWeatherAutoLocationChanged(bool value)
         return;
     }
 
-    _settingsService.Settings.WeatherAutoLocation = value;
+    WeatherSettingsPolicy.SetAutoLocation(_settingsService.Settings, value);
     _settingsService.SaveDebounced();
     OnPropertyChanged(nameof(WeatherCityNameVisibility));
     OnPropertyChanged(nameof(WeatherLocationStatusVisibility));
@@ -432,6 +442,12 @@ public string WeatherCitySearchText
 /// </summary>
 public ObservableCollection<WeatherCitySearchResult> WeatherCitySuggestions { get; } = [];
 
+public object[] WeatherCitySuggestionItems =>
+    WeatherCitySuggestions.Cast<object>().ToArray();
+
+private void RefreshWeatherCitySuggestionItems() =>
+    OnPropertyChanged(nameof(WeatherCitySuggestionItems));
+
 private bool _isWeatherCitySearching;
 public bool IsWeatherCitySearching
 {
@@ -489,6 +505,7 @@ public async Task UpdateWeatherCitySuggestionsAsync(string query)
     if (string.IsNullOrWhiteSpace(query))
     {
         WeatherCitySuggestions.Clear();
+        RefreshWeatherCitySuggestionItems();
         HasNoCitySearchResults = false;
 
         await PopulateNearbyPopularCitiesAsync(ct);
@@ -501,6 +518,7 @@ public async Task UpdateWeatherCitySuggestionsAsync(string query)
     if (!hasCjk && query.Length < 2)
     {
         WeatherCitySuggestions.Clear();
+        RefreshWeatherCitySuggestionItems();
         HasNoCitySearchResults = false;
         return;
     }
@@ -531,6 +549,7 @@ public async Task UpdateWeatherCitySuggestionsAsync(string query)
         {
             WeatherCitySuggestions.Add(r);
         }
+        RefreshWeatherCitySuggestionItems();
         HasNoCitySearchResults = WeatherCitySuggestions.Count == 0;
     }
     catch (OperationCanceledException)
@@ -581,6 +600,7 @@ private async Task PopulateNearbyPopularCitiesAsync(CancellationToken cancellati
         {
             WeatherCitySuggestions.Add(c);
         }
+        RefreshWeatherCitySuggestionItems();
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
@@ -599,6 +619,7 @@ public void RefreshWeatherCityPopularCities()
 {
     _citySearchCts?.Cancel();
     WeatherCitySuggestions.Clear();
+    RefreshWeatherCitySuggestionItems();
     HasNoCitySearchResults = false;
 }
 
@@ -627,9 +648,15 @@ public void SelectWeatherCity(WeatherCitySearchResult result)
             WeatherAutoLocation = false; // triggers OnWeatherAutoLocationChanged
         }
 
-        _settingsService.Settings.WeatherCityName = result.DisplayName;
-        _settingsService.Settings.WeatherLatitude = result.Latitude;
-        _settingsService.Settings.WeatherLongitude = result.Longitude;
+        if (!WeatherSettingsPolicy.TrySetManualLocation(
+                _settingsService.Settings,
+                result.DisplayName,
+                result.Latitude,
+                result.Longitude))
+        {
+            App.Log("[SettingsViewModel] Ignored city selection rejected by weather policy");
+            return;
+        }
         _settingsService.SaveDebounced();
 
         WeatherCityName = result.DisplayName;
@@ -637,6 +664,7 @@ public void SelectWeatherCity(WeatherCitySearchResult result)
         OnPropertyChanged(nameof(WeatherCitySearchText));
 
         WeatherCitySuggestions.Clear();
+        RefreshWeatherCitySuggestionItems();
         HasNoCitySearchResults = false;
     }
     finally
@@ -649,6 +677,7 @@ public void ClearWeatherCitySuggestions()
 {
     _citySearchCts?.Cancel();
     WeatherCitySuggestions.Clear();
+    RefreshWeatherCitySuggestionItems();
     HasNoCitySearchResults = false;
 }
 
@@ -674,7 +703,10 @@ partial void OnWeatherShowForecastChanged(bool value)
         return;
     }
 
-    _settingsService.Settings.WeatherShowForecast = value;
+    WeatherSettingsPolicy.SetDisplayOption(
+        _settingsService.Settings,
+        WeatherDisplayOption.Forecast,
+        value);
     _settingsService.SaveDebounced();
 }
 
@@ -686,7 +718,10 @@ partial void OnWeatherShowSunriseChanged(bool value)
         return;
     }
 
-    _settingsService.Settings.WeatherShowSunrise = value;
+    WeatherSettingsPolicy.SetDisplayOption(
+        _settingsService.Settings,
+        WeatherDisplayOption.Sunrise,
+        value);
     _settingsService.SaveDebounced();
 }
 
@@ -698,7 +733,10 @@ partial void OnWeatherShowUvIndexChanged(bool value)
         return;
     }
 
-    _settingsService.Settings.WeatherShowUvIndex = value;
+    WeatherSettingsPolicy.SetDisplayOption(
+        _settingsService.Settings,
+        WeatherDisplayOption.UvIndex,
+        value);
     _settingsService.SaveDebounced();
 }
 
@@ -710,7 +748,10 @@ partial void OnWeatherShowPrecipitationChanged(bool value)
         return;
     }
 
-    _settingsService.Settings.WeatherShowPrecipitation = value;
+    WeatherSettingsPolicy.SetDisplayOption(
+        _settingsService.Settings,
+        WeatherDisplayOption.Precipitation,
+        value);
     _settingsService.SaveDebounced();
 }
 
@@ -722,7 +763,10 @@ partial void OnWeatherShowHumidityChanged(bool value)
         return;
     }
 
-    _settingsService.Settings.WeatherShowHumidity = value;
+    WeatherSettingsPolicy.SetDisplayOption(
+        _settingsService.Settings,
+        WeatherDisplayOption.Humidity,
+        value);
     _settingsService.SaveDebounced();
 }
 
@@ -734,7 +778,10 @@ partial void OnWeatherShowWindChanged(bool value)
         return;
     }
 
-    _settingsService.Settings.WeatherShowWind = value;
+    WeatherSettingsPolicy.SetDisplayOption(
+        _settingsService.Settings,
+        WeatherDisplayOption.Wind,
+        value);
     _settingsService.SaveDebounced();
 }
 
@@ -746,7 +793,10 @@ partial void OnWeatherShowPressureChanged(bool value)
         return;
     }
 
-    _settingsService.Settings.WeatherShowPressure = value;
+    WeatherSettingsPolicy.SetDisplayOption(
+        _settingsService.Settings,
+        WeatherDisplayOption.Pressure,
+        value);
     _settingsService.SaveDebounced();
 }
 }

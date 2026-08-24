@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DeskBox.Helpers;
 using DeskBox.Models;
 
@@ -24,11 +25,6 @@ public sealed class WeatherService : IDisposable
 
     private static readonly TimeSpan DefaultCacheDuration = TimeSpan.FromMinutes(30);
 
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
     private static readonly HttpClient s_httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(8)
@@ -39,10 +35,21 @@ public sealed class WeatherService : IDisposable
     private string _cacheLocationKey = string.Empty;
     private string _cacheSourceKey = string.Empty;
     private bool _isDisposed;
+#if DESKBOX_NATIVE_AOT
+    private readonly Func<double, double, string, WeatherData>? _aotWeatherDataFactory;
+#endif
 
     public WeatherService()
     {
     }
+
+#if DESKBOX_NATIVE_AOT
+    internal WeatherService(Func<double, double, string, WeatherData> weatherDataFactory)
+    {
+        _aotWeatherDataFactory = weatherDataFactory ??
+            throw new ArgumentNullException(nameof(weatherDataFactory));
+    }
+#endif
 
     /// <summary>
     /// Search for a city by name and return matching results.
@@ -63,7 +70,7 @@ public sealed class WeatherService : IDisposable
             string apiLanguage = NormalizeGeocodingLanguage(language);
             string url = $"{GeocodingBaseUrl}?name={Uri.EscapeDataString(query)}&count=10&language={apiLanguage}&format=json";
             string json = await s_httpClient.GetStringAsync(url, cancellationToken);
-            var result = JsonSerializer.Deserialize<WeatherGeocodingResult>(json, s_jsonOptions);
+            var result = DeserializeGeocodingResponse(json);
             return result?.Results ?? [];
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -90,6 +97,24 @@ public sealed class WeatherService : IDisposable
         TimeSpan? cacheDuration = null,
         string? dataSource = null)
     {
+#if DESKBOX_NATIVE_AOT
+        if (_aotWeatherDataFactory is not null)
+        {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException(nameof(WeatherService));
+            }
+            WeatherData fixture = _aotWeatherDataFactory(
+                latitude,
+                longitude,
+                locationName);
+            fixture.LocationName = locationName;
+            fixture.IsStale = false;
+            fixture.IsFallback = false;
+            return fixture;
+        }
+#endif
+
         string cacheKey = FormattableString.Invariant($"{latitude:F4},{longitude:F4}");
         string sourceKey = dataSource ?? GetCurrentDataSource();
         TimeSpan effectiveCacheDuration = cacheDuration.GetValueOrDefault(DefaultCacheDuration);
@@ -182,6 +207,15 @@ public sealed class WeatherService : IDisposable
         }
     }
 
+    internal static WeatherGeocodingResult? DeserializeGeocodingResponse(string json) =>
+        JsonSerializer.Deserialize(json, WeatherJsonContext.Default.GeocodingResult);
+
+    internal static WeatherData? DeserializeOpenMeteoResponse(string json) =>
+        JsonSerializer.Deserialize(json, WeatherJsonContext.Default.OpenMeteoWeather);
+
+    internal static MsnWeatherResponse? DeserializeMsnResponse(string json) =>
+        JsonSerializer.Deserialize(json, WeatherJsonContext.Default.MsnWeather);
+
     private static string GetCurrentDataSource()
     {
         try
@@ -219,7 +253,7 @@ public sealed class WeatherService : IDisposable
     {
         string url = BuildOpenMeteoForecastUrl(lat, lon);
         string json = await s_httpClient.GetStringAsync(url);
-        return JsonSerializer.Deserialize<WeatherData>(json, s_jsonOptions);
+        return DeserializeOpenMeteoResponse(json);
     }
 
     private static string BuildOpenMeteoForecastUrl(double lat, double lon)
@@ -245,7 +279,7 @@ public sealed class WeatherService : IDisposable
                      $"&lat={lat.ToString("F4", CultureInfo.InvariantCulture)}" +
                      $"&lon={lon.ToString("F4", CultureInfo.InvariantCulture)}&units=C";
         string json = await s_httpClient.GetStringAsync(url);
-        var msnResponse = JsonSerializer.Deserialize<MsnWeatherResponse>(json, s_jsonOptions);
+        var msnResponse = DeserializeMsnResponse(json);
 
         var msnWeather = msnResponse?.Value?.FirstOrDefault()?.Responses?.FirstOrDefault()?.Weather?.FirstOrDefault();
         if (msnWeather is null)
@@ -396,4 +430,15 @@ public sealed class WeatherService : IDisposable
         _isDisposed = true;
         // Do not dispose the shared static HttpClient.
     }
+}
+
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    PropertyNameCaseInsensitive = true)]
+[JsonSerializable(typeof(List<PredefinedCity>), TypeInfoPropertyName = "PredefinedCityList")]
+[JsonSerializable(typeof(WeatherGeocodingResult), TypeInfoPropertyName = "GeocodingResult")]
+[JsonSerializable(typeof(WeatherData), TypeInfoPropertyName = "OpenMeteoWeather")]
+[JsonSerializable(typeof(MsnWeatherResponse), TypeInfoPropertyName = "MsnWeather")]
+internal sealed partial class WeatherJsonContext : JsonSerializerContext
+{
 }

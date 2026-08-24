@@ -19,13 +19,31 @@ public sealed record NativeAppNotificationComboBox(
     string SelectedItemId,
     IReadOnlyList<NativeAppNotificationComboBoxItem> Items);
 
+public enum NativeAppNotificationActivationSource
+{
+    Unknown = 0,
+    NotificationInvokedEvent = 1,
+    CurrentAppInstance = 2
+}
+
 public sealed record NativeAppNotificationActivation(
     string Arguments,
-    IReadOnlyDictionary<string, string> UserInput);
+    IReadOnlyDictionary<string, string> UserInput,
+    NativeAppNotificationActivationSource Source =
+        NativeAppNotificationActivationSource.Unknown,
+    DateTimeOffset CapturedAtUtc = default,
+    int SourceProcessId = 0,
+    string? EnvelopeId = null);
 
 public sealed record NativeAppNotificationOptions(
     string? Tag = null,
     string? Group = null);
+
+public sealed record NativeAppNotificationSnapshot(
+    uint Id,
+    string Tag,
+    string Group,
+    string Payload);
 
 public sealed class NativeAppNotificationService : IDisposable
 {
@@ -42,6 +60,8 @@ public sealed class NativeAppNotificationService : IDisposable
     {
         _activated = activated;
     }
+
+    public bool IsRegistered => _isRegistered;
 
     public bool Register()
     {
@@ -181,6 +201,72 @@ public sealed class NativeAppNotificationService : IDisposable
         }
     }
 
+    public async Task<IReadOnlyList<NativeAppNotificationSnapshot>> GetAllAsync()
+    {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(NativeAppNotificationService));
+        }
+
+        IList<AppNotification> notifications =
+            await AppNotificationManager.Default.GetAllAsync();
+        return notifications
+            .Select(notification => new NativeAppNotificationSnapshot(
+                notification.Id,
+                notification.Tag ?? string.Empty,
+                notification.Group ?? string.Empty,
+                notification.Payload ?? string.Empty))
+            .ToArray();
+    }
+
+    public async Task RemoveByTagAndGroupAsync(string tag, string group)
+    {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(NativeAppNotificationService));
+        }
+
+        if (string.IsNullOrWhiteSpace(tag))
+        {
+            throw new ArgumentException("A notification tag is required.", nameof(tag));
+        }
+
+        if (string.IsNullOrWhiteSpace(group))
+        {
+            throw new ArgumentException("A notification group is required.", nameof(group));
+        }
+
+        await AppNotificationManager.Default.RemoveByTagAndGroupAsync(tag, group);
+        App.Log($"[Notification] Removed native app notification tag={tag} group={group}");
+    }
+
+    public bool Unregister()
+    {
+        if (_isDisposed)
+        {
+            return false;
+        }
+
+        if (!_isRegistered)
+        {
+            return true;
+        }
+
+        try
+        {
+            AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
+            AppNotificationManager.Default.Unregister();
+            _isRegistered = false;
+            App.Log("[Notification] Native app notification unregistered");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Notification] Native app notification unregister failed: {ex}");
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         if (_isDisposed)
@@ -188,21 +274,8 @@ public sealed class NativeAppNotificationService : IDisposable
             return;
         }
 
+        _ = Unregister();
         _isDisposed = true;
-        try
-        {
-            AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
-            if (_isRegistered)
-            {
-                AppNotificationManager.Default.Unregister();
-            }
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[Notification] Native app notification unregister failed: {ex.Message}");
-        }
-
-        _isRegistered = false;
     }
 
     private void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args)
@@ -216,6 +289,11 @@ public sealed class NativeAppNotificationService : IDisposable
             }
         }
 
-        _activated(new NativeAppNotificationActivation(args.Argument, userInput));
+        _activated(new NativeAppNotificationActivation(
+            args.Argument,
+            userInput,
+            NativeAppNotificationActivationSource.NotificationInvokedEvent,
+            DateTimeOffset.UtcNow,
+            Environment.ProcessId));
     }
 }
