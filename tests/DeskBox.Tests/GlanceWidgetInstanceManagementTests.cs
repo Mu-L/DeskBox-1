@@ -67,7 +67,7 @@ public sealed class GlanceWidgetInstanceManagementTests
     }
 
     [Fact]
-    public void RightClickClose_UsesTheVisibleInvocationSurfaceAndNamesTheGlanceInstance()
+    public void RightClickClose_UsesStableShellAnchorAndNamesTheGlanceInstance()
     {
         string windowCommands = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Views/ContentWidgetWindow.Commands.cs"));
@@ -77,11 +77,11 @@ public sealed class GlanceWidgetInstanceManagementTests
             TestPaths.FromRepository("src/DeskBox/Strings/zh-CN.json")));
 
         Assert.Contains(
-            "CreateMoreFlyout(FrameworkElement closeConfirmationTarget)",
+            "private MenuFlyout CreateMoreFlyout()",
             windowCommands,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ShowCloseWidgetFlyout(closeConfirmationTarget)",
+            "ShowCloseWidgetFlyout(ContentWidgetShell)",
             windowCommands,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
@@ -101,6 +101,21 @@ public sealed class GlanceWidgetInstanceManagementTests
             chineseStrings.RootElement
                 .GetProperty("Widget.FeatureWidget.DisableConfirmTitle")
                 .GetString());
+    }
+
+    [Fact]
+    public void SettingsPage_UsesAotSafeNativeComboBoxItems()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/SettingsSections/GlanceWidgetSettingsSection.xaml"));
+        string codeBehind = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/SettingsSections/GlanceWidgetSettingsSection.xaml.cs"));
+
+        Assert.DoesNotContain("DisplayMemberPath=", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain(".ItemsSource =", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("private sealed partial class SelectionItem : ComboBoxItem", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("comboBox.Items.Add(new SelectionItem(label, value))", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("InstanceComboBox.Items.Clear()", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]

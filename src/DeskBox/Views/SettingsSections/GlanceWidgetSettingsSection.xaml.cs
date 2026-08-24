@@ -14,8 +14,16 @@ namespace DeskBox.Views.SettingsSections;
 public sealed partial class GlanceWidgetSettingsSection : UserControl
 {
     private static readonly string[] DisplayOptions = ["Time", "Date", "Year", "Weekday", "Calendar"];
-    private sealed record Option(string Label, object Value);
-    private sealed record InstanceOption(string Label, string Id, bool IsEnabled);
+    private sealed partial class SelectionItem : ComboBoxItem
+    {
+        public SelectionItem(string label, object value)
+        {
+            Content = label;
+            Value = value;
+        }
+
+        public object Value { get; }
+    }
     private GlanceWidgetStore? _store;
     private readonly GlanceImageService _imageService = new();
     private readonly GlanceTraditionalCalendarService _traditionalCalendarService = new();
@@ -132,12 +140,13 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
         _isLoading = true;
         try
         {
-            var options = instances
-                .Select(instance => new InstanceOption(instance.Name, instance.Id, instance.IsEnabled))
-                .ToList();
-            InstanceComboBox.ItemsSource = options;
+            SelectionItem[] options = instances
+                .Select(instance => new SelectionItem(instance.Name, instance.Id))
+                .ToArray();
+            SetOptions(InstanceComboBox, options);
             InstanceComboBox.SelectedItem = options.FirstOrDefault(option =>
-                string.Equals(option.Id, selected?.Id, StringComparison.Ordinal));
+                option.Value is string id &&
+                string.Equals(id, selected?.Id, StringComparison.Ordinal));
             _selectedWidgetId = selected?.Id;
 
             bool hasSelection = selected is not null;
@@ -198,7 +207,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
             _instanceStateSignature = string.Empty;
             _store = null;
             _settings = new GlanceWidgetData();
-            InstanceComboBox.ItemsSource = Array.Empty<InstanceOption>();
+            InstanceComboBox.Items.Clear();
             InstanceSettingsPanel.Visibility = Visibility.Collapsed;
             InstanceEnabledToggle.IsOn = false;
             InstanceEnabledToggle.IsEnabled = false;
@@ -228,100 +237,113 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private void PopulateOptions()
     {
-        LayoutComboBox.ItemsSource = new[]
-        {
-            new Option(Localization.T("Glance.Layout.Immersive"), GlanceLayoutMode.Immersive),
-            new Option(Localization.T("Glance.Layout.Centered"), GlanceLayoutMode.Centered),
-            new Option(Localization.T("Glance.Layout.Editorial"), GlanceLayoutMode.Editorial),
-            new Option(Localization.T("Glance.Layout.Calendar"), GlanceLayoutMode.Calendar)
-        };
-        BackgroundSourceComboBox.ItemsSource = new[]
-        {
-            new Option(Localization.T("Glance.Background.Files"), GlanceBackgroundSource.LocalFiles),
-            new Option(Localization.T("Glance.Background.Folder"), GlanceBackgroundSource.LocalFolder),
-            new Option(Localization.T("Glance.Background.Bing"), GlanceBackgroundSource.Bing),
-            new Option(Localization.T("Glance.Background.Online"), GlanceBackgroundSource.Online)
-        };
-        OnlineImageCategoryComboBox.ItemsSource = new[]
-        {
-            new Option(Localization.T("Glance.Background.Category.Featured"), GlanceOnlineImageCategory.Featured),
-            new Option(Localization.T("Glance.Background.Category.Landscapes"), GlanceOnlineImageCategory.Landscapes),
-            new Option(Localization.T("Glance.Background.Category.Cities"), GlanceOnlineImageCategory.Cities),
-            new Option(Localization.T("Glance.Background.Category.Architecture"), GlanceOnlineImageCategory.Architecture),
-            new Option(Localization.T("Glance.Background.Category.Animals"), GlanceOnlineImageCategory.Animals),
-            new Option(Localization.T("Glance.Background.Category.Plants"), GlanceOnlineImageCategory.Plants),
-            new Option(Localization.T("Glance.Background.Category.Astronomy"), GlanceOnlineImageCategory.Astronomy),
-            new Option(Localization.T("Glance.Background.Category.People"), GlanceOnlineImageCategory.People)
-        };
-        RotationComboBox.ItemsSource = new[]
-        {
-            new Option(Localization.T("Glance.Rotation.Manual"), 0d),
-            new Option(Localization.T("Glance.Rotation.10Seconds"), 10d / 60d),
-            new Option(Localization.T("Glance.Rotation.30Seconds"), 30d / 60d),
-            new Option(Localization.T("Glance.Rotation.60Seconds"), 1d),
-            new Option(Localization.T("Glance.Rotation.2Minutes"), 2d),
-            new Option(Localization.T("Glance.Rotation.5Minutes"), 5d),
-            new Option(Localization.T("Glance.Rotation.10Minutes"), 10d),
-            new Option(Localization.T("Glance.Rotation.30Minutes"), 30d),
-            new Option(Localization.T("Glance.Rotation.1Hour"), 60d),
-            new Option(Localization.T("Glance.Rotation.6Hours"), 360d),
-            new Option(Localization.T("Glance.Rotation.Daily"), 1440d)
-        };
-        TransitionComboBox.ItemsSource = new[]
-        {
-            new Option(Localization.T("Glance.Transition.None"), GlanceTransitionMode.None),
-            new Option(Localization.T("Glance.Transition.CrossFade"), GlanceTransitionMode.CrossFade),
-            new Option(Localization.T("Glance.Transition.SlideFade"), GlanceTransitionMode.SlideFade),
-            new Option(Localization.T("Glance.Transition.ZoomFade"), GlanceTransitionMode.ZoomFade)
-        };
-        SpeedComboBox.ItemsSource = new[]
-        {
-            new Option(Localization.T("Glance.Speed.Fast"), GlanceTransitionSpeed.Fast),
-            new Option(Localization.T("Glance.Speed.Standard"), GlanceTransitionSpeed.Standard),
-            new Option(Localization.T("Glance.Speed.Relaxed"), GlanceTransitionSpeed.Relaxed)
-        };
-        ReadabilityComboBox.ItemsSource = new[]
-        {
-            new Option(Localization.T("Glance.Readability.None"), GlanceReadabilityMode.None),
-            new Option(Localization.T("Glance.Readability.Soft"), GlanceReadabilityMode.Soft),
-            new Option(Localization.T("Glance.Readability.Strong"), GlanceReadabilityMode.Strong)
-        };
-        CalendarMaterialComboBox.ItemsSource = new[]
-        {
-            new Option(Localization.T("Glance.CalendarMaterial.FollowSystem"), GlanceCalendarMaterialMode.FollowSystem),
-            new Option(Localization.T("Glance.CalendarMaterial.FollowImage"), GlanceCalendarMaterialMode.FollowImage)
-        };
+        SetOptions(
+            LayoutComboBox,
+            (Localization.T("Glance.Layout.Immersive"), GlanceLayoutMode.Immersive),
+            (Localization.T("Glance.Layout.Centered"), GlanceLayoutMode.Centered),
+            (Localization.T("Glance.Layout.Editorial"), GlanceLayoutMode.Editorial),
+            (Localization.T("Glance.Layout.Calendar"), GlanceLayoutMode.Calendar));
+        SetOptions(
+            BackgroundSourceComboBox,
+            (Localization.T("Glance.Background.Files"), GlanceBackgroundSource.LocalFiles),
+            (Localization.T("Glance.Background.Folder"), GlanceBackgroundSource.LocalFolder),
+            (Localization.T("Glance.Background.Bing"), GlanceBackgroundSource.Bing),
+            (Localization.T("Glance.Background.Online"), GlanceBackgroundSource.Online));
+        SetOptions(
+            OnlineImageCategoryComboBox,
+            (Localization.T("Glance.Background.Category.Featured"), GlanceOnlineImageCategory.Featured),
+            (Localization.T("Glance.Background.Category.Landscapes"), GlanceOnlineImageCategory.Landscapes),
+            (Localization.T("Glance.Background.Category.Cities"), GlanceOnlineImageCategory.Cities),
+            (Localization.T("Glance.Background.Category.Architecture"), GlanceOnlineImageCategory.Architecture),
+            (Localization.T("Glance.Background.Category.Animals"), GlanceOnlineImageCategory.Animals),
+            (Localization.T("Glance.Background.Category.Plants"), GlanceOnlineImageCategory.Plants),
+            (Localization.T("Glance.Background.Category.Astronomy"), GlanceOnlineImageCategory.Astronomy),
+            (Localization.T("Glance.Background.Category.People"), GlanceOnlineImageCategory.People));
+        SetOptions(
+            RotationComboBox,
+            (Localization.T("Glance.Rotation.Manual"), 0d),
+            (Localization.T("Glance.Rotation.10Seconds"), 10d / 60d),
+            (Localization.T("Glance.Rotation.30Seconds"), 30d / 60d),
+            (Localization.T("Glance.Rotation.60Seconds"), 1d),
+            (Localization.T("Glance.Rotation.2Minutes"), 2d),
+            (Localization.T("Glance.Rotation.5Minutes"), 5d),
+            (Localization.T("Glance.Rotation.10Minutes"), 10d),
+            (Localization.T("Glance.Rotation.30Minutes"), 30d),
+            (Localization.T("Glance.Rotation.1Hour"), 60d),
+            (Localization.T("Glance.Rotation.6Hours"), 360d),
+            (Localization.T("Glance.Rotation.Daily"), 1440d));
+        SetOptions(
+            TransitionComboBox,
+            (Localization.T("Glance.Transition.None"), GlanceTransitionMode.None),
+            (Localization.T("Glance.Transition.CrossFade"), GlanceTransitionMode.CrossFade),
+            (Localization.T("Glance.Transition.SlideFade"), GlanceTransitionMode.SlideFade),
+            (Localization.T("Glance.Transition.ZoomFade"), GlanceTransitionMode.ZoomFade));
+        SetOptions(
+            SpeedComboBox,
+            (Localization.T("Glance.Speed.Fast"), GlanceTransitionSpeed.Fast),
+            (Localization.T("Glance.Speed.Standard"), GlanceTransitionSpeed.Standard),
+            (Localization.T("Glance.Speed.Relaxed"), GlanceTransitionSpeed.Relaxed));
+        SetOptions(
+            ReadabilityComboBox,
+            (Localization.T("Glance.Readability.None"), GlanceReadabilityMode.None),
+            (Localization.T("Glance.Readability.Soft"), GlanceReadabilityMode.Soft),
+            (Localization.T("Glance.Readability.Strong"), GlanceReadabilityMode.Strong));
+        SetOptions(
+            CalendarMaterialComboBox,
+            (Localization.T("Glance.CalendarMaterial.FollowSystem"), GlanceCalendarMaterialMode.FollowSystem),
+            (Localization.T("Glance.CalendarMaterial.FollowImage"), GlanceCalendarMaterialMode.FollowImage));
         GlanceTraditionalCalendarMode resolvedTraditionalCalendar =
             _traditionalCalendarService.ResolveMode(
                 GlanceTraditionalCalendarMode.Auto,
                 Localization.CurrentCultureName);
-        TraditionalCalendarComboBox.ItemsSource = new[]
-        {
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.None), GlanceTraditionalCalendarMode.None),
-            new Option(
+        SetOptions(
+            TraditionalCalendarComboBox,
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.None), GlanceTraditionalCalendarMode.None),
+            (
                 string.Format(
                     CultureInfo.CurrentCulture,
                     Localization.T("Glance.TraditionalCalendar.Auto"),
                     GetTraditionalCalendarLabel(resolvedTraditionalCalendar)),
                 GlanceTraditionalCalendarMode.Auto),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.ChineseLunar), GlanceTraditionalCalendarMode.ChineseLunar),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.UmAlQura), GlanceTraditionalCalendarMode.UmAlQura),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Hijri), GlanceTraditionalCalendarMode.Hijri),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.IndianSaka), GlanceTraditionalCalendarMode.IndianSaka),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.JapaneseEra), GlanceTraditionalCalendarMode.JapaneseEra),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Bangla), GlanceTraditionalCalendarMode.Bangla),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Julian), GlanceTraditionalCalendarMode.Julian),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Hebrew), GlanceTraditionalCalendarMode.Hebrew),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Persian), GlanceTraditionalCalendarMode.Persian),
-            new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.ThaiBuddhist), GlanceTraditionalCalendarMode.ThaiBuddhist)
-        };
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.ChineseLunar), GlanceTraditionalCalendarMode.ChineseLunar),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.UmAlQura), GlanceTraditionalCalendarMode.UmAlQura),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Hijri), GlanceTraditionalCalendarMode.Hijri),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.IndianSaka), GlanceTraditionalCalendarMode.IndianSaka),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.JapaneseEra), GlanceTraditionalCalendarMode.JapaneseEra),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Bangla), GlanceTraditionalCalendarMode.Bangla),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Julian), GlanceTraditionalCalendarMode.Julian),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Hebrew), GlanceTraditionalCalendarMode.Hebrew),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.Persian), GlanceTraditionalCalendarMode.Persian),
+            (GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.ThaiBuddhist), GlanceTraditionalCalendarMode.ThaiBuddhist));
 
-        var fonts = new List<Option>
+        (string Label, object Value)[] fonts =
+        [
+            (Localization.T("Glance.Typography.SystemDefault"), string.Empty),
+            .. _fontCatalogService.GetFontFamilies().Select(name => (name, (object)name))
+        ];
+        SetOptions(FontComboBox, fonts);
+    }
+
+    private static void SetOptions(
+        ComboBox comboBox,
+        params (string Label, object Value)[] options)
+    {
+        comboBox.Items.Clear();
+        foreach ((string label, object value) in options)
         {
-            new(Localization.T("Glance.Typography.SystemDefault"), string.Empty)
-        };
-        fonts.AddRange(_fontCatalogService.GetFontFamilies().Select(name => new Option(name, name)));
-        FontComboBox.ItemsSource = fonts;
+            comboBox.Items.Add(new SelectionItem(label, value));
+        }
+    }
+
+    private static void SetOptions(
+        ComboBox comboBox,
+        IEnumerable<SelectionItem> options)
+    {
+        comboBox.Items.Clear();
+        foreach (SelectionItem option in options)
+        {
+            comboBox.Items.Add(option);
+        }
     }
 
     private void ApplySettingsToControls()
@@ -357,7 +379,9 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private static void SelectOption(ComboBox comboBox, object value)
     {
-        comboBox.SelectedItem = comboBox.Items.OfType<Option>().FirstOrDefault(option => Equals(option.Value, value));
+        comboBox.SelectedItem = comboBox.Items
+            .OfType<SelectionItem>()
+            .FirstOrDefault(option => Equals(option.Value, value));
     }
 
     private async Task SaveAsync(Action<GlanceWidgetData> update)
@@ -387,15 +411,15 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
     private async void InstanceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_isLoading ||
-            InstanceComboBox.SelectedItem is not InstanceOption selected ||
-            string.Equals(_selectedWidgetId, selected.Id, StringComparison.Ordinal))
+            InstanceComboBox.SelectedItem is not SelectionItem { Value: string selectedWidgetId } ||
+            string.Equals(_selectedWidgetId, selectedWidgetId, StringComparison.Ordinal))
         {
             return;
         }
 
         await FlushPendingSavesAsync();
-        _selectedWidgetId = selected.Id;
-        await RefreshInstancesAsync(selected.Id);
+        _selectedWidgetId = selectedWidgetId;
+        await RefreshInstancesAsync(selectedWidgetId);
     }
 
     private async void InstanceEnabledToggle_Toggled(object sender, RoutedEventArgs e)
@@ -582,7 +606,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void LayoutComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (LayoutComboBox.SelectedItem is Option { Value: GlanceLayoutMode layout })
+        if (LayoutComboBox.SelectedItem is SelectionItem { Value: GlanceLayoutMode layout })
         {
             await SaveAsync(settings =>
                 GlanceWidgetSettingsPolicy.SetLayout(settings, layout));
@@ -607,7 +631,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void CalendarMaterialComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (CalendarMaterialComboBox.SelectedItem is Option { Value: GlanceCalendarMaterialMode mode })
+        if (CalendarMaterialComboBox.SelectedItem is SelectionItem { Value: GlanceCalendarMaterialMode mode })
         {
             await SaveAsync(settings => settings.CalendarMaterialMode = mode);
             UpdateCalendarMaterialState();
@@ -616,7 +640,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void TraditionalCalendarComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (TraditionalCalendarComboBox.SelectedItem is Option { Value: GlanceTraditionalCalendarMode mode })
+        if (TraditionalCalendarComboBox.SelectedItem is SelectionItem { Value: GlanceTraditionalCalendarMode mode })
         {
             await SaveAsync(settings => settings.TraditionalCalendarMode = mode);
             UpdateCalendarMaterialState();
@@ -628,7 +652,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void BackgroundSourceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (BackgroundSourceComboBox.SelectedItem is Option { Value: GlanceBackgroundSource source })
+        if (BackgroundSourceComboBox.SelectedItem is SelectionItem { Value: GlanceBackgroundSource source })
         {
             await SaveAsync(settings => settings.BackgroundSource = source);
             UpdateLocalSourceState();
@@ -637,7 +661,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void OnlineImageCategoryComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (OnlineImageCategoryComboBox.SelectedItem is Option { Value: GlanceOnlineImageCategory category })
+        if (OnlineImageCategoryComboBox.SelectedItem is SelectionItem { Value: GlanceOnlineImageCategory category })
         {
             await SaveAsync(settings => settings.OnlineImageCategory = category);
         }
@@ -645,7 +669,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void RotationComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (RotationComboBox.SelectedItem is Option { Value: double minutes })
+        if (RotationComboBox.SelectedItem is SelectionItem { Value: double minutes })
         {
             await SaveAsync(settings => settings.RotationIntervalMinutes = minutes);
         }
@@ -653,7 +677,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void TransitionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (TransitionComboBox.SelectedItem is Option { Value: GlanceTransitionMode transition })
+        if (TransitionComboBox.SelectedItem is SelectionItem { Value: GlanceTransitionMode transition })
         {
             await SaveAsync(settings => settings.Transition = transition);
         }
@@ -661,7 +685,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void SpeedComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SpeedComboBox.SelectedItem is Option { Value: GlanceTransitionSpeed speed })
+        if (SpeedComboBox.SelectedItem is SelectionItem { Value: GlanceTransitionSpeed speed })
         {
             await SaveAsync(settings => settings.TransitionSpeed = speed);
         }
@@ -669,7 +693,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void ReadabilityComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ReadabilityComboBox.SelectedItem is Option { Value: GlanceReadabilityMode readability })
+        if (ReadabilityComboBox.SelectedItem is SelectionItem { Value: GlanceReadabilityMode readability })
         {
             await SaveAsync(settings => settings.Readability = readability);
         }
@@ -701,7 +725,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
 
     private async void FontComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (FontComboBox.SelectedItem is Option { Value: string font })
+        if (FontComboBox.SelectedItem is SelectionItem { Value: string font })
         {
             await SaveAsync(settings => settings.TimeFontFamily = string.IsNullOrWhiteSpace(font) ? null : font);
         }
