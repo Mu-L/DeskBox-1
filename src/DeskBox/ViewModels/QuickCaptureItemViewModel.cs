@@ -81,6 +81,10 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
 
     public IReadOnlyList<TodoAttachmentViewModel> ImageAttachments { get; private set; } = [];
 
+    // ItemsControl.ItemsSource is object-valued at the WinRT ABI boundary.
+    // Project the typed image list so the legacy window remains Native AOT safe.
+    public object[] ImageAttachmentItemsSource => ImageAttachments.Cast<object>().ToArray();
+
     public TodoAttachmentViewModel? PrimaryImageAttachment => ImageAttachments.FirstOrDefault();
 
     public Visibility ImageAttachmentsVisibility => ImageAttachments.Count > 0
@@ -227,6 +231,7 @@ public sealed partial class QuickCaptureItemViewModel : ObservableObject
             RefreshAttachments();
             OnPropertyChanged(nameof(Attachments));
             OnPropertyChanged(nameof(ImageAttachments));
+            OnPropertyChanged(nameof(ImageAttachmentItemsSource));
             OnPropertyChanged(nameof(PrimaryImageAttachment));
             OnPropertyChanged(nameof(ImageAttachmentsVisibility));
             OnPropertyChanged(nameof(ListImagePreviewVisibility));

@@ -221,7 +221,7 @@
                 DragOver="TodoListView_DragOver"
                 IsItemClickEnabled="True"
                 ItemClick="TodoListView_ItemClick"
-                ItemsSource="{Binding VisibleItems}"
+                ItemsSource="{Binding VisibleItemsSource}"
                 KeyDown="TodoListView_KeyDown"
                 PointerCaptureLost="TodoListView_PointerCaptureLost"
                 PointerMoved="TodoListView_PointerMoved"

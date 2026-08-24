@@ -7,6 +7,10 @@ public sealed class QuickCaptureImagePreviewContractTests
     {
         string xaml = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string legacyXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.xaml"));
+        string legacyAttachments = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.Attachments.cs"));
         string code = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
         string itemViewModel = File.ReadAllText(TestPaths.FromRepository(
@@ -33,6 +37,22 @@ public sealed class QuickCaptureImagePreviewContractTests
             xaml,
             StringComparison.Ordinal);
         Assert.Contains(
+            "x:DataType=\"viewModels:TodoAttachmentViewModel\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Source=\"{x:Bind Thumbnail, Mode=OneWay}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Visibility=\"{x:Bind ThumbnailVisibility, Mode=OneWay}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Visibility=\"{x:Bind FileIconVisibility, Mode=OneWay}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
             "Source=\"{Binding Thumbnail}\"",
             xaml,
             StringComparison.Ordinal);
@@ -57,6 +77,34 @@ public sealed class QuickCaptureImagePreviewContractTests
         Assert.Contains(
             "public Visibility ListImagePreviewVisibility => PrimaryImageAttachment is not null",
             itemViewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public object[] ImageAttachmentItemsSource",
+            itemViewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ImageAttachments.Cast<object>().ToArray()",
+            itemViewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "OnPropertyChanged(nameof(ImageAttachmentItemsSource))",
+            itemViewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ItemsSource=\"{Binding ImageAttachmentItemsSource}\"",
+            legacyXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "x:DataType=\"viewModels:TodoAttachmentViewModel\"",
+            legacyXaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Source=\"{Binding Thumbnail}\"",
+            legacyXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DetailAttachmentsList.ItemsSource = attachments.Cast<object>().ToArray()",
+            legacyAttachments,
             StringComparison.Ordinal);
         Assert.Contains(
             "_thumbnailLoadAttempted = Thumbnail is not null",

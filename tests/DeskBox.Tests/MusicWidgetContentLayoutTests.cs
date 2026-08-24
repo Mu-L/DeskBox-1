@@ -1,5 +1,6 @@
 using DeskBox.Controls.WidgetContents;
 using DeskBox.Services;
+using System.Text.RegularExpressions;
 
 namespace DeskBox.Tests;
 
@@ -129,6 +130,55 @@ public sealed class MusicWidgetContentLayoutTests
         Assert.Contains("Data=\"M16.25 14.5L8.125 19.25", transportXaml, StringComparison.Ordinal);
         Assert.Equal(7, CountOccurrences(transportXaml, "Fill=\"{x:Bind Foreground, Mode=OneWay}\""));
         Assert.DoesNotContain("Stroke=", transportXaml, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NativeAotBindingProvider_CoversEveryMusicDataContextBinding()
+    {
+        string musicXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/MusicWidgetContent.xaml"));
+        string bindableSource = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/ViewModels/MusicWidgetViewModel.AotBindableProperties.cs"));
+
+        string[] dataContextPaths = Regex.Matches(
+                musicXaml,
+                @"\{Binding\s+([A-Za-z_][A-Za-z0-9_]*)(?<options>[^}]*)\}")
+            .Where(match => !match.Groups["options"].Value.Contains(
+                "ElementName=",
+                StringComparison.Ordinal))
+            .Select(match => match.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(34, dataContextPaths.Length);
+        Assert.Contains("[WinRT.GeneratedBindableCustomProperty([", bindableSource, StringComparison.Ordinal);
+        Assert.Contains("public sealed partial class MusicWidgetViewModel", bindableSource, StringComparison.Ordinal);
+        foreach (string path in dataContextPaths)
+        {
+            Assert.Contains($"nameof({path})", bindableSource, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void NativeAotBindingProvider_CoversWidgetTitleAndRenameRefresh()
+    {
+        string shellXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetShell.xaml"));
+        string contentWindow = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/ContentWidgetWindow.xaml.cs"));
+        string commands = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/ContentWidgetWindow.Commands.cs"));
+
+        Assert.Contains("LabelText=\"{Binding DisplayName}\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding DisplayName}\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("[WinRT.GeneratedBindableCustomProperty([", contentWindow, StringComparison.Ordinal);
+        Assert.Contains("private sealed partial class ContentWidgetTitleViewModel", contentWindow, StringComparison.Ordinal);
+        Assert.Contains("nameof(DisplayName)", contentWindow, StringComparison.Ordinal);
+        Assert.Contains("nameof(TitleIconSize)", contentWindow, StringComparison.Ordinal);
+        Assert.Contains("nameof(TitleTextSize)", contentWindow, StringComparison.Ordinal);
+        Assert.Contains("ContentWidgetShell.DataContext = _titleViewModel", contentWindow, StringComparison.Ordinal);
+        Assert.Contains("_titleViewModel.RefreshDisplayName()", commands, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string source, string value) =>

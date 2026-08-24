@@ -105,6 +105,11 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<TodoItemViewModel> VisibleItems { get; } = [];
 
+    // ListView.ItemsSource is object-valued at the WinRT ABI boundary.
+    // Keep the typed collection for filtering and project a concrete object
+    // array so populated task rows remain available in Native AOT builds.
+    public object[] VisibleItemsSource => VisibleItems.Cast<object>().ToArray();
+
     public string InputText
     {
         get => _inputText;
