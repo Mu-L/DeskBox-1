@@ -67,7 +67,7 @@ public sealed class GlanceWidgetInstanceManagementTests
     }
 
     [Fact]
-    public void RightClickClose_UsesTheVisibleInvocationSurfaceAndNamesTheGlanceInstance()
+    public void RightClickClose_UsesStableShellAnchorAndNamesTheGlanceInstance()
     {
         string windowCommands = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Views/ContentWidgetWindow.Commands.cs"));
@@ -77,11 +77,11 @@ public sealed class GlanceWidgetInstanceManagementTests
             TestPaths.FromRepository("src/DeskBox/Strings/zh-CN.json")));
 
         Assert.Contains(
-            "CreateMoreFlyout(FrameworkElement closeConfirmationTarget)",
+            "private MenuFlyout CreateMoreFlyout()",
             windowCommands,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ShowCloseWidgetFlyout(closeConfirmationTarget)",
+            "ShowCloseWidgetFlyout(ContentWidgetShell)",
             windowCommands,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
@@ -101,6 +101,42 @@ public sealed class GlanceWidgetInstanceManagementTests
             chineseStrings.RootElement
                 .GetProperty("Widget.FeatureWidget.DisableConfirmTitle")
                 .GetString());
+    }
+
+    [Fact]
+    public void SettingsPage_UsesAotSafeNativeComboBoxItems()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/SettingsSections/GlanceWidgetSettingsSection.xaml"));
+        string codeBehind = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/SettingsSections/GlanceWidgetSettingsSection.xaml.cs"));
+
+        Assert.DoesNotContain("DisplayMemberPath=", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain(".ItemsSource =", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("private sealed partial class SelectionItem : ComboBoxItem", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("comboBox.Items.Add(new SelectionItem(label, value))", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("SynchronizeInstanceOptions", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("InstanceComboBox.Items.Add(new SelectionItem(instance.Name, instance.Id))", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SettingsPage_InstanceSwitchLoadsOnlyTheSelectedStore()
+    {
+        string codeBehind = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/SettingsSections/GlanceWidgetSettingsSection.xaml.cs"));
+        string selectionHandler = ExtractMethod(
+            codeBehind,
+            "private async void InstanceComboBox_SelectionChanged",
+            "private async void InstanceEnabledToggle_Toggled");
+
+        Assert.Contains("_instanceSelectionGate.WaitAsync()", selectionHandler, StringComparison.Ordinal);
+        Assert.Contains("selectionVersion != _instanceSelectionVersion", selectionHandler, StringComparison.Ordinal);
+        Assert.Contains("LoadSelectedInstanceAsync(selectedWidgetId, selectionVersion)", selectionHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain("RefreshInstancesAsync(", selectionHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain("Items.Clear()", selectionHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain("PopulateOptions()", selectionHandler, StringComparison.Ordinal);
+        Assert.Contains("private void EnsureOptionsPopulated()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_optionsLocalizationSignature", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -189,5 +225,17 @@ public sealed class GlanceWidgetInstanceManagementTests
             element.Attributes().Any(attribute =>
                 attribute.Name.LocalName == "Name" &&
                 attribute.Value == name));
+    }
+
+    private static string ExtractMethod(
+        string source,
+        string methodStart,
+        string nextMethodStart)
+    {
+        int start = source.IndexOf(methodStart, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find method start: {methodStart}");
+        int end = source.IndexOf(nextMethodStart, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"Could not find method boundary: {nextMethodStart}");
+        return source[start..end];
     }
 }

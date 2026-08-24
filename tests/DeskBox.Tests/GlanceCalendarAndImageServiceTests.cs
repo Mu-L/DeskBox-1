@@ -137,7 +137,7 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
         Assert.DoesNotContain("PreviewCalendar", settingsXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("SectionTitleTextStyle", settingsXaml, StringComparison.Ordinal);
         int traditionalNoneOption = settingsCodeBehind.IndexOf(
-            "new Option(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.None)",
+            "(GetTraditionalCalendarLabel(GlanceTraditionalCalendarMode.None), GlanceTraditionalCalendarMode.None)",
             StringComparison.Ordinal);
         int traditionalAutoOption = settingsCodeBehind.IndexOf(
             "Localization.T(\"Glance.TraditionalCalendar.Auto\")",

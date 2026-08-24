@@ -203,7 +203,7 @@ public sealed partial class ContentWidgetWindow
     private void MoreButton_Click(object sender, RoutedEventArgs e)
     {
         var target = sender as FrameworkElement ?? ContentWidgetShell.MoreActionButton;
-        ShowFlyoutWithInteraction(CreateMoreFlyout(target), target);
+        ShowFlyoutWithInteraction(CreateMoreFlyout(), target);
     }
 
     private void PositionLockButton_Click(object sender, RoutedEventArgs e)
@@ -223,14 +223,14 @@ public sealed partial class ContentWidgetWindow
         if (ContentWidgetShell.IsCollapsed)
         {
             ShowFlyoutWithInteraction(
-                CreateMoreFlyout(ContentWidgetShell),
+                CreateMoreFlyout(),
                 ContentWidgetShell,
                 e.GetPosition(ContentWidgetShell));
         }
         else
         {
             ShowFlyoutWithInteraction(
-                CreateMoreFlyout(ContentWidgetShell.TitleBar),
+                CreateMoreFlyout(),
                 ContentWidgetShell.TitleBar,
                 e.GetPosition(ContentWidgetShell.TitleBar));
         }
@@ -243,7 +243,7 @@ public sealed partial class ContentWidgetWindow
         // Any remaining right click is therefore on the content background and should
         // expose the same widget actions as the title bar.
         ShowFlyoutWithInteraction(
-            CreateMoreFlyout(ContentWidgetShell),
+            CreateMoreFlyout(),
             ContentWidgetShell,
             e.GetPosition(ContentWidgetShell));
         e.Handled = true;
@@ -266,7 +266,7 @@ public sealed partial class ContentWidgetWindow
 
     // ── Flyout ─────────────────────────────────────────────────
 
-    private MenuFlyout CreateMoreFlyout(FrameworkElement closeConfirmationTarget)
+    private MenuFlyout CreateMoreFlyout()
     {
         var flyout = new MenuFlyout();
 
@@ -295,7 +295,7 @@ public sealed partial class ContentWidgetWindow
             else if (showCloseWhenClosed)
             {
                 DispatcherQueue.TryEnqueue(() =>
-                    ShowCloseWidgetFlyout(closeConfirmationTarget));
+                    ShowCloseWidgetFlyout(ContentWidgetShell));
             }
         };
         flyout.Items.Add(rename);

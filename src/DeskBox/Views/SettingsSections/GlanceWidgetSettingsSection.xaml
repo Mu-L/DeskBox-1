@@ -34,7 +34,6 @@
                         x:Name="InstanceComboBox"
                         MinWidth="210"
                         HorizontalAlignment="Stretch"
-                        DisplayMemberPath="Label"
                         SelectionChanged="InstanceComboBox_SelectionChanged" />
                     <ToggleSwitch
                         x:Name="InstanceEnabledToggle"
@@ -99,7 +98,6 @@
                 <ComboBox
                     x:Name="BackgroundSourceComboBox"
                     Width="220"
-                    DisplayMemberPath="Label"
                     SelectionChanged="BackgroundSourceComboBox_SelectionChanged" />
                 <toolkit:SettingsExpander.Items>
                     <toolkit:SettingsCard
@@ -110,7 +108,6 @@
                         <ComboBox
                             x:Name="OnlineImageCategoryComboBox"
                             Width="220"
-                            DisplayMemberPath="Label"
                             SelectionChanged="OnlineImageCategoryComboBox_SelectionChanged" />
                     </toolkit:SettingsCard>
                     <toolkit:SettingsCard x:Name="LocalSourceCard" ContentAlignment="Vertical" HorizontalContentAlignment="Stretch" svc:Localized.HeaderKey="Glance.Background.Files">
@@ -137,7 +134,7 @@
                         </Grid>
                     </toolkit:SettingsCard>
                     <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Glance.Rotation.Title">
-                        <ComboBox x:Name="RotationComboBox" Width="220" DisplayMemberPath="Label" SelectionChanged="RotationComboBox_SelectionChanged" />
+                        <ComboBox x:Name="RotationComboBox" Width="220" SelectionChanged="RotationComboBox_SelectionChanged" />
                     </toolkit:SettingsCard>
                     <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Glance.Rotation.Random">
                         <ToggleSwitch x:Name="RandomOrderToggle" MinWidth="0" OffContent="" OnContent="" Toggled="RandomOrderToggle_Toggled" />
@@ -161,7 +158,6 @@
                     x:Name="FontComboBox"
                     Width="220"
                     MaxDropDownHeight="360"
-                    DisplayMemberPath="Label"
                     SelectionChanged="FontComboBox_SelectionChanged" />
                 <toolkit:SettingsExpander.Items>
                     <toolkit:SettingsCard
@@ -198,7 +194,7 @@
                 <toolkit:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A5;" />
                 </toolkit:SettingsCard.HeaderIcon>
-                <ComboBox x:Name="LayoutComboBox" Width="220" DisplayMemberPath="Label" SelectionChanged="LayoutComboBox_SelectionChanged" />
+                <ComboBox x:Name="LayoutComboBox" Width="220" SelectionChanged="LayoutComboBox_SelectionChanged" />
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard
@@ -210,7 +206,6 @@
                 <ComboBox
                     x:Name="CalendarMaterialComboBox"
                     Width="220"
-                    DisplayMemberPath="Label"
                     SelectionChanged="CalendarMaterialComboBox_SelectionChanged" />
             </toolkit:SettingsCard>
 
@@ -244,7 +239,6 @@
                 <ComboBox
                     x:Name="TraditionalCalendarComboBox"
                     Width="220"
-                    DisplayMemberPath="Label"
                     SelectionChanged="TraditionalCalendarComboBox_SelectionChanged" />
             </toolkit:SettingsCard>
 
@@ -266,15 +260,15 @@
                 <toolkit:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE790;" />
                 </toolkit:SettingsCard.HeaderIcon>
-                <ComboBox x:Name="TransitionComboBox" Width="220" DisplayMemberPath="Label" SelectionChanged="TransitionComboBox_SelectionChanged" />
+                <ComboBox x:Name="TransitionComboBox" Width="220" SelectionChanged="TransitionComboBox_SelectionChanged" />
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Glance.Speed.Title">
-                <ComboBox x:Name="SpeedComboBox" Width="220" DisplayMemberPath="Label" SelectionChanged="SpeedComboBox_SelectionChanged" />
+                <ComboBox x:Name="SpeedComboBox" Width="220" SelectionChanged="SpeedComboBox_SelectionChanged" />
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Glance.Readability.Title">
-                <ComboBox x:Name="ReadabilityComboBox" Width="220" DisplayMemberPath="Label" SelectionChanged="ReadabilityComboBox_SelectionChanged" />
+                <ComboBox x:Name="ReadabilityComboBox" Width="220" SelectionChanged="ReadabilityComboBox_SelectionChanged" />
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard
