@@ -73,9 +73,51 @@ public sealed class WidgetZOrderRestoreContractTests
         Assert.Contains("ApplyDesktopPinnedActivationStyle(windowHandle)", layerService, StringComparison.Ordinal);
         Assert.Contains("UIElement.PointerPressedEvent", bounds, StringComparison.Ordinal);
         Assert.Contains("TryAllowDesktopPinnedPointerActivation", routedHandler, StringComparison.Ordinal);
+        Assert.Contains("IsKeyboardInputTarget(args.OriginalSource)", routedHandler, StringComparison.Ordinal);
+        Assert.Contains("PrepareForDesktopPinnedKeyboardInput", routedHandler, StringComparison.Ordinal);
         Assert.Contains("RestoreDesktopPinnedBottomState", routedHandler, StringComparison.Ordinal);
-        Assert.Contains("_desktopPinnedPointerActivationInProgress", routedHandler, StringComparison.Ordinal);
+        Assert.Contains("ActivateDesktopPinnedWindow", routedHandler, StringComparison.Ordinal);
         Assert.DoesNotContain("args.Handled = true", routedHandler, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopPinnedKeyboardInput_BypassesBlankAreaSuppressionAndRestoresBottomLayer()
+    {
+        string bounds = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.Bounds.cs"));
+        string layerService = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetLayerService.cs"));
+        string setup = SliceMethod(
+            bounds,
+            "private void InstallDesktopPinnedPointerRouting",
+            "private void RemoveDesktopPinnedPointerRouting");
+        string gotFocus = SliceMethod(
+            bounds,
+            "private void RootElement_GotFocusForDesktopPinnedLayer",
+            "private static bool IsKeyboardInputTarget");
+        string keyboardTarget = SliceMethod(
+            bounds,
+            "private static bool IsKeyboardInputTarget",
+            "private void ActivateDesktopPinnedWindow");
+        string activate = SliceMethod(
+            bounds,
+            "private void ActivateDesktopPinnedWindow",
+            "private void WidgetWindowBase_ActivatedForDesktopPinnedLayer");
+        string prepare = SliceMethod(
+            layerService,
+            "public static void PrepareForDesktopPinnedKeyboardInput",
+            "public static bool IsWindowNoActivate");
+
+        Assert.Contains("RootElement.GotFocus +=", setup, StringComparison.Ordinal);
+        Assert.Contains("IsKeyboardInputTarget(args.OriginalSource)", gotFocus, StringComparison.Ordinal);
+        Assert.Contains("PrepareForDesktopPinnedKeyboardInput", gotFocus, StringComparison.Ordinal);
+        Assert.Contains("TextBox", keyboardTarget, StringComparison.Ordinal);
+        Assert.Contains("RichEditBox", keyboardTarget, StringComparison.Ordinal);
+        Assert.Contains("PasswordBox", keyboardTarget, StringComparison.Ordinal);
+        Assert.Contains("SetWindowNoActivate(windowHandle, enabled: false)", prepare, StringComparison.Ordinal);
+        Assert.Contains("base.Activate()", activate, StringComparison.Ordinal);
+        Assert.Contains("SetForegroundWindow(HWnd)", activate, StringComparison.Ordinal);
+        Assert.Contains("RestoreDesktopPinnedBottomState(reason)", activate, StringComparison.Ordinal);
     }
 
     [Fact]
