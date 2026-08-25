@@ -74,6 +74,15 @@ public sealed class AotStage7C1ContractTests
         {
             Assert.Contains(token, script, StringComparison.Ordinal);
         }
+
+        System.Text.RegularExpressions.Match minimumVersionMatch =
+            System.Text.RegularExpressions.Regex.Match(
+                script,
+                @"frameworkDependency\.MinVersion\s+-lt\s+\[version\]""(?<version>\d+\.\d+\.\d+\.\d+)""",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        Assert.True(minimumVersionMatch.Success, "Store audit must enforce a Windows App Runtime minimum version.");
+        Assert.Equal(new Version(2, 4, 0, 0), Version.Parse(minimumVersionMatch.Groups["version"].Value));
     }
 
     [Fact]
@@ -101,10 +110,57 @@ public sealed class AotStage7C1ContractTests
             Assert.Contains("#if DeskBoxNativeAot", dependencies, StringComparison.Ordinal);
             Assert.Contains("ShouldInstallDotNetRuntime := False", dependencies, StringComparison.Ordinal);
             Assert.Contains(
-                "ShouldInstallWindowsAppRuntime := not IsWindowsAppRuntime22Installed",
+                "ShouldInstallWindowsAppRuntime := not IsWindowsAppRuntime24Installed",
                 dependencies,
                 StringComparison.Ordinal);
         }
+    }
+
+    [Theory]
+    [InlineData(
+        "installer/DeskBox.Dependencies.iss",
+        "X64",
+        "https://download.microsoft.com/download/097dbd99-ea76-49de-994b-eb935c72dcf1/WindowsAppRuntimeInstall-x64.exe",
+        "https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe")]
+    [InlineData(
+        "installer/DeskBox.Dependencies.arm64.iss",
+        "ARM64",
+        "https://download.microsoft.com/download/2f7e2917-37ac-43a3-990e-73838adaf281/WindowsAppRuntimeInstall-arm64.exe",
+        "https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-arm64.exe")]
+    public void DirectInstaller_RequiresWindowsAppRuntime24ForMatchingArchitecture(
+        string relativePath,
+        string architecture,
+        string primaryUrl,
+        string fallbackUrl)
+    {
+        string dependencies = Read(relativePath);
+
+        Assert.Contains("function IsWindowsAppRuntime24Installed: Boolean;", dependencies, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsWindowsAppRuntime22Installed", dependencies, StringComparison.Ordinal);
+        Assert.Contains($"WindowsAppRuntimeUrl = '{primaryUrl}';", dependencies, StringComparison.Ordinal);
+        Assert.Contains($"WindowsAppRuntimeFallbackUrl = '{fallbackUrl}';", dependencies, StringComparison.Ordinal);
+
+        System.Text.RegularExpressions.MatchCollection minimumVersionMatches =
+            System.Text.RegularExpressions.Regex.Matches(
+                dependencies,
+                @"\.Version\s+-ge\s+\[version\]''(?<version>\d+\.\d+\.\d+\.\d+)''",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        Assert.Equal(2, minimumVersionMatches.Count);
+        foreach (System.Text.RegularExpressions.Match match in minimumVersionMatches)
+        {
+            Version minimumVersion = Version.Parse(match.Groups["version"].Value);
+            Assert.Equal(new Version(2, 4, 0, 0), minimumVersion);
+            Assert.True(new Version(2, 2, 0, 0) < minimumVersion, "Windows App Runtime 2.2 must not satisfy the 2.4 app contract.");
+            Assert.True(new Version(2, 4, 0, 0) >= minimumVersion, "Windows App Runtime 2.4 must satisfy the app contract.");
+        }
+
+        Assert.Equal(
+            2,
+            System.Text.RegularExpressions.Regex.Matches(
+                dependencies,
+                $@"\.Architecture\s+-eq\s+''{architecture}''",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant).Count);
     }
 
     [Fact]
