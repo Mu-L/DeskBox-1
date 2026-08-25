@@ -36,11 +36,19 @@ public sealed class AotStage7C1ContractTests
                      "DeskBoxRustNative=true",
                      "DeskBoxRustCrtLinkage=Static",
                      "UapAppxPackageBuildMode=$PackageBuildMode",
-                     "$appxPackageDir"
+                     "$appxPackageDir",
+                     "Get-DeskBoxMsvcEnvironment -Platform $Platform",
+                     "Enter-DeskBoxMsvcEnvironment -Toolchain $msvcEnvironment",
+                     "Exit-DeskBoxMsvcEnvironment -State $environmentState"
                  })
         {
             Assert.Contains(token, script, StringComparison.Ordinal);
         }
+
+        Assert.DoesNotContain(
+            "-p:VCToolsInstallDir=",
+            script,
+            StringComparison.Ordinal);
     }
 
     [Fact]

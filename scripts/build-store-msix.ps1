@@ -77,45 +77,22 @@ if (-not [string]::IsNullOrWhiteSpace($PackageCertificateKeyFile)) {
     $properties += "-p:PackageCertificateKeyFile=$PackageCertificateKeyFile"
 }
 
-# dotnet publish does not always import the Visual Studio installation root,
-# even when the VC symbol-conversion tool is installed. Pass the newest local
-# VC tools directory explicitly so Store builds consistently emit .appxsym.
-$visualStudioRoots = @(
-    "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools",
-    "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Community",
-    "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Professional",
-    "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise"
-)
-
-$vcToolsInstallDir = $visualStudioRoots |
-    Where-Object { Test-Path (Join-Path $_ "VC\Tools\MSVC") } |
-    ForEach-Object {
-        Get-ChildItem -Path (Join-Path $_ "VC\Tools\MSVC") -Directory |
-            Sort-Object Name -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
-    } |
-    Select-Object -First 1
-
-if (-not [string]::IsNullOrWhiteSpace($vcToolsInstallDir)) {
-    $symbolToolPath = Join-Path $vcToolsInstallDir "bin\Hostx64\x64\mspdbcmf.exe"
-    if (Test-Path $symbolToolPath) {
-        $properties += "-p:VCToolsInstallDir=$vcToolsInstallDir\"
-    }
-}
-
-if ($NativeAot.IsPresent) {
-    $environmentScript = Join-Path $PSScriptRoot "rust-arm64-msvc-environment.ps1"
-    . $environmentScript
-    $msvcEnvironment = Get-DeskBoxMsvcEnvironment -Platform $Platform
-    $environmentState = Enter-DeskBoxMsvcEnvironment -Toolchain $msvcEnvironment
-}
+# Store symbol packaging needs VCToolsInstallDir to retain its trailing
+# separator. Supplying that path as a command-line property is unsafe when the
+# Visual Studio root contains spaces, because Windows argument quoting can
+# merge the next dotnet argument into the property. Reuse the scoped MSVC
+# environment for both AOT and ordinary Store builds instead.
+$environmentScript = Join-Path $PSScriptRoot "rust-arm64-msvc-environment.ps1"
+. $environmentScript
+$msvcEnvironment = Get-DeskBoxMsvcEnvironment -Platform $Platform
+$environmentState = Enter-DeskBoxMsvcEnvironment -Toolchain $msvcEnvironment
 
 try {
     & $dotnet publish $project -c $Configuration @properties -v:minimal
     $publishExitCode = $LASTEXITCODE
 }
 finally {
-    if ($NativeAot.IsPresent -and $null -ne $environmentState) {
+    if ($null -ne $environmentState) {
         Exit-DeskBoxMsvcEnvironment -State $environmentState
     }
 }
