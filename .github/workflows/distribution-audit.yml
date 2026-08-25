@@ -34,6 +34,7 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_NOLOGO: 1
+      RestoreLockedMode: true
 
     steps:
       - name: Checkout isolated source snapshot
@@ -92,6 +93,7 @@ jobs:
         shell: pwsh
         run: >-
           dotnet restore .\DeskBox.sln
+          --locked-mode
           -p:Platform=${{ matrix.platform }}
           -p:RuntimeIdentifier=${{ matrix.rid }}
           --verbosity minimal
