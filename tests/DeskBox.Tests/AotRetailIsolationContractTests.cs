@@ -100,6 +100,18 @@ public sealed class AotRetailIsolationContractTests
             "$ascii.Contains($_, [System.StringComparison]::Ordinal)",
             retailPublish,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "$retailPublishArguments = @{",
+            distribution,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Platform = $Platform",
+            distribution,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "$retailPublishArguments = @(\"-Platform\", $Platform)",
+            distribution,
+            StringComparison.Ordinal);
 
         int retainedAudit = distribution.IndexOf(
             "& $directAuditScript @directAuditArguments",

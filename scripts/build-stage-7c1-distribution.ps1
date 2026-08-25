@@ -124,9 +124,11 @@ Copy-Item -LiteralPath $directAuditSummaryPath `
     -Destination (Join-Path $OutputDirectory "direct-aot-audit-summary.json") -Force
 
 $retailPublishScript = Join-Path $PSScriptRoot "publish-aot-retail.ps1"
-$retailPublishArguments = @("-Platform", $Platform)
+$retailPublishArguments = @{
+    Platform = $Platform
+}
 if (-not [string]::IsNullOrWhiteSpace($DotNetPath)) {
-    $retailPublishArguments += @("-DotNetPath", [System.IO.Path]::GetFullPath($DotNetPath))
+    $retailPublishArguments.DotNetPath = [System.IO.Path]::GetFullPath($DotNetPath)
 }
 Write-Host "Publishing the smoke-free Direct Native AOT retail payload for $Platform..." `
     -ForegroundColor Cyan
