@@ -16,32 +16,6 @@ create a controlled Core Audio session, is bound to the parent script lifetime,
 and is never copied into the application or AOT publish output. It is not part
 of the production ABI, capability mask, or export list.
 
-Stages 6A and 6B added the independent `deskbox-search-core` module and its DBIX
-v1 direct loader. It stores directory and file-name UTF-16 data in compact
-arenas, uses .NET-compatible ordinal-ignore-case semantics, retains bounded
-Top-N results, and exposes tracked native capacity statistics.
-
-Stage 6C advances SearchCore to ABI 3. It adds transactional upsert/exact-remove/
-tree-remove/stale-tree mutation, recent-file and frequent-folder projections,
-and atomic live-only DBIX save with directory compaction. Direct x64 Debug,
-Release, and Native AOT outputs package the module. Stage 7A extends module
-packaging and static Native AOT publication to Direct ARM64; Store stays module-
-free. Stage 6D enables `SearchRustIndexerPreviewEnabled` by default only when a
-Direct x64 build packages the module; ARM64 remains default-off until its Stage
-7B device matrix. An explicit persisted user choice is preserved. A session holds exactly one resident
-managed or Rust index owner, and load/ABI/DBIX failures return to the managed
-load or rebuild path instead of exposing an empty successful backend. Recoverable
-query, projection, save, unload, mutation, and reconciliation failures also
-quarantine Rust for the session and restore the managed snapshot.
-
-With 208,021 real entries and all 11 configured widgets enabled, three isolated
-product repetitions measured median Private Bytes of 269.73 MiB managed versus
-235.08 MiB Rust (-12.85%), and Working Set of 388.00 MiB versus 351.67 MiB
-(-9.36%). These are whole-process results; the 100k/300k isolated index results
-remain the structural evidence. Stage 6D also covers native runtime fault
-recovery, watcher overflow/reconciliation, tombstone compaction, idle reload,
-and a real Native AOT search-surface result/filter/sort matrix.
-
 ## Contract
 
 - Production module ABI version: `2`
@@ -52,11 +26,6 @@ and a real Native AOT search-surface result/filter/sort matrix.
 - Targets: `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`
 - Library type: `cdylib`
 - Public header: `include/deskbox_native.h`
-- SearchCore ABI version: `3` (14 required exports)
-- SearchCore header: `include/deskbox_search_core.h`
-- SearchCore ABI v3 details: `../docs/architecture/search-core-native-abi-v3.md`
-- SearchCore Stage 6C report: `../docs/architecture/rust-stage-6c-search-core-report.md`
-- SearchCore Stage 6D report: `../docs/architecture/rust-stage-6d-search-core-report.md`
 - ARM64 Stage 7A report: `../docs/architecture/rust-stage-7a-arm64-static-report.md`
 - Detailed shortcut contract: `../docs/architecture/shortcut-native-abi-v2.md`
 - Detailed music-volume contract: `../docs/architecture/music-volume-native-abi-v1.md`
@@ -315,21 +284,10 @@ always-throw messages. The three-process x64 AOT matrix restores all three owned
 items and leaves zero exact matches. Full details are in
 `../docs/architecture/aot-stage-5b-4c1b1-report.md`.
 
-Stage 6D uses audit profile 58 / schema 55. The Direct x64 Native AOT publish
-contains exactly one root-level `deskbox_search_core.dll`, reports SearchCore
-ABI 3 and all 14 exports, matches the isolated staging hash, and keeps its PDB
-in the symbol directory. The audit records the Direct-x64 module-build default,
-managed session quarantine, and the owned-result Native AOT search scenario.
-The 10k/100k/300k isolated processes retain all six managed/Rust query
-signatures. Full ABI and product evidence are in
-`../docs/architecture/search-core-native-abi-v3.md` and
-`../docs/architecture/rust-stage-6d-search-core-report.md`.
-
 Stage 7A adds the pinned ARM64 Rust standard library, an audited x64-hosted MSVC
 ARM64 environment, case-sensitive static PE/export parsing, exact Platform/RID
 guards, and a separate cross-compiled static AOT audit. `DeskBox.exe`,
-`DeskBox.Updater.exe`, `deskbox_native.dll`, and `deskbox_search_core.dll` all
-report machine `0xAA64`; staging/publish DLL hashes match and four PDB files are
-separated. SearchCore is packaged but remains default-off on ARM64. The evidence
-does not execute target code. Full results and the Stage 7B boundary are in
+`DeskBox.Updater.exe`, and `deskbox_native.dll` all report machine `0xAA64`;
+staging/publish DLL hashes match and symbols are separated. The evidence does
+not execute target code. Full results and the Stage 7B boundary are in
 `../docs/architecture/rust-stage-7a-arm64-static-report.md`.

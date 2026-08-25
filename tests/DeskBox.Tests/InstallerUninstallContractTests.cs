@@ -162,7 +162,7 @@ public sealed class InstallerUninstallContractTests
         const string nativeSource =
             "Source: \"{#MyAppReleaseDir}\\deskbox_native.dll\"; DestDir: \"{app}\"; Flags: ignoreversion";
         const string nativeExclusions =
-            "Excludes: \"DeskBox.Updater.*,deskbox_native.dll,deskbox_native.pdb,deskbox_search_core.pdb\"";
+            "Excludes: \"DeskBox.Updater.*,deskbox_native.dll,deskbox_native.pdb\"";
 
         Assert.Contains("-p:DeskBoxRustNative=true", x64, StringComparison.Ordinal);
         Assert.Contains(nativeExclusions, x64, StringComparison.Ordinal);

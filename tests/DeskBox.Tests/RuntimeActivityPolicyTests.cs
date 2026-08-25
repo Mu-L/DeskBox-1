@@ -88,7 +88,6 @@ public sealed class RuntimeActivityPolicyTests
                 IsSearchPopupVisible: false,
                 IsDeskBoxForeground: false,
                 IsPointerOverDeskBox: false),
-            isSearchIndexing: false,
             managedHeapBytes: MemoryCleanupPolicy.VisibleIdleManagedHeapThresholdBytes,
             workingSetBytes: 0,
             privateBytes: 0,
@@ -97,17 +96,15 @@ public sealed class RuntimeActivityPolicyTests
     }
 
     [Theory]
-    [InlineData(true, false, false, false, false)]
-    [InlineData(false, true, false, false, false)]
-    [InlineData(false, false, true, false, false)]
-    [InlineData(false, false, false, true, false)]
-    [InlineData(false, false, false, false, true)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, false, true, false)]
+    [InlineData(false, false, false, true)]
     public void MemoryCleanupPolicy_BlocksVisibleIdleCollectionDuringActivity(
         bool isWidgetInteractionActive,
         bool isSettingsOpen,
         bool isOnboardingOpen,
-        bool isSearchPopupVisible,
-        bool isSearchIndexing)
+        bool isSearchPopupVisible)
     {
         Assert.False(MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
             new MemoryCleanupActivitySnapshot(
@@ -118,7 +115,6 @@ public sealed class RuntimeActivityPolicyTests
                 IsSearchPopupVisible: isSearchPopupVisible,
                 IsDeskBoxForeground: false,
                 IsPointerOverDeskBox: false),
-            isSearchIndexing,
             managedHeapBytes: MemoryCleanupPolicy.VisibleIdleManagedHeapThresholdBytes,
             workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
             privateBytes: MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
@@ -144,7 +140,6 @@ public sealed class RuntimeActivityPolicyTests
 
         Assert.False(MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
             snapshot,
-            isSearchIndexing: false,
             managedHeapBytes: MemoryCleanupPolicy.VisibleIdleManagedHeapThresholdBytes,
             workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
             privateBytes: MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
@@ -152,7 +147,6 @@ public sealed class RuntimeActivityPolicyTests
             hasCompletedVisibleIdleCollection: true));
         Assert.True(MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
             snapshot,
-            isSearchIndexing: false,
             managedHeapBytes: MemoryCleanupPolicy.VisibleIdleManagedHeapThresholdBytes,
             workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
             privateBytes: MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
@@ -201,23 +195,10 @@ public sealed class RuntimeActivityPolicyTests
 
         Assert.True(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
             snapshot,
-            isSearchIndexing: false,
             MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes));
         Assert.False(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
             snapshot,
-            isSearchIndexing: false,
             MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes - 1));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
-            snapshot,
-            isSearchIndexing: true,
-            MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes));
-    }
-
-    [Fact]
-    public void UsnJournalIndexService_DoesNotRetryAccessDeniedVolumeInSameSession()
-    {
-        Assert.False(UsnJournalIndexService.ShouldRetryVolumeOpen(5));
-        Assert.True(UsnJournalIndexService.ShouldRetryVolumeOpen(21));
     }
 
     [Theory]

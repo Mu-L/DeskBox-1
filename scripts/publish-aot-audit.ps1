@@ -47,12 +47,9 @@ $publishDir = Join-Path $runRoot "publish"
 $symbolsDir = Join-Path $runRoot "symbols"
 $rustIntermediateDir = Join-Path $runRoot "rust-staging"
 $rustCargoTargetDir = Join-Path $runRoot "rust-target"
-$searchCoreIntermediateDir = Join-Path $runRoot "search-core-staging"
-$searchCoreCargoTargetDir = Join-Path $runRoot "search-core-target"
 $logPath = Join-Path $runRoot "publish.log"
 $summaryPath = Join-Path $runRoot "summary.json"
 $rustNativeEnabled = $true
-$searchCorePreviewEnabled = $true
 $jsonSerializerIsReflectionEnabledByDefault = $false
 
 function Assert-PathInsideRoot {
@@ -269,9 +266,6 @@ $publishArguments = @(
     "-p:DeskBoxRustNative=$($rustNativeEnabled.ToString().ToLowerInvariant())",
     "-p:DeskBoxRustNativeIntermediateDir=$rustIntermediateDir",
     "-p:DeskBoxRustNativeCargoTargetDir=$rustCargoTargetDir",
-    "-p:DeskBoxSearchCorePreviewModule=$($searchCorePreviewEnabled.ToString().ToLowerInvariant())",
-    "-p:DeskBoxSearchCoreIntermediateDir=$searchCoreIntermediateDir",
-    "-p:DeskBoxSearchCoreCargoTargetDir=$searchCoreCargoTargetDir",
     "-p:IlcUseEnvironmentalTools=true",
     "-p:SelfContained=true",
     "-p:WindowsAppSDKSelfContained=false",
@@ -295,7 +289,6 @@ try {
             "-p:RuntimeIdentifier=$runtimeIdentifier",
             "-p:DeskBoxAotAudit=true",
             "-p:DeskBoxAotSmokeHarness=true",
-            "-p:DeskBoxSearchCorePreviewModule=$($searchCorePreviewEnabled.ToString().ToLowerInvariant())",
             "-p:JsonSerializerIsReflectionEnabledByDefault=$($jsonSerializerIsReflectionEnabledByDefault.ToString().ToLowerInvariant())",
             "-p:PublishAot=true",
             "-p:IlcUseEnvironmentalTools=true",
@@ -358,41 +351,6 @@ if ($rustNativeEnabled) {
     }
 }
 
-$searchCoreAbiVersion = $null
-$searchCoreRequiredExports = @()
-$searchCoreStagingSha256 = $null
-$searchCorePublishSha256 = $null
-$searchCorePublishMatchesStaging = $null
-if ($searchCorePreviewEnabled) {
-    $searchCoreBuildScript = Join-Path $repoRoot "scripts\build-rust-search-core.ps1"
-    $searchCoreValidation = & $searchCoreBuildScript `
-        -Platform x64 `
-        -Configuration Release `
-        -OutputDirectory $publishDir `
-        -ValidateOnly
-    $searchCoreAbiVersion = $searchCoreValidation.AbiVersion
-    $searchCoreRequiredExports = @($searchCoreValidation.RequiredExports)
-
-    $stagedSearchCoreDll = Join-Path $searchCoreIntermediateDir "deskbox_search_core.dll"
-    $publishedSearchCoreDll = Join-Path $publishDir "deskbox_search_core.dll"
-    if (-not (Test-Path -LiteralPath $stagedSearchCoreDll -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $publishedSearchCoreDll -PathType Leaf)) {
-        throw "The isolated staging or published Rust SearchCore module is missing."
-    }
-
-    $searchCoreStagingSha256 =
-        (Get-FileHash -LiteralPath $stagedSearchCoreDll -Algorithm SHA256).Hash
-    $searchCorePublishSha256 =
-        (Get-FileHash -LiteralPath $publishedSearchCoreDll -Algorithm SHA256).Hash
-    $searchCorePublishMatchesStaging = [string]::Equals(
-        $searchCoreStagingSha256,
-        $searchCorePublishSha256,
-        [System.StringComparison]::OrdinalIgnoreCase)
-    if (-not $searchCorePublishMatchesStaging) {
-        throw "The published Rust SearchCore module does not match this audit run's isolated staging output."
-    }
-}
-
 $pdbFiles = @(Get-ChildItem -LiteralPath $publishDir -Filter "*.pdb" -File -Recurse)
 foreach ($pdb in $pdbFiles) {
     Assert-PathInsideRoot -Root $publishDir -Candidate $pdb.FullName
@@ -415,9 +373,6 @@ $requiredFiles = @(
 )
 if ($rustNativeEnabled) {
     $requiredFiles += "deskbox_native.dll"
-}
-if ($searchCorePreviewEnabled) {
-    $requiredFiles += "deskbox_search_core.dll"
 }
 
 foreach ($requiredFile in $requiredFiles) {
@@ -443,24 +398,6 @@ if ($rustNativeEnabled) {
 }
 elseif ($publishedNativeModules.Count -ne 0) {
     throw "A non-x64 AOT publish must not contain the x64 deskbox_native.dll."
-}
-
-$publishedSearchCoreModules = @(
-    Get-ChildItem -LiteralPath $publishDir -Filter "deskbox_search_core.dll" -File -Recurse
-)
-if ($searchCorePreviewEnabled) {
-    $expectedSearchCoreDllPath = [System.IO.Path]::GetFullPath(
-        (Join-Path $publishDir "deskbox_search_core.dll"))
-    if ($publishedSearchCoreModules.Count -ne 1 -or
-        -not [string]::Equals(
-            $publishedSearchCoreModules[0].FullName,
-            $expectedSearchCoreDllPath,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "The x64 AOT publish must contain exactly one root-level deskbox_search_core.dll."
-    }
-}
-elseif ($publishedSearchCoreModules.Count -ne 0) {
-    throw "An excluded SearchCore preview publish must not contain deskbox_search_core.dll."
 }
 
 $publishedThumbnailProxies = @(
@@ -511,9 +448,6 @@ $requiredSymbolFiles = @(
 if ($rustNativeEnabled) {
     $requiredSymbolFiles += "deskbox_native.pdb"
 }
-if ($searchCorePreviewEnabled) {
-    $requiredSymbolFiles += "deskbox_search_core.pdb"
-}
 
 foreach ($requiredSymbolFile in $requiredSymbolFiles) {
     if (-not ($symbolFiles | Where-Object Name -eq $requiredSymbolFile)) {
@@ -528,9 +462,6 @@ $peFiles = @(
 )
 if ($rustNativeEnabled) {
     $peFiles += (Join-Path $publishDir "deskbox_native.dll")
-}
-if ($searchCorePreviewEnabled) {
-    $peFiles += (Join-Path $publishDir "deskbox_search_core.dll")
 }
 
 $peResults = foreach ($peFile in $peFiles) {
@@ -1377,7 +1308,7 @@ $stage4E3RequiredCompiledBindings = @(
     [PSCustomObject]@{
         sourceFile = $stage4E3SourceFiles[3]
         pattern = "{x:Bind Count, Mode=OneWay}"
-        expectedCount = 1
+        expectedCount = 0
     },
     [PSCustomObject]@{
         sourceFile = $stage4E3SourceFiles[3]
@@ -8567,8 +8498,6 @@ $summary = [ordered]@{
     buildArtifactsDirectory = $buildArtifactsDir
     rustIntermediateDirectory = $rustIntermediateDir
     rustCargoTargetDirectory = $rustCargoTargetDir
-    searchCoreIntermediateDirectory = $searchCoreIntermediateDir
-    searchCoreCargoTargetDirectory = $searchCoreCargoTargetDir
     publishDirectory = $publishDir
     symbolsDirectory = $symbolsDir
     publishFileCount = $publishedFiles.Count
@@ -9275,32 +9204,6 @@ $summary = [ordered]@{
             exactIdentity = "original parent plus item name"
             restoreRequiresExactlyOneMatch = $true
         }
-    }
-    searchCorePreview = [ordered]@{
-        enabled = $searchCorePreviewEnabled
-        abiVersion = $searchCoreAbiVersion
-        requiredExports = @($searchCoreRequiredExports)
-        dllName = if ($searchCorePreviewEnabled) { "deskbox_search_core.dll" } else { $null }
-        stagingSha256 = $searchCoreStagingSha256
-        publishSha256 = $searchCorePublishSha256
-        publishMatchesStaging = $searchCorePublishMatchesStaging
-        productSetting = "SearchRustIndexerPreviewEnabled"
-        defaultEnabled = $searchCorePreviewEnabled
-        defaultPolicy = "Direct-supported-architecture-module-build"
-        managedFallback = $true
-        runtimeFallback = "managed-session-quarantine"
-        runtimeFallbackOperations = @(
-            "query",
-            "projection",
-            "save",
-            "idle-unload",
-            "upsert",
-            "remove",
-            "tree-remove",
-            "scan-reconciliation")
-        aotSearchScenario = "SearchCorePreviewReadOnly"
-        supportedDistribution = "Direct"
-        supportedArchitecture = "x64"
     }
 }
 
@@ -10561,6 +10464,4 @@ if ($RequireCleanAnalysis.IsPresent -and
     RustAbiVersion = $rustAbiVersion
     RustCapabilities = $rustCapabilities
     RustRequiredExports = $rustRequiredExports -join ", "
-    SearchCoreAbiVersion = $searchCoreAbiVersion
-    SearchCoreRequiredExports = $searchCoreRequiredExports -join ", "
 }

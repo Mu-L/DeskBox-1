@@ -14,8 +14,6 @@ public partial class App
     private const string AotManagedUiSmokeEnvironmentVariable =
         "DESKBOX_AOT_MANAGED_UI_SMOKE";
     private const string AotManagedUiBasicReadOnlyScenario = "BasicReadOnly";
-    private const string AotManagedUiSearchCorePreviewScenario =
-        "SearchCorePreviewReadOnly";
     private const string AotManagedUiDeepSettingsReadOnlyScenario = "DeepSettingsReadOnly";
     private const string AotManagedUiSettingsWidgetPersistenceScenario =
         "SettingsWidgetPersistenceRestart";
@@ -122,8 +120,6 @@ public partial class App
         "Postflight";
     private const string AotManagedUiSmokeDirectoryName = "aot-managed-ui-smoke";
     private const string AotManagedUiBasicReadOnlyDirectoryName = "basic-read-only";
-    private const string AotManagedUiSearchCorePreviewDirectoryName =
-        "search-core-preview-read-only";
     private const string AotManagedUiDeepSettingsReadOnlyDirectoryName =
         "deep-settings-read-only";
     private const string AotManagedUiSettingsWidgetPersistenceDirectoryName =
@@ -183,8 +179,6 @@ public partial class App
         "AOT File Persistence Mutated";
     private const string AotManagedUiBaselineTrayIconStyle = "Colorful";
     private const string AotManagedUiMutatedTrayIconStyle = "White";
-    private const string AotManagedUiSearchCoreOwnedFileName =
-        "Open Settings stage6d-rust-aot.txt";
     private const double AotManagedUiBaselineTextSize = 11.5;
     private const double AotManagedUiMutatedTextSize = 12.5;
 
@@ -198,7 +192,6 @@ public partial class App
         }
 
         if (scenario is not AotManagedUiBasicReadOnlyScenario and
-            not AotManagedUiSearchCorePreviewScenario and
             not AotManagedUiDeepSettingsReadOnlyScenario and
             not AotManagedUiSettingsWidgetPersistenceScenario and
             not AotManagedUiQuickCapturePersistenceScenario and
@@ -456,8 +449,6 @@ public partial class App
         {
             AotManagedUiBasicReadOnlyScenario =>
                 AotManagedUiBasicReadOnlyDirectoryName,
-            AotManagedUiSearchCorePreviewScenario =>
-                AotManagedUiSearchCorePreviewDirectoryName,
             AotManagedUiDeepSettingsReadOnlyScenario =>
                 AotManagedUiDeepSettingsReadOnlyDirectoryName,
             AotManagedUiSettingsWidgetPersistenceScenario =>
@@ -782,8 +773,7 @@ public partial class App
 
             await CaptureAotManagedUiTrayAndWidgetsAsync(result);
             CaptureAotManagedUiLocales(result);
-            if (scenario is AotManagedUiBasicReadOnlyScenario or
-                AotManagedUiSearchCorePreviewScenario)
+            if (scenario is AotManagedUiBasicReadOnlyScenario)
             {
                 await CaptureAotManagedUiSettingsAsync(result);
                 await CaptureAotManagedUiSearchAsync(result);
@@ -1519,40 +1509,6 @@ public partial class App
             await WaitForManagedUiSearchAsync(searchQuery);
         SearchPopupWindow popup = _searchPopupWindow ??
             throw new InvalidOperationException("The search popup disappeared before control routing.");
-        bool requiresRustSearchCore = string.Equals(
-            result.Scenario,
-            AotManagedUiSearchCorePreviewScenario,
-            StringComparison.Ordinal);
-        string? expectedRustFilePath = requiresRustSearchCore
-            ? Path.GetFullPath(Path.Combine(
-                DeskBoxDataPathService.Current.RootPath,
-                "fixtures",
-                "search-core-preview",
-                AotManagedUiSearchCoreOwnedFileName))
-            : null;
-        SearchEngineService? searchEngine = _searchEngineService;
-        bool expectedRustFilePresent = expectedRustFilePath is not null &&
-            popup.HasAotResultPath(expectedRustFilePath);
-        if (requiresRustSearchCore)
-        {
-            RequireAotManagedUi(
-                result,
-                SettingsService.Settings.SearchCustomIndexerEnabled &&
-                SettingsService.Settings.SearchRustIndexerPreviewEnabled &&
-                searchEngine is not null &&
-                searchEngine.IsRustIndexPreviewActive &&
-                string.IsNullOrWhiteSpace(searchEngine.RustIndexPreviewFallbackReason) &&
-                searchEngine.IndexService.HasSingleResidentBackend &&
-                !searchEngine.IndexService.IsRustPreviewSuppressedForSession &&
-                searchEngine.IndexService.NativeRuntimeRecoveryCount == 0,
-                "RustSearchCorePreviewActive",
-                "The AOT search surface did not retain the isolated Rust SearchCore owner.");
-            RequireAotManagedUi(
-                result,
-                expectedRustFilePresent,
-                "RustSearchCoreOwnedResult",
-                "The AOT Rust SearchCore result did not contain the owned DBIX fixture file.");
-        }
         AotSearchControlExercise exercise = popup.ExerciseAotReadOnlyControls();
         AotSearchWindowSnapshot finalSnapshot = popup.CaptureAotSmokeSnapshot();
 
@@ -1613,14 +1569,6 @@ public partial class App
             ResultFilterBarVisible = initialSnapshot.IsResultFilterBarVisible,
             SortHeaderRowVisible = initialSnapshot.IsSortHeaderRowVisible,
             HasOpenSettingsAction = initialSnapshot.HasOpenSettingsAction,
-            RustPreviewRequested = requiresRustSearchCore,
-            RustPreviewActive = searchEngine?.IsRustIndexPreviewActive == true,
-            RustPreviewFallbackReason = searchEngine?.RustIndexPreviewFallbackReason,
-            SingleResidentBackend = searchEngine?.IndexService.HasSingleResidentBackend == true,
-            NativeRuntimeRecoveryCount =
-                searchEngine?.IndexService.NativeRuntimeRecoveryCount ?? 0,
-            ExpectedRustFilePath = expectedRustFilePath,
-            ExpectedRustFilePresent = expectedRustFilePresent,
             FilterTransitions = exercise.FilterTransitions.ToList(),
             SortTransitions = exercise.SortTransitions.ToList(),
             FinalResultFilter = finalSnapshot.ResultFilter,
@@ -1797,13 +1745,6 @@ internal sealed class AotManagedUiSearchEvidence
     public bool ResultFilterBarVisible { get; set; }
     public bool SortHeaderRowVisible { get; set; }
     public bool HasOpenSettingsAction { get; set; }
-    public bool RustPreviewRequested { get; set; }
-    public bool RustPreviewActive { get; set; }
-    public string? RustPreviewFallbackReason { get; set; }
-    public bool SingleResidentBackend { get; set; }
-    public int NativeRuntimeRecoveryCount { get; set; }
-    public string? ExpectedRustFilePath { get; set; }
-    public bool ExpectedRustFilePresent { get; set; }
     public List<string> FilterTransitions { get; set; } = [];
     public List<string> SortTransitions { get; set; } = [];
     public string FinalResultFilter { get; set; } = string.Empty;

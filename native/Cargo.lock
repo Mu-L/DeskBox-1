@@ -17,10 +17,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deskbox-search-core"
-version = "0.1.0"
-
-[[package]]
 name = "deskbox-thumbnail-proxy"
 version = "0.1.0"
 dependencies = [

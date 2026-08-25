@@ -5,28 +5,21 @@ public sealed class AotStage7C0ContractTests
     [Fact]
     public void RustBuilds_UseExplicitRestoredCrtFlagsAndReportPeDependencies()
     {
-        foreach (string relativePath in new[]
+        string script = Read("scripts/build-rust-native.ps1");
+        foreach (string token in new[]
                  {
-                     "scripts/build-rust-native.ps1",
-                     "scripts/build-rust-search-core.ps1"
+                     "[ValidateSet(\"Dynamic\", \"Static\")]",
+                     "[string]$CrtLinkage = \"Static\"",
+                     "target-feature=+crt-static",
+                     "target-feature=-crt-static",
+                     "CARGO_ENCODED_RUSTFLAGS",
+                     "previousEncodedRustFlags",
+                     "previousRustFlags",
+                     "VcRuntimeImports",
+                     "SizeOfImage"
                  })
         {
-            string script = Read(relativePath);
-            foreach (string token in new[]
-                     {
-                         "[ValidateSet(\"Dynamic\", \"Static\")]",
-                         "[string]$CrtLinkage = \"Static\"",
-                         "target-feature=+crt-static",
-                         "target-feature=-crt-static",
-                         "CARGO_ENCODED_RUSTFLAGS",
-                         "previousEncodedRustFlags",
-                         "previousRustFlags",
-                         "VcRuntimeImports",
-                         "SizeOfImage"
-                     })
-            {
-                Assert.Contains(token, script, StringComparison.Ordinal);
-            }
+            Assert.Contains(token, script, StringComparison.Ordinal);
         }
 
         string pe = Read("scripts/native-pe-contract.ps1");
@@ -93,8 +86,8 @@ public sealed class AotStage7C0ContractTests
         string runtimeGate = Read("scripts/run-arm64-stage-7b-runtime.ps1");
         Assert.Contains("-CrtLinkage Static", runtimeGate, StringComparison.Ordinal);
         Assert.Contains("-p:DeskBoxRustCrtLinkage=Static", runtimeGate, StringComparison.Ordinal);
-        Assert.Contains("$result.CrtLinkage -ne \"Static\"", runtimeGate, StringComparison.Ordinal);
-        Assert.Contains("$result.VcRuntimeImports.Count -ne 0", runtimeGate, StringComparison.Ordinal);
+        Assert.Contains("$nativeResult.CrtLinkage -ne \"Static\"", runtimeGate, StringComparison.Ordinal);
+        Assert.Contains("$nativeResult.VcRuntimeImports.Count -ne 0", runtimeGate, StringComparison.Ordinal);
     }
 
     private static string Read(string relativePath) =>

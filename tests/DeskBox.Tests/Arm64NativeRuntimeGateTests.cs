@@ -10,7 +10,7 @@ public sealed class Arm64NativeRuntimeGateTests
         "DESKBOX_REQUIRE_ARM64_RUNTIME_GATE";
 
     [Fact]
-    public void OptInGate_LoadsBothArm64ModulesAndExecutesSearchCoreProductCall()
+    public void OptInGate_LoadsArm64ProductModuleAndExecutesAbiProbe()
     {
         if (!string.Equals(
                 Environment.GetEnvironmentVariable(RequiredEnvironmentVariable),
@@ -32,41 +32,5 @@ public sealed class Arm64NativeRuntimeGateTests
         Assert.Equal(2U, native.Module.ProbeAbiVersion());
         Assert.Equal(511UL, native.Module.ProbeCapabilities());
 
-        string searchCorePath = Path.Combine(
-            AppContext.BaseDirectory,
-            SearchCoreNativeBackend.DllName);
-        Assert.True(
-            SearchCoreNativeBackend.TryCreate(
-                searchCorePath,
-                initialEntryCapacity: 2,
-                initialUtf16CapacityChars: 64,
-                out SearchCoreNativeBackend? searchCore,
-                out string error),
-            error);
-        Assert.NotNull(searchCore);
-        using (searchCore)
-        {
-            DateTime modified = new(638_900_000_000_000_000L, DateTimeKind.Utc);
-            searchCore.AddEntries(
-            [
-                new SearchCoreSourceEntry(
-                    @"C:\Arm64Gate",
-                    "github-runtime-项目.txt",
-                    IsDirectory: false,
-                    modified),
-                new SearchCoreSourceEntry(
-                    @"C:\Arm64Gate",
-                    "unrelated.bin",
-                    IsDirectory: false,
-                    modified.AddTicks(-1))
-            ]);
-            searchCore.Seal();
-
-            SearchCoreQuerySnapshot result = searchCore.Query("项目", maxResults: 8);
-            SearchCoreQueryItem item = Assert.Single(result.Items);
-            Assert.Equal("github-runtime-项目.txt", item.FileName);
-            Assert.Equal(@"C:\Arm64Gate", item.DirectoryPath);
-            Assert.Equal(2U, result.ScannedEntryCount);
-        }
     }
 }

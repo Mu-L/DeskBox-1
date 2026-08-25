@@ -47,8 +47,7 @@ internal static class SearchResultRanker
             }
 
             // No matching item is silently discarded. Noisy paths remain available
-            // at the end of an unlimited, paged result set unless the index exclusion
-            // policy removed them before query time.
+            // at the end of the continuously paged Everything result set.
             item.RelevanceScore = Math.Max(1, adjustedScore);
 
             string identity = GetIdentityKey(item);

@@ -19,12 +19,10 @@ else {
     [System.IO.Path]::GetFullPath($OutputDirectory)
 }
 $nativeOutput = Join-Path $outputRoot "native"
-$searchOutput = Join-Path $outputRoot "search"
 $testResultsDirectory = Join-Path $outputRoot "test-results"
 $cargoTargetRoot = Join-Path $repoRoot ".artifacts\cargo\arm64-stage7b"
 $evidencePath = Join-Path $outputRoot "arm64-stage7b-runtime-evidence.json"
 $nativeBuildScript = Join-Path $PSScriptRoot "build-rust-native.ps1"
-$searchBuildScript = Join-Path $PSScriptRoot "build-rust-search-core.ps1"
 $testProject = Join-Path $repoRoot "tests\DeskBox.Tests\DeskBox.Tests.csproj"
 
 function Invoke-DeskBoxBuildProbe {
@@ -93,7 +91,6 @@ function Get-DeskBoxCommandText {
 }
 
 New-Item -ItemType Directory -Path $nativeOutput -Force | Out-Null
-New-Item -ItemType Directory -Path $searchOutput -Force | Out-Null
 New-Item -ItemType Directory -Path $testResultsDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $cargoTargetRoot -Force | Out-Null
 
@@ -101,7 +98,6 @@ $startedUtc = [DateTime]::UtcNow
 $status = "failed"
 $failure = $null
 $nativeResult = $null
-$searchResult = $null
 $testExitCode = $null
 $testCounters = $null
 $dotnetVersion = $null
@@ -155,27 +151,17 @@ try {
     $nativeResult = Invoke-DeskBoxBuildProbe `
         -Script $nativeBuildScript `
         -ModuleOutput $nativeOutput
-    $searchResult = Invoke-DeskBoxBuildProbe `
-        -Script $searchBuildScript `
-        -ModuleOutput $searchOutput
-
-    foreach ($result in @($nativeResult, $searchResult)) {
-        if (-not $result.RuntimeProbeExecuted -or
-            $result.ContractValidation -ne "runtime-load-plus-static-pe" -or
-            $result.ProcessArchitecture -ne "Arm64" -or
-            $result.MachineName -ne "ARM64" -or
-            $result.CrtLinkage -ne "Static" -or
-            $result.VcRuntimeImports.Count -ne 0) {
-            throw "ARM64 build completed without the required runtime ABI plus static PE validation."
-        }
+    if (-not $nativeResult.RuntimeProbeExecuted -or
+        $nativeResult.ContractValidation -ne "runtime-load-plus-static-pe" -or
+        $nativeResult.ProcessArchitecture -ne "Arm64" -or
+        $nativeResult.MachineName -ne "ARM64" -or
+        $nativeResult.CrtLinkage -ne "Static" -or
+        $nativeResult.VcRuntimeImports.Count -ne 0) {
+        throw "ARM64 build completed without the required runtime ABI plus static PE validation."
     }
     if ($nativeResult.AbiVersion -ne 2 -or $nativeResult.Capabilities -ne 511) {
         throw "deskbox_native.dll returned an unexpected ABI or capability mask."
     }
-    if ($searchResult.AbiVersion -ne 3) {
-        throw "deskbox_search_core.dll returned an unexpected ABI."
-    }
-
     $previousGate = [Environment]::GetEnvironmentVariable(
         "DESKBOX_REQUIRE_ARM64_RUNTIME_GATE",
         "Process")
@@ -194,7 +180,7 @@ try {
             "-p:WindowsAppSdkBootstrapInitialize=false",
             "--results-directory", $testResultsDirectory,
             "--logger", "trx;LogFileName=arm64-runtime-gate.trx",
-            "--filter", "FullyQualifiedName~DeskBox.Tests.Arm64NativeRuntimeGateTests|FullyQualifiedName~DeskBox.Tests.SearchCoreNativeBackendTests",
+            "--filter", "FullyQualifiedName~DeskBox.Tests.Arm64NativeRuntimeGateTests",
             "--blame-hang",
             "--blame-hang-timeout", "5m",
             "--verbosity", "minimal")
@@ -232,7 +218,7 @@ try {
         throw "ARM64 product runtime tests failed with exit code $testExitCode."
     }
     if ($null -eq $testCounters -or
-        $testCounters.executed -lt 2 -or
+        $testCounters.executed -lt 1 -or
         $testCounters.failed -ne 0 -or
         $testCounters.error -ne 0 -or
         $testCounters.timeout -ne 0 -or
@@ -304,19 +290,6 @@ finally {
                 pdb = Get-DeskBoxFileEvidence -Path $nativeResult.Pdb
             }
         }
-        searchCore = if ($null -eq $searchResult) { $null } else {
-            [ordered]@{
-                abiVersion = $searchResult.AbiVersion
-                crtLinkage = $searchResult.CrtLinkage
-                machine = $searchResult.MachineName
-                machineHex = $searchResult.MachineHex
-                exportCount = $searchResult.ExportCount
-                contractValidation = $searchResult.ContractValidation
-                runtimeProbeExecuted = $searchResult.RuntimeProbeExecuted
-                dll = Get-DeskBoxFileEvidence -Path $searchResult.Dll
-                pdb = Get-DeskBoxFileEvidence -Path $searchResult.Pdb
-            }
-        }
         tests = [ordered]@{
             exitCode = $testExitCode
             counters = $testCounters
@@ -337,7 +310,6 @@ if ($status -ne "passed") {
     Status = $status
     Evidence = $evidencePath
     NativeRuntimeProbeExecuted = $nativeResult.RuntimeProbeExecuted
-    SearchRuntimeProbeExecuted = $searchResult.RuntimeProbeExecuted
     TestsExecuted = $testCounters.executed
     TestsPassed = $testCounters.passed
 }

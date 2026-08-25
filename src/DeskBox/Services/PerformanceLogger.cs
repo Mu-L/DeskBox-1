@@ -142,8 +142,8 @@ public static class PerformanceLogger
             LastGcMemoryLoad = gcInfo.MemoryLoadBytes;
 
             var app = App.Current;
-            int searchIndexCount = app.SearchEngineService?.IndexedItemCount ?? 0;
-            bool searchIndexing = app.SearchEngineService?.IsCustomIndexing == true;
+            string everythingState = app.EverythingSearchService?.CurrentSnapshot.State.ToString()
+                ?? "uninitialized";
             bool searchEnabled = FeatureWidgetSettings.IsEnabled(
                 app.SettingsService.Settings,
                 DeskBox.Models.WidgetKind.Search);
@@ -180,9 +180,8 @@ public static class PerformanceLogger
                 $"loadedWidgets={loadedWidgetCount} " +
                 $"visibleWidgets={visibleWidgetCount} " +
                  $"searchEnabled={searchEnabled} " +
-                 $"searchIndexing={searchIndexing} " +
-                 $"searchIndex={searchIndexCount} " +
-                 $"searchIndexResident={app.IsSearchIndexResident} " +
+                 $"everythingState={everythingState} " +
+                 $"everythingConnected={app.IsEverythingSearchConnected} " +
                  $"searchPopupCreated={app.IsSearchPopupCreated} " +
                 $"searchPopupVisible={app.IsSearchPopupVisible} " +
                 $"searchMetaCache={app.SearchMetaCacheCount}" +

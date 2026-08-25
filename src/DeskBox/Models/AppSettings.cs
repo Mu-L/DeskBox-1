@@ -5,14 +5,6 @@ namespace DeskBox.Models;
 /// </summary>
 public class AppSettings
 {
-#if DESKBOX_SEARCH_CORE_DEFAULT
-    /// <summary>Default SearchCore backend policy for this build.</summary>
-    public const bool SearchRustIndexerDefaultEnabled = true;
-#else
-    /// <summary>Default SearchCore backend policy for this build.</summary>
-    public const bool SearchRustIndexerDefaultEnabled = false;
-#endif
-
     /// <summary>
     /// Settings schema version for migration purposes.
     /// New or legacy settings without this field begin at version 1 and are
@@ -740,28 +732,23 @@ public class AppSettings
     /// <summary>Whether to include DeskBox internal content (todos, notes, widget files) in search.</summary>
     public bool SearchIncludeDeskBoxContent { get; set; } = true;
 
-    /// <summary>Legacy Windows Search provider switch. Retained only for settings compatibility.</summary>
-    public bool SearchIncludeSystemIndex { get; set; }
-
-    /// <summary>Whether the single local filename catalog is enabled.</summary>
-    public bool SearchCustomIndexerEnabled { get; set; } = true;
+    /// <summary>
+    /// Whether the user has explicitly allowed DeskBox to query the locally running
+    /// Everything instance through its read-only IPC API.
+    /// </summary>
+    public bool SearchEverythingEnabled { get; set; }
 
     /// <summary>
-    /// Whether the custom file index should use the Rust resident backend.
-    /// Direct x64 module builds default to Rust. Unsupported builds and runtime
-    /// native failures use the compatible C# backend.
+    /// An optional, user-selected Everything.exe path. An empty value keeps automatic
+    /// detection enabled and is also the default for normal installed copies.
     /// </summary>
-    public bool SearchRustIndexerPreviewEnabled { get; set; } =
-        SearchRustIndexerDefaultEnabled;
+    public string SearchEverythingExecutablePath { get; set; } = string.Empty;
 
-    /// <summary>Additional directories for the custom file indexer to scan.</summary>
-    public List<string> SearchCustomIndexPaths { get; set; } = [];
-
-    /// <summary>Whether low-value system and cache trees are excluded from the filename index.</summary>
-    public bool SearchHideSystemNoise { get; set; } = true;
-
-    /// <summary>Additional canonical directory roots excluded from the filename index.</summary>
-    public List<string> SearchIndexExcludedPaths { get; set; } = [];
+    /// <summary>
+    /// Whether search text is passed through as Everything syntax. Disabled by default
+    /// so ordinary DeskBox searches are treated as literal filename phrases.
+    /// </summary>
+    public bool SearchEverythingAdvancedSyntaxEnabled { get; set; }
 
     /// <summary>Whether to show recommendations when the search popup opens.</summary>
     public bool SearchShowRecommendations { get; set; } = true;

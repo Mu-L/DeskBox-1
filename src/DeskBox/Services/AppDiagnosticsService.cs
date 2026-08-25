@@ -1,4 +1,5 @@
 using Microsoft.UI.Dispatching;
+using DeskBox.Models;
 
 namespace DeskBox.Services;
 
@@ -44,47 +45,45 @@ public sealed class AppDiagnosticsService : IDisposable
     public string LastLifecycleReason => _lastLifecycleReason;
 
     public AppRuntimeHealthSnapshot GetRuntimeHealthSnapshot(
-        SearchIndexService? searchIndex,
-        SearchEngineService? searchEngine = null,
+        EverythingSearchService? everythingSearch,
         IEnumerable<FolderWatcherHealthSnapshot>? folderWatchers = null)
     {
         var folderHealth = folderWatchers?.ToList() ?? [];
+        EverythingConnectionSnapshot? everything = everythingSearch?.CurrentSnapshot;
         return new AppRuntimeHealthSnapshot(
             LifecycleEventCount,
             LastLifecycleEventAt,
             LastLifecycleReason,
-            searchIndex?.WatcherCount ?? 0,
-            searchIndex?.WatcherRecoveryCount ?? 0,
-            searchIndex?.LastWatcherRecoveryTime,
-            searchIndex?.IndexedCount ?? 0,
-            searchIndex?.IsScanning == true,
-            searchIndex?.LastScanTime,
-            searchIndex?.WatcherCreationFailureCount ?? 0,
-            searchIndex?.OfflineRootCount ?? 0,
-            searchIndex?.PartialRootCount ?? 0,
-            searchIndex?.LastScanCapacityLimited == true,
-            searchEngine?.IsUsnIndexAvailable == true,
-            searchEngine?.IsUsnIndexScanning == true,
-            searchEngine?.IsUsnIndexIncrementalSyncing == true,
-            folderHealth.Count(item => item.Status == FolderWatcherHealth.Unavailable),
-            folderHealth.Count(item => item.Status == FolderWatcherHealth.Degraded),
-            folderHealth.Count(item => item.Status == FolderWatcherHealth.AccessDenied));
+            SearchWatcherCount: 0,
+            SearchWatcherRecoveryCount: 0,
+            LastSearchWatcherRecoveryTime: null,
+            IndexedEntryCount: 0,
+            IsSearchScanning: everything?.State == EverythingConnectionState.Checking,
+            LastSearchScanTime: null,
+            FailedSearchWatcherCount: 0,
+            OfflineSearchRootCount: 0,
+            PartialSearchRootCount: 0,
+            SearchScanCapacityLimited: false,
+            IsUsnIndexAvailable: false,
+            IsUsnIndexScanning: false,
+            IsUsnIndexIncrementalSyncing: false,
+            OfflineFolderCount: folderHealth.Count(item => item.Status == FolderWatcherHealth.Unavailable),
+            DegradedFolderCount: folderHealth.Count(item => item.Status == FolderWatcherHealth.Degraded),
+            AccessDeniedFolderCount: folderHealth.Count(item => item.Status == FolderWatcherHealth.AccessDenied),
+            EverythingState: everything?.State,
+            EverythingVersion: everything?.Version);
     }
 
     /// <summary>
     /// Records a lifecycle recovery signal alongside the regular watchdog
     /// diagnostics so field logs show whether external-state recovery ran.
     /// </summary>
-    public void RecordLifecycleEvent(string reason, SearchIndexService? searchIndex)
+    public void RecordLifecycleEvent(string reason)
     {
         int count = Interlocked.Increment(ref _lifecycleEventCount);
         _lastLifecycleEventAt = DateTimeOffset.Now;
         _lastLifecycleReason = reason;
-        App.Log(
-            $"[Diagnostics] Lifecycle recovery #{count} reason={reason} " +
-            $"searchWatchers={searchIndex?.WatcherCount ?? 0} " +
-            $"searchRecoveries={searchIndex?.WatcherRecoveryCount ?? 0} " +
-            $"lastSearchRecovery={searchIndex?.LastWatcherRecoveryTime?.ToString("O") ?? "none"}");
+        App.Log($"[Diagnostics] Lifecycle recovery #{count} reason={reason}");
     }
 
     /// <summary>
@@ -209,4 +208,6 @@ public sealed record AppRuntimeHealthSnapshot(
     bool IsUsnIndexIncrementalSyncing = false,
     int OfflineFolderCount = 0,
     int DegradedFolderCount = 0,
-    int AccessDeniedFolderCount = 0);
+    int AccessDeniedFolderCount = 0,
+    EverythingConnectionState? EverythingState = null,
+    string? EverythingVersion = null);

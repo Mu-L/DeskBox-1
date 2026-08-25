@@ -165,7 +165,6 @@ $directRequiredFiles = @(
     "DeskBox.Updater.exe",
     "DeskBox.ThumbnailProxy.exe",
     "deskbox_native.dll",
-    "deskbox_search_core.dll",
     "DeskBox.pri"
 )
 $missingDirectFiles = @($directRequiredFiles | Where-Object { $directFiles -notcontains $_ })
@@ -220,32 +219,12 @@ $nativeExports = @(
     "deskbox_quick_access_v1",
     "deskbox_recycle_bin_v1"
 )
-$searchExports = @(
-    "deskbox_search_core_abi_version",
-    "deskbox_search_core_open_dbix_v1",
-    "deskbox_search_core_create_v1",
-    "deskbox_search_core_add_batch_v1",
-    "deskbox_search_core_seal_v1",
-    "deskbox_search_core_reset_cancel_v1",
-    "deskbox_search_core_cancel_v1",
-    "deskbox_search_core_query_v1",
-    "deskbox_search_core_copy_entries_v1",
-    "deskbox_search_core_mutate_batch_v1",
-    "deskbox_search_core_project_v1",
-    "deskbox_search_core_save_dbix_v1",
-    "deskbox_search_core_stats_v1",
-    "deskbox_search_core_destroy_v1"
-)
 $nativeContract = Get-DeskBoxNativePeContract `
     -Path (Join-Path $directPublishDirectory "deskbox_native.dll") `
     -ExpectedPlatform $Platform `
     -RequiredExports $nativeExports
-$searchContract = Get-DeskBoxNativePeContract `
-    -Path (Join-Path $directPublishDirectory "deskbox_search_core.dll") `
-    -ExpectedPlatform $Platform `
-    -RequiredExports $searchExports
 $vcImports = @(
-    @($nativeContract.ImportedModules) + @($searchContract.ImportedModules) |
+    @($nativeContract.ImportedModules) |
         Where-Object { $_ -match '^(?:VCRUNTIME|MSVCP|ucrtbase)' } |
         Sort-Object -Unique
 )
@@ -376,7 +355,6 @@ $summary = [ordered]@{
         updaterMachine = "0x$($updaterMachine.ToString('X4'))"
         thumbnailProxyMachine = "0x$($thumbnailProxyMachine.ToString('X4'))"
         rustNative = $nativeContract
-        searchCore = $searchContract
         crtLinkage = "Static"
         vcRuntimeImports = $vcImports
         installer = [ordered]@{
@@ -401,7 +379,6 @@ $summary = [ordered]@{
         msixUploadSha256 = Get-FileSha256 -Path $msixUpload.FullName
         uploadEntries = $uploadEntries
         rustNativePackaged = $true
-        searchCorePackaged = $false
         updaterPackaged = $false
     }
     evidenceBoundary = [ordered]@{

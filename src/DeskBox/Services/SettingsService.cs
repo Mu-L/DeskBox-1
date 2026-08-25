@@ -509,13 +509,9 @@ settings.WeatherRefreshIntervalMinutes = 60;
         settings.SearchHotkeyKey = 0x44;
         settings.SearchDisplayMode = "Spotlight";
         settings.SearchIncludeDeskBoxContent = true;
-        settings.SearchIncludeSystemIndex = false;
-        settings.SearchCustomIndexerEnabled = true;
-        settings.SearchRustIndexerPreviewEnabled =
-            AppSettings.SearchRustIndexerDefaultEnabled;
-        settings.SearchCustomIndexPaths = [];
-        settings.SearchHideSystemNoise = true;
-        settings.SearchIndexExcludedPaths = [];
+        settings.SearchEverythingEnabled = false;
+        settings.SearchEverythingExecutablePath = string.Empty;
+        settings.SearchEverythingAdvancedSyntaxEnabled = false;
         settings.SearchShowRecommendations = true;
         settings.SearchMaxResults = DefaultSearchMaxResults;
         settings.SearchDefaultTab = "all";
@@ -2666,37 +2662,13 @@ settings.FocusClickedWidgetOnRaise = false;
     {
         bool changed = false;
 
-        // Search now has one active filename authority. Legacy settings that enabled
-        // Windows Search or disabled the local catalog are migrated in place; the
-        // feature-level widget switch still owns complete runtime release.
-        if (settings.SearchIncludeSystemIndex)
+        string everythingPath = settings.SearchEverythingExecutablePath?.Trim() ?? string.Empty;
+        if (!string.Equals(
+                settings.SearchEverythingExecutablePath,
+                everythingPath,
+                StringComparison.Ordinal))
         {
-            settings.SearchIncludeSystemIndex = false;
-            changed = true;
-        }
-
-        if (!settings.SearchCustomIndexerEnabled)
-        {
-            settings.SearchCustomIndexerEnabled = true;
-            changed = true;
-        }
-
-        bool rustDefault = AppSettings.SearchRustIndexerDefaultEnabled;
-        if (settings.SearchRustIndexerPreviewEnabled != rustDefault)
-        {
-            settings.SearchRustIndexerPreviewEnabled = rustDefault;
-            changed = true;
-        }
-
-        if (settings.SearchCustomIndexPaths is null)
-        {
-            settings.SearchCustomIndexPaths = [];
-            changed = true;
-        }
-
-        if (settings.SearchIndexExcludedPaths is null)
-        {
-            settings.SearchIndexExcludedPaths = [];
+            settings.SearchEverythingExecutablePath = everythingPath;
             changed = true;
         }
 

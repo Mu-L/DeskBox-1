@@ -251,7 +251,7 @@ public sealed class AotPublishContractTests
         Assert.Contains("members = [", workspace, StringComparison.Ordinal);
         Assert.Contains("\"deskbox-native\"", workspace, StringComparison.Ordinal);
         Assert.Contains("\"deskbox-audio-session-fixture\"", workspace, StringComparison.Ordinal);
-        Assert.Contains("\"deskbox-search-core\"", workspace, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"deskbox-search-core\"", workspace, StringComparison.Ordinal);
         Assert.Contains("panic = \"abort\"", workspace, StringComparison.Ordinal);
         Assert.Contains("crate-type = [\"cdylib\"]", crate, StringComparison.Ordinal);
         Assert.Contains("rust-version = \"1.96\"", crate, StringComparison.Ordinal);
@@ -511,15 +511,7 @@ public sealed class AotPublishContractTests
         Assert.Contains("publishedNativeModules", script, StringComparison.Ordinal);
         Assert.Contains("publishMatchesStaging", script, StringComparison.Ordinal);
         Assert.Contains("exactly one root-level deskbox_native.dll", script, StringComparison.Ordinal);
-        Assert.Contains("DeskBoxSearchCorePreviewModule=$($searchCorePreviewEnabled", script, StringComparison.Ordinal);
-        Assert.Contains("DeskBoxSearchCoreIntermediateDir", script, StringComparison.Ordinal);
-        Assert.Contains("DeskBoxSearchCoreCargoTargetDir", script, StringComparison.Ordinal);
-        Assert.Contains("deskbox_search_core.dll", script, StringComparison.Ordinal);
-        Assert.Contains("deskbox_search_core.pdb", script, StringComparison.Ordinal);
-        Assert.Contains("searchCorePreview = [ordered]@{", script, StringComparison.Ordinal);
-        Assert.Contains("abiVersion = $searchCoreAbiVersion", script, StringComparison.Ordinal);
-        Assert.Contains("requiredExports = @($searchCoreRequiredExports)", script, StringComparison.Ordinal);
-        Assert.Contains("exactly one root-level deskbox_search_core.dll", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("deskbox_search_core.dll", script, StringComparison.Ordinal);
         Assert.Contains("schemaVersion = 55", script, StringComparison.Ordinal);
         Assert.Contains("auditProfileVersion = 58", script, StringComparison.Ordinal);
         Assert.Contains("warningCodeCounts", script, StringComparison.Ordinal);

@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   native-runtime:
-    name: Native ARM64 ABI and SearchCore runtime
+    name: Native ARM64 ABI runtime
     runs-on: windows-11-vs2026-arm
     timeout-minutes: 60
 

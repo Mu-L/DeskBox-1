@@ -62,6 +62,24 @@ public enum SearchResultFilter
 }
 
 /// <summary>
+/// Current availability of the external Everything filename provider. DeskBox content
+/// and commands can still be returned when the file provider is unavailable.
+/// </summary>
+public enum EverythingConnectionState
+{
+    Unknown,
+    Checking,
+    NotConfirmed,
+    NotInstalled,
+    NotRunning,
+    PermissionMismatch,
+    IpcUnavailable,
+    SdkUnavailable,
+    Connected,
+    Error
+}
+
+/// <summary>
 /// Maps a file name to its semantic category based on extension.
 /// </summary>
 public static class FileCategoryHelper
@@ -202,9 +220,11 @@ public sealed class SearchResponse
     public int TotalResultCount { get; init; }
     public int MaterializedFileResultCount { get; init; }
     public int TotalFileResultCount { get; init; }
+    public int NextFileResultOffset { get; init; }
     public bool HasMoreResults { get; init; }
     public TimeSpan Elapsed { get; init; }
     public bool IsComplete { get; init; }
+    public EverythingConnectionState FileProviderState { get; init; }
 }
 
 /// <summary>

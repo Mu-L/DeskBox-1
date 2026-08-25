@@ -1,3 +1,4 @@
+using DeskBox.Models;
 using DeskBox.Services;
 
 namespace DeskBox.ViewModels;
@@ -38,8 +39,7 @@ public partial class SettingsViewModel
     {
         App? app = App.Current;
         AppRuntimeHealthSnapshot? snapshot = app?.DiagnosticsService?.GetRuntimeHealthSnapshot(
-            app.SearchIndexService,
-            app.SearchEngineService,
+            app.EverythingSearchService,
             app.WidgetManager?.GetFolderWatcherHealthSnapshots());
         if (snapshot is null)
         {
@@ -48,12 +48,16 @@ public partial class SettingsViewModel
             return;
         }
 
-        RuntimeHealthSummary = snapshot.IsSearchScanning
+        bool everythingEnabled = _settingsService.Settings.SearchEverythingEnabled;
+        bool everythingChecking = everythingEnabled &&
+            snapshot.EverythingState == EverythingConnectionState.Checking;
+        bool everythingNeedsAttention = everythingEnabled &&
+            snapshot.EverythingState != EverythingConnectionState.Connected &&
+            !everythingChecking;
+
+        RuntimeHealthSummary = everythingChecking
             ? _localizationService.T("Settings.RuntimeHealth.Summary.Scanning")
-            : snapshot.FailedSearchWatcherCount > 0 ||
-              snapshot.OfflineSearchRootCount > 0 ||
-              snapshot.PartialSearchRootCount > 0 ||
-              snapshot.SearchScanCapacityLimited ||
+            : everythingNeedsAttention ||
               snapshot.OfflineFolderCount > 0 ||
               snapshot.DegradedFolderCount > 0 ||
               snapshot.AccessDeniedFolderCount > 0
@@ -63,38 +67,42 @@ public partial class SettingsViewModel
         string lastLifecycle = snapshot.LastLifecycleEventAt is { } lifecycleAt
             ? lifecycleAt.ToLocalTime().ToString("g")
             : _localizationService.T("Settings.RuntimeHealth.Never");
-        string lastSearchRecovery = snapshot.LastSearchWatcherRecoveryTime is { } recoveryAt
-            ? recoveryAt.ToLocalTime().ToString("g")
-            : _localizationService.T("Settings.RuntimeHealth.Never");
-        string lastScan = snapshot.LastSearchScanTime is { } scanAt
-            ? scanAt.ToLocalTime().ToString("g")
-            : _localizationService.T("Settings.RuntimeHealth.Never");
+        string everythingStatus = !everythingEnabled
+            ? _localizationService.T("Settings.Search.Everything.Status.NotConfirmed")
+            : snapshot.EverythingState switch
+            {
+                EverythingConnectionState.Checking =>
+                    _localizationService.T("Settings.Search.Everything.Status.Checking"),
+                EverythingConnectionState.NotInstalled =>
+                    _localizationService.T("Settings.Search.Everything.Status.NotInstalled"),
+                EverythingConnectionState.NotRunning =>
+                    _localizationService.T("Settings.Search.Everything.Status.NotRunning"),
+                EverythingConnectionState.PermissionMismatch =>
+                    _localizationService.T("Settings.Search.Everything.Status.PermissionMismatch"),
+                EverythingConnectionState.IpcUnavailable =>
+                    _localizationService.T("Settings.Search.Everything.Status.IpcUnavailable"),
+                EverythingConnectionState.SdkUnavailable =>
+                    _localizationService.T("Settings.Search.Everything.Status.SdkUnavailable"),
+                EverythingConnectionState.Connected => _localizationService.Format(
+                    "Settings.Search.Everything.Status.Connected",
+                    snapshot.EverythingVersion ??
+                    _localizationService.T("Settings.Search.Everything.VersionUnknown")),
+                EverythingConnectionState.Error =>
+                    _localizationService.T("Settings.Search.Everything.Status.Error"),
+                _ => _localizationService.T("Settings.Search.Everything.Status.Unknown")
+            };
 
         RuntimeHealthDetail = _localizationService.Format(
             "Settings.RuntimeHealth.Detail",
             snapshot.LifecycleEventCount,
             lastLifecycle,
-            snapshot.SearchWatcherCount,
-            snapshot.SearchWatcherRecoveryCount,
-            snapshot.IndexedEntryCount,
-            lastSearchRecovery,
-            lastScan,
-            snapshot.OfflineSearchRootCount,
-            snapshot.PartialSearchRootCount,
-            snapshot.FailedSearchWatcherCount,
-            snapshot.SearchScanCapacityLimited
-                ? _localizationService.T("Settings.RuntimeHealth.CapacityReached")
-                : _localizationService.T("Settings.RuntimeHealth.CapacityNotReached"),
-            snapshot.IsUsnIndexAvailable
-                ? (snapshot.IsUsnIndexIncrementalSyncing
-                    ? _localizationService.T("Settings.RuntimeHealth.UsnIncremental")
-                    : snapshot.IsUsnIndexScanning
-                    ? _localizationService.T("Settings.RuntimeHealth.UsnScanning")
-                    : _localizationService.T("Settings.RuntimeHealth.UsnAvailable"))
-                : _localizationService.T("Settings.RuntimeHealth.UsnUnavailable"),
+            everythingStatus,
             snapshot.OfflineFolderCount,
             snapshot.DegradedFolderCount,
-            snapshot.AccessDeniedFolderCount);
+            snapshot.AccessDeniedFolderCount,
+            string.IsNullOrWhiteSpace(snapshot.LastLifecycleReason)
+                ? _localizationService.T("Settings.RuntimeHealth.Never")
+                : snapshot.LastLifecycleReason);
     }
 
     public async Task ResyncRuntimeStateAsync()

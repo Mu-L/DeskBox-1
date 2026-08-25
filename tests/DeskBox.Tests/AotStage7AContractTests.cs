@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Xml.Linq;
 
 namespace DeskBox.Tests;
 
@@ -9,24 +8,20 @@ public sealed class AotStage7AContractTests
     public void RustBuildScripts_MapBothWindowsMsvcTargetsAndUseStaticArm64PeContracts()
     {
         string native = Read("scripts/build-rust-native.ps1");
-        string search = Read("scripts/build-rust-search-core.ps1");
         string pe = Read("scripts/native-pe-contract.ps1");
         string environment = Read("scripts/rust-arm64-msvc-environment.ps1");
         string toolchain = Read("rust-toolchain.toml");
 
         Assert.Contains("aarch64-pc-windows-msvc", toolchain, StringComparison.Ordinal);
 
-        foreach (string script in new[] { native, search })
-        {
-            Assert.Contains("[ValidateSet(\"x64\", \"ARM64\")]", script, StringComparison.Ordinal);
-            Assert.Contains("aarch64-pc-windows-msvc", script, StringComparison.Ordinal);
-            Assert.Contains("x86_64-pc-windows-msvc", script, StringComparison.Ordinal);
-            Assert.Contains("native-pe-contract.ps1", script, StringComparison.Ordinal);
-            Assert.Contains("rust-arm64-msvc-environment.ps1", script, StringComparison.Ordinal);
-            Assert.Contains("RuntimeProbeExecuted", script, StringComparison.Ordinal);
-            Assert.Contains("static-pe-plus-frozen-source-constants", script, StringComparison.Ordinal);
-            Assert.Contains("rust-std 1.96.0", script, StringComparison.Ordinal);
-        }
+        Assert.Contains("[ValidateSet(\"x64\", \"ARM64\")]", native, StringComparison.Ordinal);
+        Assert.Contains("aarch64-pc-windows-msvc", native, StringComparison.Ordinal);
+        Assert.Contains("x86_64-pc-windows-msvc", native, StringComparison.Ordinal);
+        Assert.Contains("native-pe-contract.ps1", native, StringComparison.Ordinal);
+        Assert.Contains("rust-arm64-msvc-environment.ps1", native, StringComparison.Ordinal);
+        Assert.Contains("RuntimeProbeExecuted", native, StringComparison.Ordinal);
+        Assert.Contains("static-pe-plus-frozen-source-constants", native, StringComparison.Ordinal);
+        Assert.Contains("rust-std 1.96.0", native, StringComparison.Ordinal);
 
         foreach (string token in new[]
                  {
@@ -82,29 +77,6 @@ public sealed class AotStage7AContractTests
     }
 
     [Fact]
-    public void Project_DefaultsDirectArm64SearchCoreOnAfterHostedNativeRuntimeGate()
-    {
-        string projectText = Read("src/DeskBox/DeskBox.csproj");
-        XDocument project = XDocument.Parse(projectText);
-
-        Assert.Contains("'$(DeskBoxDistribution)' == 'Direct'", projectText, StringComparison.Ordinal);
-        Assert.Contains("'$(RuntimeIdentifier)' == 'win-arm64'", projectText, StringComparison.Ordinal);
-        Assert.Contains("<DeskBoxRustNativePlatform", projectText, StringComparison.Ordinal);
-        Assert.Contains("<DeskBoxSearchCorePlatform", projectText, StringComparison.Ordinal);
-        Assert.Contains(">ARM64</DeskBoxRustNativePlatform>", projectText, StringComparison.Ordinal);
-        Assert.Contains(">ARM64</DeskBoxSearchCorePlatform>", projectText, StringComparison.Ordinal);
-        Assert.Contains("native-pe-contract.ps1", projectText, StringComparison.Ordinal);
-
-        XElement defaultPolicy = Assert.Single(
-            project.Descendants("DeskBoxSearchCoreDefaultEnabled")
-                .Where(element => element.Value == "true"));
-        string condition = Assert.IsType<string>((string?)defaultPolicy.Attribute("Condition"));
-        Assert.Contains("'$(DeskBoxDistribution)' == 'Direct'", condition, StringComparison.Ordinal);
-        Assert.DoesNotContain("'$(Platform)' != 'ARM64'", condition, StringComparison.Ordinal);
-        Assert.DoesNotContain("'$(RuntimeIdentifier)' != 'win-arm64'", condition, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task NativeAotValidation_AcceptsMatchingArm64AndRejectsCrossedPairs()
     {
         ProcessResult valid = await RunValidationAsync("ARM64", "win-arm64");
@@ -136,8 +108,6 @@ public sealed class AotStage7AContractTests
                      "aarch64-pc-windows-msvc",
                      "0xAA64",
                      "IlcUseEnvironmentalTools=true",
-                     "DeskBoxSearchCoreDefaultEnabled=true",
-                     "defaultDecisionDeferredToStage7B = $false",
                      "sourceStableDuringAudit",
                      "publishMatchesStaging = $true"
                  })
@@ -147,20 +117,8 @@ public sealed class AotStage7AContractTests
 
         Assert.Contains("rust-arm64-msvc-environment.ps1", script, StringComparison.Ordinal);
         Assert.Contains("deskbox_native.dll", script, StringComparison.Ordinal);
-        Assert.Contains("deskbox_search_core.dll", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("deskbox_search_core.dll", script, StringComparison.Ordinal);
         Assert.Contains("DeskBox.Updater.exe", script, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void DirectInstallers_PackageSearchCoreWithoutShippingItsSymbols()
-    {
-        string x64 = Read("installer/DeskBox.iss");
-        string arm64 = Read("installer/DeskBox.arm64.iss");
-
-        Assert.Contains("deskbox_search_core.pdb", x64, StringComparison.Ordinal);
-        Assert.Contains("deskbox_search_core.pdb", arm64, StringComparison.Ordinal);
-        Assert.Contains("DeskBoxSearchCorePreviewModule=true", arm64, StringComparison.Ordinal);
-        Assert.DoesNotContain("deskbox_search_core.dll,deskbox_search_core.pdb", arm64, StringComparison.Ordinal);
     }
 
     [Fact]

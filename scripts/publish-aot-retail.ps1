@@ -19,8 +19,6 @@ $publishDir = Join-Path $runRoot "publish"
 $symbolsDir = Join-Path $runRoot "symbols"
 $rustIntermediateDir = Join-Path $runRoot "rust-staging"
 $rustCargoTargetDir = Join-Path $runRoot "rust-target"
-$searchCoreIntermediateDir = Join-Path $runRoot "search-core-staging"
-$searchCoreCargoTargetDir = Join-Path $runRoot "search-core-target"
 $logPath = Join-Path $runRoot "publish.log"
 $summaryPath = Join-Path $runRoot "summary.json"
 $project = Join-Path $repoRoot "src\DeskBox\DeskBox.csproj"
@@ -156,8 +154,6 @@ $commonProperties = @(
     "-p:PublishAot=true",
     "-p:DeskBoxRustNative=true",
     "-p:DeskBoxRustCrtLinkage=Static",
-    "-p:DeskBoxSearchCorePreviewModule=true",
-    "-p:DeskBoxSearchCoreDefaultEnabled=true",
     "-p:JsonSerializerIsReflectionEnabledByDefault=false",
     "-p:IlcUseEnvironmentalTools=true",
     "-p:SelfContained=true",
@@ -193,8 +189,6 @@ try {
         "--no-restore",
         "-p:DeskBoxRustNativeIntermediateDir=$rustIntermediateDir",
         "-p:DeskBoxRustNativeCargoTargetDir=$rustCargoTargetDir",
-        "-p:DeskBoxSearchCoreIntermediateDir=$searchCoreIntermediateDir",
-        "-p:DeskBoxSearchCoreCargoTargetDir=$searchCoreCargoTargetDir",
         "-p:PublishSingleFile=false",
         "-v:minimal"
     ) + $commonProperties
@@ -214,32 +208,19 @@ $nativeValidation = & (Join-Path $PSScriptRoot "build-rust-native.ps1") `
     -Configuration Release `
     -OutputDirectory $publishDir `
     -ValidateOnly
-$searchCoreValidation = & (Join-Path $PSScriptRoot "build-rust-search-core.ps1") `
-    -Platform $Platform `
-    -Configuration Release `
-    -OutputDirectory $publishDir `
-    -ValidateOnly
-
 $nativeStagingPath = Join-Path $rustIntermediateDir "deskbox_native.dll"
 $nativePublishPath = Join-Path $publishDir "deskbox_native.dll"
-$searchStagingPath = Join-Path $searchCoreIntermediateDir "deskbox_search_core.dll"
-$searchPublishPath = Join-Path $publishDir "deskbox_search_core.dll"
 foreach ($requiredPath in @(
         $nativeStagingPath,
-        $nativePublishPath,
-        $searchStagingPath,
-        $searchPublishPath)) {
+        $nativePublishPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "AOT retail native payload is missing '$requiredPath'."
     }
 }
 $nativeStagingSha256 = (Get-FileHash -LiteralPath $nativeStagingPath -Algorithm SHA256).Hash
 $nativePublishSha256 = (Get-FileHash -LiteralPath $nativePublishPath -Algorithm SHA256).Hash
-$searchStagingSha256 = (Get-FileHash -LiteralPath $searchStagingPath -Algorithm SHA256).Hash
-$searchPublishSha256 = (Get-FileHash -LiteralPath $searchPublishPath -Algorithm SHA256).Hash
-if ($nativeStagingSha256 -cne $nativePublishSha256 -or
-    $searchStagingSha256 -cne $searchPublishSha256) {
-    throw "AOT retail Rust modules do not match this run's isolated staging outputs."
+if ($nativeStagingSha256 -cne $nativePublishSha256) {
+    throw "AOT retail Rust module does not match this run's isolated staging output."
 }
 
 $pdbFiles = @(Get-ChildItem -LiteralPath $publishDir -Filter "*.pdb" -File -Recurse)
@@ -256,8 +237,7 @@ $requiredFiles = @(
     "DeskBox.Updater.exe",
     "DeskBox.ThumbnailProxy.exe",
     "DeskBox.pri",
-    "deskbox_native.dll",
-    "deskbox_search_core.dll"
+    "deskbox_native.dll"
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $publishDir $requiredFile) -PathType Leaf)) {
@@ -270,8 +250,7 @@ foreach ($requiredSymbolFile in @(
         "DeskBox.pdb",
         "DeskBox.Updater.pdb",
         "DeskBox.ThumbnailProxy.pdb",
-        "deskbox_native.pdb",
-        "deskbox_search_core.pdb")) {
+        "deskbox_native.pdb")) {
     if (-not ($symbolFiles | Where-Object Name -eq $requiredSymbolFile)) {
         throw "AOT retail symbols are missing '$requiredSymbolFile'."
     }
@@ -301,8 +280,7 @@ $peResults = @(
             "DeskBox.exe",
             "DeskBox.Updater.exe",
             "DeskBox.ThumbnailProxy.exe",
-            "deskbox_native.dll",
-            "deskbox_search_core.dll")) {
+            "deskbox_native.dll")) {
         $path = Join-Path $publishDir $fileName
         $machine = Get-PeMachine -Path $path
         if ($machine -ne $expectedMachine) {
@@ -408,12 +386,6 @@ $summary = [ordered]@{
         capabilities = $nativeValidation.Capabilities
         publishMatchesStaging = $true
         sha256 = $nativePublishSha256
-    }
-    searchCore = [ordered]@{
-        abiVersion = $searchCoreValidation.AbiVersion
-        productDefaultEnabled = $true
-        publishMatchesStaging = $true
-        sha256 = $searchPublishSha256
     }
 }
 [System.IO.File]::WriteAllText(

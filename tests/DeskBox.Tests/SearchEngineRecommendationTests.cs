@@ -31,13 +31,13 @@ public sealed class SearchEngineRecommendationTests : IDisposable
         });
 
         var localization = new LocalizationService(settings);
-        var index = new SearchIndexService(settings, Path.Combine(_root, "index.json"));
+        var everything = new EverythingSearchService(settings);
         var quickCapture = new QuickCaptureService(new QuickCaptureStore(
             Path.Combine(_root, "quick-capture")));
         using var engine = new SearchEngineService(
             settings,
             localization,
-            index,
+            everything,
             quickCapture);
 
         var recommendations = await engine.GetRecommendationsAsync();
@@ -53,9 +53,7 @@ public sealed class SearchEngineRecommendationTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         var settings = new SettingsService(Path.Combine(_root, "settings-content"));
-        settings.Settings.SearchCustomIndexerEnabled = true;
         settings.Settings.SearchIncludeDeskBoxContent = true;
-        settings.Settings.SearchRustIndexerPreviewEnabled = false;
         var localization = new LocalizationService(settings);
         var store = new QuickCaptureStore(Path.Combine(_root, "quick-capture-content"));
         await store.SaveAsync(new QuickCaptureStoreData
@@ -71,13 +69,11 @@ public sealed class SearchEngineRecommendationTests : IDisposable
                 .ToList()
         });
         var quickCapture = new QuickCaptureService(store);
-        var indexService = new SearchIndexService(
-            settings,
-            Path.Combine(_root, "empty-index.json"));
+        var everything = new EverythingSearchService(settings);
         using var engine = new SearchEngineService(
             settings,
             localization,
-            indexService,
+            everything,
             quickCapture);
 
         SearchResponse response = await engine.SearchAsync("needle");

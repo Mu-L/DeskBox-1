@@ -12,20 +12,16 @@ param(
 
     [switch]$ProbeOnly,
 
-    [string]$NativeDll,
-
-    [string]$SearchCoreDll
+    [string]$NativeDll
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 3.0
 
 if ($ProbeOnly.IsPresent) {
-    foreach ($path in @($NativeDll, $SearchCoreDll)) {
-        if ([string]::IsNullOrWhiteSpace($path) -or
-            -not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            throw "CRT memory probe requires two existing absolute DLL paths."
-        }
+    if ([string]::IsNullOrWhiteSpace($NativeDll) -or
+        -not (Test-Path -LiteralPath $NativeDll -PathType Leaf)) {
+        throw "CRT memory probe requires an existing absolute DLL path."
     }
 
     if (-not ("DeskBoxCrtIsolatedProbe" -as [type])) {
@@ -36,16 +32,14 @@ using System.Runtime.InteropServices;
 
 public sealed class DeskBoxCrtProbeContract
 {
-    public DeskBoxCrtProbeContract(uint nativeAbi, ulong capabilities, uint searchAbi)
+    public DeskBoxCrtProbeContract(uint nativeAbi, ulong capabilities)
     {
         NativeAbi = nativeAbi;
         Capabilities = capabilities;
-        SearchAbi = searchAbi;
     }
 
     public uint NativeAbi { get; private set; }
     public ulong Capabilities { get; private set; }
-    public uint SearchAbi { get; private set; }
 }
 
 public static class DeskBoxCrtIsolatedProbe
@@ -87,17 +81,14 @@ public static class DeskBoxCrtIsolatedProbe
         return value;
     }
 
-    public static DeskBoxCrtProbeContract LoadAndProbe(string nativePath, string searchPath)
+    public static DeskBoxCrtProbeContract LoadAndProbe(string nativePath)
     {
         IntPtr native = Load(nativePath);
-        IntPtr search = Load(searchPath);
         var nativeAbi = (UInt32Probe)Marshal.GetDelegateForFunctionPointer(
             Export(native, "deskbox_native_abi_version"), typeof(UInt32Probe));
         var capabilities = (UInt64Probe)Marshal.GetDelegateForFunctionPointer(
             Export(native, "deskbox_native_capabilities"), typeof(UInt64Probe));
-        var searchAbi = (UInt32Probe)Marshal.GetDelegateForFunctionPointer(
-            Export(search, "deskbox_search_core_abi_version"), typeof(UInt32Probe));
-        return new DeskBoxCrtProbeContract(nativeAbi(), capabilities(), searchAbi());
+        return new DeskBoxCrtProbeContract(nativeAbi(), capabilities());
     }
 }
 "@
@@ -111,8 +102,7 @@ public static class DeskBoxCrtIsolatedProbe
     $privateBefore = $process.PrivateMemorySize64
     $workingSetBefore = $process.WorkingSet64
     $contract = [DeskBoxCrtIsolatedProbe]::LoadAndProbe(
-        [System.IO.Path]::GetFullPath($NativeDll),
-        [System.IO.Path]::GetFullPath($SearchCoreDll))
+        [System.IO.Path]::GetFullPath($NativeDll))
     [System.Threading.Thread]::Sleep(100)
     $process.Refresh()
     $privateAfter = $process.PrivateMemorySize64
@@ -122,7 +112,6 @@ public static class DeskBoxCrtIsolatedProbe
             [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
         nativeAbi = $contract.NativeAbi
         capabilities = $contract.Capabilities
-        searchAbi = $contract.SearchAbi
         privateBeforeBytes = $privateBefore
         privateAfterBytes = $privateAfter
         privateDeltaBytes = $privateAfter - $privateBefore
@@ -143,7 +132,6 @@ else {
 $cargoRoot = Join-Path $repoRoot ".artifacts\cargo\rust-crt-stage7c0"
 $summaryPath = Join-Path $outputRoot "rust-crt-stage7c0-evidence.json"
 $nativeBuildScript = Join-Path $PSScriptRoot "build-rust-native.ps1"
-$searchBuildScript = Join-Path $PSScriptRoot "build-rust-search-core.ps1"
 $testProject = Join-Path $repoRoot "tests\DeskBox.Tests\DeskBox.Tests.csproj"
 $hostExecutable = (Get-Process -Id $PID).Path
 $processArchitecture =
@@ -240,10 +228,7 @@ function Get-DeskBoxMedian {
 function Invoke-DeskBoxCrtMemoryProbe {
     param(
         [Parameter(Mandatory)]
-        [string]$NativePath,
-
-        [Parameter(Mandatory)]
-        [string]$SearchPath
+        [string]$NativePath
     )
 
     $rounds = @(
@@ -253,8 +238,7 @@ function Invoke-DeskBoxCrtMemoryProbe {
                 -ExecutionPolicy Bypass `
                 -File $PSCommandPath `
                 -ProbeOnly `
-                -NativeDll $NativePath `
-                -SearchCoreDll $SearchPath 2>&1)
+                -NativeDll $NativePath 2>&1)
             if ($LASTEXITCODE -ne 0) {
                 throw "Isolated CRT memory probe round $round failed: $($output -join [Environment]::NewLine)"
             }
@@ -267,7 +251,6 @@ function Invoke-DeskBoxCrtMemoryProbe {
             $sample = $jsonLine[0].ToString() | ConvertFrom-Json
             if ($sample.nativeAbi -ne 2 -or
                 $sample.capabilities -ne 511 -or
-                $sample.searchAbi -ne 3 -or
                 $sample.processArchitecture -ne $processArchitecture) {
                 throw "Isolated CRT memory probe round $round returned an invalid runtime contract."
             }
@@ -299,10 +282,10 @@ function Invoke-DeskBoxStaticProductTests {
     $resultDirectory = Join-Path $outputRoot "$($Platform.ToLowerInvariant())\static-product-tests"
     New-Item -ItemType Directory -Path $resultDirectory -Force | Out-Null
     $filter = if ($Platform -eq "ARM64") {
-        "FullyQualifiedName~DeskBox.Tests.Arm64NativeRuntimeGateTests|FullyQualifiedName~DeskBox.Tests.SearchCoreNativeBackendTests"
+        "FullyQualifiedName~DeskBox.Tests.Arm64NativeRuntimeGateTests"
     }
     else {
-        "FullyQualifiedName=DeskBox.Tests.ShortcutNativeDifferentialTests.LoaderReadsCurrentAbiAndAllStage3C2Capabilities|FullyQualifiedName~DeskBox.Tests.SearchCoreNativeBackendTests"
+        "FullyQualifiedName=DeskBox.Tests.ShortcutNativeDifferentialTests.LoaderReadsCurrentAbiAndAllStage3C2Capabilities"
     }
     $previousGate = [Environment]::GetEnvironmentVariable(
         "DESKBOX_REQUIRE_ARM64_RUNTIME_GATE",
@@ -363,7 +346,7 @@ function Invoke-DeskBoxStaticProductTests {
         sha256 = (Get-FileHash -LiteralPath $trxPath -Algorithm SHA256).Hash
     }
     if ($exitCode -ne 0 -or
-        $result.executed -lt 2 -or
+        $result.executed -lt 1 -or
         $result.failed -ne 0 -or
         $result.error -ne 0 -or
         $result.timeout -ne 0 -or
@@ -394,44 +377,29 @@ foreach ($platform in $Platforms) {
             -Linkage $linkage `
             -ModuleOutput (Join-Path $variantRoot "native") `
             -CargoOutput $cargoOutput
-        $searchBuild = Invoke-DeskBoxCrtBuild `
-            -Script $searchBuildScript `
-            -Platform $platform `
-            -Linkage $linkage `
-            -ModuleOutput (Join-Path $variantRoot "search") `
-            -CargoOutput $cargoOutput
         $nativeEvidence = Get-DeskBoxCrtModuleEvidence -Build $nativeBuild
-        $searchEvidence = Get-DeskBoxCrtModuleEvidence -Build $searchBuild
-        $runtimeImports = @(
-            @($nativeEvidence.vcRuntimeImports) +
-            @($searchEvidence.vcRuntimeImports) |
-                Sort-Object -Unique)
+        $runtimeImports = @($nativeEvidence.vcRuntimeImports | Sort-Object -Unique)
         if ($linkage -eq "Dynamic" -and $runtimeImports.Count -eq 0) {
             throw "$platform dynamic CRT baseline does not expose a VC runtime dependency; A/B contract is inconclusive."
         }
         if ($linkage -eq "Static" -and $runtimeImports.Count -ne 0) {
             throw "$platform static CRT variant retains VC runtime imports: $($runtimeImports -join ', ')."
         }
-        if ($matchingRuntime -and
-            (-not $nativeBuild.RuntimeProbeExecuted -or
-             -not $searchBuild.RuntimeProbeExecuted)) {
+        if ($matchingRuntime -and -not $nativeBuild.RuntimeProbeExecuted) {
             throw "$platform matching-host builds skipped their runtime ABI probes."
         }
-        if (-not $matchingRuntime -and
-            ($nativeBuild.RuntimeProbeExecuted -or $searchBuild.RuntimeProbeExecuted)) {
+        if (-not $matchingRuntime -and $nativeBuild.RuntimeProbeExecuted) {
             throw "$platform cross builds incorrectly claimed runtime ABI execution."
         }
 
         $linkageResults[$linkageKey] = [ordered]@{
             native = $nativeEvidence
-            searchCore = $searchEvidence
-            pairFileBytes = [long]$nativeEvidence.fileBytes + [long]$searchEvidence.fileBytes
-            pairImageBytes = [long]$nativeEvidence.imageBytes + [long]$searchEvidence.imageBytes
+            moduleFileBytes = [long]$nativeEvidence.fileBytes
+            moduleImageBytes = [long]$nativeEvidence.imageBytes
             vcRuntimeImports = $runtimeImports
             memory = if ($matchingRuntime) {
                 Invoke-DeskBoxCrtMemoryProbe `
-                    -NativePath $nativeEvidence.path `
-                    -SearchPath $searchEvidence.path
+                    -NativePath $nativeEvidence.path
             }
             else {
                 $null
@@ -440,11 +408,11 @@ foreach ($platform in $Platforms) {
     }
 
     $fileDelta =
-        [long]$linkageResults.static.pairFileBytes -
-        [long]$linkageResults.dynamic.pairFileBytes
+        [long]$linkageResults.static.moduleFileBytes -
+        [long]$linkageResults.dynamic.moduleFileBytes
     $imageDelta =
-        [long]$linkageResults.static.pairImageBytes -
-        [long]$linkageResults.dynamic.pairImageBytes
+        [long]$linkageResults.static.moduleImageBytes -
+        [long]$linkageResults.dynamic.moduleImageBytes
     $staticIsBounded = $fileDelta -le 1MB -and $imageDelta -le 1MB
     $recommendation = if ($staticIsBounded) { "Static" } else { "Dynamic" }
     $platformResults += [ordered]@{
@@ -511,7 +479,7 @@ $evidence = [ordered]@{
         directInstallerAdditionalVcRedistRequired = $null
         storeAdditionalVCLibsDependencyRequiredForRust = $null
         rationale = if ($auditedRecommendation -eq "Static") {
-            "Both Rust DLLs remove VC redistributable imports and the combined file/image cost stays below 1 MiB on every architecture in this evidence file; combine native x64 and ARM64 runtime evidence before changing the production default."
+            "The Rust DLL removes VC redistributable imports and its file/image cost stays below 1 MiB on every architecture in this evidence file; combine native x64 and ARM64 runtime evidence before changing the production default."
         }
         else {
             "At least one audited architecture exceeds the bounded static-link cost."

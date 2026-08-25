@@ -31,15 +31,9 @@
     <!-- Stage 7C0 keeps CRT linkage explicit so A/B outputs cannot be reused
          across incompatible native dependency policies. -->
     <DeskBoxRustCrtLinkage Condition="'$(DeskBoxRustCrtLinkage)' == ''">Static</DeskBoxRustCrtLinkage>
-    <!-- Stage 7B validated SearchCore in native x64 and hosted native ARM64
-         processes. Direct builds therefore default to it on both supported
-         architectures; Store builds still retain the managed backend. -->
-    <DeskBoxSearchCorePreviewModule Condition="'$(DeskBoxSearchCorePreviewModule)' == '' and '$(DeskBoxDistribution)' == 'Direct'">true</DeskBoxSearchCorePreviewModule>
-    <DeskBoxSearchCorePreviewModule Condition="'$(DeskBoxSearchCorePreviewModule)' == ''">false</DeskBoxSearchCorePreviewModule>
-    <DeskBoxSearchCoreDefaultEnabled Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == '' and '$(DeskBoxSearchCorePreviewModule)' == 'true' and '$(DeskBoxDistribution)' == 'Direct'">true</DeskBoxSearchCoreDefaultEnabled>
-    <DeskBoxSearchCoreDefaultEnabled Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == ''">false</DeskBoxSearchCoreDefaultEnabled>
     <DeskBoxShellThumbnailProxy Condition="'$(DeskBoxShellThumbnailProxy)' == ''">true</DeskBoxShellThumbnailProxy>
-    <DefineConstants Condition="'$(DeskBoxSearchCoreDefaultEnabled)' == 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true' and '$(DeskBoxDistribution)' == 'Direct'">$(DefineConstants);DESKBOX_SEARCH_CORE_DEFAULT</DefineConstants>
+    <EverythingSdkArchitecture Condition="'$(RuntimeIdentifier)' == 'win-arm64' or '$(Platform)' == 'ARM64'">ARM64</EverythingSdkArchitecture>
+    <EverythingSdkArchitecture Condition="'$(EverythingSdkArchitecture)' == ''">x64</EverythingSdkArchitecture>
     <DefineConstants Condition="'$(DeskBoxDistribution)' == 'Store'">$(DefineConstants);DESKBOX_STORE</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\deskbox.ico</ApplicationIcon>
@@ -142,33 +136,6 @@
     <DeskBoxRustNativeInput Include="$(MSBuildProjectDirectory)\..\..\scripts\rust-arm64-msvc-environment.ps1" />
   </ItemGroup>
 
-  <PropertyGroup Condition="'$(DeskBoxSearchCorePreviewModule)' == 'true'">
-    <DeskBoxSearchCorePlatform Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</DeskBoxSearchCorePlatform>
-    <DeskBoxSearchCorePlatform Condition="'$(RuntimeIdentifier)' == 'win-arm64'">ARM64</DeskBoxSearchCorePlatform>
-    <DeskBoxSearchCorePlatform Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">ARM64</DeskBoxSearchCorePlatform>
-    <DeskBoxSearchCorePlatform Condition="'$(RuntimeIdentifier)' == '' and ('$(Platform)' == 'x64' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == '')">x64</DeskBoxSearchCorePlatform>
-    <DeskBoxSearchCoreBuildPlatform Condition="'$(Platform)' != ''">$(Platform)</DeskBoxSearchCoreBuildPlatform>
-    <DeskBoxSearchCoreBuildPlatform Condition="'$(Platform)' == ''">AnyCPU</DeskBoxSearchCoreBuildPlatform>
-    <DeskBoxSearchCoreRuntimeSegment Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</DeskBoxSearchCoreRuntimeSegment>
-    <DeskBoxSearchCoreRuntimeSegment Condition="'$(RuntimeIdentifier)' == ''">no-rid</DeskBoxSearchCoreRuntimeSegment>
-    <DeskBoxSearchCoreIntermediateDir Condition="'$(DeskBoxSearchCoreIntermediateDir)' == ''">$(MSBuildProjectDirectory)\obj\rust-search-core\$(Configuration)\$(DeskBoxSearchCoreBuildPlatform)\$(DeskBoxSearchCoreRuntimeSegment)\$(DeskBoxRustCrtLinkage)</DeskBoxSearchCoreIntermediateDir>
-    <DeskBoxSearchCoreCargoTargetDir Condition="'$(DeskBoxSearchCoreCargoTargetDir)' == ''">$(DeskBoxSearchCoreIntermediateDir)\cargo-target</DeskBoxSearchCoreCargoTargetDir>
-    <DeskBoxSearchCoreDll>$(DeskBoxSearchCoreIntermediateDir)\deskbox_search_core.dll</DeskBoxSearchCoreDll>
-    <DeskBoxSearchCorePdb>$(DeskBoxSearchCoreIntermediateDir)\deskbox_search_core.pdb</DeskBoxSearchCorePdb>
-  </PropertyGroup>
-
-  <ItemGroup Condition="'$(DeskBoxSearchCorePreviewModule)' == 'true'">
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\rust-toolchain.toml" />
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.toml" />
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.lock" />
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-search-core\Cargo.toml" />
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\deskbox-search-core\src\**\*" />
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\native\include\deskbox_search_core.h" />
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\scripts\build-rust-search-core.ps1" />
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\scripts\native-pe-contract.ps1" />
-    <DeskBoxSearchCoreInput Include="$(MSBuildProjectDirectory)\..\..\scripts\rust-arm64-msvc-environment.ps1" />
-  </ItemGroup>
-
   <PropertyGroup Condition="'$(DeskBoxShellThumbnailProxy)' == 'true'">
     <DeskBoxThumbnailProxyPlatform Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</DeskBoxThumbnailProxyPlatform>
     <DeskBoxThumbnailProxyPlatform Condition="'$(RuntimeIdentifier)' == 'win-arm64'">ARM64</DeskBoxThumbnailProxyPlatform>
@@ -221,6 +188,37 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="ThirdParty\Everything\Everything64.dll" />
+    <None Remove="ThirdParty\Everything\EverythingARM64.dll" />
+    <Content Include="ThirdParty\Everything\Everything64.dll" Condition="'$(EverythingSdkArchitecture)' == 'x64'">
+      <Link>EverythingSdk.dll</Link>
+      <TargetPath>EverythingSdk.dll</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="ThirdParty\Everything\EverythingARM64.dll" Condition="'$(EverythingSdkArchitecture)' == 'ARM64'">
+      <Link>EverythingSdk.dll</Link>
+      <TargetPath>EverythingSdk.dll</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <None Update="ThirdParty\Everything\LICENSE.txt">
+      <TargetPath>ThirdParty\Everything\LICENSE.txt</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="ValidateEverythingSdkArchitecture" BeforeTargets="PrepareForBuild;Publish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error
+      Condition="('$(Platform)' == 'x64' and '$(RuntimeIdentifier)' == 'win-arm64') or ('$(Platform)' == 'ARM64' and '$(RuntimeIdentifier)' == 'win-x64')"
+      Text="Everything SDK requires matching Platform and RuntimeIdentifier architectures." />
+    <Error
+      Condition="'$(EverythingSdkArchitecture)' != 'x64' and '$(EverythingSdkArchitecture)' != 'ARM64'"
+      Text="Everything SDK supports only x64 and ARM64 DeskBox builds." />
+  </Target>
+
+  <ItemGroup>
     <Content Include="Assets\deskbox.ico">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
@@ -249,6 +247,7 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Assets\Store\*.png" />
+    <Content Include="Assets\Support\*.png" />
     <EmbeddedResource Include="Assets\Cities\cities.json" />
 <EmbeddedResource Include="Strings\zh-CN.json" />
 <EmbeddedResource Include="Strings\zh-TW.json" />
@@ -376,53 +375,6 @@
         <TargetPath>deskbox_native.pdb</TargetPath>
       </AppxPackagePayload>
     </ItemGroup>
-  </Target>
-
-  <Target
-    Name="BuildDeskBoxSearchCorePreviewModule"
-    BeforeTargets="CoreCompile"
-    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true'"
-    Inputs="@(DeskBoxSearchCoreInput)"
-    Outputs="$(DeskBoxSearchCoreDll);$(DeskBoxSearchCorePdb)">
-    <Error
-      Condition="'$(DeskBoxRustCrtLinkage)' != 'Dynamic' and '$(DeskBoxRustCrtLinkage)' != 'Static'"
-      Text="DeskBox Rust CRT linkage must be Dynamic or Static." />
-    <Error
-      Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64' and '$(RuntimeIdentifier)' != 'win-arm64'"
-      Text="DeskBox SearchCore stage 7A supports RuntimeIdentifier=win-x64 or win-arm64." />
-    <Error
-      Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU' and '$(Platform)' != 'x64' and '$(Platform)' != 'ARM64'"
-      Text="DeskBox SearchCore stage 7A supports Platform=x64, ARM64, or the canonical AnyCPU Debug host." />
-    <Error
-      Condition="('$(Platform)' == 'x64' and '$(RuntimeIdentifier)' == 'win-arm64') or ('$(Platform)' == 'ARM64' and '$(RuntimeIdentifier)' == 'win-x64')"
-      Text="DeskBox SearchCore stage 7A requires matching Platform and RuntimeIdentifier architectures." />
-    <Error
-      Condition="'$(DeskBoxSearchCorePlatform)' == ''"
-      Text="DeskBox SearchCore stage 7A could not resolve an x64 or ARM64 target." />
-    <Exec
-      Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-rust-search-core.ps1&quot; -Platform $(DeskBoxSearchCorePlatform) -Configuration $(Configuration) -CrtLinkage $(DeskBoxRustCrtLinkage) -OutputDirectory &quot;$(DeskBoxSearchCoreIntermediateDir)&quot; -CargoTargetDirectory &quot;$(DeskBoxSearchCoreCargoTargetDir)&quot;" />
-  </Target>
-
-  <Target
-    Name="CopyDeskBoxSearchCorePreviewToOutput"
-    AfterTargets="Build"
-    DependsOnTargets="BuildDeskBoxSearchCorePreviewModule"
-    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true'">
-    <Copy
-      SourceFiles="$(DeskBoxSearchCoreDll);$(DeskBoxSearchCorePdb)"
-      DestinationFolder="$(TargetDir)"
-      SkipUnchangedFiles="true" />
-  </Target>
-
-  <Target
-    Name="CopyDeskBoxSearchCorePreviewToPublish"
-    AfterTargets="Publish"
-    DependsOnTargets="BuildDeskBoxSearchCorePreviewModule"
-    Condition="'$(DesignTimeBuild)' != 'true' and '$(DeskBoxSearchCorePreviewModule)' == 'true'">
-    <Copy
-      SourceFiles="$(DeskBoxSearchCoreDll);$(DeskBoxSearchCorePdb)"
-      DestinationFolder="$(PublishDir)"
-      SkipUnchangedFiles="true" />
   </Target>
 
   <Target

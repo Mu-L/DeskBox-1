@@ -17,6 +17,104 @@
     <StackPanel Style="{StaticResource SectionPanelStyle}">
         <StackPanel Margin="0,8,0,0" Spacing="4">
 
+            <toolkit:SettingsCard
+                x:Name="EverythingConnectionCard"
+                ContentAlignment="Vertical"
+                HorizontalContentAlignment="Stretch"
+                svc:Localized.HeaderKey="Settings.Search.Everything.Title">
+                <toolkit:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE721;" />
+                </toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Margin="0,4,0,4" Spacing="10">
+                    <InfoBar
+                        x:Name="EverythingStatusInfoBar"
+                        IsClosable="False"
+                        IsOpen="True" />
+
+                    <TextBlock
+                        Style="{StaticResource SettingDescriptionTextStyle}"
+                        TextWrapping="Wrap"
+                        svc:Localized.Key="Settings.Search.Everything.SharingNotice" />
+
+                    <TextBlock
+                        x:Name="EverythingPathText"
+                        Opacity="0.7"
+                        Style="{StaticResource SettingDescriptionTextStyle}"
+                        TextWrapping="Wrap" />
+
+                    <CheckBox
+                        x:Name="EverythingConsentCheckBox"
+                        Checked="EverythingConsentCheckBox_Changed"
+                        Unchecked="EverythingConsentCheckBox_Changed">
+                        <TextBlock
+                            MaxWidth="560"
+                            TextWrapping="Wrap"
+                            svc:Localized.Key="Settings.Search.Everything.Consent" />
+                    </CheckBox>
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock svc:Localized.Key="Settings.Search.Everything.AdvancedSyntax.Title" />
+                            <TextBlock
+                                Opacity="0.7"
+                                Style="{StaticResource SettingDescriptionTextStyle}"
+                                TextWrapping="Wrap"
+                                svc:Localized.Key="Settings.Search.Everything.AdvancedSyntax.Description" />
+                        </StackPanel>
+                        <ToggleSwitch
+                            x:Name="EverythingAdvancedSyntaxToggle"
+                            Grid.Column="1"
+                            MinWidth="0"
+                            OffContent=""
+                            OnContent=""
+                            Toggled="EverythingAdvancedSyntaxToggle_Toggled" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="EverythingDetectButton"
+                            Click="EverythingDetectButton_Click"
+                            Style="{StaticResource ActionButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Refresh" />
+                                <TextBlock svc:Localized.Key="Settings.Search.Everything.Detect" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="EverythingLaunchButton"
+                            Click="EverythingLaunchButton_Click"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Visibility="Collapsed">
+                            <TextBlock svc:Localized.Key="Settings.Search.Everything.Launch" />
+                        </Button>
+                        <Button
+                            x:Name="EverythingBrowseButton"
+                            Click="EverythingBrowseButton_Click"
+                            Style="{StaticResource ActionButtonStyle}">
+                            <TextBlock svc:Localized.Key="Settings.Search.Everything.Browse" />
+                        </Button>
+                        <Button
+                            x:Name="EverythingDownloadButton"
+                            Click="EverythingDownloadButton_Click"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Visibility="Collapsed">
+                            <TextBlock svc:Localized.Key="Settings.Search.Everything.Download" />
+                        </Button>
+                        <Button
+                            x:Name="EverythingHelpButton"
+                            Click="EverythingHelpButton_Click"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Visibility="Collapsed">
+                            <TextBlock svc:Localized.Key="Settings.Search.Everything.SetupHelp" />
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </toolkit:SettingsCard>
+
             <!-- The search hotkey depends on the search widget service, so keep it with search. -->
             <toolkit:SettingsExpander
                 x:Name="SearchHotkeyExpander"
@@ -96,84 +194,6 @@
                     Toggled="SearchScopeToggle_Toggled" />
             </toolkit:SettingsCard>
 
-            <toolkit:SettingsCard
-                HorizontalContentAlignment="Right"
-                svc:Localized.DescriptionKey="Settings.Search.Filter.SystemNoise.Description"
-                svc:Localized.HeaderKey="Settings.Search.Filter.SystemNoise.Title">
-                <toolkit:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE72E;" />
-                </toolkit:SettingsCard.HeaderIcon>
-                <ToggleSwitch
-                    x:Name="SearchSystemNoiseToggle"
-                    MinWidth="0"
-                    OffContent=""
-                    OnContent=""
-                    Toggled="SearchSystemNoiseToggle_Toggled" />
-            </toolkit:SettingsCard>
-
-            <!-- The single local SearchCore index is the only filename provider. -->
-            <toolkit:SettingsCard
-                x:Name="IndexDashboardCard"
-                ContentAlignment="Vertical"
-                HorizontalContentAlignment="Stretch"
-                svc:Localized.HeaderKey="Settings.Search.Index.Dashboard.Title">
-                <toolkit:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE945;" />
-                </toolkit:SettingsCard.HeaderIcon>
-                <StackPanel Spacing="10" Margin="0,4,0,4">
-                    <!-- Status row -->
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="SearchIndexStatusText" Grid.Column="0"
-                                   VerticalAlignment="Center"
-                                   Style="{StaticResource SettingDescriptionTextStyle}" />
-                        <TextBlock x:Name="SearchIndexCountText" Grid.Column="1"
-                                   VerticalAlignment="Center"
-                                   Style="{StaticResource SettingDescriptionTextStyle}"
-                                   Opacity="0.7" />
-                    </Grid>
-
-                    <!-- Progress bar (indeterminate, visible while scanning) -->
-                    <ProgressBar x:Name="IndexProgressBar"
-                                 IsIndeterminate="True"
-                                 Visibility="Collapsed" />
-
-                    <!-- Storage + last scan info -->
-                    <TextBlock x:Name="SearchIndexStorageText"
-                               Style="{StaticResource SettingDescriptionTextStyle}"
-                               Opacity="0.7" />
-
-                    <TextBlock x:Name="SearchIndexBackendText"
-                               Style="{StaticResource SettingDescriptionTextStyle}"
-                               Opacity="0.7" />
-
-                    <!-- Action buttons -->
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="IndexPauseResumeButton"
-                                Style="{StaticResource ActionButtonStyle}"
-                                Click="IndexPauseResumeButton_Click"
-                                IsEnabled="False">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon x:Name="IndexPauseResumeIcon" Glyph="&#xE769;" FontSize="12" />
-                                <TextBlock x:Name="IndexPauseResumeLabel" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="IndexRebuildButton"
-                                Style="{StaticResource ActionButtonStyle}"
-                                svc:Localized.ToolTipKey="Settings.Search.Index.Rebuild.Tooltip"
-                                Click="IndexRebuildButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <SymbolIcon Symbol="Refresh" />
-                                <TextBlock svc:Localized.Key="Settings.Search.Index.Rebuild" />
-                            </StackPanel>
-                        </Button>
-                    </StackPanel>
-                </StackPanel>
-            </toolkit:SettingsCard>
-
             <!-- Recommendations -->
             <toolkit:SettingsCard
                 HorizontalContentAlignment="Right"
@@ -239,22 +259,6 @@
                         <TextBlock svc:Localized.Key="Settings.Search.IconAnimation.Style3" />
                     </ComboBoxItem>
                 </ComboBox>
-            </toolkit:SettingsCard>
-
-            <toolkit:SettingsCard
-                HorizontalContentAlignment="Right"
-                svc:Localized.DescriptionKey="Settings.Search.Privacy.Description"
-                svc:Localized.HeaderKey="Settings.Search.Privacy.Title">
-                <toolkit:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE72E;" />
-                </toolkit:SettingsCard.HeaderIcon>
-                <Button Click="ClearSearchActivityButton_Click"
-                        Style="{StaticResource ActionButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE74D;" FontSize="12" />
-                        <TextBlock svc:Localized.Key="Settings.Search.Privacy.Clear" />
-                    </StackPanel>
-                </Button>
             </toolkit:SettingsCard>
 
         </StackPanel>

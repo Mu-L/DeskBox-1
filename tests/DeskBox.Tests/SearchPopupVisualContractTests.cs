@@ -3,7 +3,7 @@ namespace DeskBox.Tests;
 public sealed class SearchPopupVisualContractTests
 {
     [Fact]
-    public void BackgroundIndexRefresh_DoesNotReplayTheUserSearchEntrance()
+    public void BackgroundProviderRefresh_DoesNotReplayTheUserSearchEntrance()
     {
         string root = FindRepositoryRoot();
         string viewModel = File.ReadAllText(Path.Combine(
@@ -13,8 +13,8 @@ public sealed class SearchPopupVisualContractTests
             root,
             "src/DeskBox/Views/SearchPopupWindow.xaml.cs"));
 
-        Assert.Contains("IndexRefreshDebounceDelay = TimeSpan.FromSeconds(1)", viewModel, StringComparison.Ordinal);
-        Assert.Contains("SearchRefreshKind.IndexUpdate && !response.IsComplete", viewModel, StringComparison.Ordinal);
+        Assert.Contains("ProviderRefreshDebounceDelay = TimeSpan.FromSeconds(1)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("SearchRefreshKind.ProviderUpdate && !response.IsComplete", viewModel, StringComparison.Ordinal);
         Assert.Contains("HasSameIdentitySequence", viewModel, StringComparison.Ordinal);
         Assert.Contains("ReuseExistingInstances", viewModel, StringComparison.Ordinal);
         Assert.Contains("if (_viewModel.IsApplyingBackgroundResultRefresh)", popup, StringComparison.Ordinal);
@@ -48,6 +48,9 @@ public sealed class SearchPopupVisualContractTests
         string viewModel = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/ViewModels/SearchPopupViewModel.cs"));
+        string everything = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/EverythingSearchService.cs"));
 
         Assert.Contains("TimeSpan.FromMilliseconds(35)", popup, StringComparison.Ordinal);
         Assert.DoesNotContain("TimeSpan.FromMilliseconds(150)", popup, StringComparison.Ordinal);
@@ -56,10 +59,14 @@ public sealed class SearchPopupVisualContractTests
         Assert.Contains("ViewChanged=\"ResultsPanel_ViewChanged\"", popupXaml, StringComparison.Ordinal);
         Assert.Contains("LoadMoreResultsAsync", viewModel, StringComparison.Ordinal);
         Assert.Contains("LoadMoreAndAdvanceSelectionAsync", viewModel, StringComparison.Ordinal);
+        Assert.Contains("_nextFileResultOffset", viewModel, StringComparison.Ordinal);
+        Assert.Contains("SetOffset", everything, StringComparison.Ordinal);
+        Assert.DoesNotContain("MaxMaterializedFileResults", everything, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Bind Count", popupXaml, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void SearchSettings_ExposeOneIndexWithoutAVisibleResultLimit()
+    public void SearchSettings_ExposeEverythingWithoutAVisibleResultLimit()
     {
         string root = FindRepositoryRoot();
         string settings = File.ReadAllText(Path.Combine(
@@ -69,14 +76,16 @@ public sealed class SearchPopupVisualContractTests
             root,
             "src/DeskBox/Services/SearchEngineService.cs"));
 
-        Assert.Contains("SearchSystemNoiseToggle", settings, StringComparison.Ordinal);
+        Assert.Contains("EverythingConsentCheckBox", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("SearchSystemNoiseToggle", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("Settings.Search.Privacy", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("SearchSystemIndexToggle", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("SearchCustomIndexerToggle", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("SearchRustPreviewToggle", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("SearchMaxResultsComboBox", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("WindowsIndexSearchService", engine, StringComparison.Ordinal);
         Assert.DoesNotContain("UsnJournalIndexService", engine, StringComparison.Ordinal);
-        Assert.Contains("SearchIndexQueryPage", engine, StringComparison.Ordinal);
+        Assert.Contains("SearchFileQueryPage", engine, StringComparison.Ordinal);
     }
 
     [Fact]

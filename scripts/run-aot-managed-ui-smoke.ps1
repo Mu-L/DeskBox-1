@@ -2,7 +2,7 @@
 param(
     [string]$SummaryPath,
 
-    [ValidateSet("BasicReadOnly", "DeepSettingsReadOnly", "SearchCorePreviewReadOnly", "SettingsWidgetPersistenceRestart", "QuickCapturePersistenceRestart", "TodoPersistenceRestart", "TodoStepsPersistenceRestart", "TodoAttachmentsPersistenceRestart", "TodoRecurrenceReminderPersistenceRestart", "TodoNotificationDisplayCleanup", "TodoNotificationActionRouting", "TodoNotificationEnvelopeForwarding", "TodoNotificationSurfaceRouting", "GlancePersistenceRestart", "WeatherSettingsPersistenceRestart", "WeatherSurfacePersistenceRestart", "LocalFileSurfacePersistenceRestart", "RecycleBinMenuPersistenceRestart", "ShellMovePersistenceRestart", "FilePropertiesReadOnly", "PickerClipboardStorageItemsPersistenceRestart", "NativeDropPersistenceRestart")]
+    [ValidateSet("BasicReadOnly", "DeepSettingsReadOnly", "SettingsWidgetPersistenceRestart", "QuickCapturePersistenceRestart", "TodoPersistenceRestart", "TodoStepsPersistenceRestart", "TodoAttachmentsPersistenceRestart", "TodoRecurrenceReminderPersistenceRestart", "TodoNotificationDisplayCleanup", "TodoNotificationActionRouting", "TodoNotificationEnvelopeForwarding", "TodoNotificationSurfaceRouting", "GlancePersistenceRestart", "WeatherSettingsPersistenceRestart", "WeatherSurfacePersistenceRestart", "LocalFileSurfacePersistenceRestart", "RecycleBinMenuPersistenceRestart", "ShellMovePersistenceRestart", "FilePropertiesReadOnly", "PickerClipboardStorageItemsPersistenceRestart", "NativeDropPersistenceRestart")]
     [string]$Scenario = "BasicReadOnly",
 
     [string]$DataRoot,
@@ -244,49 +244,6 @@ function Get-FileSha256 {
     }
 
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
-}
-
-function Write-SearchCoreDbixFixture {
-    param(
-        [Parameter(Mandatory)]
-        [string]$IndexPath,
-
-        [Parameter(Mandatory)]
-        [string]$FullPath
-    )
-
-    $normalizedIndexPath = [System.IO.Path]::GetFullPath($IndexPath)
-    $normalizedFullPath = [System.IO.Path]::GetFullPath($FullPath)
-    $indexDirectory = Split-Path -Parent $normalizedIndexPath
-    $entryDirectory = Split-Path -Parent $normalizedFullPath
-    $entryFileName = Split-Path -Leaf $normalizedFullPath
-    [System.IO.Directory]::CreateDirectory($indexDirectory) | Out-Null
-    $stream = [System.IO.FileStream]::new(
-        $normalizedIndexPath,
-        [System.IO.FileMode]::Create,
-        [System.IO.FileAccess]::Write,
-        [System.IO.FileShare]::None)
-    $writer = [System.IO.BinaryWriter]::new(
-        $stream,
-        [System.Text.UTF8Encoding]::new($false, $true),
-        $false)
-    try {
-        $writer.Write([int]0x58494244)
-        $writer.Write([int]1)
-        $writer.Write([long][DateTime]::UtcNow.Ticks)
-        $writer.Write([int]1)
-        $writer.Write([string]$entryDirectory)
-        $writer.Write([int]1)
-        $writer.Write([int]0)
-        $fileNameBytes = [System.Text.Encoding]::UTF8.GetBytes($entryFileName)
-        $writer.Write([int]$fileNameBytes.Length)
-        $writer.Write([byte[]]$fileNameBytes)
-        $writer.Write([bool]$false)
-        $writer.Write([long][System.IO.File]::GetLastWriteTimeUtc($normalizedFullPath).ToBinary())
-    }
-    finally {
-        $writer.Dispose()
-    }
 }
 
 function Get-DirectoryStateFingerprint {
@@ -3613,10 +3570,6 @@ else {
 
 $dataDirectory = Join-Path $DataRoot "data"
 $fixtureDirectory = Join-Path $DataRoot "fixtures\empty-file-surface"
-$searchCoreFixtureDirectory = Join-Path $DataRoot "fixtures\search-core-preview"
-$searchCoreOwnedFilePath = Join-Path `
-    $searchCoreFixtureDirectory `
-    "Open Settings stage6d-rust-aot.txt"
 $quickCaptureAttachmentFixturePath = Join-Path `
     $DataRoot `
     "fixtures\quick-capture-attachment.txt"
@@ -3715,20 +3668,7 @@ $settings = [ordered]@{
         }
     )
 }
-if ($scenario -ceq "SearchCorePreviewReadOnly") {
-    $settings["searchCustomIndexerEnabled"] = $true
-    $settings["searchIncludeSystemIndex"] = $false
-    $settings["searchCustomIndexPaths"] = @($searchCoreFixtureDirectory)
-    New-Item `
-        -ItemType Directory `
-        -Path $searchCoreFixtureDirectory `
-        -Force | Out-Null
-    [System.IO.File]::WriteAllText(
-        $searchCoreOwnedFilePath,
-        "DeskBox Stage 6D owned Rust SearchCore AOT fixture.`n",
-        [System.Text.UTF8Encoding]::new($false))
-}
-elseif ($scenario -ceq "DeepSettingsReadOnly") {
+if ($scenario -ceq "DeepSettingsReadOnly") {
     $settings["fileStacksEnabled"] = $true
     $settings["fileStackGroupBy"] = "Custom"
     $settings["fileStackCustomRules"] = @(
@@ -4075,12 +4015,6 @@ elseif ($scenario -ceq "GlancePersistenceRestart") {
 $settingsPath = Join-Path $dataDirectory "settings.json"
 $settings | ConvertTo-Json -Depth 16 |
     Set-Content -LiteralPath $settingsPath -Encoding UTF8
-if ($scenario -ceq "SearchCorePreviewReadOnly") {
-    Write-SearchCoreDbixFixture `
-        -IndexPath (Join-Path $DataRoot "cache\search-index-v2.json") `
-        -FullPath $searchCoreOwnedFilePath
-}
-
 if ($scenario -ceq "RecycleBinMenuPersistenceRestart") {
     $recycleBinScenarioRoot = Join-Path `
         $DataRoot `
@@ -6580,9 +6514,6 @@ if ($scenario -ceq "SettingsWidgetPersistenceRestart") {
 $scenarioDirectory = if ($scenario -ceq "BasicReadOnly") {
     "basic-read-only"
 }
-elseif ($scenario -ceq "SearchCorePreviewReadOnly") {
-    "search-core-preview-read-only"
-}
 else {
     "deep-settings-read-only"
 }
@@ -6793,8 +6724,7 @@ try {
         "SeededWidgetsRestored",
         "AllLocaleResourcesLoaded")
 
-    if ($scenario -ceq "BasicReadOnly" -or
-        $scenario -ceq "SearchCorePreviewReadOnly") {
+    if ($scenario -ceq "BasicReadOnly") {
         $expectedSettingsSections = @(
             "General", "Appearance", "FeatureWidgets", "Interaction", "Maintenance", "About")
         $settingsSections = @($smokeResult.settingsSections)
@@ -6851,25 +6781,6 @@ try {
             [string]$smokeResult.search.finalSortColumn -cne "Relevance" -or
             -not [bool]$smokeResult.search.finalSortAscending) {
             throw "Managed UI search evidence is incomplete or did not return to its read-only baseline."
-        }
-
-        if ($scenario -ceq "SearchCorePreviewReadOnly") {
-            if (-not [bool]$smokeResult.search.rustPreviewRequested -or
-                -not [bool]$smokeResult.search.rustPreviewActive -or
-                -not [string]::IsNullOrWhiteSpace(
-                    [string]$smokeResult.search.rustPreviewFallbackReason) -or
-                -not [bool]$smokeResult.search.singleResidentBackend -or
-                [int]$smokeResult.search.nativeRuntimeRecoveryCount -ne 0 -or
-                -not [bool]$smokeResult.search.expectedRustFilePresent -or
-                -not (Test-PathEqual `
-                    -Left ([string]$smokeResult.search.expectedRustFilePath) `
-                    -Right $searchCoreOwnedFilePath)) {
-                throw "Managed UI Rust SearchCore evidence is incomplete or used a fallback owner."
-            }
-
-            $requiredSteps += @(
-                "RustSearchCorePreviewActive",
-                "RustSearchCoreOwnedResult")
         }
 
         $requiredSteps += @(

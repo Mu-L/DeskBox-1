@@ -190,7 +190,8 @@
                 </Setter>
             </Style>
 
-            <!-- Tab pill content: glyph + name + count badge. -->
+            <!-- Counts are intentionally omitted: Everything pages continuously, so a
+                 loaded-row count would look like a total-result cap. -->
             <DataTemplate x:Key="TabPillTemplate" x:DataType="models:SearchTabItem">
                 <StackPanel Orientation="Horizontal">
                     <FontIcon Glyph="{x:Bind Glyph, Mode=OneTime}" FontSize="12"
@@ -199,13 +200,6 @@
                     <TextBlock Text="{x:Bind DisplayName, Mode=OneTime}" FontSize="12.5"
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                VerticalAlignment="Center" Margin="6,0,0,0"/>
-                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            CornerRadius="7" Padding="5,0,5,1" Margin="6,0,0,0"
-                            VerticalAlignment="Center">
-                        <TextBlock Text="{x:Bind Count, Mode=OneWay}" FontSize="10.5"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   VerticalAlignment="Center"/>
-                    </Border>
                 </StackPanel>
             </DataTemplate>
 

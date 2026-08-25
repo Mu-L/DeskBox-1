@@ -20,7 +20,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -33,6 +33,7 @@ public sealed class SettingsMigrationPipeline
         _migrations.Add(new Migration_3_To_4());
         _migrations.Add(new Migration_4_To_5());
         _migrations.Add(new Migration_5_To_6());
+        _migrations.Add(new Migration_6_To_7());
     }
 
     /// <summary>
@@ -218,5 +219,21 @@ internal sealed class Migration_5_To_6 : ISettingsMigration
     public void Migrate(AppSettings settings)
     {
         settings.WidgetTopologyLayouts ??= [];
+    }
+}
+
+/// <summary>
+/// Retires DeskBox's local filename index. Existing users must explicitly opt in
+/// before DeskBox sends queries to an installed Everything process.
+/// </summary>
+internal sealed class Migration_6_To_7 : ISettingsMigration
+{
+    public int FromVersion => 6;
+
+    public void Migrate(AppSettings settings)
+    {
+        settings.SearchEverythingEnabled = false;
+        settings.SearchEverythingExecutablePath = string.Empty;
+        settings.SearchEverythingAdvancedSyntaxEnabled = false;
     }
 }

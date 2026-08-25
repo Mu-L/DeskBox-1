@@ -4,6 +4,7 @@ using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.ViewModels;
 using System.ComponentModel;
+using System.Diagnostics;
 using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
@@ -124,19 +125,33 @@ public sealed partial class SettingsWindow : Window
 
     public SettingsWindow(SettingsService settingsService, ThemeService themeService, LocalizationService localizationService)
     {
+        var constructionStopwatch = Stopwatch.StartNew();
+        long previousCheckpointMilliseconds = 0;
+        void LogConstructionCheckpoint(string stage)
+        {
+            long elapsed = constructionStopwatch.ElapsedMilliseconds;
+            App.Log(
+                $"[SettingsPerf] Constructor stage={stage} " +
+                $"stageMs={elapsed - previousCheckpointMilliseconds} totalMs={elapsed}");
+            previousCheckpointMilliseconds = elapsed;
+        }
+
         _settingsService = settingsService;
         _themeService = themeService;
         _localizationService = localizationService;
         ViewModel = new SettingsViewModel(settingsService, themeService, localizationService, App.Current.AppUpdateService);
+        LogConstructionCheckpoint("view-model");
         _settingsRootPointerPressedHandler = SettingsRoot_PointerPressedHandled;
         _settingsRootPointerReleasedHandler = SettingsRoot_PointerReleasedHandled;
         InitializeComponent();
+        LogConstructionCheckpoint("xaml");
         
         // ✅ Set localized title
         this.Title = _localizationService.T("Window.Settings.Title");
         
         InitializeSettingsSectionElements();
         RefreshSettingsSearchResults();
+        LogConstructionCheckpoint("section-registry");
 
         SettingsRoot.DataContext = ViewModel;
         AppearanceDetailSection.ViewModel = ViewModel;
@@ -151,6 +166,7 @@ public sealed partial class SettingsWindow : Window
             handledEventsToo: true);
         CollectResponsiveRows(SettingsRoot);
         SettingsRoot.Loaded += SettingsRoot_Loaded;
+        LogConstructionCheckpoint("bindings-and-responsive-tree");
 
         WindowsCompatibilityService.ApplySafeBackdrop(this);
 
@@ -165,6 +181,7 @@ public sealed partial class SettingsWindow : Window
         AppBranding.ApplyWindowIcon(_appWindow);
         InstallMinimumSizeHook();
         ApplyInitialWindowBounds(windowId);
+        LogConstructionCheckpoint("native-window");
 
         if (_appWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -185,15 +202,19 @@ public sealed partial class SettingsWindow : Window
         ApplyTitleBarButtonColors();
         ApplyLocalizedText();
         RefreshManagedStoragePathWarning();
+        LogConstructionCheckpoint("localized-content");
         SettingsNavigationView.SelectedItem = GeneralNavItem;
         ShowSettingsSection("General");
         UpdateResponsiveLayout(GetWindowWidth());
+        LogConstructionCheckpoint("initial-section");
 
         SizeChanged += SettingsWindow_SizeChanged;
 
         _resizeSettleTimer.Tick += ResizeSettleTimer_Tick;
         _sectionLayoutSettleTimer.Tick += SectionLayoutSettleTimer_Tick;
         Closed += SettingsWindow_Closed;
+        constructionStopwatch.Stop();
+        LogConstructionCheckpoint("complete");
     }
 
     public void ShowWindow()
@@ -214,8 +235,11 @@ public sealed partial class SettingsWindow : Window
 
     private void SettingsRoot_Loaded(object sender, RoutedEventArgs e)
     {
+        var stopwatch = Stopwatch.StartNew();
         CollectResponsiveRows(SettingsRoot);
+        long responsiveTreeMilliseconds = stopwatch.ElapsedMilliseconds;
         RefreshFeatureWidgetList();
+        long featureWidgetMilliseconds = stopwatch.ElapsedMilliseconds;
         _ = ViewModel.RefreshQuickAccessStateAsync();
         ViewModel.RefreshGlobalHotkeyState();
         _ = ViewModel.RefreshQuickCaptureImageCacheInfoAsync();
@@ -224,6 +248,12 @@ public sealed partial class SettingsWindow : Window
         ApplyToggleSwitchContentVisibility();
         _isSettingsRootLoaded = true;
         RefreshSettingsSearchResults();
+        stopwatch.Stop();
+        App.Log(
+            $"[SettingsPerf] Loaded responsiveTreeMs={responsiveTreeMilliseconds} " +
+            $"featureWidgetsMs={featureWidgetMilliseconds - responsiveTreeMilliseconds} " +
+            $"remainingMs={stopwatch.ElapsedMilliseconds - featureWidgetMilliseconds} " +
+            $"totalMs={stopwatch.ElapsedMilliseconds}");
     }
 
     private void SettingsWindow_SizeChanged(object sender, WindowSizeChangedEventArgs args)
@@ -432,7 +462,7 @@ public sealed partial class SettingsWindow : Window
         AboutMeButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         AboutWebsiteButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         FeedbackEmailButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        OpenMicrosoftStoreButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        StoreSupportButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         UpdateActionsPanel.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         UpdateActionsPanel.Orientation = isNarrow ? Orientation.Vertical : Orientation.Horizontal;
         OneClickUpdateButton.HorizontalAlignment = isNarrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;

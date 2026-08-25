@@ -121,4 +121,23 @@ public sealed class SettingsMigrationPipelineTests
         Assert.Equal(640, widget.Width);
         Assert.Equal(520, widget.Height);
     }
+
+    [Fact]
+    public void VersionSeven_RequiresFreshEverythingConsent()
+    {
+        var settings = new AppSettings
+        {
+            SchemaVersion = 6,
+            SearchEverythingEnabled = true,
+            SearchEverythingExecutablePath = @"C:\Portable\Everything.exe",
+            SearchEverythingAdvancedSyntaxEnabled = true
+        };
+
+        Assert.True(new SettingsMigrationPipeline().RunMigrations(settings));
+
+        Assert.Equal(SettingsMigrationPipeline.CurrentSchemaVersion, settings.SchemaVersion);
+        Assert.False(settings.SearchEverythingEnabled);
+        Assert.Equal(string.Empty, settings.SearchEverythingExecutablePath);
+        Assert.False(settings.SearchEverythingAdvancedSyntaxEnabled);
+    }
 }

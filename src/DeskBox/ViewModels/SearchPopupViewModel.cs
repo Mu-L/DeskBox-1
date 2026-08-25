@@ -18,7 +18,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     private readonly Services.FileMetaService _fileMetaService;
     private readonly SynchronizationContext? _uiContext;
     private CancellationTokenSource? _searchCts;
-    private CancellationTokenSource? _indexRefreshCts;
+    private CancellationTokenSource? _resultRefreshCts;
     private CancellationTokenSource? _recommendationCts;
     private long _recommendationGeneration;
     private readonly object _metadataTaskGate = new();
@@ -26,15 +26,15 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         new(ReferenceEqualityComparer.Instance);
     private long _searchGeneration;
     private bool _isDisposed;
-    private int _requestedFileResultCount = Services.SearchEngineService.InitialFileResultPageSize;
+    private int _nextFileResultOffset;
     private int _loadMoreRunning;
     private const int MaxEnrichedSearchResults = 40;
-    private static readonly TimeSpan IndexRefreshDebounceDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan ProviderRefreshDebounceDelay = TimeSpan.FromSeconds(1);
 
     private enum SearchRefreshKind
     {
         UserQuery,
-        IndexUpdate,
+        ProviderUpdate,
         LoadMore
     }
 
@@ -70,7 +70,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         _historyService = historyService;
         _fileMetaService = fileMetaService;
         _uiContext = SynchronizationContext.Current;
-        _searchEngine.IndexUpdated += OnIndexUpdated;
+        _searchEngine.ResultsChanged += OnResultsChanged;
 
         // Callback to close popup when item is opened.
         HidePopupCallback = () => { };
@@ -209,7 +209,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         RebuildCurrentResults(preserveSelection: true);
     }
 
-    private void OnIndexUpdated()
+    private void OnResultsChanged()
     {
         void ScheduleRefresh()
         {
@@ -218,10 +218,10 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            _indexRefreshCts?.Cancel();
-            _indexRefreshCts?.Dispose();
-            _indexRefreshCts = new CancellationTokenSource();
-            _ = RefreshAfterIndexUpdateAsync(Query, _indexRefreshCts.Token);
+            _resultRefreshCts?.Cancel();
+            _resultRefreshCts?.Dispose();
+            _resultRefreshCts = new CancellationTokenSource();
+            _ = RefreshAfterResultsChangedAsync(Query, _resultRefreshCts.Token);
         }
 
         if (_uiContext is not null)
@@ -234,7 +234,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task RefreshAfterIndexUpdateAsync(
+    private async Task RefreshAfterResultsChangedAsync(
         string query,
         CancellationToken cancellationToken)
     {
@@ -243,12 +243,12 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             // File-system watchers can produce bursts for a single user operation.
             // Wait for a quiet interval, then leave an active user search alone; its
             // own result set is newer than this background invalidation request.
-            await Task.Delay(IndexRefreshDebounceDelay, cancellationToken);
+            await Task.Delay(ProviderRefreshDebounceDelay, cancellationToken);
             if (!string.IsNullOrWhiteSpace(query) &&
                 string.Equals(query, Query, StringComparison.Ordinal) &&
                 !IsSearching)
             {
-                await SearchAsync(query, SearchRefreshKind.IndexUpdate);
+                await SearchAsync(query, SearchRefreshKind.ProviderUpdate);
             }
         }
         catch (OperationCanceledException)
@@ -442,7 +442,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         if (string.IsNullOrWhiteSpace(query))
         {
             _allResults = [];
-            _requestedFileResultCount = Services.SearchEngineService.InitialFileResultPageSize;
+            _nextFileResultOffset = 0;
             IsQueryActive = false;
             HasResults = false;
             HasMoreResults = false;
@@ -459,7 +459,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         CancellationToken token = searchCts.Token;
         if (refreshKind == SearchRefreshKind.UserQuery)
         {
-            _requestedFileResultCount = Services.SearchEngineService.InitialFileResultPageSize;
+            _nextFileResultOffset = 0;
         }
 
         bool preserveVisibleResults = refreshKind != SearchRefreshKind.UserQuery &&
@@ -486,9 +486,18 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
 
         try
         {
+            int fileResultOffset = refreshKind == SearchRefreshKind.LoadMore
+                ? _nextFileResultOffset
+                : 0;
+            int fileResultPageSize = refreshKind == SearchRefreshKind.ProviderUpdate
+                ? Math.Max(
+                    Services.SearchEngineService.InitialFileResultPageSize,
+                    _nextFileResultOffset)
+                : Services.SearchEngineService.FileResultPageSize;
             SearchResponse response = await _searchEngine.SearchPageAsync(
                 query,
-                _requestedFileResultCount,
+                fileResultOffset,
+                fileResultPageSize,
                 token);
             if (token.IsCancellationRequested ||
                 generation != Volatile.Read(ref _searchGeneration))
@@ -529,16 +538,6 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         IsLoadingMore = true;
         try
         {
-            int target = Math.Min(
-                Services.SearchIndexService.MaxSearchResultCount,
-                checked(_requestedFileResultCount + Services.SearchEngineService.FileResultPageSize));
-            if (target == _requestedFileResultCount)
-            {
-                HasMoreResults = false;
-                return;
-            }
-
-            _requestedFileResultCount = target;
             await SearchAsync(Query, SearchRefreshKind.LoadMore);
         }
         finally
@@ -555,7 +554,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     {
         // Preserve compatibility with incomplete provider responses without
         // replacing a stable background snapshot.
-        if (refreshKind == SearchRefreshKind.IndexUpdate && !response.IsComplete)
+        if (refreshKind == SearchRefreshKind.ProviderUpdate && !response.IsComplete)
         {
             return;
         }
@@ -570,7 +569,12 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             item.TypeDisplay = GetTypeDisplay(item);
         }
 
-        bool backgroundResultUnchanged = refreshKind == SearchRefreshKind.IndexUpdate &&
+        if (refreshKind == SearchRefreshKind.LoadMore)
+        {
+            incoming = MergeLoadedPage(_allResults, incoming);
+        }
+
+        bool backgroundResultUnchanged = refreshKind == SearchRefreshKind.ProviderUpdate &&
             Services.SearchResultCollectionReconciler.HasSameIdentitySequence(
                 _allResults,
                 incoming);
@@ -582,6 +586,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             // metadata may still change as the resident index grows.
             HasMoreResults = response.HasMoreResults;
             TotalResultCount = response.TotalResultCount;
+            _nextFileResultOffset = response.NextFileResultOffset;
             return;
         }
 
@@ -598,12 +603,8 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
             HasResults = _allResults.Count > 0;
             HasMoreResults = response.HasMoreResults;
             TotalResultCount = response.TotalResultCount;
-            StatusText = string.Format(
-                _localizationService.T(response.IsComplete
-                    ? "Search.Status.Results"
-                    : "Search.Status.PartialResults"),
-                response.TotalResultCount,
-                response.Elapsed.TotalMilliseconds);
+            _nextFileResultOffset = response.NextFileResultOffset;
+            StatusText = GetSearchStatusText(response);
             RebuildTabs();
             RebuildCurrentResults(preserveSelection: true);
         }
@@ -618,6 +619,66 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
                 _allResults.Take(MaxEnrichedSearchResults).ToList(),
                 token);
         }
+    }
+
+    private static List<SearchResultItem> MergeLoadedPage(
+        IReadOnlyList<SearchResultItem> current,
+        IReadOnlyList<SearchResultItem> page)
+    {
+        var byIdentity = new Dictionary<string, SearchResultItem>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (SearchResultItem item in current)
+        {
+            byIdentity[Services.SearchResultRanker.GetIdentityKey(item)] = item;
+        }
+
+        foreach (SearchResultItem item in page)
+        {
+            string identity = Services.SearchResultRanker.GetIdentityKey(item);
+            if (!byIdentity.ContainsKey(identity))
+            {
+                byIdentity[identity] = item;
+            }
+        }
+
+        return byIdentity.Values
+            .OrderByDescending(item => item.RelevanceScore)
+            .ThenByDescending(item => item.ModifiedAt)
+            .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    private string GetSearchStatusText(SearchResponse response)
+    {
+        string? providerStatusKey = response.FileProviderState switch
+        {
+            EverythingConnectionState.NotConfirmed =>
+                "Settings.Search.Everything.Status.NotConfirmed",
+            EverythingConnectionState.NotInstalled =>
+                "Settings.Search.Everything.Status.NotInstalled",
+            EverythingConnectionState.NotRunning =>
+                "Settings.Search.Everything.Status.NotRunning",
+            EverythingConnectionState.PermissionMismatch =>
+                "Settings.Search.Everything.Status.PermissionMismatch",
+            EverythingConnectionState.IpcUnavailable =>
+                "Settings.Search.Everything.Status.IpcUnavailable",
+            EverythingConnectionState.SdkUnavailable =>
+                "Settings.Search.Everything.Status.SdkUnavailable",
+            EverythingConnectionState.Error =>
+                "Search.Status.Error",
+            _ => null
+        };
+        if (providerStatusKey is not null)
+        {
+            return _localizationService.T(providerStatusKey);
+        }
+
+        return string.Format(
+            _localizationService.T(response.IsComplete
+                ? "Search.Status.Results"
+                : "Search.Status.PartialResults"),
+            response.TotalResultCount,
+            response.Elapsed.TotalMilliseconds);
     }
 
     private void CancelCurrentSearch()
@@ -1216,7 +1277,7 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         CancelCurrentSearch();
         Query = string.Empty;
         _allResults = [];
-        _requestedFileResultCount = Services.SearchEngineService.InitialFileResultPageSize;
+        _nextFileResultOffset = 0;
         IsQueryActive = false;
         IsSearching = false;
         HasResults = false;
@@ -1233,11 +1294,11 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
     public void OnPopupHidden()
     {
         CancelCurrentSearch();
-        _indexRefreshCts?.Cancel();
+        _resultRefreshCts?.Cancel();
         _recommendationCts?.Cancel();
         Query = string.Empty;
         _allResults = [];
-        _requestedFileResultCount = Services.SearchEngineService.InitialFileResultPageSize;
+        _nextFileResultOffset = 0;
         SelectedItem = null;
         IsQueryActive = false;
         IsSearching = false;
@@ -1401,9 +1462,9 @@ public sealed partial class SearchPopupViewModel : ObservableObject, IDisposable
         }
 
         _isDisposed = true;
-        _searchEngine.IndexUpdated -= OnIndexUpdated;
-        _indexRefreshCts?.Cancel();
-        _indexRefreshCts?.Dispose();
+        _searchEngine.ResultsChanged -= OnResultsChanged;
+        _resultRefreshCts?.Cancel();
+        _resultRefreshCts?.Dispose();
         _recommendationCts?.Cancel();
         _recommendationCts?.Dispose();
         CancelCurrentSearch();

@@ -29,8 +29,6 @@ $publishDir = Join-Path $runRoot "publish"
 $symbolsDir = Join-Path $runRoot "symbols"
 $rustIntermediateDir = Join-Path $runRoot "rust-staging"
 $rustCargoTargetDir = Join-Path $runRoot "rust-target"
-$searchCoreIntermediateDir = Join-Path $runRoot "search-core-staging"
-$searchCoreCargoTargetDir = Join-Path $runRoot "search-core-target"
 $logPath = Join-Path $runRoot "publish.log"
 $summaryPath = Join-Path $runRoot "summary.json"
 
@@ -273,8 +271,6 @@ $commonProperties = @(
     "-p:DeskBoxAotSmokeHarness=true",
     "-p:PublishAot=true",
     "-p:DeskBoxRustNative=true",
-    "-p:DeskBoxSearchCorePreviewModule=true",
-    "-p:DeskBoxSearchCoreDefaultEnabled=true",
     "-p:JsonSerializerIsReflectionEnabledByDefault=false",
     "-p:IlcUseEnvironmentalTools=true",
     "-p:SelfContained=true",
@@ -310,8 +306,6 @@ try {
         "--no-restore",
         "-p:DeskBoxRustNativeIntermediateDir=$rustIntermediateDir",
         "-p:DeskBoxRustNativeCargoTargetDir=$rustCargoTargetDir",
-        "-p:DeskBoxSearchCoreIntermediateDir=$searchCoreIntermediateDir",
-        "-p:DeskBoxSearchCoreCargoTargetDir=$searchCoreCargoTargetDir",
         "-p:PublishSingleFile=false",
         "-v:minimal"
     ) + $commonProperties
@@ -331,21 +325,10 @@ $nativeValidation = & (Join-Path $PSScriptRoot "build-rust-native.ps1") `
     -Configuration Release `
     -OutputDirectory $rustIntermediateDir `
     -ValidateOnly
-$searchCoreValidation = & (Join-Path $PSScriptRoot "build-rust-search-core.ps1") `
-    -Platform ARM64 `
-    -Configuration Release `
-    -OutputDirectory $searchCoreIntermediateDir `
-    -ValidateOnly
-$runtimeAbiProbeExecuted =
-    $nativeValidation.RuntimeProbeExecuted -and
-    $searchCoreValidation.RuntimeProbeExecuted
-if ($nativeValidation.RuntimeProbeExecuted -ne
-    $searchCoreValidation.RuntimeProbeExecuted) {
-    throw "The two ARM64 Rust modules did not use the same runtime-probe policy."
-}
+$runtimeAbiProbeExecuted = $nativeValidation.RuntimeProbeExecuted
 if ($processArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
     if (-not $runtimeAbiProbeExecuted) {
-        throw "A native ARM64 audit must execute both target Rust ABI probes."
+        throw "A native ARM64 audit must execute the target Rust ABI probe."
     }
     $evidenceLevel = "native-arm64-runtime-plus-static"
 }
@@ -364,8 +347,7 @@ $requiredFiles = @(
     "DeskBox.Updater.exe",
     "DeskBox.ThumbnailProxy.exe",
     "DeskBox.pri",
-    "deskbox_native.dll",
-    "deskbox_search_core.dll"
+    "deskbox_native.dll"
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $publishDir $requiredFile) -PathType Leaf)) {
@@ -375,8 +357,7 @@ foreach ($requiredFile in $requiredFiles) {
 
 foreach ($moduleName in @(
         "DeskBox.ThumbnailProxy.exe",
-        "deskbox_native.dll",
-        "deskbox_search_core.dll")) {
+        "deskbox_native.dll")) {
     $matches = @(Get-ChildItem -LiteralPath $publishDir -Filter $moduleName -File -Recurse)
     $expectedPath = [System.IO.Path]::GetFullPath((Join-Path $publishDir $moduleName))
     if ($matches.Count -ne 1 -or
@@ -392,13 +373,8 @@ $nativeStagingSha256 =
     (Get-FileHash -LiteralPath (Join-Path $rustIntermediateDir "deskbox_native.dll") -Algorithm SHA256).Hash
 $nativePublishSha256 =
     (Get-FileHash -LiteralPath (Join-Path $publishDir "deskbox_native.dll") -Algorithm SHA256).Hash
-$searchStagingSha256 =
-    (Get-FileHash -LiteralPath (Join-Path $searchCoreIntermediateDir "deskbox_search_core.dll") -Algorithm SHA256).Hash
-$searchPublishSha256 =
-    (Get-FileHash -LiteralPath (Join-Path $publishDir "deskbox_search_core.dll") -Algorithm SHA256).Hash
-if ($nativeStagingSha256 -cne $nativePublishSha256 -or
-    $searchStagingSha256 -cne $searchPublishSha256) {
-    throw "ARM64 published Rust modules do not match this run's isolated staging outputs."
+if ($nativeStagingSha256 -cne $nativePublishSha256) {
+    throw "ARM64 published Rust module does not match this run's isolated staging output."
 }
 
 $pdbFiles = @(Get-ChildItem -LiteralPath $publishDir -Filter "*.pdb" -File -Recurse)
@@ -419,8 +395,7 @@ foreach ($requiredSymbol in @(
         "DeskBox.pdb",
         "DeskBox.Updater.pdb",
         "DeskBox.ThumbnailProxy.pdb",
-        "deskbox_native.pdb",
-        "deskbox_search_core.pdb")) {
+        "deskbox_native.pdb")) {
     if (-not ($symbolFiles | Where-Object Name -eq $requiredSymbol)) {
         throw "ARM64 symbols are missing '$requiredSymbol'."
     }
@@ -453,8 +428,7 @@ $peResults = @(
             "DeskBox.exe",
             "DeskBox.Updater.exe",
             "DeskBox.ThumbnailProxy.exe",
-            "deskbox_native.dll",
-            "deskbox_search_core.dll")) {
+            "deskbox_native.dll")) {
         $path = Join-Path $publishDir $fileName
         $machine = Get-PeMachine -Path $path
         if ($machine -ne $expectedMachine) {
@@ -554,17 +528,6 @@ $summary = [ordered]@{
         publishSha256 = $nativePublishSha256
         publishMatchesStaging = $true
     }
-    searchCore = [ordered]@{
-        abiVersion = $searchCoreValidation.AbiVersion
-        requiredExports = @($searchCoreValidation.RequiredExports)
-        machine = $searchCoreValidation.MachineHex
-        contractValidation = $searchCoreValidation.ContractValidation
-        stagingSha256 = $searchStagingSha256
-        publishSha256 = $searchPublishSha256
-        publishMatchesStaging = $true
-        productDefaultEnabled = $true
-        defaultDecisionDeferredToStage7B = $false
-    }
 }
 
 [System.IO.File]::WriteAllText(
@@ -587,6 +550,5 @@ if (-not $sourceStableDuringAudit) {
         1)
     WarningCodes = $warningCodes -join ", "
     NativeMachine = $nativeValidation.MachineHex
-    SearchCoreMachine = $searchCoreValidation.MachineHex
     TargetDeviceExecuted = $false
 }
