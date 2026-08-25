@@ -33,4 +33,52 @@ public class IconHelperTests
     {
         Assert.False(IconHelper.IsMediaFile(path));
     }
+
+    [Fact]
+    public void ShortcutIconResolution_IsBoundedAndCacheInvalidationAvoidsShellReads()
+    {
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Helpers/IconHelper.cs"));
+        int getIconStart = source.IndexOf(
+            "public static async Task<BitmapImage?> GetIconAsync(",
+            StringComparison.Ordinal);
+        int clearCacheStart = source.IndexOf(
+            "public static void ClearIconCache(",
+            getIconStart,
+            StringComparison.Ordinal);
+        int clearCacheEnd = source.IndexOf(
+            "private static void InvalidateShellIconCache(",
+            clearCacheStart,
+            StringComparison.Ordinal);
+        Assert.True(getIconStart >= 0);
+        Assert.True(clearCacheStart > getIconStart);
+        Assert.True(clearCacheEnd > clearCacheStart);
+
+        string getIcon = source[getIconStart..clearCacheStart];
+        Assert.Contains(
+            "await ResolveIconSourceWithCacheKeyAsync(",
+            getIcon,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ResolveIconSource(path",
+            getIcon,
+            StringComparison.Ordinal);
+
+        string clearCache = source[clearCacheStart..clearCacheEnd];
+        Assert.DoesNotContain(
+            "ResolveIconSource(",
+            clearCache,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("File.Exists(", clearCache, StringComparison.Ordinal);
+        Assert.DoesNotContain("Directory.Exists(", clearCache, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "BoundedBackgroundWorkScheduler.SharedShell",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IconSourceResolutionTimeout",
+            source,
+            StringComparison.Ordinal);
+    }
 }

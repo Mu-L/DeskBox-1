@@ -40,7 +40,6 @@ public sealed partial class QuickCaptureWidgetWindow
             _draggedQuickCaptureItemId = null;
             _isInternalQuickCaptureDrag = false;
             _internalQuickCaptureDragCanReorder = false;
-            _quickCaptureTabDropHandled = false;
             _internalQuickCaptureDragView = null;
             e.Cancel = true;
             return;
@@ -58,9 +57,10 @@ public sealed partial class QuickCaptureWidgetWindow
         _draggedQuickCaptureItemId = canReorder ? item.Id : null;
         _isInternalQuickCaptureDrag = true;
         _internalQuickCaptureDragCanReorder = canReorder;
-        _quickCaptureTabDropHandled = false;
         _internalQuickCaptureDragView = canReorder ? ViewModel.SelectedView : null;
-        ItemsListView.CanReorderItems = canReorder;
+        // VisibleItemsSource is a fixed-size AOT projection. Row drop handlers
+        // persist manual ordering without asking WinUI to mutate the array.
+        ItemsListView.CanReorderItems = false;
 
         try
         {
@@ -92,38 +92,14 @@ public sealed partial class QuickCaptureWidgetWindow
         }
     }
 
-    private async void ItemsListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    private void ItemsListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
-        string? itemId = _draggedQuickCaptureItemId;
-        QuickCaptureViewMode? dragView = _internalQuickCaptureDragView;
-        bool canReorder = _internalQuickCaptureDragCanReorder;
-        bool tabDropHandled = _quickCaptureTabDropHandled;
         _draggedQuickCaptureItemId = null;
         _draggedQuickCaptureItemIds.Clear();
         _internalQuickCaptureDragView = null;
         _internalQuickCaptureDragCanReorder = false;
-        _quickCaptureTabDropHandled = false;
-        ItemsListView.CanReorderItems = true;
+        ItemsListView.CanReorderItems = false;
         DispatcherQueue.TryEnqueue(() => _isInternalQuickCaptureDrag = false);
-        if (string.IsNullOrWhiteSpace(itemId) || tabDropHandled || !canReorder)
-        {
-            return;
-        }
-
-        QuickCaptureItemViewModel? item = ViewModel.Items.FirstOrDefault(entry =>
-            string.Equals(entry.Id, itemId, StringComparison.Ordinal));
-        if (item is not null)
-        {
-            int targetIndex = ViewModel.Items.IndexOf(item);
-            if (dragView == QuickCaptureViewMode.Pinned)
-            {
-                await ViewModel.MovePinnedItemToIndexAsync(item, targetIndex);
-            }
-            else
-            {
-                await ViewModel.MoveItemAsync(item, targetIndex);
-            }
-        }
     }
 
     private void QuickCaptureTab_DragOver(object sender, DragEventArgs e)
@@ -162,7 +138,6 @@ public sealed partial class QuickCaptureWidgetWindow
         }
 
         e.Handled = true;
-        _quickCaptureTabDropHandled = true;
         var deferral = e.GetDeferral();
         try
         {
@@ -202,7 +177,7 @@ public sealed partial class QuickCaptureWidgetWindow
             .ToList();
     }
 
-    private static void ApplyItemMaterialSurface(DependencyObject itemRoot, QuickCaptureItemViewModel item)
+    private void ApplyItemMaterialSurface(DependencyObject itemRoot, QuickCaptureItemViewModel item)
     {
         if (FindVisualChild<Border>(itemRoot, "ItemMaterialBackground") is not { } surface)
         {
@@ -247,7 +222,7 @@ public sealed partial class QuickCaptureWidgetWindow
         };
     }
 
-    private static Brush GetMaterialBorderBrush(QuickCaptureAppearancePreset preset, bool isDark)
+    private Brush GetMaterialBorderBrush(QuickCaptureAppearancePreset preset, bool isDark)
     {
         if (preset == QuickCaptureAppearancePreset.Default)
         {
@@ -293,7 +268,33 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void QuickCaptureItem_DragOver(object sender, DragEventArgs e)
     {
-        if (_isInternalQuickCaptureDrag || !DeskBoxDragData.HasDroppedFiles(e.DataView))
+        if (sender is not FrameworkElement
+            {
+                DataContext: QuickCaptureItemViewModel
+            } itemRoot)
+        {
+            return;
+        }
+
+        if (_isInternalQuickCaptureDrag)
+        {
+            if (!_internalQuickCaptureDragCanReorder ||
+                string.IsNullOrWhiteSpace(_draggedQuickCaptureItemId))
+            {
+                e.AcceptedOperation = DataPackageOperation.None;
+                return;
+            }
+
+            bool insertAfter = e.GetPosition(itemRoot).Y >= itemRoot.ActualHeight / 2;
+            e.Handled = true;
+            e.AcceptedOperation = DataPackageOperation.Move;
+            e.DragUIOverride.IsGlyphVisible = true;
+            SetItemHoverState(itemRoot, true);
+            SetItemReorderDropState(itemRoot, active: true, insertAfter);
+            return;
+        }
+
+        if (!DeskBoxDragData.HasDroppedFiles(e.DataView))
         {
             return;
         }
@@ -307,18 +308,34 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void QuickCaptureItem_DragLeave(object sender, DragEventArgs e)
     {
-        if (DeskBoxDragData.HasDroppedFiles(e.DataView))
+        if (_isInternalQuickCaptureDrag || DeskBoxDragData.HasDroppedFiles(e.DataView))
         {
             e.Handled = true;
             SetItemHoverState(sender as DependencyObject, false);
+            SetItemReorderDropState(
+                sender as DependencyObject,
+                active: false,
+                insertAfter: false);
         }
     }
 
     private async void QuickCaptureItem_Drop(object sender, DragEventArgs e)
     {
-        if (_isInternalQuickCaptureDrag ||
-            !DeskBoxDragData.HasDroppedFiles(e.DataView) ||
-            sender is not FrameworkElement { DataContext: QuickCaptureItemViewModel item })
+        if (sender is not FrameworkElement
+            {
+                DataContext: QuickCaptureItemViewModel item
+            } itemRoot)
+        {
+            return;
+        }
+
+        if (_isInternalQuickCaptureDrag)
+        {
+            await DropQuickCaptureItemAtRowAsync(itemRoot, item, e);
+            return;
+        }
+
+        if (!DeskBoxDragData.HasDroppedFiles(e.DataView))
         {
             return;
         }
@@ -407,7 +424,7 @@ public sealed partial class QuickCaptureWidgetWindow
         button.Resources["ButtonForegroundPressed"] = foreground;
     }
 
-    private static void SetItemHoverState(DependencyObject? itemRoot, bool isHovered)
+    private void SetItemHoverState(DependencyObject? itemRoot, bool isHovered)
     {
         if (itemRoot is null)
         {
@@ -474,6 +491,96 @@ public sealed partial class QuickCaptureWidgetWindow
         {
             await TogglePinnedWithFeedbackAsync(item);
         }
+    }
+
+    private async Task DropQuickCaptureItemAtRowAsync(
+        FrameworkElement itemRoot,
+        QuickCaptureItemViewModel targetItem,
+        DragEventArgs e)
+    {
+        string? draggedItemId = _draggedQuickCaptureItemId;
+        QuickCaptureViewMode? dragView = _internalQuickCaptureDragView;
+        if (!_internalQuickCaptureDragCanReorder ||
+            string.IsNullOrWhiteSpace(draggedItemId) ||
+            dragView != ViewModel.SelectedView)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        bool insertAfter = e.GetPosition(itemRoot).Y >= itemRoot.ActualHeight / 2;
+        int targetIndex = QuickCaptureDragPackage.ResolveManualDropTargetIndex(
+            ViewModel.Items,
+            draggedItemId,
+            targetItem.Id,
+            insertAfter);
+        if (targetIndex < 0)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        e.Handled = true;
+        SetItemHoverState(itemRoot, false);
+        SetItemReorderDropState(itemRoot, active: false, insertAfter: false);
+        var deferral = e.GetDeferral();
+        try
+        {
+            QuickCaptureItemViewModel? draggedItem = ViewModel.Items.FirstOrDefault(
+                entry => string.Equals(
+                    entry.Id,
+                    draggedItemId,
+                    StringComparison.Ordinal));
+            bool persisted = draggedItem is not null &&
+                (dragView == QuickCaptureViewMode.Pinned
+                    ? await ViewModel.MovePinnedItemToIndexAsync(
+                        draggedItem,
+                        targetIndex)
+                    : await ViewModel.MoveItemAsync(draggedItem, targetIndex));
+            await ViewModel.RefreshItemsAsync();
+            e.AcceptedOperation = persisted
+                ? DataPackageOperation.Move
+                : DataPackageOperation.None;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[QuickCaptureWidget] Reorder failed: {ex}");
+            e.AcceptedOperation = DataPackageOperation.None;
+            await ViewModel.RefreshItemsAsync();
+        }
+        finally
+        {
+            SetItemHoverState(itemRoot, false);
+            SetItemReorderDropState(
+                itemRoot,
+                active: false,
+                insertAfter: false);
+            deferral.Complete();
+        }
+    }
+
+    private static void SetItemReorderDropState(
+        DependencyObject? itemRoot,
+        bool active,
+        bool insertAfter)
+    {
+        if (itemRoot is null ||
+            FindVisualChild<Border>(itemRoot, "ItemMaterialBackground") is not
+                { } materialBorder)
+        {
+            return;
+        }
+
+        materialBorder.BorderBrush = active
+            ? new SolidColorBrush(
+                App.Current.ThemeService?.GetEffectiveAccentColor() ??
+                AccentColorHelper.DefaultAccentColor)
+            : new SolidColorBrush(Colors.Transparent);
+        materialBorder.BorderThickness = active
+            ? insertAfter
+                ? new Thickness(0, 0, 0, 2)
+                : new Thickness(0, 2, 0, 0)
+            : new Thickness(0);
     }
 
     private async Task<bool> TogglePinnedWithFeedbackAsync(

@@ -58,7 +58,6 @@ public sealed partial class QuickCaptureSurfaceContent :
     private readonly List<string> _draggedQuickCaptureItemIds = [];
     private bool _isInternalQuickCaptureDrag;
     private bool _internalQuickCaptureDragCanReorder;
-    private bool _quickCaptureTabDropHandled;
     private QuickCaptureViewMode? _internalQuickCaptureDragView;
     private bool _isDualPane;
     private bool _showDetailInSinglePane;
@@ -287,7 +286,7 @@ public sealed partial class QuickCaptureSurfaceContent :
             RestoreTransientState(
                 quickState.InputText,
                 quickState.SearchText);
-            ViewModel.SelectedView = quickState.SelectedView;
+            ViewModel.RestoreSelectedViewImmediately(quickState.SelectedView);
             _pendingFocusTarget = quickState.FocusTarget;
             _pendingDetailItemId = quickState.SelectedDetailItemId;
             _pendingDetailEditing = quickState.IsDetailEditing;
@@ -736,9 +735,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         // stable frames. The initial-load fallback below still protects any
         // genuinely zero-width layout pass.
         CancelSegmentedRestore();
-        QuickCaptureViewSegmented.Visibility = Visibility.Visible;
-        ApplySegmentedStyle();
-        UpdateSelectedViewVisual();
+        RevealSegmentedAtSelectedView();
     }
 
     private void SynchronizeSegmentedVisibility()
@@ -814,9 +811,33 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
 
         CancelSegmentedRestore();
-        QuickCaptureViewSegmented.Visibility = Visibility.Visible;
-        ApplySegmentedStyle();
-        UpdateSelectedViewVisual();
+        RevealSegmentedAtSelectedView();
+    }
+
+    private void RevealSegmentedAtSelectedView()
+    {
+        if (QuickCaptureViewSegmented is null)
+        {
+            return;
+        }
+
+        // Loading or revealing the toolkit control can emit SelectionChanged
+        // for its template default. Keep those events programmatic, apply the
+        // restored member state on both sides of realization, and only then
+        // allow user-driven selection changes.
+        bool wasSynchronizing = _isSynchronizingViewSelection;
+        _isSynchronizingViewSelection = true;
+        try
+        {
+            ApplySegmentedStyle();
+            UpdateSelectedViewVisual();
+            QuickCaptureViewSegmented.Visibility = Visibility.Visible;
+            UpdateSelectedViewVisual();
+        }
+        finally
+        {
+            _isSynchronizingViewSelection = wasSynchronizing;
+        }
     }
 
     private void CancelSegmentedRestore()
@@ -838,15 +859,19 @@ public sealed partial class QuickCaptureSurfaceContent :
 
     private async void InputTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key != Windows.System.VirtualKey.Enter)
+        bool controlPressed = Win32Helper.IsKeyPressed(
+            Windows.System.VirtualKey.Control);
+        bool saveShortcut = TextBoxEditorShortcutHelper.IsCtrlSaveShortcut(
+            e.Key,
+            controlPressed,
+            Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift));
+        if (e.Key != Windows.System.VirtualKey.Enter && !saveShortcut)
         {
             return;
         }
 
-        bool controlPressed = Win32Helper.IsKeyPressed(
-            Windows.System.VirtualKey.Control);
         e.Handled = true;
-        if (SettingsService.ShouldSubmitEditorOnEnter(
+        if (saveShortcut || SettingsService.ShouldSubmitEditorOnEnter(
                 _settingsService.Settings.QuickCaptureEditorEnterBehavior,
                 controlPressed))
         {
@@ -2059,15 +2084,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         bool isLeftButtonPressed =
             e.GetCurrentPoint(ItemsList).Properties.IsLeftButtonPressed;
         bool itemIsSelected = ItemsList.SelectedItems.Contains(item);
-        bool canReorder = isLeftButtonPressed &&
-                          !IsInteractiveQuickCaptureSource(e.OriginalSource) &&
-                          !Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift) &&
-                          !Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control) &&
-                          (!itemIsSelected || ItemsList.SelectedItems.Count == 1) &&
-                          (ViewModel.SelectedView is
-                              QuickCaptureViewMode.Records or QuickCaptureViewMode.Pinned) &&
-                          !ViewModel.HasSearchText;
-        ItemsList.CanReorderItems = canReorder;
+        ItemsList.CanReorderItems = false;
 
         if (!isLeftButtonPressed || !itemIsSelected)
         {
@@ -2133,45 +2150,24 @@ public sealed partial class QuickCaptureSurfaceContent :
         _draggedQuickCaptureItemId = canReorder ? draggedItem!.Id : null;
         _isInternalQuickCaptureDrag = true;
         _internalQuickCaptureDragCanReorder = canReorder;
-        _quickCaptureTabDropHandled = false;
         _internalQuickCaptureDragView = canReorder
             ? ViewModel.SelectedView
             : null;
-        ItemsList.CanReorderItems = canReorder;
+        // VisibleItemsSource is an AOT-safe object[] projection. Keep native
+        // ListView reordering disabled because WinUI tries to mutate that
+        // fixed-size array before DragItemsCompleted is raised. Item-row drop
+        // handlers persist the requested position instead.
+        ItemsList.CanReorderItems = false;
         e.Data.RequestedOperation =
             DataPackageOperation.Copy |
             DataPackageOperation.Move;
     }
 
-    private async void ItemsList_DragItemsCompleted(
+    private void ItemsList_DragItemsCompleted(
         ListViewBase sender,
         DragItemsCompletedEventArgs args)
     {
-        string? itemId = _draggedQuickCaptureItemId;
-        QuickCaptureViewMode? dragView = _internalQuickCaptureDragView;
-        bool canReorder = _internalQuickCaptureDragCanReorder;
-        bool tabDropHandled = _quickCaptureTabDropHandled;
         ResetInternalQuickCaptureDrag();
-        if (string.IsNullOrWhiteSpace(itemId) || tabDropHandled || !canReorder)
-        {
-            return;
-        }
-
-        QuickCaptureItemViewModel? item = ViewModel.Items.FirstOrDefault(entry =>
-            string.Equals(entry.Id, itemId, StringComparison.Ordinal));
-        if (item is null)
-        {
-            return;
-        }
-
-        int targetIndex = ViewModel.Items.IndexOf(item);
-        bool persisted = dragView == QuickCaptureViewMode.Pinned
-            ? await ViewModel.MovePinnedItemToIndexAsync(item, targetIndex)
-            : await ViewModel.MoveItemAsync(item, targetIndex);
-        if (!persisted)
-        {
-            await ViewModel.RefreshItemsAsync();
-        }
     }
 
     private void QuickCaptureTab_DragOver(object sender, DragEventArgs e)
@@ -2204,7 +2200,6 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
 
         e.Handled = true;
-        _quickCaptureTabDropHandled = true;
         var deferral = e.GetDeferral();
         try
         {
@@ -2255,7 +2250,6 @@ public sealed partial class QuickCaptureSurfaceContent :
         _draggedQuickCaptureItemIds.Clear();
         _internalQuickCaptureDragView = null;
         _internalQuickCaptureDragCanReorder = false;
-        _quickCaptureTabDropHandled = false;
         _isInternalQuickCaptureDrag = false;
         ItemsList.CanReorderItems = false;
     }
@@ -2484,9 +2478,32 @@ public sealed partial class QuickCaptureSurfaceContent :
         object sender,
         DragEventArgs e)
     {
-        if (_isInternalQuickCaptureDrag ||
-            !DeskBoxDragData.HasDroppedFiles(e.DataView) ||
-            sender is not Border border)
+        if (sender is not Border
+            {
+                DataContext: QuickCaptureItemViewModel
+            } border)
+        {
+            return;
+        }
+
+        if (_isInternalQuickCaptureDrag)
+        {
+            if (!_internalQuickCaptureDragCanReorder ||
+                string.IsNullOrWhiteSpace(_draggedQuickCaptureItemId))
+            {
+                e.AcceptedOperation = DataPackageOperation.None;
+                return;
+            }
+
+            bool insertAfter = e.GetPosition(border).Y >= border.ActualHeight / 2;
+            e.Handled = true;
+            e.AcceptedOperation = DataPackageOperation.Move;
+            e.DragUIOverride.IsGlyphVisible = true;
+            ApplyQuickCaptureReorderDropState(border, active: true, insertAfter);
+            return;
+        }
+
+        if (!DeskBoxDragData.HasDroppedFiles(e.DataView))
         {
             return;
         }
@@ -2504,6 +2521,10 @@ public sealed partial class QuickCaptureSurfaceContent :
     {
         if (sender is Border border)
         {
+            ApplyQuickCaptureReorderDropState(
+                border,
+                active: false,
+                insertAfter: false);
             ApplyQuickCaptureItemDropState(border, active: false);
         }
     }
@@ -2512,11 +2533,21 @@ public sealed partial class QuickCaptureSurfaceContent :
         object sender,
         DragEventArgs e)
     {
-        if (!DeskBoxDragData.HasDroppedFiles(e.DataView) ||
-            sender is not Border
+        if (sender is not Border
             {
                 DataContext: QuickCaptureItemViewModel item
             } border)
+        {
+            return;
+        }
+
+        if (_isInternalQuickCaptureDrag)
+        {
+            await DropQuickCaptureItemAtRowAsync(border, item, e);
+            return;
+        }
+
+        if (!DeskBoxDragData.HasDroppedFiles(e.DataView))
         {
             return;
         }
@@ -2559,6 +2590,92 @@ public sealed partial class QuickCaptureSurfaceContent :
         }
     }
 
+    private async Task DropQuickCaptureItemAtRowAsync(
+        Border border,
+        QuickCaptureItemViewModel targetItem,
+        DragEventArgs e)
+    {
+        string? draggedItemId = _draggedQuickCaptureItemId;
+        QuickCaptureViewMode? dragView = _internalQuickCaptureDragView;
+        if (!_internalQuickCaptureDragCanReorder ||
+            string.IsNullOrWhiteSpace(draggedItemId) ||
+            dragView != ViewModel.SelectedView)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        bool insertAfter = e.GetPosition(border).Y >= border.ActualHeight / 2;
+        int targetIndex = QuickCaptureDragPackage.ResolveManualDropTargetIndex(
+            ViewModel.Items,
+            draggedItemId,
+            targetItem.Id,
+            insertAfter);
+        if (targetIndex < 0)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        e.Handled = true;
+        ApplyQuickCaptureReorderDropState(
+            border,
+            active: false,
+            insertAfter: false);
+        var deferral = e.GetDeferral();
+        try
+        {
+            QuickCaptureItemViewModel? draggedItem = ViewModel.Items.FirstOrDefault(
+                entry => string.Equals(
+                    entry.Id,
+                    draggedItemId,
+                    StringComparison.Ordinal));
+            bool persisted = draggedItem is not null &&
+                (dragView == QuickCaptureViewMode.Pinned
+                    ? await ViewModel.MovePinnedItemToIndexAsync(
+                        draggedItem,
+                        targetIndex)
+                    : await ViewModel.MoveItemAsync(draggedItem, targetIndex));
+            await ViewModel.RefreshItemsAsync();
+            e.AcceptedOperation = persisted
+                ? DataPackageOperation.Move
+                : DataPackageOperation.None;
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[WidgetSurface] Quick Capture reorder failed " +
+                $"id={WidgetId}: {ex}");
+            e.AcceptedOperation = DataPackageOperation.None;
+            await ViewModel.RefreshItemsAsync();
+        }
+        finally
+        {
+            ApplyQuickCaptureReorderDropState(
+                border,
+                active: false,
+                insertAfter: false);
+            deferral.Complete();
+        }
+    }
+
+    private static void ApplyQuickCaptureReorderDropState(
+        Border border,
+        bool active,
+        bool insertAfter)
+    {
+        border.BorderBrush = active
+            ? new SolidColorBrush(
+                App.Current.ThemeService?.GetEffectiveAccentColor() ??
+                AccentColorHelper.DefaultAccentColor)
+            : new SolidColorBrush(Colors.Transparent);
+        border.BorderThickness = active
+            ? insertAfter
+                ? new Thickness(0, 0, 0, 2)
+                : new Thickness(0, 2, 0, 0)
+            : new Thickness(0);
+    }
+
     private static void ApplyQuickCaptureItemDropState(
         Border border,
         bool active)
@@ -2588,7 +2705,7 @@ public sealed partial class QuickCaptureSurfaceContent :
 
     private void UpdateSelectedViewVisual()
     {
-        if (!IsLoaded || QuickCaptureViewSegmented is null)
+        if (QuickCaptureViewSegmented is null)
         {
             return;
         }
@@ -2601,9 +2718,16 @@ public sealed partial class QuickCaptureSurfaceContent :
         };
         if (QuickCaptureViewSegmented.SelectedIndex != selectedIndex)
         {
+            bool wasSynchronizing = _isSynchronizingViewSelection;
             _isSynchronizingViewSelection = true;
-            QuickCaptureViewSegmented.SelectedIndex = selectedIndex;
-            _isSynchronizingViewSelection = false;
+            try
+            {
+                QuickCaptureViewSegmented.SelectedIndex = selectedIndex;
+            }
+            finally
+            {
+                _isSynchronizingViewSelection = wasSynchronizing;
+            }
         }
     }
 
@@ -2784,6 +2908,15 @@ public sealed partial class QuickCaptureSurfaceContent :
     {
         if (_isSynchronizingViewSelection || !IsLoaded || ItemsList is null)
         {
+            return;
+        }
+
+        if (QuickCaptureViewSegmented.Visibility != Visibility.Visible)
+        {
+            // Template realization may briefly report its default index while
+            // the tab strip is hidden. Reassert the member state without
+            // treating that programmatic event as a user action.
+            UpdateSelectedViewVisual();
             return;
         }
 

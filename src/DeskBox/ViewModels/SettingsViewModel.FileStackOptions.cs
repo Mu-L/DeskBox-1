@@ -14,6 +14,7 @@ public partial class SettingsViewModel
     private string _selectedFileStackGroupBy = SettingsService.FileStackGroupByKind;
     private int _selectedFileStackThreshold = SettingsService.DefaultFileStackThreshold;
     private string _selectedFileStackOrderBy = SettingsService.FileStackOrderByWidget;
+    private string _selectedFileStackOpenMode = SettingsService.FileStackOpenModeInline;
     private string _selectedFileStackUnmatchedBehavior = SettingsService.FileStackUnmatchedKeepLoose;
     private bool _isSynchronizingFileStackRules;
     private int _fileStackPreviewRefreshGeneration;
@@ -22,6 +23,7 @@ public partial class SettingsViewModel
     private string[]? _cachedFileStackGroupByDisplayNames;
     private string[]? _cachedFileStackThresholdDisplayNames;
     private string[]? _cachedFileStackOrderByDisplayNames;
+    private string[]? _cachedFileStackOpenModeDisplayNames;
     private string[]? _cachedFileStackUnmatchedBehaviorDisplayNames;
 
     public ObservableCollection<FileStackCustomRuleEditor> FileStackCustomRules { get; } = [];
@@ -215,6 +217,44 @@ public partial class SettingsViewModel
         _cachedFileStackOrderByDisplayNames ??=
             AvailableFileStackOrderBys.Select(GetFileStackOrderByDisplayName).ToArray();
 
+    public string SelectedFileStackOpenMode
+    {
+        get => _selectedFileStackOpenMode;
+        set
+        {
+            string normalized = SettingsService.NormalizeFileStackOpenMode(value);
+            if (!SetProperty(ref _selectedFileStackOpenMode, normalized))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.FileStackOpenMode = normalized;
+            _settingsService.SaveDebounced();
+        }
+    }
+
+    public string[] AvailableFileStackOpenModes { get; } =
+    [
+        SettingsService.FileStackOpenModeInline,
+        SettingsService.FileStackOpenModePopover
+    ];
+
+    public string[] AvailableFileStackOpenModeDisplayNames =>
+        _cachedFileStackOpenModeDisplayNames ??=
+            AvailableFileStackOpenModes
+                .Select(GetFileStackOpenModeDisplayName)
+                .ToArray();
+
+    public IReadOnlyList<SettingsOption> AvailableFileStackOpenModeOptions =>
+        CreateSelectionOptions(
+            AvailableFileStackOpenModes,
+            AvailableFileStackOpenModeDisplayNames);
+
 
     public string SelectedFileStackUnmatchedBehavior
     {
@@ -274,6 +314,12 @@ public partial class SettingsViewModel
                 _localizationService.T("Settings.FileStacks.OrderBy.DateModified"),
             _ => _localizationService.T("Settings.FileStacks.OrderBy.Widget")
         };
+
+    public string GetFileStackOpenModeDisplayName(string openMode) =>
+        SettingsService.NormalizeFileStackOpenMode(openMode) ==
+            SettingsService.FileStackOpenModePopover
+                ? _localizationService.T("Settings.FileStacks.OpenMode.Popover")
+                : _localizationService.T("Settings.FileStacks.OpenMode.Inline");
 
     public string GetFileStackUnmatchedBehaviorDisplayName(string behavior) =>
         SettingsService.NormalizeFileStackUnmatchedBehavior(behavior) ==
@@ -355,6 +401,8 @@ public partial class SettingsViewModel
             settings.FileStackThreshold);
         _selectedFileStackOrderBy = SettingsService.NormalizeFileStackOrderBy(
             settings.FileStackOrderBy);
+        _selectedFileStackOpenMode = SettingsService.NormalizeFileStackOpenMode(
+            settings.FileStackOpenMode);
         _selectedFileStackUnmatchedBehavior =
             SettingsService.NormalizeFileStackUnmatchedBehavior(
                 settings.FileStackUnmatchedBehavior);
@@ -373,6 +421,8 @@ public partial class SettingsViewModel
             settings.FileStackThreshold);
         SelectedFileStackOrderBy = SettingsService.NormalizeFileStackOrderBy(
             settings.FileStackOrderBy);
+        SelectedFileStackOpenMode = SettingsService.NormalizeFileStackOpenMode(
+            settings.FileStackOpenMode);
         SelectedFileStackUnmatchedBehavior =
             SettingsService.NormalizeFileStackUnmatchedBehavior(
                 settings.FileStackUnmatchedBehavior);
@@ -389,10 +439,14 @@ public partial class SettingsViewModel
         _cachedFileStackGroupByDisplayNames = null;
         _cachedFileStackThresholdDisplayNames = null;
         _cachedFileStackOrderByDisplayNames = null;
+        _cachedFileStackOpenModeDisplayNames = null;
         _cachedFileStackUnmatchedBehaviorDisplayNames = null;
         OnPropertyChanged(nameof(AvailableFileStackGroupByDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackThresholdDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackOrderByDisplayNames));
+        OnPropertyChanged(nameof(AvailableFileStackOpenModeDisplayNames));
+        OnPropertyChanged(nameof(AvailableFileStackOpenModeOptions));
+        OnPropertyChanged(nameof(SelectedFileStackOpenMode));
         OnPropertyChanged(nameof(AvailableFileStackUnmatchedBehaviorDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackModeOptions));
         OnPropertyChanged(nameof(AvailableFileStackModeOptionItems));

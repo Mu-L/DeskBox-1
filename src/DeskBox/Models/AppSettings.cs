@@ -178,11 +178,18 @@ public class AppSettings
     /// <summary>Whether the global hotkey is enabled.</summary>
     public bool GlobalHotkeyEnabled { get; set; } = true;
 
+    /// <summary>The activation shape used by the global DeskBox shortcut.</summary>
+    public HotkeyActivationKind GlobalHotkeyActivationKind { get; set; } =
+        HotkeyActivationKind.Chord;
+
     /// <summary>Global hotkey modifier bit flags.</summary>
     public int GlobalHotkeyModifiers { get; set; } = (int)HotkeyModifierKeys.None;
 
     /// <summary>Global hotkey virtual key code.</summary>
     public int GlobalHotkeyKey { get; set; } = (int)Windows.System.VirtualKey.F7;
+
+    /// <summary>Whether double-clicking blank desktop space toggles all widgets.</summary>
+    public bool DesktopDoubleClickEnabled { get; set; }
 
     /// <summary>Whether the first-run onboarding has been completed or skipped.</summary>
     public bool HasCompletedOnboarding { get; set; }
@@ -219,6 +226,22 @@ public class AppSettings
 
     /// <summary>Independent tint strength for native widget backdrop materials.</summary>
     public double WidgetMaterialIntensity { get; set; } = 0.65;
+
+    /// <summary>
+    /// Foreground palette used by widget text and monochrome controls.
+    /// Valid values: <c>"FollowTheme"</c>, <c>"Light"</c>,
+    /// <c>"Dark"</c>, <c>"Custom"</c>.
+    /// </summary>
+    public string WidgetForegroundMode { get; set; } = "FollowTheme";
+
+    /// <summary>Custom widget foreground color in <c>#RRGGBB</c> form.</summary>
+    public string WidgetForegroundColor { get; set; } = "#F5F5F5";
+
+    /// <summary>
+    /// Optional tight contrast edge for widget text.
+    /// Valid values: <c>"Off"</c>, <c>"Soft"</c>, <c>"Strong"</c>.
+    /// </summary>
+    public string WidgetTextEdgeMode { get; set; } = "Off";
 
     /// <summary>
     /// Border color mode for widget windows.
@@ -262,7 +285,8 @@ public class AppSettings
 
     /// <summary>
     /// Window layer behavior for desktop widgets.
-    /// Valid values: <c>"Dynamic"</c>, <c>"DesktopPinned"</c>.
+    /// Valid values: <c>"Dynamic"</c>, <c>"DesktopPinned"</c>,
+    /// <c>"QuickReveal"</c>.
     /// </summary>
     public string WidgetLayerMode { get; set; } = "Dynamic";
 
@@ -413,10 +437,15 @@ public class AppSettings
     public string WidgetHoverButtonActions { get; set; } = "Add,More";
 
     /// <summary>
-    /// Whether resize snap-to-edge alignment guides are enabled during
-    /// widget resize operations.
+    /// Whether snap-to-edge alignment guides are enabled while moving or
+    /// resizing widgets.
     /// </summary>
     public bool ResizeSnapEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Desired gap, in effective pixels, between adjacent snapped widgets.
+    /// </summary>
+    public double WidgetSnapSpacing { get; set; } = 5;
 
     /// <summary>
     /// Whether list view should show secondary file details under item names.
@@ -439,6 +468,12 @@ public class AppSettings
 
     /// <summary>Ordering rule for members inside an automatic stack.</summary>
     public string FileStackOrderBy { get; set; } = "Widget";
+
+    /// <summary>
+    /// How clicking a stack reveals its members. Valid values are
+    /// <c>"Inline"</c> and <c>"Popover"</c>.
+    /// </summary>
+    public string FileStackOpenMode { get; set; } = "Inline";
 
     /// <summary>User-defined extension groups, evaluated in list order.</summary>
     public List<FileStackCustomRule> FileStackCustomRules { get; set; } = [];
@@ -545,6 +580,16 @@ public class AppSettings
     /// group membership, active member, and shared window state.
     /// </summary>
     public List<WidgetGroupConfig> WidgetGroups { get; set; } = [];
+
+    /// <summary>
+    /// Bounded layout snapshots keyed by the connected-display topology. This
+    /// prevents a temporary DPI/topology transition from overwriting the layout
+    /// that belongs to another monitor arrangement.
+    /// </summary>
+    public Dictionary<string, WidgetTopologyLayoutProfile> WidgetTopologyLayouts { get; set; } = [];
+
+    /// <summary>The topology profile currently projected into Widgets/WidgetGroups.</summary>
+    public string? ActiveWidgetTopologyKey { get; set; }
 
     /// <summary>
     /// Legacy compatibility flag. Widget grouping is now always available;
@@ -695,11 +740,11 @@ public class AppSettings
     /// <summary>Whether to include DeskBox internal content (todos, notes, widget files) in search.</summary>
     public bool SearchIncludeDeskBoxContent { get; set; } = true;
 
-    /// <summary>Whether to include Windows indexed locations in search.</summary>
-    public bool SearchIncludeSystemIndex { get; set; } = true;
+    /// <summary>Legacy Windows Search provider switch. Retained only for settings compatibility.</summary>
+    public bool SearchIncludeSystemIndex { get; set; }
 
-    /// <summary>Whether to enable the custom file indexer for broader coverage.</summary>
-    public bool SearchCustomIndexerEnabled { get; set; } = false;
+    /// <summary>Whether the single local filename catalog is enabled.</summary>
+    public bool SearchCustomIndexerEnabled { get; set; } = true;
 
     /// <summary>
     /// Whether the custom file index should use the Rust resident backend.
@@ -712,6 +757,12 @@ public class AppSettings
     /// <summary>Additional directories for the custom file indexer to scan.</summary>
     public List<string> SearchCustomIndexPaths { get; set; } = [];
 
+    /// <summary>Whether low-value system and cache trees are excluded from the filename index.</summary>
+    public bool SearchHideSystemNoise { get; set; } = true;
+
+    /// <summary>Additional canonical directory roots excluded from the filename index.</summary>
+    public List<string> SearchIndexExcludedPaths { get; set; } = [];
+
     /// <summary>Whether to show recommendations when the search popup opens.</summary>
     public bool SearchShowRecommendations { get; set; } = true;
 
@@ -722,7 +773,7 @@ public class AppSettings
     /// </summary>
     public bool SearchSaveHistory { get; set; } = true;
 
-    /// <summary>Maximum number of search results to display.</summary>
+    /// <summary>Legacy result cap retained for settings compatibility; paged search ignores it.</summary>
     public int SearchMaxResults { get; set; } = 100;
 
     /// <summary>Default result tab for a new query: all, app, file, or deskbox.</summary>

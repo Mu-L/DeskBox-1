@@ -56,6 +56,7 @@ public sealed partial class SettingsWindow : Window
 
     private readonly ThemeService _themeService;
     private readonly LocalizationService _localizationService;
+    private readonly SettingsService _settingsService;
     private readonly AppWindow _appWindow;
     private readonly IntPtr _hWnd;
     private readonly Win32Helper.SubclassProc _windowSubclassProc;
@@ -72,6 +73,7 @@ public sealed partial class SettingsWindow : Window
     private bool _isClosed;
     private bool _isAppearanceSliderDragging;
     private bool _isRecordingHotkey;
+    private bool _isRefreshingHotkeyControls;
     private bool _isRefreshingFeatureWidgetList;
     private bool _isSyncingNavigationSelection;
     private bool _isSettingsRootLoaded;
@@ -122,6 +124,7 @@ public sealed partial class SettingsWindow : Window
 
     public SettingsWindow(SettingsService settingsService, ThemeService themeService, LocalizationService localizationService)
     {
+        _settingsService = settingsService;
         _themeService = themeService;
         _localizationService = localizationService;
         ViewModel = new SettingsViewModel(settingsService, themeService, localizationService, App.Current.AppUpdateService);

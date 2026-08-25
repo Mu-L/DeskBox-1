@@ -498,7 +498,7 @@ public abstract partial class WidgetWindowBase
 
     protected void ResetCompactWidthOverride()
     {
-        if (Config.CompactWidth is null)
+        if (_isDisplayTopologyTransitionActive || Config.CompactWidth is null)
         {
             return;
         }
@@ -3076,6 +3076,11 @@ public abstract partial class WidgetWindowBase
 
     protected void PersistCompletedWidgetResize(RectInt32 bounds)
     {
+        if (_isDisplayTopologyTransitionActive)
+        {
+            return;
+        }
+
         if (IsCompactBoundsStateActive)
         {
             double scale = Win32Helper.GetDpiScaleForWindow(HWnd, RootElement.XamlRoot);
@@ -3235,7 +3240,9 @@ public abstract partial class WidgetWindowBase
         CaptureCompactPlacement(compactBounds, persist: false);
     }
 
-    protected RectInt32 CompleteExpandedWidgetDrag(RectInt32 finalBounds)
+    protected RectInt32 CompleteExpandedWidgetDrag(
+        RectInt32 finalBounds,
+        bool coordinateCapsuleBar = true)
     {
         if (!UsesCompactExpansionGeometry() ||
             IsCompactBoundsStateActive ||
@@ -3257,7 +3264,8 @@ public abstract partial class WidgetWindowBase
             compactStart.Y + deltaY,
             compactStart.Width,
             compactStart.Height);
-        if (App.Current?.WidgetManager?.MoveCapsuleBarFromExpandedWidget(
+        if (coordinateCapsuleBar &&
+            App.Current?.WidgetManager?.MoveCapsuleBarFromExpandedWidget(
                 Config.Id,
                 deltaX,
                 deltaY,
@@ -3455,6 +3463,11 @@ public abstract partial class WidgetWindowBase
 
     protected void CaptureCompactPlacement(RectInt32 bounds, bool persist)
     {
+        if (persist && _isDisplayTopologyTransitionActive)
+        {
+            return;
+        }
+
         _stableCompactBounds = bounds;
         WidgetCompactBoundsCalculator.CapturePlacement(
             Config,
@@ -3587,6 +3600,21 @@ public abstract partial class WidgetWindowBase
     private void RaiseForExpandedState()
     {
         CancelDeferredExpandedLayerRestore();
+        if (WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            // Expanding or interacting with a fixed-layer widget must not
+            // acquire either a global or peer-only Z-order raise.
+            _isRaisedForExpandedState = false;
+            _restoreDesktopLayerAfterExpandedState = false;
+            CancelPendingDesktopLayerRestore();
+            _ = ReleaseExpandedWidgetLayerLease("fixed-layer-expanded");
+            WidgetLayerService.MoveToDesktopBottom(HWnd);
+            App.LogVerbose(
+                $"[ZOrder] RaiseForExpandedState skipped fixed-layer " +
+                $"hwnd=0x{HWnd.ToInt64():X}");
+            return;
+        }
+
         if (_isRaisedForExpandedState)
         {
             if (!WidgetLayerService.TryBringAbovePeerWidgetsAtDesktopLayer(HWnd))

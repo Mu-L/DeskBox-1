@@ -65,12 +65,16 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
-        if (e.Key == Windows.System.VirtualKey.Enter)
+        bool controlPressed = Win32Helper.IsKeyPressed(
+            Windows.System.VirtualKey.Control);
+        bool saveShortcut = TextBoxEditorShortcutHelper.IsCtrlSaveShortcut(
+            e.Key,
+            controlPressed,
+            Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift));
+        if (e.Key == Windows.System.VirtualKey.Enter || saveShortcut)
         {
-            bool controlPressed = Win32Helper.IsKeyPressed(
-                Windows.System.VirtualKey.Control);
             e.Handled = true;
-            if (SettingsService.ShouldSubmitEditorOnEnter(
+            if (saveShortcut || SettingsService.ShouldSubmitEditorOnEnter(
                     _settingsService.Settings.QuickCaptureEditorEnterBehavior,
                     controlPressed))
             {

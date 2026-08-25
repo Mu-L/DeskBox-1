@@ -139,7 +139,7 @@ public sealed class MarkdownAndSplitterContractTests
     }
 
     [Fact]
-    public void Reader_UsesHighContrastMarkdownForegroundsInLightTheme()
+    public void Reader_UsesHostingWidgetForegroundAndHighContrastSemanticText()
     {
         string reader = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Controls/MarkdownDocumentView.cs"));
@@ -147,9 +147,14 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("UpdateForegrounds();", reader, StringComparison.Ordinal);
         Assert.Contains("_documentText.Foreground = _contentForeground", reader, StringComparison.Ordinal);
         Assert.Contains(
-            "UsesDarkTheme ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black",
+            "RegisterPropertyChangedCallback(ForegroundProperty",
             reader,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "_contentForeground = Foreground ?? BrushResource(\"TextFillColorPrimaryBrush\")",
+            reader,
+            StringComparison.Ordinal);
+        Assert.Contains("VisualTreeHelper.GetParent(current)", reader, StringComparison.Ordinal);
         Assert.Contains("_semanticForeground = UsesDarkTheme", reader, StringComparison.Ordinal);
         Assert.Contains("AccentTextFillColorPrimaryBrush", reader, StringComparison.Ordinal);
         Assert.Contains("CreateLightThemeSemanticForeground", reader, StringComparison.Ordinal);
@@ -158,7 +163,7 @@ public sealed class MarkdownAndSplitterContractTests
         Assert.Contains("Foreground = _semanticForeground", reader, StringComparison.Ordinal);
         Assert.Contains("Foreground = _contentForeground", reader, StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "_contentForeground = BrushResource(\"TextFillColorPrimaryBrush\")",
+            "UsesDarkTheme ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black",
             reader,
             StringComparison.Ordinal);
     }

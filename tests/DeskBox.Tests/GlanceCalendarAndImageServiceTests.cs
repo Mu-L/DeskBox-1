@@ -114,8 +114,16 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
         Assert.Contains("CalendarMaterialType", viewModel, StringComparison.Ordinal);
         Assert.Contains("CalendarMaterialMode", viewModel, StringComparison.Ordinal);
         Assert.Contains("CalendarImageMaterialTransparency", viewModel, StringComparison.Ordinal);
+        Assert.Contains("BackgroundImageTransparency", viewModel, StringComparison.Ordinal);
+        Assert.Contains("BackgroundImageOpacity", viewModel, StringComparison.Ordinal);
+        Assert.Contains("HasVisibleCurrentImage", viewModel, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"BackgroundImageLayer\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ApplyBackgroundImageOpacity", codeBehind, StringComparison.Ordinal);
         Assert.Contains("CalendarMaterialComboBox", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("CalendarImageTransparencySlider", settingsXaml, StringComparison.Ordinal);
+        Assert.Contains("BackgroundImageTransparencySlider", settingsXaml, StringComparison.Ordinal);
+        Assert.Contains("BackgroundImageTransparencySlider_ValueChanged", settingsCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("_imageTransparencySaveTimer", settingsCodeBehind, StringComparison.Ordinal);
         Assert.Contains("TraditionalCalendarComboBox", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"ChineseFestivalCard\"", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"ShowChineseFestivalsToggle\"", settingsXaml, StringComparison.Ordinal);
@@ -134,6 +142,8 @@ public sealed class GlanceCalendarAndImageServiceTests : IDisposable
         Assert.DoesNotContain("Glance.AppearanceGroup.Title", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("Glance.Typography.Font", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("Glance.Background.Title", settingsXaml, StringComparison.Ordinal);
+        Assert.Contains("Glance.Background.Transparency.Title", settingsXaml, StringComparison.Ordinal);
+        Assert.Contains("Glance.Background.Transparency.Description", settingsXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("PreviewCalendar", settingsXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("SectionTitleTextStyle", settingsXaml, StringComparison.Ordinal);
         int traditionalNoneOption = settingsCodeBehind.IndexOf(

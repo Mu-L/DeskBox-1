@@ -17,7 +17,8 @@ public sealed class ResizeGuideOverlayService
 {
     // ── Snap threshold & visual constants ───────────────────────────────
 
-    private const double SnapThreshold = 4.0;       // Physical pixels (halved)
+    private const double SnapEngageThresholdDips = 8.0;
+    private const double SnapReleaseThresholdDips = 12.0;
     private const int HighlightThickness = 12;       // DIPs – gradient fade width
     private const int HighlightZIndex = 100;
     private const double BreathingMinOpacity = 0.45;
@@ -40,9 +41,14 @@ public sealed class ResizeGuideOverlayService
     private SnapEdge? _currentResizeEdge;
     private SnapEdge? _currentTargetEdge;
     private string? _lastDragSnapSignature;
-    private readonly List<(RectInt32 Bounds, IntPtr Hwnd)> _resizeSnapTargets = [];
-    private readonly List<(RectInt32 Bounds, IntPtr Hwnd)> _dragSnapTargets = [];
+    private readonly List<WidgetSnapTarget> _resizeSnapTargets = [];
+    private readonly List<WidgetSnapTarget> _dragSnapTargets = [];
     private RectInt32? _resizeWorkAreaBounds;
+    private int _sessionSnapSpacingPhysical;
+    private int _sessionSnapEngageThresholdPhysical;
+    private int _sessionSnapReleaseThresholdPhysical;
+    private WidgetSnapMatch? _currentDragHorizontalMatch;
+    private WidgetSnapMatch? _currentDragVerticalMatch;
 
     /// <summary>
     /// Whether a resize session is currently active.
@@ -55,6 +61,11 @@ public sealed class ResizeGuideOverlayService
     /// unchanged and no highlights are shown.
     /// </summary>
     public bool IsSnapEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Desired visual gap, in effective pixels, between two snapped widgets.
+    /// </summary>
+    public double SnapSpacingDips { get; set; } = SettingsService.DefaultWidgetSnapSpacing;
 
     // ─────────────────────────────────────────────────────────────────────
     //  Public API
@@ -75,6 +86,7 @@ public sealed class ResizeGuideOverlayService
         _resizeSnapTargets.Clear();
         _resizeSnapTargets.AddRange(GetOtherWidgetBounds(resizingWidgetHwnd));
         _resizeWorkAreaBounds = GetResizeWorkAreaBounds(resizingWidgetHwnd);
+        ConfigureSessionSnapMetrics(resizingWidgetHwnd, resizingWidgetRoot);
         IsActive = true;
 
         App.LogVerbose($"[ResizeGuide] BeginResize hwnd=0x{resizingWidgetHwnd.ToInt64():X}");
@@ -98,11 +110,9 @@ public sealed class ResizeGuideOverlayService
             return proposedBounds;
         }
 
-        var otherBounds = _resizeSnapTargets;
         var snapped = proposedBounds;
-        SnapEdge? snapEdge = null;
-        int snapCoordinate = 0;
-        IntPtr? targetHwnd = null;
+        WidgetSnapMatch? horizontalMatch = null;
+        WidgetSnapMatch? verticalMatch = null;
 
         // ── Horizontal edge snapping (Left / Right) ──────────────────────
 
@@ -111,46 +121,46 @@ public sealed class ResizeGuideOverlayService
 
         if (checkRight || checkLeft)
         {
-            int edgeX = checkRight
-                ? proposedBounds.X + proposedBounds.Width
-                : proposedBounds.X;
-
-            var (snapX, target) = FindSnapEdgeX(edgeX, proposedBounds, otherBounds);
-            if (snapX.HasValue)
+            WidgetSnapEdge sourceEdge = checkRight
+                ? WidgetSnapEdge.Right
+                : WidgetSnapEdge.Left;
+            horizontalMatch = WidgetSnapCalculator.ResolveResizeEdge(
+                proposedBounds,
+                sourceEdge,
+                _resizeSnapTargets,
+                _resizeWorkAreaBounds,
+                _sessionSnapSpacingPhysical,
+                _sessionSnapEngageThresholdPhysical);
+            if (horizontalMatch is { } match)
             {
                 int snappedWidth = checkRight
-                    ? snapX.Value - snapped.X
-                    : snapped.X + snapped.Width - snapX.Value;
+                    ? match.Coordinate - snapped.X
+                    : snapped.X + snapped.Width - match.Coordinate;
                 bool widthAllowed = (!minimumWidth.HasValue || snappedWidth >= minimumWidth.Value) &&
                     (!maximumWidth.HasValue || snappedWidth <= maximumWidth.Value);
                 if (!widthAllowed)
                 {
-                    snapX = null;
+                    horizontalMatch = null;
                 }
             }
 
-            if (snapX.HasValue)
+            if (horizontalMatch is { } matchToApply)
             {
                 if (checkRight)
                 {
                     snapped = new RectInt32(
                         snapped.X, snapped.Y,
-                        snapX.Value - snapped.X,
+                        matchToApply.Coordinate - snapped.X,
                         snapped.Height);
-                    snapEdge = SnapEdge.Right;
                 }
                 else
                 {
                     int rightEdge = snapped.X + snapped.Width;
                     snapped = new RectInt32(
-                        snapX.Value, snapped.Y,
-                        rightEdge - snapX.Value,
+                        matchToApply.Coordinate, snapped.Y,
+                        rightEdge - matchToApply.Coordinate,
                         snapped.Height);
-                    snapEdge = SnapEdge.Left;
                 }
-
-                snapCoordinate = snapX.Value;
-                targetHwnd = target;
             }
         }
 
@@ -161,76 +171,75 @@ public sealed class ResizeGuideOverlayService
 
         if (checkBottom || checkTop)
         {
-            int edgeY = checkBottom
-                ? proposedBounds.Y + proposedBounds.Height
-                : proposedBounds.Y;
-
-            var (snapY, target) = FindSnapEdgeY(edgeY, proposedBounds, otherBounds);
-            if (snapY.HasValue)
+            WidgetSnapEdge sourceEdge = checkBottom
+                ? WidgetSnapEdge.Bottom
+                : WidgetSnapEdge.Top;
+            verticalMatch = WidgetSnapCalculator.ResolveResizeEdge(
+                proposedBounds,
+                sourceEdge,
+                _resizeSnapTargets,
+                _resizeWorkAreaBounds,
+                _sessionSnapSpacingPhysical,
+                _sessionSnapEngageThresholdPhysical);
+            if (verticalMatch is { } matchToApply)
             {
                 if (checkBottom)
                 {
                     snapped = new RectInt32(
                         snapped.X, snapped.Y,
                         snapped.Width,
-                        snapY.Value - snapped.Y);
-                    snapEdge = SnapEdge.Bottom;
+                        matchToApply.Coordinate - snapped.Y);
                 }
                 else
                 {
                     int bottomEdge = snapped.Y + snapped.Height;
                     snapped = new RectInt32(
-                        snapped.X, snapY.Value,
+                        snapped.X, matchToApply.Coordinate,
                         snapped.Width,
-                        bottomEdge - snapY.Value);
-                    snapEdge = SnapEdge.Top;
+                        bottomEdge - matchToApply.Coordinate);
                 }
-
-                snapCoordinate = snapY.Value;
-                targetHwnd = target;
             }
         }
 
         // ── Update highlights ────────────────────────────────────────────
 
-        if (snapEdge.HasValue)
+        WidgetSnapMatch? visibleMatch = verticalMatch ?? horizontalMatch;
+        if (visibleMatch is { } snapMatch)
         {
+            SnapEdge snapEdge = ToOverlayEdge(snapMatch.SourceEdge);
             // Only rebuild the resizing widget's highlight if the edge changed.
-            if (_currentResizeEdge != snapEdge.Value)
+            if (_currentResizeEdge != snapEdge)
             {
-                ShowHighlight(_resizingWidgetHwnd, _resizingWidgetRoot, snapEdge.Value);
-                _currentResizeEdge = snapEdge.Value;
+                ShowHighlight(_resizingWidgetHwnd, _resizingWidgetRoot, snapEdge);
+                _currentResizeEdge = snapEdge;
             }
 
             // Highlight target widget's matched edge
-            if (targetHwnd.HasValue && targetHwnd.Value != IntPtr.Zero)
+            if (snapMatch.TargetWindowHandle != IntPtr.Zero)
             {
                 var targetRoot = App.Current?.WidgetManager
-                    ?.GetWidgetRootElementByHandle(targetHwnd.Value);
+                    ?.GetWidgetRootElementByHandle(snapMatch.TargetWindowHandle);
                 if (targetRoot is not null)
                 {
-                    // Determine which edge of the target was actually matched
-                    // by comparing the snap coordinate to the target's bounds.
-                    var targetEdge = ResolveTargetEdge(
-                        targetHwnd.Value, snapCoordinate, snapEdge.Value);
+                    SnapEdge targetEdge = ToOverlayEdge(snapMatch.TargetEdge);
 
                     // Clear previous target if it changed
                     if (_currentTargetHwnd != IntPtr.Zero &&
-                        _currentTargetHwnd != targetHwnd.Value)
+                        _currentTargetHwnd != snapMatch.TargetWindowHandle)
                     {
                         RemoveHighlight(_currentTargetHwnd);
                         _currentTargetEdge = null;
                     }
 
                     // Only rebuild target highlight if target or edge changed
-                    if (_currentTargetHwnd != targetHwnd.Value ||
+                    if (_currentTargetHwnd != snapMatch.TargetWindowHandle ||
                         _currentTargetEdge != targetEdge)
                     {
-                        ShowHighlight(targetHwnd.Value, targetRoot, targetEdge);
+                        ShowHighlight(snapMatch.TargetWindowHandle, targetRoot, targetEdge);
                         _currentTargetEdge = targetEdge;
                     }
 
-                    _currentTargetHwnd = targetHwnd.Value;
+                    _currentTargetHwnd = snapMatch.TargetWindowHandle;
                     _currentTargetRoot = targetRoot;
                 }
             }
@@ -273,10 +282,10 @@ public sealed class ResizeGuideOverlayService
     //  Snap detection
     // ─────────────────────────────────────────────────────────────────────
 
-    private List<(RectInt32 Bounds, IntPtr Hwnd)> GetOtherWidgetBounds(
+    private List<WidgetSnapTarget> GetOtherWidgetBounds(
         IntPtr excludedHwnd)
     {
-        var bounds = new List<(RectInt32, IntPtr)>();
+        var bounds = new List<WidgetSnapTarget>();
         var manager = App.Current?.WidgetManager;
         if (manager is null)
         {
@@ -299,7 +308,7 @@ public sealed class ResizeGuideOverlayService
             if (Win32Helper.GetWindowRect(hwnd, out var rect) &&
                 rect.Right > rect.Left && rect.Bottom > rect.Top)
             {
-                bounds.Add((
+                bounds.Add(new WidgetSnapTarget(
                     new RectInt32(rect.Left, rect.Top,
                         rect.Right - rect.Left,
                         rect.Bottom - rect.Top),
@@ -308,93 +317,6 @@ public sealed class ResizeGuideOverlayService
         }
 
         return bounds;
-    }
-
-    private (int? SnapX, IntPtr? TargetHwnd) FindSnapEdgeX(
-        int edgeX,
-        RectInt32 sourceBounds,
-        List<(RectInt32 Bounds, IntPtr Hwnd)> otherBounds)
-    {
-        int bestDelta = (int)Math.Ceiling(SnapThreshold);
-        int bestGap = int.MaxValue;
-        int bestCenterDistance = int.MaxValue;
-        int? bestSnap = null;
-        IntPtr? bestTarget = null;
-
-        foreach (var (other, hwnd) in otherBounds)
-        {
-            TrySnapWidget(
-                edgeX, other.X, hwnd, sourceBounds, other, alignX: true,
-                ref bestDelta, ref bestGap, ref bestCenterDistance, ref bestSnap, ref bestTarget);
-            TrySnapWidget(
-                edgeX, other.X + other.Width, hwnd, sourceBounds, other, alignX: true,
-                ref bestDelta, ref bestGap, ref bestCenterDistance, ref bestSnap, ref bestTarget);
-        }
-
-        // Work area edges (no target widget)
-        if (_resizeWorkAreaBounds is { } workArea)
-        {
-            TrySnap(edgeX, workArea.X, IntPtr.Zero, ref bestDelta, ref bestSnap, ref bestTarget);
-            TrySnap(
-                edgeX,
-                workArea.X + workArea.Width,
-                IntPtr.Zero,
-                ref bestDelta,
-                ref bestSnap,
-                ref bestTarget);
-        }
-
-        return (bestSnap, bestTarget);
-    }
-
-    private (int? SnapY, IntPtr? TargetHwnd) FindSnapEdgeY(
-        int edgeY,
-        RectInt32 sourceBounds,
-        List<(RectInt32 Bounds, IntPtr Hwnd)> otherBounds)
-    {
-        int bestDelta = (int)Math.Ceiling(SnapThreshold);
-        int bestGap = int.MaxValue;
-        int bestCenterDistance = int.MaxValue;
-        int? bestSnap = null;
-        IntPtr? bestTarget = null;
-
-        foreach (var (other, hwnd) in otherBounds)
-        {
-            TrySnapWidget(
-                edgeY, other.Y, hwnd, sourceBounds, other, alignX: false,
-                ref bestDelta, ref bestGap, ref bestCenterDistance, ref bestSnap, ref bestTarget);
-            TrySnapWidget(
-                edgeY, other.Y + other.Height, hwnd, sourceBounds, other, alignX: false,
-                ref bestDelta, ref bestGap, ref bestCenterDistance, ref bestSnap, ref bestTarget);
-        }
-
-        // Work area edges
-        if (_resizeWorkAreaBounds is { } workArea)
-        {
-            TrySnap(edgeY, workArea.Y, IntPtr.Zero, ref bestDelta, ref bestSnap, ref bestTarget);
-            TrySnap(
-                edgeY,
-                workArea.Y + workArea.Height,
-                IntPtr.Zero,
-                ref bestDelta,
-                ref bestSnap,
-                ref bestTarget);
-        }
-
-        return (bestSnap, bestTarget);
-    }
-
-    private static void TrySnap(
-        int edge, int candidate, IntPtr hwnd,
-        ref int bestDelta, ref int? bestSnap, ref IntPtr? bestTarget)
-    {
-        int delta = Math.Abs(edge - candidate);
-        if (delta < bestDelta)
-        {
-            bestDelta = delta;
-            bestSnap = candidate;
-            bestTarget = hwnd;
-        }
     }
 
     private static RectInt32? GetResizeWorkAreaBounds(IntPtr hwnd)
@@ -418,51 +340,16 @@ public sealed class ResizeGuideOverlayService
             workArea.Bottom - workArea.Top);
     }
 
-    private static void TrySnapWidget(
-        int edge,
-        int candidate,
-        IntPtr hwnd,
-        RectInt32 source,
-        RectInt32 target,
-        bool alignX,
-        ref int bestDelta,
-        ref int bestGap,
-        ref int bestCenterDistance,
-        ref int? bestSnap,
-        ref IntPtr? bestTarget)
+    private void ConfigureSessionSnapMetrics(IntPtr hwnd, FrameworkElement root)
     {
-        int delta = Math.Abs(edge - candidate);
-        if (delta >= (int)Math.Ceiling(SnapThreshold))
-        {
-            return;
-        }
-
-        int sourceStart = alignX ? source.Y : source.X;
-        int sourceEnd = sourceStart + (alignX ? source.Height : source.Width);
-        int targetStart = alignX ? target.Y : target.X;
-        int targetEnd = targetStart + (alignX ? target.Height : target.Width);
-        int gap = targetEnd < sourceStart
-            ? sourceStart - targetEnd
-            : sourceEnd < targetStart
-                ? targetStart - sourceEnd
-                : 0;
-        int sourceCenter = sourceStart + ((sourceEnd - sourceStart) / 2);
-        int targetCenter = targetStart + ((targetEnd - targetStart) / 2);
-        int centerDistance = Math.Abs(sourceCenter - targetCenter);
-
-        bool isBetter = delta < bestDelta ||
-            delta == bestDelta && gap < bestGap ||
-            delta == bestDelta && gap == bestGap && centerDistance < bestCenterDistance;
-        if (!isBetter)
-        {
-            return;
-        }
-
-        bestDelta = delta;
-        bestGap = gap;
-        bestCenterDistance = centerDistance;
-        bestSnap = candidate;
-        bestTarget = hwnd;
+        double scale = Win32Helper.GetDpiScaleForWindow(hwnd, root.XamlRoot);
+        _sessionSnapSpacingPhysical = Math.Max(0, (int)Math.Round(
+            SettingsService.NormalizeWidgetSnapSpacing(SnapSpacingDips) * scale));
+        _sessionSnapEngageThresholdPhysical = Math.Max(1, (int)Math.Round(
+            SnapEngageThresholdDips * scale));
+        _sessionSnapReleaseThresholdPhysical = Math.Max(
+            _sessionSnapEngageThresholdPhysical,
+            (int)Math.Round(SnapReleaseThresholdDips * scale));
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -654,41 +541,15 @@ public sealed class ResizeGuideOverlayService
     //  Helpers
     // ─────────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Determines which edge of the target widget was actually matched by
-    /// comparing the snap coordinate to the target's physical bounds.
-    /// For example, if A's right edge snaps to B's right edge, this returns
-    /// SnapEdge.Right (not Left), so B's right edge is highlighted.
-    /// </summary>
-    private static SnapEdge ResolveTargetEdge(
-        IntPtr targetHwnd, int snapCoordinate, SnapEdge resizingEdge)
-    {
-        if (!Win32Helper.GetWindowRect(targetHwnd, out var rect))
+    private static SnapEdge ToOverlayEdge(WidgetSnapEdge edge) =>
+        edge switch
         {
-            // Fallback: use opposite edge
-            return resizingEdge switch
-            {
-                SnapEdge.Left => SnapEdge.Right,
-                SnapEdge.Right => SnapEdge.Left,
-                SnapEdge.Top => SnapEdge.Bottom,
-                SnapEdge.Bottom => SnapEdge.Top,
-                _ => resizingEdge
-            };
-        }
-
-        // Horizontal snap: determine if snap X matches target's left or right
-        if (resizingEdge is SnapEdge.Left or SnapEdge.Right)
-        {
-            int distLeft = Math.Abs(snapCoordinate - rect.Left);
-            int distRight = Math.Abs(snapCoordinate - rect.Right);
-            return distLeft <= distRight ? SnapEdge.Left : SnapEdge.Right;
-        }
-
-        // Vertical snap: determine if snap Y matches target's top or bottom
-        int distTop = Math.Abs(snapCoordinate - rect.Top);
-        int distBottom = Math.Abs(snapCoordinate - rect.Bottom);
-        return distTop <= distBottom ? SnapEdge.Top : SnapEdge.Bottom;
-    }
+            WidgetSnapEdge.Left => SnapEdge.Left,
+            WidgetSnapEdge.Right => SnapEdge.Right,
+            WidgetSnapEdge.Top => SnapEdge.Top,
+            WidgetSnapEdge.Bottom => SnapEdge.Bottom,
+            _ => SnapEdge.Left
+        };
 
     private static Windows.UI.Color GetHighlightColor()
     {
@@ -723,8 +584,12 @@ public sealed class ResizeGuideOverlayService
         _currentResizeEdge = null;
         _currentTargetEdge = null;
         _lastDragSnapSignature = null;
+        _currentDragHorizontalMatch = null;
+        _currentDragVerticalMatch = null;
         _dragSnapTargets.Clear();
         _dragSnapTargets.AddRange(GetOtherWidgetBounds(draggingWidgetHwnd));
+        _resizeWorkAreaBounds = GetResizeWorkAreaBounds(draggingWidgetHwnd);
+        ConfigureSessionSnapMetrics(draggingWidgetHwnd, draggingWidgetRoot);
         IsDragActive = true;
 
         App.LogVerbose($"[ResizeGuide] BeginDrag hwnd=0x{draggingWidgetHwnd.ToInt64():X}");
@@ -748,47 +613,17 @@ public sealed class ResizeGuideOverlayService
         _resizingWidgetRoot = _draggingWidgetRoot;
         IsActive = true;
 
-        var otherBounds = _dragSnapTargets;
-        var snapped = proposedBounds;
-        var snapInfos = new List<(SnapEdge Edge, int Coordinate, IntPtr? TargetHwnd)>();
-
-        // ── Top edge snapping (vertical alignment of top edge) ──────
-
-        int topEdgeY = proposedBounds.Y;
-        var (snapTopY, targetTop) = FindSnapEdgeY(topEdgeY, proposedBounds, otherBounds);
-        if (snapTopY.HasValue)
-        {
-            snapped = new RectInt32(
-                snapped.X, snapTopY.Value,
-                snapped.Width, snapped.Height);
-            snapInfos.Add((SnapEdge.Top, snapTopY.Value, targetTop));
-        }
-
-        // ── Left edge snapping (horizontal alignment of left edge) ──
-
-        int leftEdgeX = proposedBounds.X;
-        var (snapLeftX, targetLeft) = FindSnapEdgeX(leftEdgeX, proposedBounds, otherBounds);
-        if (snapLeftX.HasValue)
-        {
-            snapped = new RectInt32(
-                snapLeftX.Value, snapped.Y,
-                snapped.Width, snapped.Height);
-            snapInfos.Add((SnapEdge.Left, snapLeftX.Value, targetLeft));
-        }
-
-        // ── Right edge snapping (horizontal alignment of right edge) ─
-
-        int rightEdgeX = proposedBounds.X + proposedBounds.Width;
-        var (snapRightX, targetRight) = FindSnapEdgeX(rightEdgeX, proposedBounds, otherBounds);
-        if (snapRightX.HasValue)
-        {
-            // Adjust X so right edge snaps; width stays the same
-            int newX = snapRightX.Value - proposedBounds.Width;
-            snapped = new RectInt32(
-                newX, snapped.Y,
-                snapped.Width, snapped.Height);
-            snapInfos.Add((SnapEdge.Right, snapRightX.Value, targetRight));
-        }
+        WidgetMoveSnapResult result = WidgetSnapCalculator.ResolveMove(
+            proposedBounds,
+            _dragSnapTargets,
+            _resizeWorkAreaBounds,
+            _sessionSnapSpacingPhysical,
+            _sessionSnapEngageThresholdPhysical,
+            _sessionSnapReleaseThresholdPhysical,
+            _currentDragHorizontalMatch,
+            _currentDragVerticalMatch);
+        _currentDragHorizontalMatch = result.HorizontalMatch;
+        _currentDragVerticalMatch = result.VerticalMatch;
 
         // ── Update highlights for the best snap ───────────────────────
 
@@ -796,61 +631,32 @@ public sealed class ResizeGuideOverlayService
         // has actually changed since the last frame.  If it hasn't, we
         // skip the expensive ClearAll + rebuild cycle entirely.
         string snapSignature = string.Empty;
-        if (snapInfos.Count > 0)
+        if (result.HorizontalMatch is not null || result.VerticalMatch is not null)
         {
-            var horizontalSnap = snapInfos.FirstOrDefault(s => s.Edge is SnapEdge.Left or SnapEdge.Right);
-            var verticalSnap = snapInfos.FirstOrDefault(s => s.Edge is SnapEdge.Top or SnapEdge.Bottom);
-            snapSignature = $"{verticalSnap.Edge},{verticalSnap.TargetHwnd ?? IntPtr.Zero},{horizontalSnap.Edge},{horizontalSnap.TargetHwnd ?? IntPtr.Zero}";
+            WidgetSnapMatch horizontal = result.HorizontalMatch.GetValueOrDefault();
+            WidgetSnapMatch vertical = result.VerticalMatch.GetValueOrDefault();
+            snapSignature =
+                $"{vertical.SourceEdge},{vertical.TargetEdge},{vertical.TargetWindowHandle}," +
+                $"{horizontal.SourceEdge},{horizontal.TargetEdge},{horizontal.TargetWindowHandle}";
         }
 
         if (snapSignature == _lastDragSnapSignature)
         {
-            return snapped;
+            return result.Bounds;
         }
         _lastDragSnapSignature = snapSignature;
 
-        if (snapInfos.Count > 0)
+        if (result.HorizontalMatch is not null || result.VerticalMatch is not null)
         {
-            // Show highlights for all snapped edges (up to 2: one horizontal, one vertical)
-            var horizontalSnap = snapInfos.FirstOrDefault(s => s.Edge is SnapEdge.Left or SnapEdge.Right);
-            var verticalSnap = snapInfos.FirstOrDefault(s => s.Edge is SnapEdge.Top or SnapEdge.Bottom);
-
             ClearAllHighlights();
-
-            if (verticalSnap != default)
+            if (result.VerticalMatch is { } verticalMatch)
             {
-                ShowHighlight(_draggingWidgetHwnd, _draggingWidgetRoot, verticalSnap.Edge);
-                if (verticalSnap.TargetHwnd.HasValue && verticalSnap.TargetHwnd.Value != IntPtr.Zero)
-                {
-                    var targetRoot = App.Current?.WidgetManager
-                        ?.GetWidgetRootElementByHandle(verticalSnap.TargetHwnd.Value);
-                    if (targetRoot is not null)
-                    {
-                        var targetEdge = ResolveTargetEdge(
-                            verticalSnap.TargetHwnd.Value, verticalSnap.Coordinate, verticalSnap.Edge);
-                        ShowHighlight(verticalSnap.TargetHwnd.Value, targetRoot, targetEdge);
-                        _currentTargetHwnd = verticalSnap.TargetHwnd.Value;
-                        _currentTargetRoot = targetRoot;
-                    }
-                }
+                ShowDragMatch(verticalMatch);
             }
 
-            if (horizontalSnap != default)
+            if (result.HorizontalMatch is { } horizontalMatch)
             {
-                ShowHighlight(_draggingWidgetHwnd, _draggingWidgetRoot, horizontalSnap.Edge);
-                if (horizontalSnap.TargetHwnd.HasValue && horizontalSnap.TargetHwnd.Value != IntPtr.Zero)
-                {
-                    var targetRoot = App.Current?.WidgetManager
-                        ?.GetWidgetRootElementByHandle(horizontalSnap.TargetHwnd.Value);
-                    if (targetRoot is not null)
-                    {
-                        var targetEdge = ResolveTargetEdge(
-                            horizontalSnap.TargetHwnd.Value, horizontalSnap.Coordinate, horizontalSnap.Edge);
-                        ShowHighlight(horizontalSnap.TargetHwnd.Value, targetRoot, targetEdge);
-                        _currentTargetHwnd = horizontalSnap.TargetHwnd.Value;
-                        _currentTargetRoot = targetRoot;
-                    }
-                }
+                ShowDragMatch(horizontalMatch);
             }
         }
         else
@@ -858,7 +664,33 @@ public sealed class ResizeGuideOverlayService
             ClearAllHighlights();
         }
 
-        return snapped;
+        return result.Bounds;
+    }
+
+    private void ShowDragMatch(WidgetSnapMatch match)
+    {
+        ShowHighlight(
+            _draggingWidgetHwnd,
+            _draggingWidgetRoot,
+            ToOverlayEdge(match.SourceEdge));
+        if (match.TargetWindowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        FrameworkElement? targetRoot = App.Current?.WidgetManager
+            ?.GetWidgetRootElementByHandle(match.TargetWindowHandle);
+        if (targetRoot is null)
+        {
+            return;
+        }
+
+        ShowHighlight(
+            match.TargetWindowHandle,
+            targetRoot,
+            ToOverlayEdge(match.TargetEdge));
+        _currentTargetHwnd = match.TargetWindowHandle;
+        _currentTargetRoot = targetRoot;
     }
 
     /// <summary>
@@ -881,7 +713,10 @@ public sealed class ResizeGuideOverlayService
         _currentResizeEdge = null;
         _currentTargetEdge = null;
         _lastDragSnapSignature = null;
+        _currentDragHorizontalMatch = null;
+        _currentDragVerticalMatch = null;
         _dragSnapTargets.Clear();
+        _resizeWorkAreaBounds = null;
 
         App.LogVerbose("[ResizeGuide] EndDrag");
     }

@@ -18,6 +18,12 @@ public static class IconHelper
     private const int MaxThumbnailCacheEntries = 128;
     private const long MaxThumbnailCacheBytes = 32L * 1024 * 1024;
     private const string SharedCacheScope = "shared";
+    private const int MaxIconSourceTimeoutEntries = 256;
+    private const long IconSourceTimeoutRetryMs = 30_000;
+    private static readonly TimeSpan IconSourceResolutionTimeout =
+        TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan IconBytesLoadTimeout =
+        TimeSpan.FromMilliseconds(2500);
 
     // Icon bytes cache: path → PNG bytes (for shell icons, not image thumbnails)
     private static readonly ConcurrentDictionary<string, byte[]?> s_iconBytesCache = new(StringComparer.OrdinalIgnoreCase);
@@ -50,10 +56,16 @@ public static class IconHelper
             ReleasedIconByteEntries > 0;
     }
 
-    private static readonly SemaphoreSlim s_iconLoadSemaphore = new(4, 4);
     private static readonly SemaphoreSlim s_thumbLoadSemaphore = new(2, 2);
+    private static readonly BoundedBackgroundWorkScheduler s_iconSourceScheduler =
+        BoundedBackgroundWorkScheduler.SharedShell;
+    private static readonly ConcurrentDictionary<string, long> s_iconSourceTimeouts =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, long> s_iconBytesTimeouts =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private sealed record IconSource(string Path, int IconIndex = 0, bool UsesExplicitIconIndex = false);
+    private sealed record ResolvedIconSource(IconSource Source, string CacheKey);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct SHFILEINFO
@@ -184,13 +196,32 @@ public static class IconHelper
             }
         }
 
-        IconSource iconSource = ResolveIconSource(path, hideShortcutArrowOverlay);
+        if (!showImageFilesAsIcons &&
+            !IsMediaFile(path) &&
+            await ShellThumbnailProxy.HasRegisteredThumbnailProviderAsync(path))
+        {
+            var thumbnail = await LoadShellThumbnailAsync(
+                dispatcher,
+                path,
+                decodePixelWidth,
+                normalizedCacheScope);
+            if (thumbnail is not null)
+            {
+                return thumbnail;
+            }
+        }
+
+        ResolvedIconSource resolvedIconSource =
+            await ResolveIconSourceWithCacheKeyAsync(
+                path,
+                hideShortcutArrowOverlay);
+        IconSource iconSource = resolvedIconSource.Source;
         if (string.IsNullOrWhiteSpace(iconSource.Path))
         {
             return null;
         }
 
-        string cacheKey = BuildCacheKey(path, iconSource);
+        string cacheKey = resolvedIconSource.CacheKey;
         int normalizedDecodePixelWidth = Math.Clamp(decodePixelWidth, 0, 256);
         string bitmapCacheKey = $"{normalizedCacheScope}|{cacheKey}:decode={normalizedDecodePixelWidth}";
         Task<BitmapImage?> bitmapTask = s_bitmapImageCache.GetOrAdd(
@@ -239,6 +270,44 @@ public static class IconHelper
             : Math.Clamp(decodePixelWidth, 24, 256);
         string cacheKey = $"thumb:{cacheScope}|{path}:{GetFileIconVersion(path)}:decode={normalizedDecodePixelWidth}";
 
+        return await LoadCachedThumbnailAsync(
+            cacheKey,
+            $"thumb:{cacheScope}|{path}:",
+            normalizedDecodePixelWidth,
+            () => CreateMediaThumbnailAsync(
+                dispatcher,
+                path,
+                normalizedDecodePixelWidth));
+    }
+
+    private static async Task<BitmapImage?> LoadShellThumbnailAsync(
+        Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
+        string path,
+        int decodePixelWidth,
+        string cacheScope)
+    {
+        int normalizedDecodePixelWidth = decodePixelWidth <= 0
+            ? 96
+            : Math.Clamp(decodePixelWidth, 24, 256);
+        string cacheKey = $"shell-thumb:{cacheScope}|{path}:{GetFileIconVersion(path)}:decode={normalizedDecodePixelWidth}";
+
+        return await LoadCachedThumbnailAsync(
+            cacheKey,
+            $"shell-thumb:{cacheScope}|{path}:",
+            normalizedDecodePixelWidth,
+            () => CreateShellThumbnailAsync(
+                dispatcher,
+                path,
+                normalizedDecodePixelWidth));
+    }
+
+    private static async Task<BitmapImage?> LoadCachedThumbnailAsync(
+        string cacheKey,
+        string pathPrefix,
+        int decodePixelWidth,
+        Func<Task<BitmapImage?>> createThumbnail)
+    {
+
         Task<BitmapImage?>? cachedTask = null;
         lock (s_thumbLock)
         {
@@ -260,19 +329,16 @@ public static class IconHelper
         }
 
         // Remove stale entry for the same path but different version
-        RemoveStaleThumbnailEntries(cacheScope, path, cacheKey);
+        RemoveStaleThumbnailEntries(pathPrefix, cacheKey);
 
         Task<BitmapImage?> task;
         lock (s_thumbLock)
         {
             if (!s_thumbCache.TryGetValue(cacheKey, out task!))
             {
-                task = CreateMediaThumbnailAsync(
-                    dispatcher,
-                    path,
-                    normalizedDecodePixelWidth);
+                task = createThumbnail();
                 s_thumbCache[cacheKey] = task;
-                long estimatedBytes = EstimateDecodedBitmapBytes(normalizedDecodePixelWidth);
+                long estimatedBytes = EstimateDecodedBitmapBytes(decodePixelWidth);
                 s_thumbEstimatedBytes[cacheKey] = estimatedBytes;
                 s_totalThumbnailEstimatedBytes += estimatedBytes;
                 s_thumbLru.AddFirst(cacheKey);
@@ -302,12 +368,9 @@ public static class IconHelper
     /// accumulating when files are edited.
     /// </summary>
     private static void RemoveStaleThumbnailEntries(
-        string cacheScope,
-        string path,
+        string pathPrefix,
         string currentKey)
     {
-        string pathPrefix = $"thumb:{cacheScope}|{path}:";
-
         lock (s_thumbLock)
         {
             if (s_thumbCache.Count == 0)
@@ -396,6 +459,37 @@ public static class IconHelper
         catch (Exception ex)
         {
             App.Log($"[IconHelper] Failed to load media thumbnail for {path}: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            s_thumbLoadSemaphore.Release();
+        }
+    }
+
+    private static async Task<BitmapImage?> CreateShellThumbnailAsync(
+        Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
+        string path,
+        int decodePixelWidth)
+    {
+        await s_thumbLoadSemaphore.WaitAsync();
+        try
+        {
+            byte[]? bytes = await ShellThumbnailProxy.TryLoadAsync(
+                path,
+                decodePixelWidth);
+            return bytes is { Length: > 0 }
+                ? await CreateBitmapImageAsync(
+                    dispatcher,
+                    bytes,
+                    decodePixelWidth)
+                : null;
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[IconHelper] Failed to load isolated Shell thumbnail for " +
+                $"{path}: {ex.Message}");
             return null;
         }
         finally
@@ -524,51 +618,75 @@ public static class IconHelper
             return;
         }
 
+        // Remove both media and isolated Shell thumbnail entries for this path.
+        string pathMarker = $"|{path}:";
+        lock (s_thumbLock)
+        {
+            var keysToRemove = s_thumbCache.Keys
+                .Where(key => key.Contains(
+                    pathMarker,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            foreach (var key in keysToRemove)
+            {
+                RemoveThumbnailCacheEntry(key);
+            }
+            PerformanceLogger.ThumbnailCacheCount = s_thumbCache.Count;
+        }
+        ShellThumbnailProxy.Invalidate(path);
+
         if (IsMediaFile(path))
         {
-            // Remove all thumbnail entries for this path (any version)
-            string pathMarker = $"|{path}:";
-            lock (s_thumbLock)
-            {
-                var keysToRemove = s_thumbCache.Keys
-                    .Where(k =>
-                        k.StartsWith("thumb:", StringComparison.OrdinalIgnoreCase) &&
-                        k.Contains(pathMarker, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                foreach (var key in keysToRemove)
-                {
-                    RemoveThumbnailCacheEntry(key);
-                }
-                PerformanceLogger.ThumbnailCacheCount = s_thumbCache.Count;
-            }
-
             if (!showImageFilesAsIcons)
             {
                 return;
             }
         }
 
-        IconSource iconSource = ResolveIconSource(path, hideShortcutArrowOverlay);
-        if (string.IsNullOrWhiteSpace(iconSource.Path))
-        {
-            return;
-        }
-
-        string cacheKey = BuildCacheKey(path, iconSource);
-        string bitmapCacheMarker = $"|{cacheKey}:decode=";
+        // Never resolve a shortcut or probe its target while invalidating from
+        // the UI thread. Every icon key carries its original source path, so all
+        // resolved variants can be removed without filesystem or Shell calls.
+        string normalizedSourcePath = NormalizeSourcePath(path);
+        string sourceCachePrefix = BuildSourceCachePrefix(normalizedSourcePath);
+        string bitmapCacheMarker = $"|{sourceCachePrefix}";
+        string extensionCacheKey = $"ext:{Path.GetExtension(normalizedSourcePath)}";
+        string extensionBitmapMarker = $"|{extensionCacheKey}:decode=";
+        bool invalidatedDirectoryIcon = false;
         foreach (string bitmapKey in s_bitmapImageCache.Keys.Where(
-                     key => key.Contains(bitmapCacheMarker, StringComparison.OrdinalIgnoreCase)))
+                     key =>
+                         key.Contains(bitmapCacheMarker, StringComparison.OrdinalIgnoreCase) ||
+                         key.Contains(extensionBitmapMarker, StringComparison.OrdinalIgnoreCase)))
         {
             RemoveDecodedBitmap(bitmapKey);
         }
-        s_iconBytesCache.TryRemove(cacheKey, out _);
+
+        foreach (string cacheKey in s_iconBytesCache.Keys.Where(
+                     key => key.StartsWith(sourceCachePrefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            invalidatedDirectoryIcon |= cacheKey.Contains(
+                "|dir:",
+                StringComparison.OrdinalIgnoreCase);
+            s_iconBytesCache.TryRemove(cacheKey, out _);
+        }
+
+        s_iconBytesCache.TryRemove(extensionCacheKey, out _);
+
+        foreach (string timeoutKey in s_iconBytesTimeouts.Keys.Where(
+                     key =>
+                         key.StartsWith(sourceCachePrefix, StringComparison.OrdinalIgnoreCase) ||
+                         key.Equals(extensionCacheKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            s_iconBytesTimeouts.TryRemove(timeoutKey, out _);
+        }
+
+        s_iconSourceTimeouts.TryRemove(normalizedSourcePath, out _);
         PerformanceLogger.IconCacheCount = s_iconBytesCache.Count;
 
         // For directories, also invalidate the Windows shell icon cache.
         // Tools like Folder Painter modify desktop.ini to change folder icons,
         // but SHGetFileInfo/SHGetImageList return stale icons from the shell's
         // internal cache unless SHChangeNotify is called.
-        if (Directory.Exists(iconSource.Path))
+        if (invalidatedDirectoryIcon)
         {
             InvalidateShellIconCache();
         }
@@ -609,6 +727,8 @@ public static class IconHelper
             PerformanceLogger.ThumbnailCacheCount = 0;
             PerformanceLogger.ThumbnailEstimatedBytes = 0;
         }
+
+        ShellThumbnailProxy.ClearTransientFailures();
     }
 
     /// <summary>
@@ -738,22 +858,47 @@ public static class IconHelper
     {
         if (!s_iconBytesCache.TryGetValue(iconBytesCacheKey, out var bytes))
         {
-            await s_iconLoadSemaphore.WaitAsync();
-            try
+            if (!IsRecentTimeout(s_iconBytesTimeouts, iconBytesCacheKey))
             {
-                if (!s_iconBytesCache.TryGetValue(iconBytesCacheKey, out bytes))
+                BoundedBackgroundWorkResult<byte[]?> loadResult =
+                    await BoundedBackgroundWorkScheduler.SharedShell.RunAsync(
+                        () => s_iconBytesCache.TryGetValue(
+                                iconBytesCacheKey,
+                                out byte[]? cachedBytes)
+                            ? cachedBytes
+                            : LoadIconBytes(iconSource),
+                        IconBytesLoadTimeout);
+                if (loadResult.Status == BoundedBackgroundWorkStatus.Completed)
                 {
-                    bytes = await Task.Run(() => LoadIconBytes(iconSource));
+                    bytes = loadResult.Value;
+                    s_iconBytesTimeouts.TryRemove(iconBytesCacheKey, out _);
                     if (bytes is { Length: > 0 })
                     {
                         s_iconBytesCache[iconBytesCacheKey] = bytes;
                         EvictIconCachesIfNeeded();
                     }
                 }
-            }
-            finally
-            {
-                s_iconLoadSemaphore.Release();
+                else if (loadResult.Status == BoundedBackgroundWorkStatus.ExecutionTimedOut)
+                {
+                    RecordTimeout(s_iconBytesTimeouts, iconBytesCacheKey);
+                    App.Log(
+                        $"[IconHelper] Icon byte load timed out " +
+                        $"timeoutMs={IconBytesLoadTimeout.TotalMilliseconds:0} " +
+                        $"path={iconSource.Path}");
+                }
+                else if (loadResult.Status == BoundedBackgroundWorkStatus.QueueTimedOut)
+                {
+                    App.LogVerbose(
+                        $"[IconHelper] Icon byte load queue timed out " +
+                        $"timeoutMs={IconBytesLoadTimeout.TotalMilliseconds:0} " +
+                        $"path={iconSource.Path}");
+                }
+                else if (loadResult.Exception is not null)
+                {
+                    App.Log(
+                        $"[IconHelper] Icon byte load failed " +
+                        $"path={iconSource.Path}: {loadResult.Exception.Message}");
+                }
             }
         }
 
@@ -1066,6 +1211,111 @@ public static class IconHelper
         return bmp;
     }
 
+    private static async Task<ResolvedIconSource> ResolveIconSourceWithCacheKeyAsync(
+        string path,
+        bool hideShortcutArrowOverlay)
+    {
+        string normalizedSourcePath = NormalizeSourcePath(path);
+        if (IsRecentTimeout(s_iconSourceTimeouts, normalizedSourcePath))
+        {
+            return CreateFallbackIconSource(normalizedSourcePath);
+        }
+
+        s_iconSourceTimeouts.TryRemove(normalizedSourcePath, out _);
+        BoundedBackgroundWorkResult<ResolvedIconSource> result =
+            await s_iconSourceScheduler.RunAsync(
+                () =>
+                {
+                    IconSource source = ResolveIconSource(
+                        normalizedSourcePath,
+                        hideShortcutArrowOverlay);
+                    return new ResolvedIconSource(
+                        source,
+                        BuildCacheKey(normalizedSourcePath, source));
+                },
+                IconSourceResolutionTimeout);
+
+        if (result.Status == BoundedBackgroundWorkStatus.Completed &&
+            result.Value is not null)
+        {
+            s_iconSourceTimeouts.TryRemove(normalizedSourcePath, out _);
+            return result.Value;
+        }
+
+        if (result.Status == BoundedBackgroundWorkStatus.ExecutionTimedOut)
+        {
+            RecordTimeout(s_iconSourceTimeouts, normalizedSourcePath);
+            App.Log(
+                $"[IconHelper] Icon source resolution timed out " +
+                $"timeoutMs={IconSourceResolutionTimeout.TotalMilliseconds:0} " +
+                $"path={normalizedSourcePath}");
+        }
+        else if (result.Status == BoundedBackgroundWorkStatus.QueueTimedOut)
+        {
+            App.LogVerbose(
+                $"[IconHelper] Icon source resolution queue timed out " +
+                $"timeoutMs={IconSourceResolutionTimeout.TotalMilliseconds:0} " +
+                $"path={normalizedSourcePath}");
+        }
+        else if (result.Exception is not null)
+        {
+            App.Log(
+                $"[IconHelper] Icon source resolution failed " +
+                $"path={normalizedSourcePath}: {result.Exception.Message}");
+        }
+
+        return CreateFallbackIconSource(normalizedSourcePath);
+    }
+
+    private static bool IsRecentTimeout(
+        ConcurrentDictionary<string, long> timeouts,
+        string key)
+    {
+        if (!timeouts.TryGetValue(key, out long lastTimeout))
+        {
+            return false;
+        }
+
+        if (Environment.TickCount64 - lastTimeout < IconSourceTimeoutRetryMs)
+        {
+            return true;
+        }
+
+        timeouts.TryRemove(key, out _);
+        return false;
+    }
+
+    private static void RecordTimeout(
+        ConcurrentDictionary<string, long> timeouts,
+        string key)
+    {
+        if (timeouts.Count >= MaxIconSourceTimeoutEntries &&
+            !timeouts.ContainsKey(key))
+        {
+            timeouts.Clear();
+        }
+
+        timeouts[key] = Environment.TickCount64;
+    }
+
+    private static ResolvedIconSource CreateFallbackIconSource(
+        string normalizedSourcePath) =>
+        new(
+            new IconSource(normalizedSourcePath),
+            $"{BuildSourceCachePrefix(normalizedSourcePath)}fallback");
+
+    private static string NormalizeSourcePath(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch
+        {
+            return path.Trim();
+        }
+    }
+
     private static IconSource ResolveIconSource(string path, bool hideShortcutArrowOverlay)
     {
         if (!ShortcutHelper.IsShortcutPath(path))
@@ -1298,16 +1548,17 @@ public static class IconHelper
 
     private static string BuildCacheKey(string sourcePath, IconSource iconSource)
     {
+        string sourceCachePrefix = BuildSourceCachePrefix(sourcePath);
         string resolvedPath = iconSource.Path;
         if (Directory.Exists(resolvedPath))
         {
-            return $"dir:{resolvedPath}:{GetDirectoryIconVersion(resolvedPath)}";
+            return $"{sourceCachePrefix}dir:{resolvedPath}:{GetDirectoryIconVersion(resolvedPath)}";
         }
 
         string extension = Path.GetExtension(resolvedPath);
         if (string.IsNullOrWhiteSpace(extension))
         {
-            return $"path:{resolvedPath}";
+            return $"{sourceCachePrefix}path:{resolvedPath}";
         }
 
         if (extension.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
@@ -1317,11 +1568,17 @@ public static class IconHelper
             string sourceVersion = ShortcutHelper.IsShortcutPath(sourcePath)
                 ? GetFileIconVersion(sourcePath)
                 : "source";
-            return $"path:{resolvedPath}:{iconSource.IconIndex}:{iconSource.UsesExplicitIconIndex}:{GetFileIconVersion(resolvedPath)}:{sourceVersion}";
+            return $"{sourceCachePrefix}path:{resolvedPath}:{iconSource.IconIndex}:{iconSource.UsesExplicitIconIndex}:{GetFileIconVersion(resolvedPath)}:{sourceVersion}";
         }
 
+        // Generic file-type icons remain shared across every file with the same
+        // extension. Path-specific prefixes are only needed for directories,
+        // executables, icon files and shortcuts whose icon source can vary.
         return $"ext:{extension}";
     }
+
+    private static string BuildSourceCachePrefix(string normalizedSourcePath) =>
+        $"source:{normalizedSourcePath}|";
 
     private static string GetDirectoryIconVersion(string directoryPath)
     {

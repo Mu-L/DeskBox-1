@@ -60,7 +60,8 @@ public partial class WidgetViewModel
     private void ApplyLayoutSettings()
     {
         var settings = _settingsService.Settings;
-        double iconSize = Math.Clamp(settings.IconSize, SettingsService.MinIconSize, SettingsService.MaxIconSize);
+        double iconSize = SettingsService.NormalizeIconSize(
+            Config.IconSizeOverride ?? settings.IconSize);
         double textSize = Math.Clamp(settings.TextSize, SettingsService.MinTextSize, SettingsService.MaxTextSize);
         double densityScale = Math.Clamp(
             settings.LayoutDensityScale,
@@ -144,6 +145,33 @@ public partial class WidgetViewModel
             <= 42 => 80,
             _ => 128
         };
+    }
+
+    public double EffectiveIconSize => SettingsService.NormalizeIconSize(
+        Config.IconSizeOverride ?? _settingsService.Settings.IconSize);
+
+    public bool SetIconSizeOverride(double? value)
+    {
+        double? normalized = value is null
+            ? null
+            : SettingsService.NormalizeIconSize(value.Value);
+        if (Nullable.Equals(Config.IconSizeOverride, normalized))
+        {
+            return false;
+        }
+
+        int previousIconDecodePixelWidth = _iconDecodePixelWidth;
+        Config.IconSizeOverride = normalized;
+        ApplyLayoutSettings();
+        RefreshStackLayoutMetrics();
+        OnPropertyChanged(nameof(EffectiveIconSize));
+        if (previousIconDecodePixelWidth != _iconDecodePixelWidth)
+        {
+            RefreshAllIcons();
+        }
+
+        _settingsService.SaveDebounced();
+        return true;
     }
 
     private string GetMappedFolderDisplayName()

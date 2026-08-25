@@ -62,7 +62,12 @@ public sealed partial class ContentWidgetWindow
 
         try
         {
-            _nativeFileDropTarget = new NativeDropTarget(HWnd);
+            _nativeFileDropTarget = new NativeDropTarget(
+                HWnd,
+                () => string.Equals(
+                    App.Current.SettingsService.Settings.ManagedDropAction,
+                    SettingsService.ManagedDropActionMove,
+                    StringComparison.Ordinal));
             _nativeFileDropTarget.DragEnterEvent +=
                 NativeFileDropTarget_DragEnterEvent;
             _nativeFileDropTarget.DragOverEvent +=

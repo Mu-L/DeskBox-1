@@ -40,7 +40,7 @@
                 SizeChanged="PreviewScrollViewer_SizeChanged">
                 <StackPanel x:Name="PreviewContent" Spacing="14">
                     <Grid ColumnSpacing="12">
-                        <StackPanel Grid.Column="0" Spacing="4">
+                        <StackPanel Spacing="4">
                             <TextBlock
                                 x:Name="SummaryTitle"
                                 FontSize="22"
@@ -51,16 +51,21 @@
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 TextWrapping="Wrap" />
                         </StackPanel>
-                        <Button
-                            x:Name="ExcludedItemsButton"
-                            Grid.Column="1"
-                            Padding="10,6"
-                            FontSize="13"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Top"
-                            Visibility="Collapsed"
-                            Click="ExcludedItemsButton_Click" />
                     </Grid>
+
+                    <InfoBar
+                        x:Name="ExcludedItemsInfo"
+                        IsClosable="False"
+                        IsOpen="False"
+                        Severity="Warning">
+                        <InfoBar.ActionButton>
+                            <Button
+                                x:Name="ExcludedItemsButton"
+                                Padding="10,6"
+                                FontSize="13"
+                                Click="ExcludedItemsButton_Click" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
 
                     <Grid
                         x:Name="TargetRows"

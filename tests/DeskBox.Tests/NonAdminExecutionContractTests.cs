@@ -19,4 +19,21 @@ public sealed class NonAdminExecutionContractTests
         Assert.Contains("PrivilegesRequired=lowest", installer, StringComparison.Ordinal);
         Assert.Contains("runasoriginaluser", installer, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void DirectStartupTask_UsesInboxClientWithoutShellOrElevation()
+    {
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/DirectStartupTaskBackend.cs"));
+
+        Assert.Contains("Environment.SystemDirectory", source, StringComparison.Ordinal);
+        Assert.Contains("UseShellExecute = false", source, StringComparison.Ordinal);
+        Assert.Contains("CreateNoWindow = true", source, StringComparison.Ordinal);
+        Assert.Contains("InteractiveToken", source, StringComparison.Ordinal);
+        Assert.Contains("LeastPrivilege", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("HighestAvailable", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("runas", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("cmd.exe", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("powershell", source, StringComparison.OrdinalIgnoreCase);
+    }
 }

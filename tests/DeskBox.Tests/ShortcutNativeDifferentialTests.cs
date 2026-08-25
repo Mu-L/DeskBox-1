@@ -10,6 +10,7 @@ public sealed class ShortcutNativeDifferentialTests : IDisposable
 {
     private const uint StoredRawFieldMask = 0x1F;
     private const uint DiagnosticFieldMask = 0x05;
+    private const uint ShellNamespaceWriteFieldMask = 0x03;
     private const uint ResolvePhaseMask = 0x0F;
     private const uint WritePhaseMask = 0x13;
     private const uint UiResolveFlags = 0x0214;
@@ -485,6 +486,35 @@ public sealed class ShortcutNativeDifferentialTests : IDisposable
                 0));
         Assert.True(appWrite.Success, appWrite.Detail);
         AssertStoredLinksEqual(csharpAppLink, rustAppLink);
+    }
+
+    [Fact]
+    public void Write_ShellNamespaceTargetMatchesProductCSharpOracle()
+    {
+        string csharpLink = Path.Combine(_tempRoot, "shell-namespace-csharp.lnk");
+        string rustLink = Path.Combine(_tempRoot, "shell-namespace-rust.lnk");
+        const string parsingName = "shell:RecycleBinFolder";
+        const string description = "Shell namespace shortcut";
+        ShortcutHelper.CreateShellNamespaceShortcutWithCSharp(
+            csharpLink,
+            parsingName,
+            description);
+
+        ShortcutNativeWriteCallResult write =
+            Native.WriteShellNamespaceShortcut(
+                rustLink,
+                parsingName,
+                description);
+
+        Assert.True(write.Success, write.Detail);
+        Assert.Equal(WritePhaseMask, write.AttemptedPhases);
+        Assert.Equal(ShellNamespaceWriteFieldMask, write.AttemptedFields);
+        Assert.Equal(ShellNamespaceWriteFieldMask, write.SucceededFields);
+        Assert.Equal(0, write.TargetHResult);
+        Assert.Equal(0, write.DescriptionHResult);
+        AssertStoredLinksEqual(csharpLink, rustLink);
+        Assert.Empty(
+            ShortcutHelper.ReadStoredMetadataWithCSharpUncached(rustLink).TargetPath);
     }
 
     [Fact]

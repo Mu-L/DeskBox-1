@@ -5,14 +5,29 @@ namespace DeskBox.Tests;
 public sealed class GlobalHotkeySafetyContractTests
 {
     [Fact]
-    public void SettingsRecorder_IsTheOnlyWinSpaceEntryPointAndShowsPersistentWarning()
+    public void SettingsExposeExplicitPresetsAndPersistentSystemOverrideWarning()
     {
         string xaml = Read("src/DeskBox/Views/SettingsWindow.xaml");
         string settingsWindow = Read("src/DeskBox/Views/SettingsWindow.xaml.cs");
         string hotkeyCode = Read("src/DeskBox/Views/SettingsWindow.HotkeyAndAppearance.cs");
+        string presetButtons = Slice(
+            xaml,
+            "x:Name=\"GlobalHotkeyPresetButtonsPanel\"",
+            "</StackPanel>");
 
         Assert.Contains("x:Name=\"GlobalHotkeyCaptureButton\"", xaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("UseWinSpaceHotkeyButton", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"GlobalHotkeyPresetButtonsPanel\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"GlobalHotkeyPresetF7Button\"", presetButtons, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"GlobalHotkeyPresetDoubleControlButton\"", presetButtons, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"GlobalHotkeyPresetAltSpaceButton\"", presetButtons, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"GlobalHotkeyPresetWinSpaceButton\"", presetButtons, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"GlobalHotkeyPresetWindowsTapButton\"", presetButtons, StringComparison.Ordinal);
+        Assert.Contains("Settings.GlobalHotkey.PresetsTitle", xaml, StringComparison.Ordinal);
+        Assert.Contains("Settings.GlobalHotkey.PresetsDescription", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Settings.GlobalHotkey.RecommendedTitle", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Settings.GlobalHotkey.SystemTitle", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"GlobalHotkeyCustomRow\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DesktopDoubleClickToggle\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"GlobalHotkeyReservedWarning\"", xaml, StringComparison.Ordinal);
         Assert.Contains("CanShowGlobalHotkeyWarning", xaml, StringComparison.Ordinal);
         Assert.Contains("WmReservedHotkeyCapture", settingsWindow, StringComparison.Ordinal);
@@ -48,19 +63,21 @@ public sealed class GlobalHotkeySafetyContractTests
     }
 
     [Fact]
-    public void GestureChange_UsesTheRealRegistrationAsCommitPointAndRestoresPreviousGesture()
+    public void ActivationChange_UsesTheRealRegistrationAsCommitPointAndRestoresPreviousActivation()
     {
         string source = Read("src/DeskBox/Services/GlobalHotkeyService.cs");
         string apply = Slice(
             source,
-            "public bool TryApplyGesture",
+            "public bool TryApplyActivation",
             "public void SetEnabled");
 
         Assert.DoesNotContain("CanRegister", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ProbeHotkeyId", source, StringComparison.Ordinal);
+        Assert.Contains("HotkeyActivationKind previousKind", apply, StringComparison.Ordinal);
         Assert.Contains("int previousModifiers", apply, StringComparison.Ordinal);
         Assert.Contains("int previousVirtualKey", apply, StringComparison.Ordinal);
         Assert.Contains("RefreshRegistration();", apply, StringComparison.Ordinal);
+        Assert.Contains("settings.GlobalHotkeyActivationKind = previousKind", apply, StringComparison.Ordinal);
         Assert.Contains("settings.GlobalHotkeyModifiers = previousModifiers", apply, StringComparison.Ordinal);
         Assert.Contains("settings.GlobalHotkeyKey = previousVirtualKey", apply, StringComparison.Ordinal);
         Assert.Contains("if (IsRegistered)", apply, StringComparison.Ordinal);
@@ -114,6 +131,9 @@ public sealed class GlobalHotkeySafetyContractTests
         Assert.Contains("_lifecycleGeneration", hook, StringComparison.Ordinal);
         Assert.Contains("generation != _lifecycleGeneration", hook, StringComparison.Ordinal);
         Assert.Contains("TrySendTaggedKeyPress", hook, StringComparison.Ordinal);
+        Assert.Contains("ReservedHotkeyMode.DoubleControl", hook, StringComparison.Ordinal);
+        Assert.Contains("ReservedHotkeyMode.WindowsTap", hook, StringComparison.Ordinal);
+        Assert.Contains("TriggerAndPassThrough", hook, StringComparison.Ordinal);
         Assert.Contains("CancelSuppression();", hook, StringComparison.Ordinal);
         Assert.Contains("PostMessage", hook, StringComparison.Ordinal);
         Assert.Contains("SendInput", win32, StringComparison.Ordinal);
@@ -130,6 +150,7 @@ public sealed class GlobalHotkeySafetyContractTests
             "private void FlushSettingsForEndSession");
 
         Assert.Contains("GlobalHotkeyService?.RefreshRegistration();", recovery, StringComparison.Ordinal);
+        Assert.Contains("DesktopDoubleClickActivationService?.RefreshRegistration();", recovery, StringComparison.Ordinal);
         Assert.Contains("requiresExternalRecovery", recovery, StringComparison.Ordinal);
     }
 

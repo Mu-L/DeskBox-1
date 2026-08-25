@@ -24,6 +24,8 @@ internal static class WidgetCompactAnimationCoordinator
     internal const int MaximumConcurrentBoundsTransitions = 4;
 
     private static readonly Dictionary<long, Action> FrameCallbacks = [];
+    private static KeyValuePair<long, Action>[] s_frameCallbackSnapshot = [];
+    private static bool s_frameCallbackSnapshotDirty;
     private static readonly HashSet<long> BoundsTransitionRegistrations = [];
     private static readonly Dictionary<IntPtr, PendingBoundsMove> PendingBoundsMoves = [];
     private static long s_nextRegistrationId;
@@ -95,6 +97,7 @@ internal static class WidgetCompactAnimationCoordinator
 
         long registrationId = ++s_nextRegistrationId;
         FrameCallbacks.Add(registrationId, frameCallback);
+        s_frameCallbackSnapshotDirty = true;
         if (isBoundsTransition)
         {
             BoundsTransitionRegistrations.Add(registrationId);
@@ -146,7 +149,7 @@ internal static class WidgetCompactAnimationCoordinator
             // Callbacks may complete and unregister themselves while this snapshot
             // is being dispatched. The registration check avoids invoking an entry
             // that another callback cancelled earlier in the same compositor tick.
-            foreach ((long registrationId, Action callback) in FrameCallbacks.ToArray())
+            foreach ((long registrationId, Action callback) in GetFrameCallbackSnapshot())
             {
                 if (!FrameCallbacks.ContainsKey(registrationId))
                 {
@@ -168,6 +171,18 @@ internal static class WidgetCompactAnimationCoordinator
             s_isDispatchingFrame = false;
             FlushPendingBoundsMoves();
         }
+    }
+
+    private static KeyValuePair<long, Action>[] GetFrameCallbackSnapshot()
+    {
+        if (!s_frameCallbackSnapshotDirty)
+        {
+            return s_frameCallbackSnapshot;
+        }
+
+        s_frameCallbackSnapshot = FrameCallbacks.ToArray();
+        s_frameCallbackSnapshotDirty = false;
+        return s_frameCallbackSnapshot;
     }
 
     private static void FlushPendingBoundsMoves()
@@ -259,7 +274,10 @@ internal static class WidgetCompactAnimationCoordinator
 
     private static void Unregister(long registrationId)
     {
-        FrameCallbacks.Remove(registrationId);
+        if (FrameCallbacks.Remove(registrationId))
+        {
+            s_frameCallbackSnapshotDirty = true;
+        }
         BoundsTransitionRegistrations.Remove(registrationId);
         if (FrameCallbacks.Count != 0 || !s_isRenderingSubscribed)
         {
@@ -277,6 +295,8 @@ internal static class WidgetCompactAnimationCoordinator
             CompositionTarget.Rendering -= OnRendering;
         }
         s_isRenderingSubscribed = false;
+        s_frameCallbackSnapshot = [];
+        s_frameCallbackSnapshotDirty = false;
         s_clockBoostLease?.Dispose();
         s_clockBoostLease = null;
     }

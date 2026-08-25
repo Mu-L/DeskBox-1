@@ -264,10 +264,7 @@ public sealed partial class FileSurfaceContent
                     this,
                     "ImportCanceledState",
                     false);
-                if (Application.Current.Resources.TryGetValue(
-                        "TextFillColorSecondaryBrush",
-                        out object? secondaryBrush) &&
-                    secondaryBrush is Brush secondary)
+                if (ResolveBrush("TextFillColorSecondaryBrush") is Brush secondary)
                 {
                     ImportStateIcon.Foreground = secondary;
                 }
@@ -279,10 +276,7 @@ public sealed partial class FileSurfaceContent
                     this,
                     "ImportErrorState",
                     false);
-                if (Application.Current.Resources.TryGetValue(
-                        "SystemFillColorCriticalBrush",
-                        out object? criticalBrush) &&
-                    criticalBrush is Brush brush)
+                if (ResolveBrush("SystemFillColorCriticalBrush") is Brush brush)
                 {
                     ImportStateIcon.Foreground = brush;
                 }

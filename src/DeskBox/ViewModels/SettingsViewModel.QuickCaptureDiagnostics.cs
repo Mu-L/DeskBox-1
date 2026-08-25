@@ -1,9 +1,12 @@
 using System.Globalization;
+using DeskBox.Services;
 
 namespace DeskBox.ViewModels;
 
 public partial class SettingsViewModel
 {
+    private QuickCaptureClipboardService? _quickCaptureClipboardDiagnosticsService;
+
     public string QuickCaptureStatusText => QuickCaptureEnabled
         ? _localizationService.T("Settings.QuickCapture.Status.Enabled")
         : _localizationService.T("Settings.QuickCapture.Status.Disabled");
@@ -76,9 +79,18 @@ public partial class SettingsViewModel
 
     public void RefreshQuickCaptureClipboardDiagnostics()
     {
+        SetQuickCaptureClipboardDiagnosticsService(
+            App.Current?.QuickCaptureClipboardService);
         if (App.Current?.QuickCaptureClipboardService is not { } clipboardService)
         {
-            QuickCaptureClipboardDiagnosticsText = _localizationService.T("Settings.QuickCapture.ClipboardDiagnosticsUnavailable");
+            string inactiveReason = !_settingsService.Settings.QuickCaptureEnabled
+                ? "disabled:quick-capture-off"
+                : !_settingsService.Settings.QuickCaptureClipboardEnabled
+                    ? "disabled:clipboard-off"
+                    : "disabled:unknown";
+            QuickCaptureClipboardDiagnosticsText = _localizationService.Format(
+                "Settings.QuickCapture.ClipboardDiagnosticsNotRecordingNoCapture",
+                GetQuickCaptureClipboardReasonText(inactiveReason));
             return;
         }
 
@@ -100,6 +112,30 @@ public partial class SettingsViewModel
                 ? "Settings.QuickCapture.ClipboardDiagnosticsNoCapture"
                 : "Settings.QuickCapture.ClipboardDiagnosticsNotRecordingNoCapture",
             reasonText);
+    }
+
+    private void SetQuickCaptureClipboardDiagnosticsService(
+        QuickCaptureClipboardService? clipboardService)
+    {
+        if (ReferenceEquals(
+                _quickCaptureClipboardDiagnosticsService,
+                clipboardService))
+        {
+            return;
+        }
+
+        if (_quickCaptureClipboardDiagnosticsService is not null)
+        {
+            _quickCaptureClipboardDiagnosticsService.DiagnosticsChanged -=
+                OnQuickCaptureClipboardDiagnosticsChanged;
+        }
+
+        _quickCaptureClipboardDiagnosticsService = clipboardService;
+        if (_quickCaptureClipboardDiagnosticsService is not null)
+        {
+            _quickCaptureClipboardDiagnosticsService.DiagnosticsChanged +=
+                OnQuickCaptureClipboardDiagnosticsChanged;
+        }
     }
 
     private string GetQuickCaptureClipboardReasonText(string reason)

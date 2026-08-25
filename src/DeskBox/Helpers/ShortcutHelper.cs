@@ -316,6 +316,10 @@ public static class ShortcutHelper
             return BrokenShortcutResolution.ShortcutDeleted;
         }
 
+        App.Log(
+            $"[Shortcut] Broken-link shell UI started " +
+            $"owner=0x{ownerHwnd.ToInt64():X} path='{lnkPath}'");
+        using IDisposable foregroundMonitor = ShellUiForegroundMonitor.Start(ownerHwnd);
         try
         {
 #if DESKBOX_NATIVE_AOT
@@ -358,9 +362,13 @@ public static class ShortcutHelper
             InvalidateStoredMetadataCache(lnkPath);
         }
 
-        return File.Exists(lnkPath)
+        BrokenShortcutResolution resolution = File.Exists(lnkPath)
             ? BrokenShortcutResolution.ResolvedOrKept
             : BrokenShortcutResolution.ShortcutDeleted;
+        App.Log(
+            $"[Shortcut] Broken-link shell UI completed " +
+            $"result={resolution} path='{lnkPath}'");
+        return resolution;
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -429,6 +437,84 @@ public static class ShortcutHelper
         InvalidateStoredMetadataCache(normalizedShortcutPath);
     }
 
+    /// <summary>
+    /// Creates a filesystem .lnk whose target is an application object in the
+    /// AppsFolder Shell namespace. Packaged applications do not expose a stable
+    /// executable path, so the shortcut stores the Shell PIDL instead.
+    /// </summary>
+    public static void CreateShellApplicationShortcut(
+        string shortcutPath,
+        string appUserModelId,
+        string description)
+    {
+        string normalizedShortcutPath = Path.GetFullPath(shortcutPath);
+        string normalizedAppUserModelId = appUserModelId?.Trim() ?? string.Empty;
+        int separatorIndex = normalizedAppUserModelId.IndexOf('!');
+        if (string.IsNullOrWhiteSpace(normalizedAppUserModelId) ||
+            normalizedAppUserModelId.Length > 1024 ||
+            normalizedAppUserModelId.Contains('\0') ||
+            normalizedAppUserModelId.Contains('\\') ||
+            normalizedAppUserModelId.Contains('/') ||
+            normalizedAppUserModelId.Contains(':') ||
+            normalizedAppUserModelId.Any(char.IsWhiteSpace) ||
+            separatorIndex <= 0 ||
+            separatorIndex >= normalizedAppUserModelId.Length - 1)
+        {
+            throw new ArgumentException(
+                "A packaged application AUMID is required.",
+                nameof(appUserModelId));
+        }
+
+        string? shortcutDirectory = Path.GetDirectoryName(normalizedShortcutPath);
+        if (string.IsNullOrWhiteSpace(shortcutDirectory))
+        {
+            throw new ArgumentException(
+                "Shortcut path must include a directory.",
+                nameof(shortcutPath));
+        }
+
+        Directory.CreateDirectory(shortcutDirectory);
+        string parsingName = $"shell:AppsFolder\\{normalizedAppUserModelId}";
+
+#if DESKBOX_NATIVE_AOT
+        ShortcutNativeWriteCallResult native =
+            ShortcutNativeBackend.WriteShellNamespaceShortcut(
+                normalizedShortcutPath,
+                parsingName,
+                description);
+        if (!native.Success)
+        {
+            LogNativeWriteFailure("AppsFolder write", normalizedShortcutPath, native);
+            throw new InvalidOperationException(
+                $"Rust AppsFolder shortcut write failed: {native.Failure}; {native.Detail}");
+        }
+#else
+        if (ShortcutBackendPolicy.Current == ShortcutBackendMode.Rust)
+        {
+            ShortcutNativeWriteCallResult native =
+                ShortcutNativeBackend.WriteShellNamespaceShortcut(
+                    normalizedShortcutPath,
+                    parsingName,
+                    description);
+            if (!native.Success)
+            {
+                LogNativeWriteFailure("AppsFolder write", normalizedShortcutPath, native);
+                throw new InvalidOperationException(
+                    $"Rust AppsFolder shortcut write failed: {native.Failure}; {native.Detail}");
+            }
+        }
+        else
+        {
+            CreateShellNamespaceShortcutWithCSharp(
+                normalizedShortcutPath,
+                parsingName,
+                description);
+        }
+#endif
+
+        InvalidateStoredMetadataCache(normalizedShortcutPath);
+    }
+
 #if !DESKBOX_NATIVE_AOT
     internal static void CreateOrUpdateFolderShortcutWithCSharp(
         string normalizedShortcutPath,
@@ -441,6 +527,37 @@ public static class ShortcutHelper
         link.SetWorkingDirectory(normalizedTargetPath);
         link.SetDescription(description);
         file.Save(normalizedShortcutPath, true);
+    }
+
+    internal static void CreateShellNamespaceShortcutWithCSharp(
+        string normalizedShortcutPath,
+        string parsingName,
+        string description)
+    {
+        IntPtr pidl = IntPtr.Zero;
+        int hresult = SHParseDisplayName(
+            parsingName,
+            IntPtr.Zero,
+            out pidl,
+            0,
+            out _);
+        if (hresult < 0 || pidl == IntPtr.Zero)
+        {
+            Marshal.ThrowExceptionForHR(hresult < 0 ? hresult : unchecked((int)0x80004005));
+        }
+
+        try
+        {
+            var link = (IShellLinkW)new ShellLink();
+            var file = (IPersistFile)link;
+            link.SetIDList(pidl);
+            link.SetDescription(description);
+            file.Save(normalizedShortcutPath, true);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(pidl);
+        }
     }
 #endif
 
@@ -476,6 +593,14 @@ public static class ShortcutHelper
     }
 
 #if !DESKBOX_NATIVE_AOT
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+    private static extern int SHParseDisplayName(
+        string name,
+        IntPtr bindContext,
+        out IntPtr itemIdList,
+        uint attributesIn,
+        out uint attributesOut);
+
     /// <summary>Shell Link CoClass (CLSID_ShellLink).</summary>
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]

@@ -7,6 +7,7 @@
     xmlns:local="using:DeskBox.Controls.WidgetContents"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d"
     SizeChanged="UserControl_SizeChanged">
 

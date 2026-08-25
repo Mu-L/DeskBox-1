@@ -27,7 +27,7 @@ public sealed class AotStage5B4C1C2AContractTests
     }
 
     [Fact]
-    public void ProductBridge_ObservesNativeEnterOverLeaveAndFreezesCopyDecision()
+    public void ProductBridge_ObservesNativeEnterOverLeaveAndResolvesLiveDropIntent()
     {
         string bridge = ReadRepositoryFile(
             "src/DeskBox/Views/ContentWidgetWindow.NativeDragDrop.cs");
@@ -44,9 +44,11 @@ public sealed class AotStage5B4C1C2AContractTests
         Assert.Contains("bool copyWhenMapped", bridge, StringComparison.Ordinal);
         Assert.Contains("NativeDropEffectPolicy.ResolveFeedbackEffect(", target, StringComparison.Ordinal);
         Assert.Contains("copyRequested", target, StringComparison.Ordinal);
+        Assert.Contains("_defaultMoveProvider()", target, StringComparison.Ordinal);
         Assert.Contains("DropEvent?.Invoke(", target, StringComparison.Ordinal);
         Assert.Contains("bool? copyWhenMapped = null", surface, StringComparison.Ordinal);
-        Assert.Contains("copyWhenMapped is null", surface, StringComparison.Ordinal);
+        Assert.Contains("copyWhenMapped switch", surface, StringComparison.Ordinal);
+        Assert.Contains("FileDropIntentPolicy.ResolveMappedTransfer(", surface, StringComparison.Ordinal);
         Assert.Contains("bool? moveWhenMapped = mapped", surface, StringComparison.Ordinal);
     }
 

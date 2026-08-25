@@ -23,6 +23,11 @@ public sealed class WidgetFileStackSettingsTests
             WidgetFileStackSettings.ResolveOrderBy(
                 config,
                 SettingsService.FileStackOrderByName));
+        Assert.Equal(
+            SettingsService.FileStackOpenModePopover,
+            WidgetFileStackSettings.ResolveOpenMode(
+                config,
+                SettingsService.FileStackOpenModePopover));
         Assert.True(WidgetFileStackSettings.FollowsGlobalDefaults(config));
     }
 
@@ -38,6 +43,9 @@ public sealed class WidgetFileStackSettingsTests
         WidgetFileStackSettings.SetOrderByOverride(
             config,
             SettingsService.FileStackOrderByDateModified);
+        WidgetFileStackSettings.SetOpenModeOverride(
+            config,
+            SettingsService.FileStackOpenModePopover);
 
         Assert.False(WidgetFileStackSettings.ResolveEnabled(config, globalDefault: true));
         Assert.Equal(
@@ -51,6 +59,11 @@ public sealed class WidgetFileStackSettingsTests
             WidgetFileStackSettings.ResolveOrderBy(
                 config,
                 SettingsService.FileStackOrderByWidget));
+        Assert.Equal(
+            SettingsService.FileStackOpenModePopover,
+            WidgetFileStackSettings.ResolveOpenMode(
+                config,
+                SettingsService.FileStackOpenModeInline));
         Assert.False(WidgetFileStackSettings.FollowsGlobalDefaults(config));
     }
 
@@ -66,6 +79,9 @@ public sealed class WidgetFileStackSettingsTests
         WidgetFileStackSettings.SetOrderByOverride(
             config,
             SettingsService.FileStackOrderByName);
+        WidgetFileStackSettings.SetOpenModeOverride(
+            config,
+            SettingsService.FileStackOpenModePopover);
 
         WidgetFileStackSettings.ClearOverrides(config);
 
@@ -73,6 +89,7 @@ public sealed class WidgetFileStackSettingsTests
         Assert.Null(WidgetFileStackSettings.GetGroupByOverride(config));
         Assert.Null(WidgetFileStackSettings.GetThresholdOverride(config));
         Assert.Null(WidgetFileStackSettings.GetOrderByOverride(config));
+        Assert.Null(WidgetFileStackSettings.GetOpenModeOverride(config));
         Assert.True(WidgetFileStackSettings.FollowsGlobalDefaults(config));
     }
 
@@ -108,7 +125,8 @@ public sealed class WidgetFileStackSettingsTests
                 [WidgetFileStackSettings.EnabledOverrideMetadataKey] = "true",
                 [WidgetFileStackSettings.GroupByOverrideMetadataKey] = "datecreated",
                 [WidgetFileStackSettings.ThresholdOverrideMetadataKey] = "4",
-                [WidgetFileStackSettings.OrderByOverrideMetadataKey] = "unexpected"
+                [WidgetFileStackSettings.OrderByOverrideMetadataKey] = "unexpected",
+                [WidgetFileStackSettings.OpenModeOverrideMetadataKey] = "popover"
             }
         };
 
@@ -119,6 +137,125 @@ public sealed class WidgetFileStackSettingsTests
             config.Metadata[WidgetFileStackSettings.GroupByOverrideMetadataKey]);
         Assert.False(config.Metadata.ContainsKey(WidgetFileStackSettings.ThresholdOverrideMetadataKey));
         Assert.False(config.Metadata.ContainsKey(WidgetFileStackSettings.OrderByOverrideMetadataKey));
+        Assert.Equal(
+            SettingsService.FileStackOpenModePopover,
+            config.Metadata[WidgetFileStackSettings.OpenModeOverrideMetadataKey]);
+    }
+
+    [Fact]
+    public void RebaseManagedFolderPaths_PreservesStacksWhenWidgetFolderIsRenamed()
+    {
+        string oldRoot = @"C:\DeskBox\Old Widget";
+        string newRoot = @"C:\DeskBox\Renamed Widget";
+        var addedAt = new DateTimeOffset(
+            2026,
+            8,
+            24,
+            9,
+            30,
+            0,
+            TimeSpan.FromHours(8));
+        var config = new WidgetConfig
+        {
+            FileAddedAtByPath = new Dictionary<string, DateTimeOffset>
+            {
+                [Path.Combine(oldRoot, "one.txt")] = addedAt,
+                [@"D:\Outside\keep.txt"] = addedAt.AddMinutes(1)
+            }
+        };
+        WidgetFileStackSettings.SetStackMemberOverrides(
+            config,
+            new Dictionary<string, List<string>>
+            {
+                ["Manual:alpha"] =
+                [
+                    Path.Combine(oldRoot, "one.txt"),
+                    Path.Combine(oldRoot, "nested", "two.png")
+                ]
+            });
+        WidgetFileStackSettings.SetStackOrder(
+            config,
+            [
+                "Manual:alpha",
+                "Item:" + Path.Combine(oldRoot, "loose.docx").ToUpperInvariant(),
+                @"Item:D:\OUTSIDE\KEEP.TXT"
+            ]);
+
+        Assert.True(WidgetFileStackSettings.RebaseManagedFolderPaths(
+            config,
+            oldRoot,
+            newRoot));
+
+        Dictionary<string, List<string>> members =
+            WidgetFileStackSettings.GetStackMemberOverrides(config);
+        Assert.Equal(
+            [
+                Path.Combine(newRoot, "one.txt"),
+                Path.Combine(newRoot, "nested", "two.png")
+            ],
+            members["Manual:alpha"]);
+        Assert.Equal(
+            [
+                "Manual:alpha",
+                "Item:" + Path.Combine(newRoot, "loose.docx").ToUpperInvariant(),
+                @"Item:D:\OUTSIDE\KEEP.TXT"
+            ],
+            WidgetFileStackSettings.GetStackOrder(config));
+        Assert.Equal(
+            addedAt,
+            config.FileAddedAtByPath[Path.Combine(newRoot, "one.txt")]);
+        Assert.Equal(
+            addedAt.AddMinutes(1),
+            config.FileAddedAtByPath[@"D:\Outside\keep.txt"]);
+        Assert.DoesNotContain(
+            config.FileAddedAtByPath.Keys,
+            path => path.StartsWith(
+                oldRoot,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void NormalizeOverrides_PrunesOnlyOrphanedManualStackMetadata()
+    {
+        var config = new WidgetConfig();
+        WidgetFileStackSettings.SetStackMemberOverrides(
+            config,
+            new Dictionary<string, List<string>>
+            {
+                ["Manual:active"] = [@"C:\A.txt", @"C:\B.txt"],
+                ["Manual:orphan"] = [@"C:\Only.txt"]
+            });
+        WidgetFileStackSettings.SetStackNameOverrides(
+            config,
+            new Dictionary<string, string>
+            {
+                ["Manual:active"] = "Active",
+                ["Manual:orphan"] = "Old manual name",
+                ["Documents"] = "Automatic name"
+            });
+        WidgetFileStackSettings.SetDisabledStacks(
+            config,
+            ["Manual:orphan", "Documents"]);
+        WidgetFileStackSettings.SetStackOrder(
+            config,
+            ["Manual:active", "Manual:orphan", "Documents"]);
+
+        Assert.True(WidgetFileStackSettings.NormalizeOverrides(config));
+
+        Assert.Equal(
+            ["Manual:active"],
+            WidgetFileStackSettings.GetStackMemberOverrides(config).Keys);
+        Dictionary<string, string> names =
+            WidgetFileStackSettings.GetStackNameOverrides(config);
+        Assert.Equal("Active", names["Manual:active"]);
+        Assert.Equal("Automatic name", names["Documents"]);
+        Assert.DoesNotContain("Manual:orphan", names.Keys);
+        Assert.Equal(
+            ["Documents"],
+            WidgetFileStackSettings.GetDisabledStacks(config));
+        Assert.Equal(
+            ["Manual:active", "Documents"],
+            WidgetFileStackSettings.GetStackOrder(config));
     }
 
     [Fact]

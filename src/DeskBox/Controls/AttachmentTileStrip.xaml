@@ -3,7 +3,8 @@
     x:Class="DeskBox.Controls.AttachmentTileStrip"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:viewModels="using:DeskBox.ViewModels">
+    xmlns:viewModels="using:DeskBox.ViewModels"
+    Foreground="{ThemeResource TextFillColorPrimaryBrush}">
 
     <ScrollViewer
         x:Name="AttachmentScrollViewer"

@@ -63,6 +63,13 @@ public class WidgetConfig
     /// <summary>Current view layout mode (Icon grid or List).</summary>
     public ViewMode ViewMode { get; set; } = ViewMode.Icon;
 
+    /// <summary>
+    /// Optional icon-size override for this file widget. A null value follows
+    /// the global appearance setting.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? IconSizeOverride { get; set; }
+
     /// <summary>Whether the widget window is currently shown.</summary>
     public bool IsVisible { get; set; } = true;
 

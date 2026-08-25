@@ -215,21 +215,30 @@ public abstract partial class WidgetWindowBase
 
     protected void BeginWindowDragCore(PointerRoutedEventArgs e, FrameworkElement captureElement)
     {
+        CancelPendingTitleBarDragFrame();
         BeginWidgetBoundsInteraction();
         IsDragging = true;
+        _deferTitleBarDragConfigUpdates = true;
         HasMovedTitleBarDrag = false;
         DisplayChangeWatcher?.SuppressRestore();
-        ElevateForInteraction();
         Win32Helper.GetCursorPos(out InitialCursorPt);
         RectInt32 initialBounds = GetActualWindowBounds();
         InitialWindowPos = new PointInt32(initialBounds.X, initialBounds.Y);
         InitialWindowSize = new SizeInt32(initialBounds.Width, initialBounds.Height);
-        bool movesCapsuleBar = BeginCompactArrangementDrag();
+        _isCoordinatedMoveDrag =
+            Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control) &&
+            App.Current?.WidgetManager?.TryBeginCoordinatedMove(HWnd) == true;
+        if (!_isCoordinatedMoveDrag)
+        {
+            ElevateForInteraction();
+        }
+
+        bool movesCapsuleBar = !_isCoordinatedMoveDrag && BeginCompactArrangementDrag();
         DragCaptureElement = captureElement;
         captureElement.CapturePointer(e.Pointer);
         e.Handled = true;
 
-        if (!movesCapsuleBar)
+        if (!movesCapsuleBar && !_isCoordinatedMoveDrag)
         {
             App.Current?.ResizeGuideOverlay.BeginDrag(HWnd, RootElement);
         }
@@ -259,27 +268,78 @@ public abstract partial class WidgetWindowBase
             WidgetShellControl.NotifyCompactDragMoved();
         }
 
-        int newX = InitialWindowPos.X + deltaX;
-        int newY = InitialWindowPos.Y + deltaY;
-
-        var proposedBounds = new RectInt32(newX, newY, InitialWindowSize.Width, InitialWindowSize.Height);
-        if (!TryMoveCompactArrangement(proposedBounds, out _))
-        {
-            var snappedBounds = App.Current?.ResizeGuideOverlay.UpdateGuidesAndSnapForDrag(proposedBounds)
-                ?? proposedBounds;
-            ApplyWindowBounds(
-                snappedBounds.X,
-                snappedBounds.Y,
-                snappedBounds.Width,
-                snappedBounds.Height,
-                persist: false);
-            if (!IsCompactBoundsStateActive)
-            {
-                App.Current?.WidgetManager?.UpdateWidgetGroupDragPreview(
-                    Config.Id);
-            }
-        }
+        QueueTitleBarDragFrame(deltaX, deltaY);
         e.Handled = true;
+    }
+
+    private void QueueTitleBarDragFrame(int deltaX, int deltaY)
+    {
+        _pendingTitleBarDragFrame = new PendingTitleBarDragFrame(
+            new RectInt32(
+                InitialWindowPos.X + deltaX,
+                InitialWindowPos.Y + deltaY,
+                InitialWindowSize.Width,
+                InitialWindowSize.Height),
+            deltaX,
+            deltaY);
+        _titleBarDragFrameRegistration ??=
+            WidgetCompactAnimationCoordinator.Register(ApplyPendingTitleBarDragFrame);
+    }
+
+    private void ApplyPendingTitleBarDragFrame()
+    {
+        if (!IsDragging || _pendingTitleBarDragFrame is not { } frame)
+        {
+            return;
+        }
+
+        // PointerMoved may arrive much faster than DWM can present frames,
+        // especially on Win10 with several Acrylic HWNDs. Consume only the
+        // latest pointer sample for this frame so snap/group work and native
+        // window commits never scale with raw mouse-report frequency.
+        _pendingTitleBarDragFrame = null;
+        if (_isCoordinatedMoveDrag)
+        {
+            App.Current?.WidgetManager?.UpdateCoordinatedMove(
+                HWnd,
+                frame.DeltaX,
+                frame.DeltaY);
+            return;
+        }
+
+        if (TryMoveCompactArrangement(frame.ProposedBounds, out _))
+        {
+            return;
+        }
+
+        RectInt32 snappedBounds =
+            App.Current?.ResizeGuideOverlay.UpdateGuidesAndSnapForDrag(
+                frame.ProposedBounds)
+            ?? frame.ProposedBounds;
+        ApplyWindowBounds(
+            snappedBounds.X,
+            snappedBounds.Y,
+            snappedBounds.Width,
+            snappedBounds.Height,
+            persist: false,
+            updateConfig: false);
+        if (!IsCompactBoundsStateActive)
+        {
+            App.Current?.WidgetManager?.UpdateWidgetGroupDragPreview(Config.Id);
+        }
+    }
+
+    private void FlushPendingTitleBarDragFrame()
+    {
+        ApplyPendingTitleBarDragFrame();
+        CancelPendingTitleBarDragFrame();
+    }
+
+    private void CancelPendingTitleBarDragFrame()
+    {
+        _pendingTitleBarDragFrame = null;
+        _titleBarDragFrameRegistration?.Dispose();
+        _titleBarDragFrameRegistration = null;
     }
 
     protected void EndWindowDragCore(PointerRoutedEventArgs e)
@@ -289,12 +349,28 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
+        FlushPendingTitleBarDragFrame();
+        _deferTitleBarDragConfigUpdates = false;
         IsDragging = false;
         bool hasMoved = HasMovedTitleBarDrag;
         DragCaptureElement?.ReleasePointerCapture(e.Pointer);
         DragCaptureElement = null;
 
         App.Current?.ResizeGuideOverlay.EndDrag();
+
+        if (_isCoordinatedMoveDrag &&
+            App.Current?.WidgetManager?.CompleteCoordinatedMove(HWnd, hasMoved) == true)
+        {
+            _isCoordinatedMoveDrag = false;
+            App.Current.WidgetManager.CancelWidgetGroupDrag(Config.Id);
+            HasMovedTitleBarDrag = false;
+            App.Current.WidgetManager.RestoreTemporarilyRaisedWidgetsToDesktopLayer(
+                "coordinated-drag-ended");
+            e.Handled = true;
+            return;
+        }
+
+        _isCoordinatedMoveDrag = false;
 
         CompleteCompactArrangementDrag();
         RectInt32 finalBounds = GetActualWindowBounds();
@@ -510,10 +586,26 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
+        FlushPendingTitleBarDragFrame();
+        _deferTitleBarDragConfigUpdates = false;
         IsDragging = false;
         bool hasMoved = HasMovedTitleBarDrag;
         DragCaptureElement = null;
         App.Current?.ResizeGuideOverlay.EndDrag();
+
+        if (_isCoordinatedMoveDrag &&
+            App.Current?.WidgetManager?.CompleteCoordinatedMove(HWnd, hasMoved) == true)
+        {
+            _isCoordinatedMoveDrag = false;
+            App.Current.WidgetManager.CancelWidgetGroupDrag(Config.Id);
+            HasMovedTitleBarDrag = false;
+            App.Current.WidgetManager.RestoreTemporarilyRaisedWidgetsToDesktopLayer(
+                "coordinated-drag-capture-lost");
+            e.Handled = true;
+            return;
+        }
+
+        _isCoordinatedMoveDrag = false;
         CompleteCompactArrangementDrag();
         RectInt32 finalBounds = GetActualWindowBounds();
         finalBounds = CompleteExpandedWidgetDrag(finalBounds);

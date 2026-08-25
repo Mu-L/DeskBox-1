@@ -63,7 +63,8 @@ public enum DesktopOrganizationExclusionReason
     PublicDesktopItem,
     Unavailable,
     SlowItem,
-    BatchLimit
+    BatchLimit,
+    UserChoice
 }
 
 public sealed record DesktopOrganizationFileSnapshot(
@@ -74,9 +75,15 @@ public sealed record DesktopOrganizationFileSnapshot(
     DateTime LastWriteTimeUtc,
     string CategoryId,
     string? SubtypeId,
-    DesktopOrganizationExclusionReason ExclusionReason)
+    DesktopOrganizationExclusionReason ExclusionReason,
+    bool IsDirectory = false)
 {
     public bool IsEligible => ExclusionReason == DesktopOrganizationExclusionReason.None;
+
+    public bool CanOptIn => ExclusionReason is
+        DesktopOrganizationExclusionReason.Folder or
+        DesktopOrganizationExclusionReason.SlowItem or
+        DesktopOrganizationExclusionReason.BatchLimit;
 }
 
 public sealed class DesktopOrganizationScanResult
@@ -225,7 +232,24 @@ public sealed class DesktopOrganizationExecutionResult
     public OrganizationHistoryEntry History { get; init; } = new();
 
     public List<WidgetConfig> CreatedWidgets { get; init; } = [];
+
+    public List<DesktopOrganizationRetainedItem> RetainedItems { get; init; } = [];
 }
+
+public enum DesktopOrganizationRetentionReason
+{
+    SourceChanged,
+    InUse,
+    AccessDenied,
+    Unavailable,
+    TransferFailed
+}
+
+public sealed record DesktopOrganizationRetainedItem(
+    string SourcePath,
+    string Name,
+    DesktopOrganizationRetentionReason Reason,
+    string Detail);
 
 public sealed record DesktopOrganizationProgress(
     int CompletedCount,

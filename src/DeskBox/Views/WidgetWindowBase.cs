@@ -86,12 +86,20 @@ public abstract partial class WidgetWindowBase : Window
     protected PointInt32 InitialWindowPos;
     protected SizeInt32 InitialWindowSize;
     protected FrameworkElement? DragCaptureElement;
+    private bool _isCoordinatedMoveDrag;
+    private bool _deferTitleBarDragConfigUpdates;
+    private PendingTitleBarDragFrame? _pendingTitleBarDragFrame;
+    private IDisposable? _titleBarDragFrameRegistration;
     private RectInt32? _pendingInteractiveResizeBounds;
     private IDisposable? _interactiveResizeFrameRegistration;
     private bool _interactiveResizeCommitQueued;
     private long _lastInteractiveResizeCommitTimestamp;
     private IDisposable? _interactiveResizeClockBoostLease;
     private SizeInt32 _interactiveResizeMinimumSize;
+    private bool _isDisplayTopologyTransitionActive;
+    private long _displayTopologyTransitionGeneration;
+    private XamlRoot? _observedXamlRoot;
+    private double _observedRasterizationScale;
 
     // ── Protected state: layer / Z-order ───────────────────────
     protected bool IsAtDesktopLayer;
@@ -285,6 +293,7 @@ public abstract partial class WidgetWindowBase : Window
 
     protected void CleanupBase()
     {
+        CancelPendingTitleBarDragFrame();
         CancelPendingInteractiveResizeFrame();
         EndInteractiveResizePerformanceSession();
         RemoveDesktopPinnedPointerRouting();
@@ -295,6 +304,8 @@ public abstract partial class WidgetWindowBase : Window
         StopBackdropRefreshTimer();
         StopInactiveBackdropCleanupTimer();
         ReleaseTopMostSafetyTimer();
+        DetachXamlRootScaleWatcher();
+        CleanupWidgetForegroundAppearance();
         DisplayChangeWatcher?.Dispose();
         DisplayChangeWatcher = null;
         ClearSolidColorBackdrop();
@@ -401,6 +412,11 @@ public abstract partial class WidgetWindowBase : Window
         _lastInteractiveResizeCommitTimestamp = 0;
         _interactiveResizeMinimumSize = default;
     }
+
+    private readonly record struct PendingTitleBarDragFrame(
+        RectInt32 ProposedBounds,
+        int DeltaX,
+        int DeltaY);
 
     protected void TrackWindowClosedForDiagnostics()
     {

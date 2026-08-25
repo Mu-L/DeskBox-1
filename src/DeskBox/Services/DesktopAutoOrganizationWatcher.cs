@@ -572,6 +572,16 @@ public sealed class DesktopAutoOrganizationWatcher : IDisposable
                 Size = stable.Size,
                 LastWriteTimeUtc = stable.LastWriteTimeUtc
             };
+            if (_organizerService.AutoOrganizationSuppressions.TryConsume(
+                    workItem.Path))
+            {
+                App.Log(
+                    $"[DesktopAutoOrganization] Explicit restore retained on desktop: " +
+                    $"'{workItem.Path}'.");
+                MarkIgnored(workItem);
+                return;
+            }
+
             DesktopOrganizationRule? rule = _ruleResolver.Resolve(
                 item,
                 _settingsService.Settings.DesktopOrganizationRules,

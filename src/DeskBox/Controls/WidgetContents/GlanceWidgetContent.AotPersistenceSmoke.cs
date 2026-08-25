@@ -12,7 +12,8 @@ public sealed partial class GlanceWidgetContent
     internal async Task<AotGlanceSurfaceSnapshot> WaitForAotGlanceSurfaceAsync(
         string? expectedImagePath,
         GlanceLayoutMode expectedLayout,
-        bool expectImage)
+        bool expectImage,
+        double expectedBackgroundImageOpacity)
     {
         AotGlanceSurfaceSnapshot last = CaptureAotGlanceSurface();
         for (int attempt = 0; attempt < 120; attempt++)
@@ -40,6 +41,7 @@ public sealed partial class GlanceWidgetContent
                 last.HasXamlRoot &&
                 last.DataContextMatchesViewModel &&
                 imageReady &&
+                Math.Abs(last.BackgroundImageLayerOpacity - expectedBackgroundImageOpacity) < 0.001 &&
                 layoutReady)
             {
                 return last;
@@ -69,6 +71,7 @@ public sealed partial class GlanceWidgetContent
             activeBrush is not null,
             activeImageUri,
             active.Opacity,
+            BackgroundImageLayer.Opacity,
             activeBrush?.Stretch.ToString(),
             activeBrush?.AlignmentX.ToString(),
             activeBrush?.AlignmentY.ToString(),
@@ -94,6 +97,7 @@ internal sealed record AotGlanceSurfaceSnapshot(
     bool ActiveBackgroundIsImageBrush,
     string? ActiveImageUri,
     double ActiveBackgroundOpacity,
+    double BackgroundImageLayerOpacity,
     string? ImageStretch,
     string? ImageAlignmentX,
     string? ImageAlignmentY,

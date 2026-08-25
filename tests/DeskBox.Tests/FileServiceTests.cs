@@ -86,6 +86,54 @@ public sealed class FileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RelocateEntryAsync_RenamesFileWhenOnlyCasingChanges()
+    {
+        var service = new FileService();
+        string sourcePath = Path.Combine(_tempRoot, "report.txt");
+        string destinationPath = Path.Combine(_tempRoot, "REPORT.txt");
+        await File.WriteAllTextAsync(sourcePath, "preserved");
+
+        await service.RelocateEntryAsync(sourcePath, destinationPath);
+
+        string actualPath = Assert.Single(
+            Directory.EnumerateFiles(_tempRoot));
+        Assert.Equal("REPORT.txt", Path.GetFileName(actualPath));
+        Assert.Equal("preserved", await File.ReadAllTextAsync(actualPath));
+        Assert.DoesNotContain(
+            Directory.EnumerateFileSystemEntries(_tempRoot),
+            path => Path.GetFileName(path).StartsWith(
+                ".deskbox-case-rename-",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RelocateEntryAsync_RenamesFolderWhenOnlyCasingChanges()
+    {
+        var service = new FileService();
+        string sourcePath = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "designs")).FullName;
+        string destinationPath = Path.Combine(_tempRoot, "DESIGNS");
+        await File.WriteAllTextAsync(
+            Path.Combine(sourcePath, "content.txt"),
+            "preserved");
+
+        await service.RelocateEntryAsync(sourcePath, destinationPath);
+
+        string actualPath = Assert.Single(
+            Directory.EnumerateDirectories(_tempRoot));
+        Assert.Equal("DESIGNS", Path.GetFileName(actualPath));
+        Assert.Equal(
+            "preserved",
+            await File.ReadAllTextAsync(
+                Path.Combine(actualPath, "content.txt")));
+        Assert.DoesNotContain(
+            Directory.EnumerateFileSystemEntries(_tempRoot),
+            path => Path.GetFileName(path).StartsWith(
+                ".deskbox-case-rename-",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void TryIsPathUnderDirectoryResolved_VerifiesExistingChild()
     {
         string root = Directory.CreateDirectory(

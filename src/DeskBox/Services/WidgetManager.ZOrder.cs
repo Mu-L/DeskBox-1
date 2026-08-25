@@ -38,12 +38,24 @@ public sealed partial class WidgetManager
     // to consume.
     private bool _lastMouseButtonsDown;
     private bool _outsideMousePressObserved;
+    private bool _quickRevealDismissQueued;
+    private readonly QuickRevealDesktopDismissTracker _quickRevealDesktopDismissTracker =
+        QuickRevealDesktopDismissTracker.CreateForCurrentSystem();
     private WidgetExpandedLayerLease _expandedWidgetLayerLease;
 
     internal long AcquireExpandedWidgetLayer(IntPtr windowHandle, string reason)
     {
         if (windowHandle == IntPtr.Zero || !Win32Helper.IsWindow(windowHandle))
         {
+            return 0;
+        }
+
+        if (WidgetLayerService.UsesDesktopPinnedMode())
+        {
+            WidgetLayerService.MoveToDesktopBottom(windowHandle);
+            App.LogVerbose(
+                $"[ZOrder] Expanded lease skipped fixed-layer reason={reason} " +
+                $"owner=0x{windowHandle.ToInt64():X}");
             return 0;
         }
 
@@ -466,6 +478,12 @@ public sealed partial class WidgetManager
 
         if (IsTaskbarWindow(foreground))
         {
+            if (WidgetLayerService.UsesQuickRevealMode())
+            {
+                QueueQuickRevealDismiss($"{reason}-taskbar", outsideInteraction: true);
+                return;
+            }
+
             App.LogVerbose($"[TrayBatch] RaisedState kept reason={reason} foreground=taskbar");
             return;
         }
@@ -483,7 +501,9 @@ public sealed partial class WidgetManager
             if (foreground != _foregroundAtRaiseTime && foreground != IntPtr.Zero)
             {
                 App.Log($"[TrayBatch] RaisedState released reason={reason}-foreground-changed from=0x{_foregroundAtRaiseTime.ToInt64():X} to=0x{foreground.ToInt64():X}");
-                RestoreRaisedWidgetsToDesktopLayer();
+                CompleteRaisedSessionAfterExternalInteraction(
+                    $"{reason}-foreground-changed",
+                    outsideInteraction: true);
                 return;
             }
 
@@ -496,17 +516,95 @@ public sealed partial class WidgetManager
             {
                 _outsideMousePressObserved = false;
                 App.Log($"[TrayBatch] RaisedState released reason={reason}-outside-click foreground=0x{foreground.ToInt64():X}");
-                RestoreRaisedWidgetsToDesktopLayer();
+                CompleteRaisedSessionAfterExternalInteraction(
+                    $"{reason}-outside-click",
+                    outsideInteraction: true);
             }
 
             return;
         }
 
         App.Log($"[TrayBatch] RaisedState released reason={reason}-deskbox-leave foreground=0x{foreground.ToInt64():X}");
+        CompleteRaisedSessionAfterExternalInteraction(
+            $"{reason}-deskbox-leave",
+            outsideInteraction: true);
+    }
+
+    private void CompleteRaisedSessionAfterExternalInteraction(
+        string reason,
+        bool outsideInteraction)
+    {
+        if (WidgetLayerService.UsesQuickRevealMode())
+        {
+            QueueQuickRevealDismiss(reason, outsideInteraction);
+            return;
+        }
+
         RestoreRaisedWidgetsToDesktopLayer();
     }
 
-    private void StartTrayLayerRestoreMonitor(bool hasRaisedWidgets)
+    private void QueueQuickRevealDismiss(string reason, bool outsideInteraction)
+    {
+        if (_quickRevealDismissQueued || !HasVisibleWidgets)
+        {
+            return;
+        }
+
+        _quickRevealDismissQueued = true;
+        if (outsideInteraction)
+        {
+            Win32Helper.POINT? cursor = TryGetCursorPosition();
+            if (cursor.HasValue)
+            {
+                _quickRevealDesktopDismissTracker.Record(
+                    cursor.Value.X,
+                    cursor.Value.Y,
+                    unchecked((uint)Environment.TickCount));
+            }
+            else
+            {
+                _quickRevealDesktopDismissTracker.Clear();
+            }
+        }
+
+        StopTrayLayerRestoreMonitor();
+        App.LogVerbose($"[QuickReveal] Dismiss queued reason={reason}");
+        if (!App.UiDispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                await SetAllWidgetsVisibleAsync(false);
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[QuickReveal] Dismiss failed reason={reason}: {ex}");
+            }
+            finally
+            {
+                _quickRevealDismissQueued = false;
+            }
+        }))
+        {
+            _quickRevealDismissQueued = false;
+            App.Log($"[QuickReveal] Dismiss dispatch rejected reason={reason}");
+        }
+    }
+
+    internal bool ConsumeQuickRevealDesktopDoubleClickDismiss(
+        DesktopDoubleClickSequence sequence)
+    {
+        if (!WidgetLayerService.UsesQuickRevealMode())
+        {
+            _quickRevealDesktopDismissTracker.Clear();
+            return false;
+        }
+
+        return _quickRevealDesktopDismissTracker.ConsumeIfSameSequence(sequence);
+    }
+
+    private void StartTrayLayerRestoreMonitor(
+        bool hasRaisedWidgets,
+        bool preserveSourceForeground = false)
     {
         if (!hasRaisedWidgets)
         {
@@ -515,14 +613,17 @@ public sealed partial class WidgetManager
             return;
         }
 
-        _hasDeskBoxForegroundSinceRaise = IsForegroundDeskBoxWindow();
+        _hasDeskBoxForegroundSinceRaise =
+            !preserveSourceForeground && IsForegroundDeskBoxWindow();
         _trayLayerRestoreTimer ??= App.UiDispatcherQueue.CreateTimer();
         _trayLayerRestoreTimer.Stop();
-        _trayLayerRestoreTimer.Interval = TimeSpan.FromMilliseconds(200);
+        int restoreIntervalMs = WidgetLayerService.UsesQuickRevealMode() ? 50 : 200;
+        _trayLayerRestoreTimer.Interval = TimeSpan.FromMilliseconds(restoreIntervalMs);
         _trayLayerRestoreTimer.Tick -= TrayLayerRestoreTimer_Tick;
         _trayLayerRestoreTimer.Tick += TrayLayerRestoreTimer_Tick;
         _trayLayerRestoreTimer.Start();
-        App.LogVerbose("[TrayBatch] RaisedStateMonitor started intervalMs=200");
+        App.LogVerbose(
+            $"[TrayBatch] RaisedStateMonitor started intervalMs={restoreIntervalMs}");
 
         StartTrayMouseSampler();
     }
@@ -585,8 +686,17 @@ public sealed partial class WidgetManager
             // Check cursor position at the moment of pressing.
             Win32Helper.POINT? cursor = TryGetCursorPosition();
             if (!IsPointerOverDeskBoxWindow(cursor) &&
-                !IsPointerOverTaskbar(cursor))
+                (!IsPointerOverTaskbar(cursor) || WidgetLayerService.UsesQuickRevealMode()))
             {
+                if (WidgetLayerService.UsesQuickRevealMode())
+                {
+                    _lastMouseButtonsDown = isDown;
+                    QueueQuickRevealDismiss(
+                        "mouse-sampler-outside-click",
+                        outsideInteraction: true);
+                    return;
+                }
+
                 _outsideMousePressObserved = true;
                 App.LogVerbose($"[TrayBatch] MouseSampler detected outside-press at={FormatPoint(cursor)}");
             }

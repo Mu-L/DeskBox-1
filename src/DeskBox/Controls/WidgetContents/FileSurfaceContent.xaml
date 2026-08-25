@@ -7,6 +7,7 @@
     xmlns:svc="using:DeskBox.Services"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -93,7 +94,7 @@
             <Grid
                 Tag="ItemSlot"
                 Width="{Binding DataContext.IconTileWidth, ElementName=ItemsGrid}"
-                Height="{Binding DataContext.IconTileHeight, ElementName=ItemsGrid}"
+                MinHeight="{Binding DataContext.IconTileHeight, ElementName=ItemsGrid}"
                 Margin="{Binding DataContext.IconTileMargin, ElementName=ItemsGrid}"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Top">
@@ -117,7 +118,7 @@
             <Border
                 Tag="StackSurface"
                 Width="{Binding TileWidth}"
-                Height="{Binding TileHeight}"
+                MinHeight="{Binding TileHeight}"
                 Margin="{Binding TileMargin}"
                 Padding="{Binding TilePadding}"
                 CornerRadius="8"
@@ -136,9 +137,33 @@
                 PointerReleased="StackSurface_PointerReleased"
                 ToolTipService.ToolTip="{Binding AutomationState}">
                 <StackPanel HorizontalAlignment="Center" Spacing="4">
-                    <Grid Width="{Binding PreviewSize}" Height="{Binding PreviewSize}">
+                    <Grid
+                        Tag="StackPreviewHost"
+                        Width="{Binding PreviewSize}"
+                        Height="{Binding PreviewSize}">
                         <Grid Visibility="{Binding CollapsedPreviewVisibility}">
+                            <Border
+                                Tag="StackPopoverFolderBackdrop"
+                                Margin="1"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                IsHitTestVisible="False"
+                                Visibility="Collapsed" />
                             <Grid
+                                Tag="StackPreviewFour"
+                                Width="{Binding PreviewItemSize}"
+                                Height="{Binding PreviewItemSize}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Opacity="0"
+                                Visibility="{Binding FourthPreviewVisibility}">
+                                <Image Source="{Binding PreviewFour.Icon}" Stretch="Uniform" Visibility="{Binding PreviewFour.IconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewFour.FallbackIconVisibility}" />
+                            </Grid>
+                            <Grid
+                                Tag="StackPreviewThree"
                                 Width="{Binding PreviewItemSize}"
                                 Height="{Binding PreviewItemSize}"
                                 HorizontalAlignment="Center"
@@ -153,6 +178,7 @@
                                 <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
                             </Grid>
                             <Grid
+                                Tag="StackPreviewTwo"
                                 Width="{Binding PreviewItemSize}"
                                 Height="{Binding PreviewItemSize}"
                                 HorizontalAlignment="Center"
@@ -166,6 +192,7 @@
                                 <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
                             </Grid>
                             <Grid
+                                Tag="StackPreviewOne"
                                 Width="{Binding PreviewItemSize}"
                                 Height="{Binding PreviewItemSize}"
                                 HorizontalAlignment="Center"
@@ -178,6 +205,7 @@
                                 <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding PreviewItemSize}" Height="{Binding PreviewItemSize}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
                             </Grid>
                             <Border
+                                Tag="StackPreviewCountBadge"
                                 MinWidth="16"
                                 Height="16"
                                 Padding="3,0"
@@ -187,6 +215,7 @@
                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
                                 CornerRadius="8">
                                 <TextBlock
+                                    Tag="StackPreviewCountText"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     FontSize="9"
@@ -239,6 +268,38 @@
                 PointerPressed="ItemSurface_PointerPressed" />
         </DataTemplate>
 
+        <!-- Created only while a stack popover is open. The member objects and
+             existing item surface are reused, while stack-child indentation is
+             deliberately disabled because the panel already provides context. -->
+        <DataTemplate x:Key="StackPopoverFileIconTemplate">
+            <controls:FileItemSurface
+                Mode="Icon"
+                UseStackChildIndent="False"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                AllowDrop="True"
+                Loaded="ItemSurface_Loaded"
+                Unloaded="ItemSurface_Unloaded"
+                DragLeave="ItemSurface_DragLeave"
+                DragOver="ItemSurface_DragOver"
+                Drop="ItemSurface_Drop"
+                PointerPressed="ItemSurface_PointerPressed" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="StackPopoverFileListTemplate">
+            <controls:FileItemSurface
+                Mode="List"
+                UseStackChildIndent="False"
+                HorizontalAlignment="Stretch"
+                AllowDrop="True"
+                Loaded="ItemSurface_Loaded"
+                Unloaded="ItemSurface_Unloaded"
+                DragLeave="ItemSurface_DragLeave"
+                DragOver="ItemSurface_DragOver"
+                Drop="ItemSurface_Drop"
+                PointerPressed="ItemSurface_PointerPressed" />
+        </DataTemplate>
+
         <DataTemplate x:Key="SurfaceFileStackListTemplate">
             <Border
                 Tag="StackSurface"
@@ -265,21 +326,38 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Grid Width="{Binding ListIconSize}" Height="{Binding ListIconSize}">
+                    <Grid
+                        Tag="StackPreviewHost"
+                        Width="{Binding ListIconSize}"
+                        Height="{Binding ListIconSize}">
                         <Grid Visibility="{Binding CollapsedPreviewVisibility}">
-                            <Grid Opacity="0.55" Visibility="{Binding ThirdPreviewVisibility}">
+                            <Border
+                                Tag="StackPopoverFolderBackdrop"
+                                Margin="0.5"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="7"
+                                IsHitTestVisible="False"
+                                Visibility="Collapsed" />
+                            <Grid Tag="StackPreviewFour" Opacity="0" Visibility="{Binding FourthPreviewVisibility}">
+                                <Image Source="{Binding PreviewFour.Icon}" Stretch="Uniform" Visibility="{Binding PreviewFour.IconVisibility}" />
+                                <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewFour.FallbackIconVisibility}" />
+                            </Grid>
+                            <Grid Tag="StackPreviewThree" Opacity="0.55" Visibility="{Binding ThirdPreviewVisibility}">
                                 <Image Source="{Binding PreviewThree.Icon}" Stretch="Uniform" Visibility="{Binding PreviewThree.IconVisibility}" />
                                 <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewThree.FallbackIconVisibility}" />
                             </Grid>
-                            <Grid Margin="4,2,0,0" Opacity="0.76">
+                            <Grid Tag="StackPreviewTwo" Margin="4,2,0,0" Opacity="0.76">
                                 <Image Source="{Binding PreviewTwo.Icon}" Stretch="Uniform" Visibility="{Binding PreviewTwo.IconVisibility}" />
                                 <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewTwo.FallbackIconVisibility}" />
                             </Grid>
-                            <Grid Margin="0,0,4,3">
+                            <Grid Tag="StackPreviewOne" Margin="0,0,4,3">
                                 <Image Source="{Binding PreviewOne.Icon}" Stretch="Uniform" Visibility="{Binding PreviewOne.IconVisibility}" />
                                 <ContentControl Style="{StaticResource FileIconLoadingPlaceholderStyle}" Width="{Binding ListIconSize}" Height="{Binding ListIconSize}" Visibility="{Binding PreviewOne.FallbackIconVisibility}" />
                             </Grid>
                             <Border
+                                Tag="StackPreviewCountBadge"
                                 MinWidth="14"
                                 Height="14"
                                 Padding="2,0"
@@ -288,6 +366,7 @@
                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
                                 CornerRadius="7">
                                 <TextBlock
+                                    Tag="StackPreviewCountText"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     FontSize="8"
@@ -343,7 +422,8 @@
         DragOver="Root_DragOver"
         DragLeave="Root_DragLeave"
         Drop="Root_Drop"
-        KeyDown="Root_KeyDown">
+        KeyDown="Root_KeyDown"
+        CharacterReceived="Root_CharacterReceived">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="ImportOperationStates">
                 <VisualState x:Name="ImportPreparingState">

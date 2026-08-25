@@ -29,7 +29,14 @@ public sealed class AppDiagnosticsService : IDisposable
     public void StartAll()
     {
         ScheduleMemoryDiagnostics();
-        StartUiThreadWatchdog();
+        if (PerformanceLogger.IsEnabled || App.IsVerboseLoggingEnabled)
+        {
+            StartUiThreadWatchdog();
+        }
+        else
+        {
+            App.Log("[Watchdog] Disabled; enable performance or verbose logging to opt in");
+        }
     }
 
     public int LifecycleEventCount => Volatile.Read(ref _lifecycleEventCount);

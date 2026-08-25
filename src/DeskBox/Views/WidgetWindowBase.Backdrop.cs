@@ -280,36 +280,15 @@ public abstract partial class WidgetWindowBase
     protected (double Thickness, Windows.UI.Color BorderColor, Windows.UI.Color DividerColor)
         GetWidgetBorderVisuals(bool isDark, Windows.UI.Color accentColor)
     {
-        string borderStyle = SettingsService.Settings.WidgetBorderStyle;
-        string colorMode = SettingsService.Settings.WidgetBorderColorMode;
-        var (thickness, alpha) = borderStyle switch
-        {
-            SettingsService.WidgetBorderStyleMedium => (1.2d, (byte)0x30),
-            SettingsService.WidgetBorderStyleThick => (1.6d, (byte)0x48),
-            SettingsService.WidgetBorderStyleNone => (0d, (byte)0),
-            _ => (0.8d, (byte)0x18)
-        };
-
-        if (colorMode == SettingsService.WidgetBorderColorModeNone)
-        {
-            thickness = 0;
-            alpha = 0;
-        }
-
-        bool useAccent = colorMode == SettingsService.WidgetBorderColorModeAccent;
-        byte borderAlpha = useAccent
-            ? (byte)Math.Clamp(Math.Round(alpha * 1.35), 0, 255)
-            : alpha;
-        byte red = useAccent ? accentColor.R : isDark ? (byte)0xFF : (byte)0x00;
-        byte green = useAccent ? accentColor.G : isDark ? (byte)0xFF : (byte)0x00;
-        byte blue = useAccent ? accentColor.B : isDark ? (byte)0xFF : (byte)0x00;
-        var borderColor = ColorHelper.FromArgb(borderAlpha, red, green, blue);
-        var dividerColor = ColorHelper.FromArgb(
-            (byte)Math.Clamp(Math.Round(borderAlpha * (isDark ? 0.66 : 0.42)), 0, 255),
-            red,
-            green,
-            blue);
-        return (thickness, borderColor, dividerColor);
+        WidgetBorderVisuals visuals = WidgetBorderVisualCalculator.Resolve(
+            SettingsService.Settings.WidgetBorderStyle,
+            SettingsService.Settings.WidgetBorderColorMode,
+            isDark,
+            accentColor);
+        return (
+            visuals.Thickness,
+            visuals.BorderColor,
+            visuals.DividerColor);
     }
 
     private void ApplyCompactBorderVisuals(bool? isDarkOverride = null)

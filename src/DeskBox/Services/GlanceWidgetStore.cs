@@ -264,6 +264,9 @@ public sealed class GlanceWidgetStore
         data.Transition = Enum.IsDefined(data.Transition) ? data.Transition : GlanceTransitionMode.CrossFade;
         data.TransitionSpeed = Enum.IsDefined(data.TransitionSpeed) ? data.TransitionSpeed : GlanceTransitionSpeed.Standard;
         data.Readability = Enum.IsDefined(data.Readability) ? data.Readability : GlanceReadabilityMode.Soft;
+        data.BackgroundImageTransparency = double.IsFinite(data.BackgroundImageTransparency)
+            ? Math.Clamp(data.BackgroundImageTransparency, 0.0, 1.0)
+            : 0.0;
         data.CalendarMaterialMode = Enum.IsDefined(data.CalendarMaterialMode)
             ? data.CalendarMaterialMode
             : GlanceCalendarMaterialMode.FollowSystem;

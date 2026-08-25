@@ -524,6 +524,7 @@
             <ScrollViewer x:Name="ResultsPanel" Grid.Row="2" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto" Padding="12,2,12,12"
                           Background="Transparent"
+                          ViewChanged="ResultsPanel_ViewChanged"
                           SizeChanged="ResultsPanel_SizeChanged"
                           KeyDown="ResultsPanel_KeyDown"
                           PointerPressed="ResultsPanel_PointerPressed"

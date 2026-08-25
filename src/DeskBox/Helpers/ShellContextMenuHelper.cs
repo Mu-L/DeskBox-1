@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using DeskBox.Helpers;
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
 using DeskBox.Services;
 #endif
 
@@ -304,7 +304,7 @@ public static class ShellContextMenuHelper
             return false;
         }
 
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
         bool trackedInvocation =
             AotFilePropertiesFixture.TryBeginInvocation(hwnd, filePath);
 #endif
@@ -315,7 +315,7 @@ public static class ShellContextMenuHelper
                 SHOP_FILEPATH,
                 filePath,
                 null);
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
             if (trackedInvocation)
             {
                 AotFilePropertiesFixture.RecordInvocationResult(
@@ -328,7 +328,7 @@ public static class ShellContextMenuHelper
         catch (Exception ex)
         {
             _ = ex;
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
             if (trackedInvocation)
             {
                 AotFilePropertiesFixture.RecordInvocationResult(

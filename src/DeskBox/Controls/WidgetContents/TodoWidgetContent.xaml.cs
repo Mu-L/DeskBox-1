@@ -32,7 +32,7 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private string? _draggedTodoItemId;
     private readonly List<string> _draggedTodoItemIds = [];
-    private bool _todoTabDropHandled;
+    private Border? _todoReorderDropTarget;
     private TodoItemViewModel? _editingItem;
     private TodoItemViewModel? _customDueDateItem;
     private IReadOnlyList<string>? _customDueDateItemIds;
@@ -182,6 +182,9 @@ public sealed partial class TodoWidgetContent : UserControl
 
         App.Current.LocalizationService.LanguageChanged -= OnLanguageChanged;
         App.Current.ThemeService.AppearanceChanged -= OnThemeAppearanceChanged;
+        _draggedTodoItemId = null;
+        _draggedTodoItemIds.Clear();
+        ResetTodoReorderVisualState();
         _copyTapGeneration++;
         _detailTransitionGeneration++;
         _notesAutosaveTimer.Stop();

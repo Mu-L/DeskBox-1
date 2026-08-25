@@ -154,7 +154,6 @@ public sealed partial class QuickCaptureWidgetWindow :
     private readonly List<string> _draggedQuickCaptureItemIds = [];
     private bool _isInternalQuickCaptureDrag;
     private bool _internalQuickCaptureDragCanReorder;
-    private bool _quickCaptureTabDropHandled;
     private bool _segmentedLayoutRefreshDeferred;
     private bool _isSynchronizingQuickCaptureViewSelection;
     private QuickCaptureViewMode? _internalQuickCaptureDragView;
@@ -431,6 +430,7 @@ public sealed partial class QuickCaptureWidgetWindow :
         _trayAnimation.RestoreVisualState();
         _trayAnimation.RestoreWindowPosition();
         _trayAnimation.RevealWindowForTrayShow();
+        SetTrayHideInputSuppressed(false);
         _isHideAnimationRunning = false;
         LogTrayWindow($"CancelAnimationAndRestore gen={animationGeneration}");
     }
@@ -506,6 +506,7 @@ public sealed partial class QuickCaptureWidgetWindow :
 
 public void PrepareTrayShowAnimation()
 {
+SetTrayHideInputSuppressed(false);
 _trayAnimation.NextGeneration();
 _trayAnimation.StopAndRestoreWindowPosition();
 _trayAnimation.CloakWindowForTrayShow();
@@ -560,6 +561,7 @@ else
     _trayAnimation.Stop();
 }
 _isHideAnimationRunning = true;
+        SetTrayHideInputSuppressed(true);
         Visible = false;
         _isVisibleContentRevealCompleted = false;
         ViewModel.SuspendWindowRefresh();
@@ -694,6 +696,7 @@ _isHideAnimationRunning = true;
         StopBackdropRefreshTimer();
         _trayAnimation.Stop();
         _trayAnimation.RevealWindowForTrayShow();
+        SetTrayHideInputSuppressed(false);
         WidgetLayerService.ReleaseWindow(_hWnd);
         Close();
     }
@@ -714,6 +717,7 @@ _isHideAnimationRunning = true;
         ViewModel.ApplyAppearancePreview();
         QuickCaptureShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
         ApplyWindowCornerPreference();
+        ApplyWidgetForegroundAppearance();
         ApplyBackdropPreference();
         QueueBackdropRefresh();
         ApplyTitleBarLayout();
@@ -898,6 +902,7 @@ _isHideAnimationRunning = true;
 
         ApplyWindowCornerPreference();
         QuickCaptureShell.ShowHoverButtons = _settingsService.Settings.ShowHoverButtons;
+        ApplyWidgetForegroundAppearance();
         ApplyBackdropPreference();
         QueueBackdropRefresh();
         ApplyTitleBarLayout();
@@ -1075,6 +1080,7 @@ _isHideAnimationRunning = true;
         WidgetLayerService.ClearTopMost(_hWnd);
         Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
         _appWindow.Hide();
+        SetTrayHideInputSuppressed(false);
         WidgetShellControl.SuspendVisualActivity();
         _visibleContentResumeGeneration++;
         NotifyCompactHostVisibilityChanged(false);

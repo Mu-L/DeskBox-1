@@ -507,6 +507,48 @@ Text="DeskBox" />
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.WidgetForeground.Description"
+                                    svc:Localized.HeaderKey="Settings.WidgetForeground.Title">
+                                    <toolkit:SettingsCard.HeaderIcon>
+                                        <FontIcon Glyph="&#xE790;" />
+                                    </toolkit:SettingsCard.HeaderIcon>
+                                    <ComboBox
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailableWidgetForegroundModeOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetForegroundMode, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    Visibility="{Binding WidgetForegroundCustomColorVisibility}"
+                                    svc:Localized.DescriptionKey="Settings.WidgetForeground.CustomColor.Description"
+                                    svc:Localized.HeaderKey="Settings.WidgetForeground.CustomColor.Title">
+                                    <toolkit:SettingsCard.HeaderIcon>
+                                        <FontIcon Glyph="&#xE2B1;" />
+                                    </toolkit:SettingsCard.HeaderIcon>
+                                    <toolkit:ColorPickerButton
+                                        Width="72"
+                                        Height="34"
+                                        MinWidth="72"
+                                        HorizontalAlignment="Right"
+                                        SelectedColor="{Binding SelectedWidgetForegroundColor, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    svc:Localized.DescriptionKey="Settings.WidgetTextEdge.Description"
+                                    svc:Localized.HeaderKey="Settings.WidgetTextEdge.Title">
+                                    <toolkit:SettingsCard.HeaderIcon>
+                                        <FontIcon Glyph="&#xE91B;" />
+                                    </toolkit:SettingsCard.HeaderIcon>
+                                    <ComboBox
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailableWidgetTextEdgeModeOptions}"
+                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetTextEdgeMode, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
                                     svc:Localized.DescriptionKey="Settings.BorderColor.Description"
                                     svc:Localized.HeaderKey="Settings.BorderColor.Title">
                                     <ComboBox
@@ -1161,6 +1203,19 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.FileStacks.OpenMode.Description"
+                            svc:Localized.HeaderKey="Settings.FileStacks.OpenMode.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7E7;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{x:Bind ViewModel.AvailableFileStackOpenModeOptions, Mode=OneWay}"
+                                controls:SettingsComboBox.Value="{x:Bind ViewModel.SelectedFileStackOpenMode, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
                             IsEnabled="{Binding FileStacksEnabled}"
                             svc:Localized.DescriptionKey="Settings.FileStacks.Threshold.Description"
                             svc:Localized.HeaderKey="Settings.FileStacks.Threshold.Title">
@@ -1390,23 +1445,103 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             <toolkit:SettingsExpander.Items>
                                 <toolkit:SettingsCard
                                     ContentAlignment="Vertical"
-                                    HorizontalContentAlignment="Stretch"
-                                    svc:Localized.HeaderKey="Settings.GlobalHotkey.CustomTitle">
-                                    <Grid RowSpacing="10">
+                                    HorizontalContentAlignment="Stretch">
+                                    <StackPanel Spacing="8">
+                                        <StackPanel Spacing="3">
+                                            <TextBlock
+                                                Style="{StaticResource SettingTitleTextStyle}"
+                                                svc:Localized.Key="Settings.GlobalHotkey.PresetsTitle" />
+                                            <TextBlock
+                                                Style="{StaticResource SettingDescriptionTextStyle}"
+                                                TextWrapping="Wrap"
+                                                svc:Localized.Key="Settings.GlobalHotkey.PresetsDescription" />
+                                        </StackPanel>
+                                        <ScrollViewer
+                                            HorizontalScrollBarVisibility="Auto"
+                                            HorizontalScrollMode="Enabled"
+                                            VerticalScrollBarVisibility="Disabled"
+                                            VerticalScrollMode="Disabled">
+                                            <StackPanel
+                                                x:Name="GlobalHotkeyPresetButtonsPanel"
+                                                Orientation="Horizontal"
+                                                Spacing="8">
+                                                <ToggleButton
+                                                    x:Name="GlobalHotkeyPresetF7Button"
+                                                    MinWidth="0"
+                                                    Padding="12,6"
+                                                    Click="GlobalHotkeyPresetButton_Click"
+                                                    Tag="F7">
+                                                    <TextBlock svc:Localized.Key="Settings.GlobalHotkey.Preset.F7" />
+                                                </ToggleButton>
+                                                <ToggleButton
+                                                    x:Name="GlobalHotkeyPresetDoubleControlButton"
+                                                    MinWidth="0"
+                                                    Padding="12,6"
+                                                    Click="GlobalHotkeyPresetButton_Click"
+                                                    Tag="DoubleControl">
+                                                    <TextBlock svc:Localized.Key="Settings.GlobalHotkey.Preset.DoubleControl" />
+                                                </ToggleButton>
+                                                <ToggleButton
+                                                    x:Name="GlobalHotkeyPresetAltSpaceButton"
+                                                    MinWidth="0"
+                                                    Padding="12,6"
+                                                    Click="GlobalHotkeyPresetButton_Click"
+                                                    Tag="AltSpace">
+                                                    <TextBlock svc:Localized.Key="Settings.GlobalHotkey.Preset.AltSpace" />
+                                                </ToggleButton>
+                                                <ToggleButton
+                                                    x:Name="GlobalHotkeyPresetWinSpaceButton"
+                                                    MinWidth="0"
+                                                    Padding="12,6"
+                                                    Click="GlobalHotkeyPresetButton_Click"
+                                                    Tag="WinSpace">
+                                                    <TextBlock svc:Localized.Key="Settings.GlobalHotkey.Preset.WinSpace" />
+                                                </ToggleButton>
+                                                <ToggleButton
+                                                    x:Name="GlobalHotkeyPresetWindowsTapButton"
+                                                    MinWidth="0"
+                                                    Padding="12,6"
+                                                    Click="GlobalHotkeyPresetButton_Click"
+                                                    Tag="WindowsTap">
+                                                    <TextBlock svc:Localized.Key="Settings.GlobalHotkey.Preset.WindowsTap" />
+                                                </ToggleButton>
+                                            </StackPanel>
+                                        </ScrollViewer>
+                                    </StackPanel>
+                                </toolkit:SettingsCard>
+                                <toolkit:SettingsCard
+                                    ContentAlignment="Vertical"
+                                    HorizontalContentAlignment="Stretch">
+                                    <Grid
+                                        x:Name="GlobalHotkeyCustomRow"
+                                        ColumnSpacing="24"
+                                        RowSpacing="10">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <TextBlock
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel
                                             Grid.Row="0"
+                                            Grid.Column="0"
                                             VerticalAlignment="Center"
-                                            Style="{StaticResource SettingDescriptionTextStyle}"
-                                            Text="{Binding GlobalHotkeyStatusText}" />
+                                            Spacing="3">
+                                            <TextBlock
+                                                Style="{StaticResource SettingTitleTextStyle}"
+                                                svc:Localized.Key="Settings.GlobalHotkey.CustomTitle" />
+                                            <TextBlock
+                                                Style="{StaticResource SettingDescriptionTextStyle}"
+                                                Text="{Binding GlobalHotkeyStatusText}" />
+                                        </StackPanel>
                                         <Grid
                                             x:Name="GlobalHotkeyActionsPanel"
-                                            Grid.Row="1"
+                                            Grid.Row="0"
+                                            Grid.Column="1"
                                             MinWidth="252"
+                                            VerticalAlignment="Center"
                                             HorizontalAlignment="Right"
                                             ColumnSpacing="10">
                                             <Grid.ColumnDefinitions>
@@ -1437,7 +1572,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                         </Grid>
                                         <InfoBar
                                             x:Name="GlobalHotkeyReservedWarning"
-                                            Grid.Row="2"
+                                            Grid.Row="1"
+                                            Grid.ColumnSpan="2"
                                             IsClosable="False"
                                             IsOpen="{Binding CanShowGlobalHotkeyWarning, Mode=OneWay}"
                                             Message="{Binding GlobalHotkeyWarningText}"
@@ -1447,9 +1583,55 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 </toolkit:SettingsCard>
                             </toolkit:SettingsExpander.Items>
                         </toolkit:SettingsExpander>
-                        <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.ResizeSnap.Description" svc:Localized.HeaderKey="Settings.ResizeSnap.Title">
-                            <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE742;" /></toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding ResizeSnapEnabled, Mode=TwoWay}" />
+                        <toolkit:SettingsExpander
+                            HorizontalContentAlignment="Stretch"
+                            svc:Localized.DescriptionKey="Settings.ResizeSnap.Description"
+                            svc:Localized.HeaderKey="Settings.ResizeSnap.Title">
+                            <toolkit:SettingsExpander.HeaderIcon>
+                                <FontIcon Glyph="&#xE742;" />
+                            </toolkit:SettingsExpander.HeaderIcon>
+                            <ToggleSwitch
+                                MinWidth="0"
+                                IsOn="{Binding ResizeSnapEnabled, Mode=TwoWay}"
+                                OffContent=""
+                                OnContent="" />
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    IsEnabled="{Binding ResizeSnapEnabled}"
+                                    svc:Localized.DescriptionKey="Settings.WidgetSnap.Spacing.Description"
+                                    svc:Localized.HeaderKey="Settings.WidgetSnap.Spacing.Title">
+                                    <StackPanel
+                                        VerticalAlignment="Center"
+                                        Orientation="Horizontal"
+                                        Spacing="8">
+                                        <TextBlock
+                                            Style="{StaticResource SliderSettingValueTextStyle}"
+                                            Text="{Binding WidgetSnapSpacingText}" />
+                                        <Slider
+                                            Width="240"
+                                            Maximum="32"
+                                            Minimum="0"
+                                            StepFrequency="1"
+                                            Style="{StaticResource InlineMetricSliderStyle}"
+                                            Value="{Binding WidgetSnapSpacing, Mode=TwoWay}" />
+                                    </StackPanel>
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.DesktopDoubleClick.Description"
+                            svc:Localized.HeaderKey="Settings.DesktopDoubleClick.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8B0;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch
+                                x:Name="DesktopDoubleClickToggle"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent=""
+                                Toggled="DesktopDoubleClickToggle_Toggled" />
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>

@@ -360,15 +360,31 @@ public sealed partial class TodoWidgetContent
             : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
     }
 
-    private static Brush GetNeutralOverlayBorderBrush(bool isDark)
+    private Brush GetNeutralOverlayBorderBrush(bool isDark)
     {
         return GetBrushResourceOrFallback(
             "CardStrokeColorDefaultBrush",
             isDark ? ColorHelper.FromArgb(0x52, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x24, 0x00, 0x00, 0x00));
     }
 
-    private static Brush GetBrushResourceOrFallback(string resourceKey, Windows.UI.Color fallbackColor)
+    private Brush GetBrushResourceOrFallback(string resourceKey, Windows.UI.Color fallbackColor)
     {
+        for (DependencyObject? current = this;
+             current is not null;
+             current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is FrameworkElement element &&
+                element.Resources.TryGetValue(resourceKey, out object? scopedResource))
+            {
+                return scopedResource switch
+                {
+                    Brush brush => brush,
+                    Windows.UI.Color color => new SolidColorBrush(color),
+                    _ => new SolidColorBrush(fallbackColor)
+                };
+            }
+        }
+
         if (Application.Current.Resources.TryGetValue(resourceKey, out object? resource))
         {
             return resource switch

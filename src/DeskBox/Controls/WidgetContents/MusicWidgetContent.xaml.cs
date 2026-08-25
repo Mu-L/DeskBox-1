@@ -5,6 +5,7 @@ using DeskBox.Services;
 using DeskBox.ViewModels;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
@@ -32,6 +33,11 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private const double MinimumAlbumArtSize = 60.0;
     private const double WideTransportButtonSize = 32.0;
     private const double CompactTransportButtonSize = 28.0;
+    private const double InlineVolumePanelMaximumWidth = 238.0;
+    private const double InlineVolumePanelHorizontalInset = 6.0;
+    private const double SourceFlyoutMaximumWidth = 280.0;
+    private const double SourceFlyoutMinimumWidth = 136.0;
+    private const double SourceFlyoutInset = 6.0;
     private bool _isProgressDragging;
     private bool _isProgressHovering;
     private bool _isInlineVolumeRefreshing;
@@ -52,10 +58,18 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private bool _isRecordHorizontalVinylRotating;
     private bool _isResponsiveLayoutTransitionActive;
     private Button? _volumeAnchorButton;
+    private MenuFlyout? _sourceFlyout;
+    private int _sourceFlyoutGeneration;
+    private readonly PointerEventHandler _rootPointerPressedHandler;
 
     public MusicWidgetContent()
     {
         InitializeComponent();
+        _rootPointerPressedHandler = RootGrid_PointerPressed;
+        RootGrid.AddHandler(
+            UIElement.PointerPressedEvent,
+            _rootPointerPressedHandler,
+            handledEventsToo: true);
         Loaded += MusicWidgetContent_Loaded;
         Unloaded += MusicWidgetContent_Unloaded;
         SizeChanged += MusicWidgetContent_SizeChanged;
@@ -91,6 +105,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
                 StopTitleMarquee();
             }
 
+            UpdateSourcePickerLabels();
             UpdateProgressVisuals();
         }
     }
@@ -127,10 +142,64 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         }
     }
 
+    private async void SourceButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button anchor || ViewModel is not MusicWidgetViewModel viewModel)
+        {
+            return;
+        }
+
+        int generation = ++_sourceFlyoutGeneration;
+        InlineVolumePanel.Visibility = Visibility.Collapsed;
+        if (_sourceFlyout is not null)
+        {
+            CloseSourceFlyout();
+            return;
+        }
+
+        try
+        {
+            IReadOnlyList<MusicSessionOption> options = await viewModel.GetAvailableSessionOptionsAsync();
+            if (_isDisposed ||
+                generation != _sourceFlyoutGeneration ||
+                !ReferenceEquals(viewModel, ViewModel) ||
+                !anchor.IsLoaded)
+            {
+                return;
+            }
+
+            MenuFlyout flyout = CreateSourceFlyout(viewModel, options);
+            _sourceFlyout = flyout;
+            flyout.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_sourceFlyout, flyout))
+                {
+                    _sourceFlyout = null;
+                }
+            };
+
+            flyout.ShowAt(
+                anchor,
+                new FlyoutShowOptions
+                {
+                    Placement = ReferenceEquals(anchor, MinimalSourceButton)
+                        ? FlyoutPlacementMode.Top
+                        : FlyoutPlacementMode.Bottom,
+                    ShowMode = FlyoutShowMode.Standard
+                });
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[MusicWidget] Show source picker failed: {ex}");
+            CloseSourceFlyout();
+        }
+    }
+
     private async void VolumeButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
+            CloseSourceFlyout();
             if (InlineVolumePanel.Visibility == Visibility.Visible)
             {
                 InlineVolumePanel.Visibility = Visibility.Collapsed;
@@ -161,7 +230,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             return;
         }
 
-        FrameworkElement? sourceElement = e.OriginalSource as FrameworkElement;
+        DependencyObject? sourceElement = e.OriginalSource as DependencyObject;
         if (IsElementInside(sourceElement, InlineVolumePanel) ||
             IsElementInside(sourceElement, _volumeAnchorButton ?? VolumeButton))
         {
@@ -186,6 +255,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private void MusicWidgetContent_Unloaded(object sender, RoutedEventArgs e)
     {
         InlineVolumePanel.Visibility = Visibility.Collapsed;
+        CloseSourceFlyout();
         StopTitleMarquee();
     }
 
@@ -211,6 +281,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         Loaded -= MusicWidgetContent_Loaded;
         Unloaded -= MusicWidgetContent_Unloaded;
         SizeChanged -= MusicWidgetContent_SizeChanged;
+        RootGrid.RemoveHandler(UIElement.PointerPressedEvent, _rootPointerPressedHandler);
+        CloseSourceFlyout();
         StopTitleMarquee();
 
         StopRecordVinylRotation();
@@ -229,6 +301,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         }
         else
         {
+            InlineVolumePanel.Visibility = Visibility.Collapsed;
+            CloseSourceFlyout();
             StopTitleMarquee();
             StopRecordVinylRotation();
             StopRecordHorizontalVinylRotation();
@@ -245,6 +319,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         _isHostCompactCollapsed = collapsed;
         if (collapsed || !_isHostWindowVisible)
         {
+            InlineVolumePanel.Visibility = Visibility.Collapsed;
+            CloseSourceFlyout();
             StopTitleMarquee();
             StopRecordVinylRotation();
             StopRecordHorizontalVinylRotation();
@@ -409,6 +485,8 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             return;
         }
 
+        UpdateInlineVolumePanelLayout(width);
+
         string normalizedMode = SettingsService.NormalizeMusicDisplayMode(ViewModel?.DisplayMode);
         bool isRecordVertical = normalizedMode == SettingsService.MusicDisplayModeRecordVertical;
         bool isRecordHorizontal = normalizedMode == SettingsService.MusicDisplayModeRecordHorizontal;
@@ -425,6 +503,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             RecordHorizontalLayout.Visibility = isRecordHorizontal ? Visibility.Visible : Visibility.Collapsed;
             RecordTonearm.Visibility = isRecordVertical ? Visibility.Visible : Visibility.Collapsed;
             InlineVolumePanel.Visibility = Visibility.Collapsed;
+            CloseSourceFlyout();
             ResetAlbumArtMotion();
             StopTitleMarquee();
             if (!isRecordVertical)
@@ -500,7 +579,6 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         SetButtonSize(PlayPauseButton, transportButtonSize);
         SetButtonSize(NextButton, transportButtonSize);
         SetButtonSize(VolumeButton, transportButtonSize);
-        InlineVolumePanel.Width = Math.Clamp(width - 12, 156, 238);
         PositionInlineVolumePanel();
         QueueTitleMarqueeUpdate();
     }
@@ -530,6 +608,26 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             CompactTransportButtonSize,
             WideTransportButtonSize,
             widthRatio));
+    }
+
+    internal static double ResolveInlineVolumePanelWidth(double width)
+    {
+        double availableWidth = Math.Max(
+            0,
+            width - InlineVolumePanelHorizontalInset * 2);
+        return Math.Min(InlineVolumePanelMaximumWidth, availableWidth);
+    }
+
+    internal static double ResolveSourceFlyoutMaxWidth(double width)
+    {
+        return Math.Min(
+            SourceFlyoutMaximumWidth,
+            Math.Max(0, width - SourceFlyoutInset * 2));
+    }
+
+    internal static double ResolveSourceFlyoutMaxHeight(double height)
+    {
+        return Math.Max(0, height - SourceFlyoutInset * 2);
     }
 
     internal static bool ShouldShowHorizontalVolumeControl(double width) => width >= 220;
@@ -565,6 +663,10 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         RecordLayout.RowSpacing = small ? 4 : 6;
         RecordTitleText.FontSize = small ? 12.5 : 14;
         RecordArtistText.FontSize = small ? 10.5 : 11.5;
+        RecordArtistText.MaxWidth = Math.Max(
+            0,
+            width - RecordLayout.Padding.Left - RecordLayout.Padding.Right -
+            RecordSourceButton.Width - 2);
         UpdateTonearmLayout(vinylSize, small);
     }
 
@@ -808,6 +910,145 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         return start + (end - start) * Math.Clamp(progress, 0.0, 1.0);
     }
 
+    private void UpdateInlineVolumePanelLayout(double width)
+    {
+        InlineVolumePanel.Width = ResolveInlineVolumePanelWidth(width);
+        PositionInlineVolumePanel();
+    }
+
+    private MenuFlyout CreateSourceFlyout(
+        MusicWidgetViewModel viewModel,
+        IReadOnlyList<MusicSessionOption> options)
+    {
+        var flyout = new MenuFlyout
+        {
+            MenuFlyoutPresenterStyle = CreateSourceFlyoutPresenterStyle()
+        };
+        string groupName = $"MusicPlaybackSource_{GetHashCode()}_{_sourceFlyoutGeneration}";
+
+        var followSystemItem = new RadioMenuFlyoutItem
+        {
+            Text = viewModel.FollowSystemSourceLabel,
+            GroupName = groupName,
+            IsChecked = viewModel.IsFollowingSystemSession
+        };
+        followSystemItem.Click += (_, _) =>
+            BeginSourceSelection(flyout, viewModel, sessionId: null);
+        flyout.Items.Add(followSystemItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        if (options.Count == 0)
+        {
+            flyout.Items.Add(new MenuFlyoutItem
+            {
+                Text = viewModel.NoAvailableSourcesLabel,
+                IsEnabled = false
+            });
+            return flyout;
+        }
+
+        foreach (MusicSessionOption option in options)
+        {
+            var item = new RadioMenuFlyoutItem
+            {
+                Text = option.SourceDisplayName,
+                GroupName = groupName,
+                IsChecked = string.Equals(
+                    option.SessionId,
+                    viewModel.PreferredSessionId,
+                    StringComparison.Ordinal)
+            };
+            item.Click += (_, _) =>
+                BeginSourceSelection(flyout, viewModel, option.SessionId);
+            flyout.Items.Add(item);
+        }
+
+        return flyout;
+    }
+
+    private void UpdateSourcePickerLabels()
+    {
+        string label = ViewModel?.SourcePickerTooltip ?? string.Empty;
+        SetSourceButtonLabel(MinimalSourceButton, label);
+        SetSourceButtonLabel(SourceButton, label);
+        SetSourceButtonLabel(RecordSourceButton, label);
+        SetSourceButtonLabel(RecordHorizontalSourceButton, label);
+    }
+
+    private static void SetSourceButtonLabel(Button button, string label)
+    {
+        AutomationProperties.SetName(button, label);
+        ToolTipService.SetToolTip(button, label);
+    }
+
+    private Style CreateSourceFlyoutPresenterStyle()
+    {
+        double width = ActualWidth > 0 ? ActualWidth : RootGrid.ActualWidth;
+        double height = ActualHeight > 0 ? ActualHeight : RootGrid.ActualHeight;
+        double maxWidth = ResolveSourceFlyoutMaxWidth(width);
+        double maxHeight = ResolveSourceFlyoutMaxHeight(height);
+        var style = new Style(typeof(MenuFlyoutPresenter))
+        {
+            BasedOn = (Style)Application.Current.Resources[typeof(MenuFlyoutPresenter)]
+        };
+
+        if (maxWidth > 0)
+        {
+            style.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, maxWidth));
+            style.Setters.Add(new Setter(
+                FrameworkElement.MinWidthProperty,
+                Math.Min(SourceFlyoutMinimumWidth, maxWidth)));
+        }
+
+        if (maxHeight > 0)
+        {
+            style.Setters.Add(new Setter(FrameworkElement.MaxHeightProperty, maxHeight));
+        }
+
+        style.Setters.Add(new Setter(
+            ScrollViewer.VerticalScrollModeProperty,
+            ScrollMode.Enabled));
+        style.Setters.Add(new Setter(
+            ScrollViewer.VerticalScrollBarVisibilityProperty,
+            ScrollBarVisibility.Auto));
+        return style;
+    }
+
+    private void BeginSourceSelection(
+        MenuFlyout flyout,
+        MusicWidgetViewModel viewModel,
+        string? sessionId)
+    {
+        flyout.Hide();
+        _ = SelectSourceAsync(viewModel, sessionId);
+    }
+
+    private static async Task SelectSourceAsync(
+        MusicWidgetViewModel viewModel,
+        string? sessionId)
+    {
+        try
+        {
+            bool selected = await viewModel.SelectSessionAsync(sessionId);
+            if (!selected)
+            {
+                App.LogVerbose("[MusicWidget] Selected source closed before it could be activated.");
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[MusicWidget] Select source failed: {ex}");
+        }
+    }
+
+    private void CloseSourceFlyout()
+    {
+        ++_sourceFlyoutGeneration;
+        MenuFlyout? flyout = _sourceFlyout;
+        _sourceFlyout = null;
+        flyout?.Hide();
+    }
+
     private void PositionInlineVolumePanel()
     {
         Button anchor = _volumeAnchorButton ?? VolumeButton;
@@ -825,18 +1066,28 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
 
         if (RootGrid.ActualWidth > 0)
         {
-            left = Math.Clamp(left, 6, Math.Max(6, RootGrid.ActualWidth - panelWidth - 6));
+            left = Math.Clamp(
+                left,
+                InlineVolumePanelHorizontalInset,
+                Math.Max(
+                    InlineVolumePanelHorizontalInset,
+                    RootGrid.ActualWidth - panelWidth - InlineVolumePanelHorizontalInset));
         }
 
-        if (top < 6)
+        if (RootGrid.ActualHeight > 0)
         {
-            top = 6;
+            top = Math.Clamp(
+                top,
+                InlineVolumePanelHorizontalInset,
+                Math.Max(
+                    InlineVolumePanelHorizontalInset,
+                    RootGrid.ActualHeight - panelHeight - InlineVolumePanelHorizontalInset));
         }
 
         InlineVolumePanel.Margin = new Thickness(Math.Round(left), Math.Round(top), 0, 0);
     }
 
-    private static bool IsElementInside(FrameworkElement? sourceElement, FrameworkElement target)
+    private static bool IsElementInside(DependencyObject? sourceElement, DependencyObject target)
     {
         DependencyObject? current = sourceElement;
         while (current is not null)
@@ -916,6 +1167,11 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         if (e.PropertyName == nameof(MusicWidgetViewModel.DisplayMode))
         {
             ApplyResponsiveLayout();
+        }
+
+        if (e.PropertyName == nameof(MusicWidgetViewModel.SourcePickerTooltip))
+        {
+            UpdateSourcePickerLabels();
         }
 
         if (e.PropertyName is nameof(MusicWidgetViewModel.IsPlaying) or

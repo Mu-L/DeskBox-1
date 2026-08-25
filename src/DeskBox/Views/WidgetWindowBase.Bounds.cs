@@ -21,6 +21,8 @@ namespace DeskBox.Views;
 
 public abstract partial class WidgetWindowBase
 {
+    private bool _desktopPinnedPointerActivationInProgress;
+
     protected void ConfigureWindowCore()
     {
         if (!_isTrackedForDiagnostics)
@@ -79,6 +81,7 @@ public abstract partial class WidgetWindowBase
 
         ApplyDwmBorderStyle(RootElement.ActualTheme == ElementTheme.Dark);
         ApplyWindowCornerPreference();
+        ApplyWidgetForegroundAppearance();
         Win32Helper.EnsureSystemDispatcherQueue();
         Win32Helper.ApplyFullWindowFrame(HWnd);
         ApplyBackdropPreference();
@@ -89,8 +92,10 @@ public abstract partial class WidgetWindowBase
 
         RootElement.Loaded += (_, _) =>
         {
+            AttachXamlRootScaleWatcher();
             OnRootElementLoaded();
             SettleCompactBoundsAfterHostShown();
+            ApplyWidgetForegroundAppearance();
             ApplyBackdropPreference();
             Win32Helper.ApplyFullWindowFrame(HWnd);
             if (SupportsBackdropRefresh)
@@ -100,6 +105,7 @@ public abstract partial class WidgetWindowBase
         };
         RootElement.ActualThemeChanged += (_, _) =>
         {
+            ApplyWidgetForegroundAppearance();
             ApplyBackdropPreference();
             OnRootElementThemeChanged();
         };
@@ -172,24 +178,27 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
-        if (!WidgetLayerService.TryAllowDesktopPinnedPointerActivation(HWnd))
+        bool allowActivation =
+            WidgetLayerService.TryAllowDesktopPinnedPointerActivation(HWnd);
+        if (allowActivation && Win32Helper.GetForegroundWindow() != HWnd)
         {
-            WidgetLayerService.MoveToDesktopBottom(HWnd);
-            IsAtDesktopLayer = true;
-            IsRaisedFromManager = false;
-            KeepRaisedUntilDeactivate = false;
-            RestoreDesktopLayerWhenIdle = false;
-            App.LogVerbose(
-                $"[ZOrder] {LogPrefix} pinned routed pointer kept behind foreground " +
-                $"hwnd=0x{HWnd.ToInt64():X}");
-            return;
+            _desktopPinnedPointerActivationInProgress = true;
+            try
+            {
+                // Activation is retained for keyboard-oriented controls, but
+                // the HWND is returned to the desktop bottom before this input
+                // dispatch completes, so activation never creates a layer lease.
+                base.Activate();
+                _ = Win32Helper.SetForegroundWindow(HWnd);
+            }
+            finally
+            {
+                _desktopPinnedPointerActivationInProgress = false;
+            }
         }
 
-        if (Win32Helper.GetForegroundWindow() != HWnd)
-        {
-            base.Activate();
-            _ = Win32Helper.SetForegroundWindow(HWnd);
-        }
+        RestoreDesktopPinnedBottomState(
+            allowActivation ? "routed-pointer" : "routed-pointer-suppressed");
     }
 
     private void WidgetWindowBase_ActivatedForDesktopPinnedLayer(
@@ -201,15 +210,24 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
-        if (args.WindowActivationState == WindowActivationState.Deactivated ||
-            WidgetLayerService.IsWindowNoActivate(HWnd))
+        if (!_desktopPinnedPointerActivationInProgress)
         {
-            WidgetLayerService.MoveToDesktopBottom(HWnd);
-            IsAtDesktopLayer = true;
-            IsRaisedFromManager = false;
-            KeepRaisedUntilDeactivate = false;
-            RestoreDesktopLayerWhenIdle = false;
+            RestoreDesktopPinnedBottomState(
+                $"window-{args.WindowActivationState}");
         }
+    }
+
+    private void RestoreDesktopPinnedBottomState(string reason)
+    {
+        WidgetLayerService.MoveToDesktopBottom(HWnd);
+        IsAtDesktopLayer = true;
+        IsRaisedFromManager = false;
+        KeepRaisedUntilDeactivate = false;
+        RestoreDesktopLayerWhenIdle = false;
+        TopMostSafetyTimer?.Stop();
+        App.LogVerbose(
+            $"[ZOrder] {LogPrefix} fixed-layer bottom reasserted reason={reason} " +
+            $"hwnd=0x{HWnd.ToInt64():X}");
     }
 
     private IntPtr DesktopPinnedActivationSubclassProc(
@@ -227,14 +245,7 @@ public abstract partial class WidgetWindowBase
             // but still lets the widget receive the mouse message. Reasserting
             // the desktop owner here also repairs any stale owner/Z-order state
             // without a visible raise-and-restore flash.
-            WidgetLayerService.MoveToDesktopBottom(hWnd);
-            IsAtDesktopLayer = true;
-            IsRaisedFromManager = false;
-            KeepRaisedUntilDeactivate = false;
-            RestoreDesktopLayerWhenIdle = false;
-            App.LogVerbose(
-                $"[ZOrder] {LogPrefix} desktop-pinned pointer activation suppressed " +
-                $"hwnd=0x{hWnd.ToInt64():X}");
+            RestoreDesktopPinnedBottomState("native-pointer-suppressed");
             return new IntPtr(Win32Helper.MA_NOACTIVATE);
         }
 
@@ -243,9 +254,77 @@ public abstract partial class WidgetWindowBase
 
     // ── Bounds management ──────────────────────────────────────
 
+    public void BeginDisplayTopologyTransition(long generation)
+    {
+        _displayTopologyTransitionGeneration = generation;
+        _isDisplayTopologyTransitionActive = true;
+    }
+
+    public void EndDisplayTopologyTransition(long generation)
+    {
+        if (_displayTopologyTransitionGeneration != generation)
+        {
+            return;
+        }
+
+        _isDisplayTopologyTransitionActive = false;
+    }
+
+    protected bool CanPersistBoundsChange(bool requested) =>
+        requested && !_isDisplayTopologyTransitionActive;
+
+    private void AttachXamlRootScaleWatcher()
+    {
+        XamlRoot? xamlRoot = RootElement.XamlRoot;
+        if (xamlRoot is null || ReferenceEquals(_observedXamlRoot, xamlRoot))
+        {
+            return;
+        }
+
+        DetachXamlRootScaleWatcher();
+        _observedXamlRoot = xamlRoot;
+        _observedRasterizationScale = xamlRoot.RasterizationScale;
+        xamlRoot.Changed += ObservedXamlRoot_Changed;
+    }
+
+    private void DetachXamlRootScaleWatcher()
+    {
+        if (_observedXamlRoot is not null)
+        {
+            _observedXamlRoot.Changed -= ObservedXamlRoot_Changed;
+            _observedXamlRoot = null;
+        }
+
+        _observedRasterizationScale = 0;
+    }
+
+    private void ObservedXamlRoot_Changed(XamlRoot sender, XamlRootChangedEventArgs args)
+    {
+        double scale = sender.RasterizationScale;
+        if (!double.IsFinite(scale) || scale <= 0 ||
+            Math.Abs(scale - _observedRasterizationScale) < 0.001)
+        {
+            return;
+        }
+
+        double previous = _observedRasterizationScale;
+        _observedRasterizationScale = scale;
+        App.LogVerbose(
+            $"[DisplayTopology] {LogPrefix} XamlRoot scale {previous:F3}->{scale:F3}");
+        App.Current?.RequestDisplayTopologyRestore("xaml-root-scale");
+    }
+
     protected void ApplyWindowBounds(int x, int y, int width, int height, bool persist, bool updateConfig = true)
     {
-        if (!IsCompactBoundsStateActive && !UsesCompactExpansionGeometry())
+        if (_isDisplayTopologyTransitionActive)
+        {
+            persist = false;
+            updateConfig = false;
+        }
+
+        if (!IsDragging &&
+            !IsCompactBoundsStateActive &&
+            !UsesCompactExpansionGeometry())
         {
             SizeInt32 minSize = IsResizing && _interactiveResizeMinimumSize.Width > 0
                 ? _interactiveResizeMinimumSize
@@ -417,7 +496,10 @@ public abstract partial class WidgetWindowBase
             NotifyCompactHostVisibilityChanged(sender.IsVisible);
         }
 
-        if (IsApplyingBounds || TrayAnimation.IsApplyingBounds || (!IsDragging && !IsResizing))
+        if (IsApplyingBounds ||
+            TrayAnimation.IsApplyingBounds ||
+            _deferTitleBarDragConfigUpdates ||
+            (!IsDragging && !IsResizing))
         {
             return;
         }
@@ -454,13 +536,8 @@ public abstract partial class WidgetWindowBase
 
     protected double GetCornerRadiusFromPreference()
     {
-        return SettingsService.Settings.WidgetCornerPreference switch
-        {
-            SettingsService.WidgetCornerPreferenceSquare => 0,
-            SettingsService.WidgetCornerPreferenceSmall => 4,
-            SettingsService.WidgetCornerPreferenceRound => 8,
-            _ => 8
-        };
+        return WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(
+            SettingsService.Settings.WidgetCornerPreference);
     }
 
     protected double GetCurrentSurfaceCornerRadius()

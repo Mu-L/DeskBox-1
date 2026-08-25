@@ -1,4 +1,6 @@
 using System.Xml.Linq;
+using DeskBox.Helpers;
+using Windows.System;
 
 namespace DeskBox.Tests;
 
@@ -141,6 +143,54 @@ public sealed class QuickCaptureSettingsRuntimeContractTests
     }
 
     [Fact]
+    public void QuickCaptureEditors_OptIntoTheDefaultCtrlSSaveShortcut()
+    {
+        string editor = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/MarkdownSourceEditor.xaml.cs"));
+        string sharedQuickCapture = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string standaloneQuickCapture = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.xaml"));
+        string todo = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.xaml"));
+
+        Assert.True(TextBoxEditorShortcutHelper.IsCtrlSaveShortcut(
+            VirtualKey.S,
+            controlPressed: true));
+        Assert.False(TextBoxEditorShortcutHelper.IsCtrlSaveShortcut(
+            VirtualKey.S,
+            controlPressed: false));
+        Assert.False(TextBoxEditorShortcutHelper.IsCtrlSaveShortcut(
+            VirtualKey.S,
+            controlPressed: true,
+            shiftPressed: true));
+        Assert.False(TextBoxEditorShortcutHelper.IsCtrlSaveShortcut(
+            VirtualKey.Enter,
+            controlPressed: true));
+
+        Assert.Contains(
+            "EnableCtrlSSaveShortcutProperty",
+            editor,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CommitRequested?.Invoke(this, EventArgs.Empty)",
+            editor,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EnableCtrlSSaveShortcut=\"True\"",
+            sharedQuickCapture,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EnableCtrlSSaveShortcut=\"True\"",
+            standaloneQuickCapture,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "EnableCtrlSSaveShortcut",
+            todo,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void QuickCaptureTextInputs_UseTheConfiguredSubmitHelper()
     {
         string shared = File.ReadAllText(TestPaths.FromRepository(
@@ -152,10 +202,107 @@ public sealed class QuickCaptureSettingsRuntimeContractTests
 
         Assert.Contains("QuickCaptureEditorEnterBehavior", shared, StringComparison.Ordinal);
         Assert.Contains("SettingsService.ShouldSubmitEditorOnEnter", shared, StringComparison.Ordinal);
+        Assert.Contains("TextBoxEditorShortcutHelper.IsCtrlSaveShortcut", shared, StringComparison.Ordinal);
         Assert.Contains("QuickCaptureEditorEnterBehavior", standaloneInput, StringComparison.Ordinal);
         Assert.Contains("SettingsService.ShouldSubmitEditorOnEnter", standaloneInput, StringComparison.Ordinal);
+        Assert.Contains("TextBoxEditorShortcutHelper.IsCtrlSaveShortcut", standaloneInput, StringComparison.Ordinal);
         Assert.Contains("QuickCaptureEditorEnterBehavior", standaloneEdit, StringComparison.Ordinal);
         Assert.Contains("SettingsService.ShouldSubmitEditorOnEnter", standaloneEdit, StringComparison.Ordinal);
+        Assert.Contains("TextBoxEditorShortcutHelper.IsCtrlSaveShortcut", standaloneEdit, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GroupSwitch_RestoresQuickCaptureTabBeforeTheIncomingFrame()
+    {
+        string groups = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetManager.Groups.cs"));
+        string surface = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+        string surfaceXaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string viewModel = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/ViewModels/QuickCaptureWidgetViewModel.Operations.cs"));
+
+        int switchMethod = groups.IndexOf(
+            "private async Task<bool> SwitchContentWidgetGroupMemberInPlaceAsync(",
+            StringComparison.Ordinal);
+        int firstPreview = groups.IndexOf(
+            "PreviewWidgetGroupTransientState(",
+            switchMethod,
+            StringComparison.Ordinal);
+        int prepare = groups.IndexOf(
+            "preparedContent = await persistentWindow.PrepareContentSwitchAsync(",
+            switchMethod,
+            StringComparison.Ordinal);
+        int secondPreview = groups.IndexOf(
+            "PreviewWidgetGroupTransientState(",
+            firstPreview + 1,
+            StringComparison.Ordinal);
+        int beginTransition = groups.IndexOf(
+            "preparation.BeginTransition()",
+            switchMethod,
+            StringComparison.Ordinal);
+        int finalRestore = groups.IndexOf(
+            "RestoreWidgetGroupTransientState(targetConfig.Id)",
+            beginTransition,
+            StringComparison.Ordinal);
+
+        Assert.True(switchMethod >= 0);
+        Assert.True(firstPreview > switchMethod && firstPreview < prepare);
+        Assert.True(prepare < secondPreview && secondPreview < beginTransition);
+        Assert.True(finalRestore > beginTransition);
+        Assert.Contains(
+            "ViewModel.RestoreSelectedViewImmediately(quickState.SelectedView)",
+            surface,
+            StringComparison.Ordinal);
+        int updateVisual = surface.IndexOf(
+            "private void UpdateSelectedViewVisual()",
+            StringComparison.Ordinal);
+        int itemLoaded = surface.IndexOf(
+            "private void QuickCaptureItem_Loaded(",
+            updateVisual,
+            StringComparison.Ordinal);
+        Assert.True(updateVisual >= 0 && itemLoaded > updateVisual);
+        Assert.DoesNotContain(
+            "!IsLoaded",
+            surface[updateVisual..itemLoaded],
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_viewSwitchRefreshTimer.Stop()",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_restoredViewForInitialization = view",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_restoredViewForInitialization is { } restoredView",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RefreshFromDataAsync(data)",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SelectedIndex=\"0\"",
+            surfaceXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "QuickCaptureViewSegmented.Visibility != Visibility.Visible",
+            surface,
+            StringComparison.Ordinal);
+        int reveal = surface.IndexOf(
+            "private void RevealSegmentedAtSelectedView()",
+            StringComparison.Ordinal);
+        int selectedViewBeforeReveal = surface.IndexOf(
+            "UpdateSelectedViewVisual();",
+            reveal,
+            StringComparison.Ordinal);
+        int visible = surface.IndexOf(
+            "QuickCaptureViewSegmented.Visibility = Visibility.Visible;",
+            reveal,
+            StringComparison.Ordinal);
+        Assert.True(reveal >= 0 && selectedViewBeforeReveal < visible);
     }
 
     [Fact]

@@ -98,6 +98,78 @@ public sealed partial class SettingsWindow
         BeginHotkeyRecording();
     }
 
+    private async void GlobalHotkeyPresetButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isRefreshingHotkeyControls ||
+            sender is not ToggleButton { Tag: string preset })
+        {
+            return;
+        }
+
+        GlobalHotkeyGesture fallbackGesture =
+            App.Current.GlobalHotkeyService?.CurrentGesture ??
+            GlobalHotkeyService.NormalizeGesture(
+                _settingsService.Settings.GlobalHotkeyModifiers,
+                _settingsService.Settings.GlobalHotkeyKey);
+        GlobalHotkeyActivation activation = preset switch
+        {
+            "F7" => GlobalHotkeyActivation.FromChord(new GlobalHotkeyGesture(
+                HotkeyModifierKeys.None,
+                (int)VirtualKey.F7)),
+            "DoubleControl" => new GlobalHotkeyActivation(
+                HotkeyActivationKind.DoubleControl,
+                fallbackGesture),
+            "AltSpace" => GlobalHotkeyActivation.FromChord(new GlobalHotkeyGesture(
+                HotkeyModifierKeys.Alt,
+                (int)VirtualKey.Space)),
+            "WinSpace" => GlobalHotkeyActivation.FromChord(new GlobalHotkeyGesture(
+                HotkeyModifierKeys.Windows,
+                (int)VirtualKey.Space)),
+            "WindowsTap" => new GlobalHotkeyActivation(
+                HotkeyActivationKind.WindowsTap,
+                fallbackGesture),
+            _ => default
+        };
+        if (!GlobalHotkeyService.IsValidActivation(activation))
+        {
+            RefreshGlobalHotkeyControls();
+            return;
+        }
+
+        await ApplyGlobalHotkeyActivationAsync(activation);
+    }
+
+    private async void DesktopDoubleClickToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isRefreshingHotkeyControls || sender is not ToggleSwitch toggle)
+        {
+            return;
+        }
+
+        bool applied;
+        int errorCode = 0;
+        if (App.Current.DesktopDoubleClickActivationService is { } service)
+        {
+            applied = service.TrySetEnabled(toggle.IsOn, out errorCode);
+        }
+        else
+        {
+            _settingsService.Settings.DesktopDoubleClickEnabled = toggle.IsOn;
+            _settingsService.SaveDebounced();
+            applied = true;
+        }
+
+        if (!applied)
+        {
+            App.Log($"[DesktopDoubleClick] Settings toggle failed error={errorCode}");
+            await ShowInfoDialogAsync(
+                _localizationService.T("Settings.GlobalHotkey.Dialog.FailedTitle"),
+                _localizationService.T("Settings.DesktopDoubleClick.Status.Unavailable"));
+        }
+
+        RefreshGlobalHotkeyControls();
+    }
+
     private void GlobalHotkeyCaptureButton_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (!_isRecordingHotkey)
@@ -307,29 +379,71 @@ public sealed partial class SettingsWindow
 
     private void RefreshGlobalHotkeyControls()
     {
-        if (!_isRecordingHotkey)
+        GlobalHotkeyActivation activation =
+            App.Current.GlobalHotkeyService?.CurrentActivation ??
+            ViewModel.GetCurrentGlobalHotkeyActivation();
+        _isRefreshingHotkeyControls = true;
+        try
         {
-            GlobalHotkeyCaptureButton.Content = ViewModel.GlobalHotkeyText;
+            if (!_isRecordingHotkey)
+            {
+                GlobalHotkeyCaptureButton.Content = ViewModel.GlobalHotkeyText;
+            }
+
+            GlobalHotkeyPresetF7Button.IsChecked =
+                activation.Kind == HotkeyActivationKind.Chord &&
+                activation.Gesture.Modifiers == HotkeyModifierKeys.None &&
+                activation.Gesture.VirtualKey == (int)VirtualKey.F7;
+            GlobalHotkeyPresetDoubleControlButton.IsChecked =
+                activation.Kind == HotkeyActivationKind.DoubleControl;
+            GlobalHotkeyPresetAltSpaceButton.IsChecked =
+                activation.Kind == HotkeyActivationKind.Chord &&
+                activation.Gesture.Modifiers == HotkeyModifierKeys.Alt &&
+                activation.Gesture.VirtualKey == (int)VirtualKey.Space;
+            GlobalHotkeyPresetWinSpaceButton.IsChecked =
+                activation.Kind == HotkeyActivationKind.Chord &&
+                activation.Gesture.Modifiers == HotkeyModifierKeys.Windows &&
+                activation.Gesture.VirtualKey == (int)VirtualKey.Space;
+            GlobalHotkeyPresetWindowsTapButton.IsChecked =
+                activation.Kind == HotkeyActivationKind.WindowsTap;
+            DesktopDoubleClickToggle.IsOn =
+                _settingsService.Settings.DesktopDoubleClickEnabled;
+        }
+        finally
+        {
+            _isRefreshingHotkeyControls = false;
         }
     }
 
     private async Task ApplyRecordedHotkeyAsync(DeskBox.Models.GlobalHotkeyGesture gesture)
     {
+        await ApplyGlobalHotkeyActivationAsync(
+            GlobalHotkeyActivation.FromChord(gesture));
+    }
+
+    private async Task ApplyGlobalHotkeyActivationAsync(GlobalHotkeyActivation activation)
+    {
         EndHotkeyRecording();
         if (App.Current.GlobalHotkeyService is not { } hotkeyService)
         {
+            RefreshGlobalHotkeyControls();
             return;
         }
 
-        if (GlobalHotkeyService.IsReservedSystemGesture(gesture) &&
-            !gesture.Equals(hotkeyService.CurrentGesture) &&
-            !await ConfirmReservedHotkeyOverrideAsync())
+        bool requiresConfirmation =
+            activation.Kind == HotkeyActivationKind.WindowsTap ||
+            (activation.Kind == HotkeyActivationKind.Chord &&
+             GlobalHotkeyService.IsReservedSystemGesture(activation.Gesture));
+        if (requiresConfirmation &&
+            !activation.Equals(hotkeyService.CurrentActivation) &&
+            !await ConfirmReservedHotkeyOverrideAsync(activation))
         {
             ViewModel.RefreshGlobalHotkeyState();
+            RefreshGlobalHotkeyControls();
             return;
         }
 
-        if (!hotkeyService.TryApplyGesture(gesture, out string? error))
+        if (!hotkeyService.TryApplyActivation(activation, out string? error))
         {
             await ShowInfoDialogAsync(
                 _localizationService.T("Settings.GlobalHotkey.Dialog.FailedTitle"),
@@ -337,9 +451,11 @@ public sealed partial class SettingsWindow
         }
 
         ViewModel.RefreshGlobalHotkeyState();
+        RefreshGlobalHotkeyControls();
     }
 
-    private async Task<bool> ConfirmReservedHotkeyOverrideAsync()
+    private async Task<bool> ConfirmReservedHotkeyOverrideAsync(
+        GlobalHotkeyActivation activation)
     {
         if (SettingsRoot.XamlRoot is null)
         {
@@ -349,18 +465,35 @@ public sealed partial class SettingsWindow
         var dialog = new ContentDialog
         {
             XamlRoot = SettingsRoot.XamlRoot,
-            Title = "Win + Space",
+            Title = GlobalHotkeyService.FormatActivation(
+                activation,
+                _localizationService),
             PrimaryButtonText = _localizationService.T("Common.Enable"),
             CloseButtonText = _localizationService.T("Common.Cancel"),
             DefaultButton = ContentDialogButton.Close,
             Content = new TextBlock
             {
-                Text = _localizationService.T("Settings.GlobalHotkey.ReservedWarning"),
+                Text = GetReservedHotkeyWarning(activation),
                 TextWrapping = TextWrapping.Wrap
             }
         };
 
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    private string GetReservedHotkeyWarning(GlobalHotkeyActivation activation)
+    {
+        if (activation.Kind == HotkeyActivationKind.WindowsTap)
+        {
+            return _localizationService.T("Settings.GlobalHotkey.WindowsTapWarning");
+        }
+
+        if (activation.Gesture.Modifiers == HotkeyModifierKeys.Alt)
+        {
+            return _localizationService.T("Settings.GlobalHotkey.AltSpaceWarning");
+        }
+
+        return _localizationService.T("Settings.GlobalHotkey.ReservedWarning");
     }
 
     private DeskBox.Models.HotkeyModifierKeys GetPressedHotkeyModifiers()

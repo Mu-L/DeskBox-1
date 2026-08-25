@@ -80,6 +80,7 @@ public sealed partial class GlanceWidgetContent : UserControl
         _hasPendingAvailableSize = false;
         _viewModel.UpdateAvailableSize(ActualWidth, ActualHeight);
         ApplyBackgroundBrushOptions();
+        ApplyBackgroundImageOpacity();
         ApplyImageAwareTheme();
         ConfigureNativeCalendarView();
         ApplyCalendarMaterial();
@@ -148,6 +149,14 @@ public sealed partial class GlanceWidgetContent : UserControl
         {
             ApplyBackgroundBrushOptions();
         }
+        else if (e.PropertyName == nameof(GlanceWidgetViewModel.BackgroundImageOpacity))
+        {
+            ApplyBackgroundImageOpacity();
+        }
+        else if (e.PropertyName == nameof(GlanceWidgetViewModel.HasVisibleCurrentImage))
+        {
+            ApplyImageAwareTheme();
+        }
         else if (e.PropertyName == nameof(GlanceWidgetViewModel.IsLoading))
         {
             UpdateLoadingIndicator();
@@ -202,10 +211,15 @@ public sealed partial class GlanceWidgetContent : UserControl
 
     private void ApplyImageAwareTheme()
     {
-        ImageForegroundThemeScope.RequestedTheme = _viewModel.HasCurrentImage
+        ImageForegroundThemeScope.RequestedTheme = _viewModel.HasVisibleCurrentImage
             ? ElementTheme.Dark
             : ElementTheme.Default;
         CalendarGlassSurface.RequestedTheme = RootGrid.ActualTheme;
+    }
+
+    private void ApplyBackgroundImageOpacity()
+    {
+        BackgroundImageLayer.Opacity = _viewModel.BackgroundImageOpacity;
     }
 
     private void ApplyCalendarMaterial()

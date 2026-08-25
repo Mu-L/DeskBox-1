@@ -28,7 +28,7 @@ public partial class SettingsViewModel
         {
             ApplyQuickCaptureRecordingState(clipboardEnabled: false, imageEnabled: false);
             _settingsService.SaveDebounced();
-            App.Current?.QuickCaptureClipboardService?.Refresh();
+            App.Current?.RefreshQuickCaptureClipboardService();
         }
 
         _ = SyncQuickCaptureEnabledAsync(value);
@@ -117,7 +117,7 @@ public partial class SettingsViewModel
         }
         finally
         {
-            App.Current?.QuickCaptureClipboardService?.Refresh();
+            App.Current?.RefreshQuickCaptureClipboardService();
             OnPropertyChanged(nameof(FeatureWidgetEntries));
             RefreshQuickCaptureClipboardDiagnostics();
         }
@@ -133,7 +133,7 @@ public partial class SettingsViewModel
         FeatureWidgetSettings.SetEnabled(_settingsService.Settings, WidgetKind.Todo, value);
         _ = SyncTodoEnabledAsync(value);
         OnPropertyChanged(nameof(FeatureWidgetEntries));
-        App.Current?.TodoReminderService?.Refresh();
+        App.Current?.RefreshTodoReminderService();
     }
 
     partial void OnTodoShowTabBarChanged(bool value)
@@ -294,11 +294,7 @@ public partial class SettingsViewModel
 
         _settingsService.Settings.TodoReminderEnabled = value;
         _settingsService.SaveDebounced();
-        App.Current?.TodoReminderService?.Refresh();
-        if (value && App.Current?.TodoReminderService is { } reminderService)
-        {
-            _ = reminderService.CheckNowAsync(DateTimeOffset.Now);
-        }
+        App.Current?.RefreshTodoReminderService(checkNow: value);
     }
 
     partial void OnMusicUseArtworkBackdropChanged(bool value)
@@ -372,11 +368,7 @@ public partial class SettingsViewModel
         }
 
         _settingsService.SaveDebounced();
-        App.Current?.QuickCaptureClipboardService?.Refresh();
-        if (value)
-        {
-            App.Current?.QuickCaptureClipboardService?.CaptureCurrent();
-        }
+        App.Current?.RefreshQuickCaptureClipboardService(captureCurrent: value);
 
         RefreshQuickCaptureClipboardDiagnostics();
     }
@@ -407,12 +399,8 @@ public partial class SettingsViewModel
         }
 
         _settingsService.SaveDebounced();
-        App.Current?.QuickCaptureClipboardService?.Refresh();
+        App.Current?.RefreshQuickCaptureClipboardService(captureCurrent: value);
         RefreshQuickCaptureClipboardDiagnostics();
-        if (value)
-        {
-            App.Current?.QuickCaptureClipboardService?.CaptureCurrent();
-        }
     }
 
     private void EnableQuickCaptureForRecordingDependency()

@@ -5,8 +5,8 @@ use windows::{
         Foundation::RPC_E_CHANGED_MODE,
         System::{
             Com::{
-                CLSCTX_ALL, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
-                CoUninitialize,
+                CLSCTX_ALL, COINIT_APARTMENTTHREADED, CoAllowSetForegroundWindow, CoCreateInstance,
+                CoInitializeEx, CoUninitialize,
             },
             Variant::VARIANT,
         },
@@ -217,6 +217,11 @@ pub(crate) unsafe fn execute(
             );
         }
     };
+
+    // Foreground transfer is best-effort: a launch must still proceed when Windows
+    // declines the privilege, but an explicit widget click should let Explorer hand
+    // activation to the application it is about to launch.
+    let _ = unsafe { CoAllowSetForegroundWindow(&explorer_shell, None) };
 
     result.attempted_phases |= DESKBOX_EXPLORER_SHELL_LAUNCH_PHASE_EXECUTE;
     // SAFETY: ABI validation guarantees all three UTF-16 slices remain readable.

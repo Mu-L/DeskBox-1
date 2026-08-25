@@ -46,10 +46,19 @@ public sealed class SearchMemorySafetyContractTests
     }
 
     [Fact]
-    public void FreshIndexReconciliation_IsDelayedOutOfTheStartupWindow()
+    public void FreshIndexStartup_SkipsRedundantFullReconciliation()
     {
         Assert.True(
             SearchIndexService.FreshIndexReconciliationDelay >= TimeSpan.FromSeconds(30));
+
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/SearchIndexService.cs"));
+        Assert.Contains(
+            "redundant full reconciliation skipped",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("_lastScanRoots.SetEquals(currentRoots)", source, StringComparison.Ordinal);
+        Assert.Contains("_scanTask = Task.CompletedTask;", source, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -78,7 +78,6 @@ public sealed partial class MusicWidgetViewModel
             return;
         }
 
-        _preferredSessionId ??= info.SessionId;
         Title = info.Title;
         Artist = info.Artist;
         Album = info.Album;

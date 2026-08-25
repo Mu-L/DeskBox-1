@@ -482,7 +482,7 @@ public sealed class LocalizationService
             LocalizationJsonContext.Default.LocalizedStrings) ?? [];
     }
 
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
     internal static IReadOnlyList<AotLocaleResourceDiagnostic> CaptureAotSmokeResourceDiagnostics()
     {
         return
@@ -517,7 +517,7 @@ public sealed class LocalizationService
 #endif
 }
 
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
 internal sealed record AotLocaleResourceDiagnostic(
     string Locale,
     int ResourceCount,

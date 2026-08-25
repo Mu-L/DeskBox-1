@@ -28,6 +28,59 @@ public sealed class QuickCaptureMultiDragTests
     }
 
     [Fact]
+    public void ResolveManualDropTargetIndex_AccountsForRemovalBeforeInsertion()
+    {
+        QuickCaptureItemViewModel first = CreateItem("first", "First");
+        QuickCaptureItemViewModel second = CreateItem("second", "Second");
+        QuickCaptureItemViewModel third = CreateItem("third", "Third");
+        QuickCaptureItemViewModel fourth = CreateItem("fourth", "Fourth");
+        QuickCaptureItemViewModel[] items = [first, second, third, fourth];
+
+        Assert.Equal(
+            2,
+            QuickCaptureDragPackage.ResolveManualDropTargetIndex(
+                items,
+                second.Id,
+                fourth.Id,
+                insertAfter: false));
+        Assert.Equal(
+            3,
+            QuickCaptureDragPackage.ResolveManualDropTargetIndex(
+                items,
+                second.Id,
+                fourth.Id,
+                insertAfter: true));
+        Assert.Equal(
+            1,
+            QuickCaptureDragPackage.ResolveManualDropTargetIndex(
+                items,
+                fourth.Id,
+                second.Id,
+                insertAfter: false));
+        Assert.Equal(
+            1,
+            QuickCaptureDragPackage.ResolveManualDropTargetIndex(
+                items,
+                second.Id,
+                second.Id,
+                insertAfter: true));
+        Assert.Equal(
+            -1,
+            QuickCaptureDragPackage.ResolveManualDropTargetIndex(
+                items,
+                "missing",
+                second.Id,
+                insertAfter: false));
+        Assert.Equal(
+            -1,
+            QuickCaptureDragPackage.ResolveManualDropTargetIndex(
+                items,
+                second.Id,
+                null,
+                insertAfter: false));
+    }
+
+    [Fact]
     public void TryPrepare_MultiSelectionCreatesOneBatchPayload()
     {
         QuickCaptureItemViewModel first = CreateItem("first", "First");
@@ -64,10 +117,46 @@ public sealed class QuickCaptureMultiDragTests
         Assert.Contains("DragItemsStarting=\"ItemsList_DragItemsStarting\"", xaml, StringComparison.Ordinal);
         Assert.Contains("QuickCaptureDragPackage.ResolveDraggedItems", source, StringComparison.Ordinal);
         Assert.Contains("ApplyTabDropAsync", source, StringComparison.Ordinal);
-        Assert.Contains("ItemsList.CanReorderItems = canReorder", source, StringComparison.Ordinal);
-        Assert.Contains("MovePinnedItemToIndexAsync(item, targetIndex)", source, StringComparison.Ordinal);
-        Assert.Contains("MoveItemAsync(item, targetIndex)", source, StringComparison.Ordinal);
-        Assert.Contains("_quickCaptureTabDropHandled = true", source, StringComparison.Ordinal);
+        Assert.Contains("ItemsList.CanReorderItems = false", source, StringComparison.Ordinal);
+        Assert.Contains("ResolveManualDropTargetIndex", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResolveReorderedTargetIndex", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ViewModel.Items.IndexOf(item)", source, StringComparison.Ordinal);
+        Assert.Contains("MovePinnedItemToIndexAsync(", source, StringComparison.Ordinal);
+        Assert.Contains("MoveItemAsync(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StandaloneWindow_UsesManualRowDropWithoutMutatingTheProjection()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.xaml"));
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/QuickCaptureWidgetWindow.ItemActions.cs"));
+
+        Assert.Contains(
+            "CanReorderItems=\"False\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "QuickCaptureDragPackage.ResolveManualDropTargetIndex",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ResolveReorderedTargetIndex",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ViewModel.Items.IndexOf(item)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MovePinnedItemToIndexAsync(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MoveItemAsync(",
+            source,
+            StringComparison.Ordinal);
     }
 
     [Fact]

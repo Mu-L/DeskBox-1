@@ -55,8 +55,9 @@ public sealed partial class OnboardingWindow
             return;
         }
 
-        string hotkeyText = GlobalHotkeyService.FormatGesture(
-            GlobalHotkeyService.NormalizeGesture(
+        string hotkeyText = GlobalHotkeyService.FormatActivation(
+            GlobalHotkeyService.NormalizeActivation(
+                _settingsService.Settings.GlobalHotkeyActivationKind,
                 _settingsService.Settings.GlobalHotkeyModifiers,
                 _settingsService.Settings.GlobalHotkeyKey),
             _localizationService);

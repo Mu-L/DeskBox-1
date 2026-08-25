@@ -69,12 +69,17 @@ public sealed class DesktopOrganizationCoordinator
                 !string.IsNullOrWhiteSpace(widget.MappedFolderPath))
             .ToDictionary(widget => widget.Id, StringComparer.Ordinal);
         var targetsByDestination = new Dictionary<string, DesktopOrganizationTargetPlan>(StringComparer.Ordinal);
+        var retainedByChoice = new List<DesktopOrganizationFileSnapshot>();
 
         foreach (DesktopOrganizationTargetPlan source in previewPlan.Targets)
         {
             if (selectionByBucket.TryGetValue(source.SourceBucketId, out DesktopOrganizationTargetSelection? selection) &&
                 !selection.IsSelected)
             {
+                retainedByChoice.AddRange(source.Items.Select(item => item with
+                {
+                    ExclusionReason = DesktopOrganizationExclusionReason.UserChoice
+                }));
                 continue;
             }
 
@@ -126,11 +131,45 @@ public sealed class DesktopOrganizationCoordinator
             Targets = targetsByDestination.Values
                 .Where(target => target.Items.Count > 0)
                 .ToList(),
-            ExcludedItems = previewPlan.ExcludedItems.ToList()
+            ExcludedItems = previewPlan.ExcludedItems
+                .Concat(retainedByChoice)
+                .ToList()
         };
 
         AssignNonOverlappingBounds(executionPlan);
         return executionPlan;
+    }
+
+    public DesktopOrganizationPlan CreatePreviewPlanWithOptionalItems(
+        DesktopOrganizationPlan basePlan,
+        IReadOnlyCollection<string> includedSourcePaths)
+    {
+        var included = includedSourcePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        DesktopOrganizationFileSnapshot[] allItems = basePlan.Targets
+            .SelectMany(target => target.Items)
+            .Concat(basePlan.ExcludedItems)
+            .GroupBy(item => item.SourcePath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Select(item => item.CanOptIn && included.Contains(item.SourcePath)
+                ? item with { ExclusionReason = DesktopOrganizationExclusionReason.None }
+                : item)
+            .ToArray();
+        var scan = new DesktopOrganizationScanResult
+        {
+            DesktopPath = basePlan.DesktopPath,
+            Items = allItems.ToList()
+        };
+        DesktopOrganizationPlan plan = _planner.CreatePlan(
+            scan,
+            basePlan.StorageRootPath,
+            _settingsService.Settings.Widgets,
+            _settingsService.Settings.DesktopOrganizationRules,
+            ResolveCategoryName);
+        AssignNonOverlappingBounds(plan);
+        return plan;
     }
 
     public IReadOnlyList<DesktopOrganizationDestinationOption> GetDestinationOptions()

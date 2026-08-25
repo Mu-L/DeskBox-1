@@ -6,7 +6,16 @@ internal enum ReservedHotkeyEventDisposition
 {
     PassThrough,
     Suppress,
-    TriggerAndSuppress
+    TriggerAndSuppress,
+    TriggerAndPassThrough
+}
+
+internal enum ReservedHotkeyMode
+{
+    WinSpace,
+    AltSpace,
+    DoubleControl,
+    WindowsTap
 }
 
 /// <summary>
@@ -16,6 +25,7 @@ internal enum ReservedHotkeyEventDisposition
 internal sealed class WinSpaceHotkeyStateMachine
 {
     private const uint VirtualKeySpace = 0x20;
+    private readonly ReservedHotkeyMode _mode;
 
     [Flags]
     private enum PressedModifiers
@@ -36,6 +46,10 @@ internal sealed class WinSpaceHotkeyStateMachine
 
     private const PressedModifiers WindowsModifiers =
         PressedModifiers.LeftWindows | PressedModifiers.RightWindows;
+    private const PressedModifiers AltModifiers =
+        PressedModifiers.Alt |
+        PressedModifiers.LeftAlt |
+        PressedModifiers.RightAlt;
     private const PressedModifiers NonWindowsModifiers =
         PressedModifiers.Control |
         PressedModifiers.LeftControl |
@@ -50,6 +64,21 @@ internal sealed class WinSpaceHotkeyStateMachine
     private PressedModifiers _pressedModifiers;
     private bool _spaceDown;
     private bool _suppressSpaceUp;
+
+    public WinSpaceHotkeyStateMachine()
+        : this(ReservedHotkeyMode.WinSpace)
+    {
+    }
+
+    internal WinSpaceHotkeyStateMachine(ReservedHotkeyMode mode)
+    {
+        if (mode is not (ReservedHotkeyMode.WinSpace or ReservedHotkeyMode.AltSpace))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        }
+
+        _mode = mode;
+    }
 
     public ReservedHotkeyEventDisposition Process(uint virtualKey, bool isKeyDown)
     {
@@ -82,9 +111,7 @@ internal sealed class WinSpaceHotkeyStateMachine
             }
 
             _spaceDown = true;
-            bool exactWinSpace = (_pressedModifiers & WindowsModifiers) != 0 &&
-                                 (_pressedModifiers & NonWindowsModifiers) == 0;
-            if (!exactWinSpace)
+            if (!IsExactModifierSpace())
             {
                 return ReservedHotkeyEventDisposition.PassThrough;
             }
@@ -101,6 +128,26 @@ internal sealed class WinSpaceHotkeyStateMachine
 
         _suppressSpaceUp = false;
         return ReservedHotkeyEventDisposition.Suppress;
+    }
+
+    private bool IsExactModifierSpace()
+    {
+        if (_mode == ReservedHotkeyMode.WinSpace)
+        {
+            return (_pressedModifiers & WindowsModifiers) != 0 &&
+                   (_pressedModifiers & NonWindowsModifiers) == 0;
+        }
+
+        const PressedModifiers nonAltModifiers =
+            WindowsModifiers |
+            PressedModifiers.Control |
+            PressedModifiers.LeftControl |
+            PressedModifiers.RightControl |
+            PressedModifiers.Shift |
+            PressedModifiers.LeftShift |
+            PressedModifiers.RightShift;
+        return (_pressedModifiers & AltModifiers) != 0 &&
+               (_pressedModifiers & nonAltModifiers) == 0;
     }
 
     public void CancelSuppression()

@@ -54,4 +54,7 @@ public sealed record WidgetCompactPresentation(
     double FullBleedOverlayOpacity = 1.0,
     // Glance uses the same even readability mask as its expanded image view.
     // Other full-bleed presentations retain the directional text scrim.
-    bool UseUniformFullBleedOverlay = false);
+    bool UseUniformFullBleedOverlay = false,
+    // Multiplies only the full-bleed image. Text, controls, readability masks,
+    // and compact transition animations remain on independent layers.
+    double FullBleedBackgroundOpacity = 1.0);

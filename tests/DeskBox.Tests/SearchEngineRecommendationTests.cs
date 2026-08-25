@@ -32,11 +32,13 @@ public sealed class SearchEngineRecommendationTests : IDisposable
 
         var localization = new LocalizationService(settings);
         var index = new SearchIndexService(settings, Path.Combine(_root, "index.json"));
+        var quickCapture = new QuickCaptureService(new QuickCaptureStore(
+            Path.Combine(_root, "quick-capture")));
         using var engine = new SearchEngineService(
             settings,
             localization,
             index,
-            new WindowsIndexSearchService(settings));
+            quickCapture);
 
         var recommendations = await engine.GetRecommendationsAsync();
 
@@ -44,6 +46,46 @@ public sealed class SearchEngineRecommendationTests : IDisposable
         Assert.Equal(firstShortcut, recommendations[0].DetailPath);
         Assert.Equal(secondShortcut, recommendations[1].DetailPath);
         Assert.All(recommendations.Take(2), item => Assert.Equal(SearchResultKind.File, item.Kind));
+    }
+
+    [Fact]
+    public async Task SearchAsync_DoesNotDropDeskBoxContentBehindTheFilePageSize()
+    {
+        Directory.CreateDirectory(_root);
+        var settings = new SettingsService(Path.Combine(_root, "settings-content"));
+        settings.Settings.SearchCustomIndexerEnabled = true;
+        settings.Settings.SearchIncludeDeskBoxContent = true;
+        settings.Settings.SearchRustIndexerPreviewEnabled = false;
+        var localization = new LocalizationService(settings);
+        var store = new QuickCaptureStore(Path.Combine(_root, "quick-capture-content"));
+        await store.SaveAsync(new QuickCaptureStoreData
+        {
+            Items = Enumerable.Range(0, 240)
+                .Select(index => new QuickCaptureItem
+                {
+                    Id = $"note-{index}",
+                    Title = $"Needle note {index}",
+                    Body = $"needle body {index}",
+                    UpdatedAt = DateTimeOffset.UtcNow.AddSeconds(-index)
+                })
+                .ToList()
+        });
+        var quickCapture = new QuickCaptureService(store);
+        var indexService = new SearchIndexService(
+            settings,
+            Path.Combine(_root, "empty-index.json"));
+        using var engine = new SearchEngineService(
+            settings,
+            localization,
+            indexService,
+            quickCapture);
+
+        SearchResponse response = await engine.SearchAsync("needle");
+
+        Assert.Equal(240, response.RankedItems.Count(item =>
+            item.Kind == SearchResultKind.QuickCapture));
+        Assert.Equal(240, response.TotalResultCount);
+        Assert.False(response.HasMoreResults);
     }
 
     public void Dispose()

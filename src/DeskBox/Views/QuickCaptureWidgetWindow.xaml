@@ -21,6 +21,48 @@
         DragOver="RootGrid_DragOver"
         Drop="RootGrid_Drop">
         <Grid.Resources>
+            <!-- Widget-local semantic foreground resources. -->
+            <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FFF5F5F5" />
+            <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#E8FFFFFF" />
+            <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#CCFFFFFF" />
+            <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#8FFFFFFF" />
+            <SolidColorBrush x:Key="ControlStrongFillColorDefaultBrush" Color="#FFF5F5F5" />
+            <SolidColorBrush x:Key="ControlStrongFillColorDisabledBrush" Color="#8FFFFFFF" />
+            <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#E8FFFFFF" />
+            <SolidColorBrush x:Key="ControlStrongStrokeColorDisabledBrush" Color="#8FFFFFFF" />
+            <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="WidgetDragHandleBrush" Color="#CCFFFFFF" />
+            <SolidColorBrush x:Key="ButtonForeground" Color="#FFF5F5F5" />
+            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFF5F5F5" />
+            <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E8FFFFFF" />
+            <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="#8FFFFFFF" />
+            <SolidColorBrush x:Key="SubtleButtonForeground" Color="#FFF5F5F5" />
+            <SolidColorBrush x:Key="SubtleButtonForegroundPointerOver" Color="#FFF5F5F5" />
+            <SolidColorBrush x:Key="SubtleButtonForegroundPressed" Color="#E8FFFFFF" />
+            <SolidColorBrush x:Key="SubtleButtonForegroundDisabled" Color="#8FFFFFFF" />
+
+            <!-- Native input and item templates otherwise retain the app theme
+                 foreground. Alias every relevant state to this widget's
+                 mutable semantic brushes. -->
+            <StaticResource x:Key="DefaultTextForegroundThemeBrush" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="TextControlForeground" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="TextControlForegroundDisabled" ResourceKey="TextFillColorDisabledBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="TextFillColorSecondaryBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="TextFillColorSecondaryBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="TextFillColorSecondaryBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForegroundDisabled" ResourceKey="TextFillColorDisabledBrush" />
+            <StaticResource x:Key="GridViewItemForeground" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="GridViewItemForegroundPointerOver" ResourceKey="TextFillColorSecondaryBrush" />
+            <StaticResource x:Key="GridViewItemForegroundSelected" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="ListViewItemForeground" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="ListViewItemForegroundPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="ListViewItemForegroundPressed" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+            <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="TextFillColorPrimaryBrush" />
+
             <x:Double x:Key="QuickCaptureDetailActionIconSize">13</x:Double>
 
             <Style x:Key="QuickCaptureIconButtonStyle" TargetType="Button">
@@ -106,9 +148,16 @@
         </Grid.Resources>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="46" />
+            <RowDefinition Height="Auto" MinHeight="46" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <Canvas
+            x:Name="WidgetTextShadowHost"
+            Grid.RowSpan="2"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            IsHitTestVisible="False" />
 
         <controls:WidgetShell
             x:Name="QuickCaptureShell"
@@ -357,7 +406,7 @@
                     x:Name="ItemsListView"
                     AllowDrop="True"
                     CanDragItems="True"
-                    CanReorderItems="True"
+                    CanReorderItems="False"
                     Background="Transparent"
                     HorizontalContentAlignment="Stretch"
                     ItemsSource="{Binding VisibleItemsSource}"
@@ -917,6 +966,7 @@
                                 Grid.Row="2"
                                 MinHeight="80"
                                 FontSize="{Binding TextSize}"
+                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                 Margin="8,6,0,6"
                                 TaskToggleRequested="DetailMarkdownView_TaskToggleRequested"
                                 Visibility="Collapsed" />
@@ -928,6 +978,7 @@
                                 CancelRequested="DetailMarkdownEditor_CancelRequested"
                                 EditorFontSize="{Binding TextSize}"
                                 EditorEnterBehavior="{Binding EditorEnterBehavior}"
+                                EnableCtrlSSaveShortcut="True"
                                 PlaceholderText="{Binding DetailBodyPlaceholderText}"
                                 Visibility="Collapsed" />
                             <Button

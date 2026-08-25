@@ -116,6 +116,7 @@ public sealed class SettingsService
         IsMicaMaterial(materialType) || IsAcrylicMaterial(materialType);
     public const string WidgetLayerModeDynamic = "Dynamic";
     public const string WidgetLayerModeDesktopPinned = "DesktopPinned";
+    public const string WidgetLayerModeQuickReveal = "QuickReveal";
     public const string WidgetChromeModeStandard = WidgetChromeModeNames.Standard;
     public const string WidgetChromeModeCompact = WidgetChromeModeNames.Compact;
     public const string WidgetChromeModeOverlay = WidgetChromeModeNames.Overlay;
@@ -146,6 +147,9 @@ public sealed class SettingsService
     public const double DefaultWidgetCapsuleBarSpacing = 8;
     public const double MinWidgetCapsuleBarSpacing = 0;
     public const double MaxWidgetCapsuleBarSpacing = 32;
+    public const double DefaultWidgetSnapSpacing = 5;
+    public const double MinWidgetSnapSpacing = 0;
+    public const double MaxWidgetSnapSpacing = 32;
     public const string WidgetCollapsedStyleMinimal = "Minimal";
     public const string WidgetCollapsedStyleSummary = "Summary";
     public const string WidgetCollapsedStyleSmart = "Smart";
@@ -219,6 +223,8 @@ public sealed class SettingsService
     public const string FileStackOrderByName = "Name";
     public const string FileStackOrderByDateAdded = "DateAdded";
     public const string FileStackOrderByDateModified = "DateModified";
+    public const string FileStackOpenModeInline = "Inline";
+    public const string FileStackOpenModePopover = "Popover";
     public const string FileStackUnmatchedKeepLoose = "KeepLoose";
     public const string FileStackUnmatchedOther = "Other";
     public const int MaxFileStackCustomRules = 32;
@@ -247,6 +253,8 @@ public sealed class SettingsService
     public const double DefaultWidgetWidth = 280;
     public const double DefaultWidgetHeight = 400;
     public const bool DefaultGlobalHotkeyEnabled = true;
+    public const Models.HotkeyActivationKind DefaultGlobalHotkeyActivationKind =
+        Models.HotkeyActivationKind.Chord;
     public const int DefaultGlobalHotkeyModifiers = (int)Models.HotkeyModifierKeys.None;
     public const int DefaultGlobalHotkeyKey = (int)Windows.System.VirtualKey.F7;
     public const double MinWidgetWidth = 150;
@@ -331,6 +339,8 @@ public const int DefaultSearchMaxResults = 100;
                 [nameof(AppSettings.TodoEnabled)] = DefaultPreferencePreservationReason.UserChoice,
                 [nameof(AppSettings.Widgets)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.WidgetGroups)] = DefaultPreferencePreservationReason.UserData,
+                [nameof(AppSettings.WidgetTopologyLayouts)] = DefaultPreferencePreservationReason.UserData,
+                [nameof(AppSettings.ActiveWidgetTopologyKey)] = DefaultPreferencePreservationReason.RuntimeState,
                 [nameof(AppSettings.WidgetCapsuleBarOrder)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.WidgetCapsuleFreePlacements)] = DefaultPreferencePreservationReason.UserData,
                 [nameof(AppSettings.DeletedWidgetIds)] = DefaultPreferencePreservationReason.UserData,
@@ -387,6 +397,9 @@ public const int DefaultSearchMaxResults = 100;
         settings.WidgetCornerPreference = WidgetCornerPreferenceRound;
         settings.WidgetMaterialType = WidgetMaterialTypeMica;
         settings.WidgetMaterialIntensity = DefaultWidgetMaterialIntensity;
+        settings.WidgetForegroundMode = WidgetForegroundSettings.ModeFollowTheme;
+        settings.WidgetForegroundColor = WidgetForegroundSettings.DefaultCustomColorHex;
+        settings.WidgetTextEdgeMode = WidgetForegroundSettings.EdgeOff;
         settings.WidgetBorderColorMode = WidgetBorderColorModeNeutral;
         settings.WidgetBorderStyle = WidgetBorderStyleThin;
         settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
@@ -437,6 +450,7 @@ public const int DefaultSearchMaxResults = 100;
         settings.FileStackGroupBy = FileStackGroupByKind;
         settings.FileStackThreshold = DefaultFileStackThreshold;
         settings.FileStackOrderBy = FileStackOrderByWidget;
+        settings.FileStackOpenMode = FileStackOpenModeInline;
         settings.FileStackCustomRules = [];
         settings.FileStackUnmatchedBehavior = FileStackUnmatchedKeepLoose;
         settings.HideShortcutExtensionWhenShowingFileExtensions = true;
@@ -495,11 +509,13 @@ settings.WeatherRefreshIntervalMinutes = 60;
         settings.SearchHotkeyKey = 0x44;
         settings.SearchDisplayMode = "Spotlight";
         settings.SearchIncludeDeskBoxContent = true;
-        settings.SearchIncludeSystemIndex = true;
-        settings.SearchCustomIndexerEnabled = false;
+        settings.SearchIncludeSystemIndex = false;
+        settings.SearchCustomIndexerEnabled = true;
         settings.SearchRustIndexerPreviewEnabled =
             AppSettings.SearchRustIndexerDefaultEnabled;
         settings.SearchCustomIndexPaths = [];
+        settings.SearchHideSystemNoise = true;
+        settings.SearchIndexExcludedPaths = [];
         settings.SearchShowRecommendations = true;
         settings.SearchMaxResults = DefaultSearchMaxResults;
         settings.SearchDefaultTab = "all";
@@ -522,12 +538,15 @@ settings.WeatherRefreshIntervalMinutes = 60;
         settings.TodoShowCompletedTab = true;
         settings.ManagedDropAction = ManagedDropActionMove;
         settings.GlobalHotkeyEnabled = DefaultGlobalHotkeyEnabled;
+        settings.GlobalHotkeyActivationKind = DefaultGlobalHotkeyActivationKind;
         settings.GlobalHotkeyModifiers = DefaultGlobalHotkeyModifiers;
         settings.GlobalHotkeyKey = DefaultGlobalHotkeyKey;
+        settings.DesktopDoubleClickEnabled = false;
         settings.DoubleClickToOpen = true;
         settings.FileWidgetFolderOpenBehavior = FileWidgetFolderOpenBehaviorNames.Explorer;
         settings.HideShortcutArrowOverlay = true;
         settings.ResizeSnapEnabled = true;
+        settings.WidgetSnapSpacing = DefaultWidgetSnapSpacing;
 settings.ShowListItemDetails = false;
 settings.ShowFileItemPathTooltips = true;
 settings.CustomAccentColor = "#0078D4";
@@ -628,6 +647,7 @@ settings.FocusClickedWidgetOnRaise = false;
                 changed |= NormalizeAppearanceSettings(_settings);
                 changed |= NormalizeFeatureWidgetSettings(_settings);
                 changed |= NormalizeWidgetContentSettings(_settings);
+                changed |= NormalizeWidgetTopologyLayouts(_settings);
                 changed |= NormalizeOrganizerSettings(_settings);
                 changed |= NormalizeHotkeySettings(_settings);
                 changed |= NormalizeSearchSettings(_settings);
@@ -735,6 +755,7 @@ settings.FocusClickedWidgetOnRaise = false;
                 NormalizeAppearanceSettings(_settings);
                 NormalizeFeatureWidgetSettings(_settings);
                 NormalizeWidgetContentSettings(_settings);
+                NormalizeWidgetTopologyLayouts(_settings);
                 NormalizeOrganizerSettings(_settings);
                 NormalizeHotkeySettings(_settings);
                 NormalizeSearchSettings(_settings);
@@ -926,6 +947,45 @@ settings.FocusClickedWidgetOnRaise = false;
         SaveDebounced(notifySubscribers);
     }
 
+    public void UpdateWidgetsBatch(
+        IEnumerable<WidgetConfig> configs,
+        bool notifySubscribers = true)
+    {
+        ArgumentNullException.ThrowIfNull(configs);
+        WidgetConfig[] distinctConfigs = configs
+            .Where(config => config is not null)
+            .GroupBy(config => config.Id, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .ToArray();
+        if (distinctConfigs.Length == 0)
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            foreach (WidgetConfig config in distinctConfigs)
+            {
+                if (_settings.DeletedWidgetIds.Contains(config.Id))
+                {
+                    continue;
+                }
+
+                int existing = _settings.Widgets.FindIndex(widget => widget.Id == config.Id);
+                if (existing >= 0)
+                {
+                    _settings.Widgets[existing] = config;
+                }
+                else
+                {
+                    _settings.Widgets.Add(config);
+                }
+            }
+        }
+
+        SaveDebounced(notifySubscribers);
+    }
+
     /// <summary>
     /// Remove a widget configuration.
     /// </summary>
@@ -954,6 +1014,81 @@ settings.FocusClickedWidgetOnRaise = false;
 
             _settings.Widgets.RemoveAll(w => w.Id == widgetId);
         }
+    }
+
+    private static bool NormalizeWidgetTopologyLayouts(AppSettings settings)
+    {
+        bool changed = false;
+        if (settings.WidgetTopologyLayouts is null)
+        {
+            settings.WidgetTopologyLayouts = [];
+            settings.ActiveWidgetTopologyKey = null;
+            return true;
+        }
+
+        foreach (string invalidKey in settings.WidgetTopologyLayouts
+                     .Where(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value is null)
+                     .Select(pair => pair.Key)
+                     .ToList())
+        {
+            changed |= settings.WidgetTopologyLayouts.Remove(invalidKey);
+        }
+
+        foreach (WidgetTopologyLayoutProfile profile in settings.WidgetTopologyLayouts.Values)
+        {
+            if (profile.Version != WidgetTopologyLayoutProfile.CurrentVersion)
+            {
+                profile.Version = WidgetTopologyLayoutProfile.CurrentVersion;
+                changed = true;
+            }
+
+            if (profile.Monitors is null)
+            {
+                profile.Monitors = [];
+                changed = true;
+            }
+
+            if (profile.Surfaces is null)
+            {
+                profile.Surfaces = [];
+                changed = true;
+            }
+
+            foreach (string invalidSurfaceId in profile.Surfaces
+                         .Where(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value is null)
+                         .Select(pair => pair.Key)
+                         .ToList())
+            {
+                changed |= profile.Surfaces.Remove(invalidSurfaceId);
+            }
+        }
+
+        while (settings.WidgetTopologyLayouts.Count > WidgetTopologyLayoutService.MaximumRetainedProfiles)
+        {
+            string? oldest = settings.WidgetTopologyLayouts
+                .Where(pair => !string.Equals(
+                    pair.Key,
+                    settings.ActiveWidgetTopologyKey,
+                    StringComparison.Ordinal))
+                .OrderBy(pair => pair.Value.LastUsedAtUtc)
+                .Select(pair => pair.Key)
+                .FirstOrDefault();
+            if (oldest is null)
+            {
+                break;
+            }
+
+            changed |= settings.WidgetTopologyLayouts.Remove(oldest);
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.ActiveWidgetTopologyKey) &&
+            !settings.WidgetTopologyLayouts.ContainsKey(settings.ActiveWidgetTopologyKey))
+        {
+            settings.ActiveWidgetTopologyKey = null;
+            changed = true;
+        }
+
+        return changed;
     }
 
     private static bool NormalizePresentationSettings(AppSettings settings)
@@ -1008,6 +1143,8 @@ settings.FocusClickedWidgetOnRaise = false;
             settings.WidgetMaterialIntensity = normalizedMaterialIntensity;
             changed = true;
         }
+
+        changed |= WidgetForegroundSettings.NormalizeGlobal(settings);
 
         if (settings.WidgetBorderColorMode is not (
             WidgetBorderColorModeNeutral or
@@ -1250,6 +1387,14 @@ settings.FocusClickedWidgetOnRaise = false;
         if (!NearlyEqual(settings.WidgetCapsuleBarSpacing, normalizedCapsuleSpacing))
         {
             settings.WidgetCapsuleBarSpacing = normalizedCapsuleSpacing;
+            changed = true;
+        }
+
+        double normalizedWidgetSnapSpacing = NormalizeWidgetSnapSpacing(
+            settings.WidgetSnapSpacing);
+        if (!NearlyEqual(settings.WidgetSnapSpacing, normalizedWidgetSnapSpacing))
+        {
+            settings.WidgetSnapSpacing = normalizedWidgetSnapSpacing;
             changed = true;
         }
 
@@ -1675,6 +1820,14 @@ settings.FocusClickedWidgetOnRaise = false;
         return Math.Clamp(finiteValue, MinWidgetCapsuleBarSpacing, MaxWidgetCapsuleBarSpacing);
     }
 
+    public static double NormalizeWidgetSnapSpacing(double value)
+    {
+        double finiteValue = double.IsFinite(value)
+            ? value
+            : DefaultWidgetSnapSpacing;
+        return Math.Clamp(finiteValue, MinWidgetSnapSpacing, MaxWidgetSnapSpacing);
+    }
+
     public static string NormalizeWidgetCollapsedStyle(string? value)
     {
         if (string.Equals(value, WidgetCollapsedStylePill, StringComparison.OrdinalIgnoreCase))
@@ -1856,9 +2009,12 @@ settings.FocusClickedWidgetOnRaise = false;
 
     public static string NormalizeWidgetLayerModeSetting(string? value)
     {
-        return string.Equals(value, WidgetLayerModeDesktopPinned, StringComparison.Ordinal)
-            ? WidgetLayerModeDesktopPinned
-            : WidgetLayerModeDynamic;
+        return value switch
+        {
+            WidgetLayerModeDesktopPinned => WidgetLayerModeDesktopPinned,
+            WidgetLayerModeQuickReveal => WidgetLayerModeQuickReveal,
+            _ => WidgetLayerModeDynamic
+        };
     }
 
     private static bool NormalizeAppearanceSettings(AppSettings settings)
@@ -1941,6 +2097,16 @@ settings.FocusClickedWidgetOnRaise = false;
 
             widget.Metadata ??= [];
 
+            if (widget.IconSizeOverride is { } iconSizeOverride)
+            {
+                double normalizedIconSize = NormalizeIconSize(iconSizeOverride);
+                if (Math.Abs(iconSizeOverride - normalizedIconSize) > 0.0001)
+                {
+                    widget.IconSizeOverride = normalizedIconSize;
+                    changed = true;
+                }
+            }
+
             if (widget.CompactWidth is { } compactWidth)
             {
                 double normalizedCompactWidth = WidgetCompactBoundsCalculator.ClampLogicalWidth(compactWidth);
@@ -2001,6 +2167,11 @@ settings.FocusClickedWidgetOnRaise = false;
             }
 
             if (FileWidgetFolderOpenBehaviorNames.NormalizeOverride(widget))
+            {
+                changed = true;
+            }
+
+            if (WidgetForegroundSettings.NormalizeOverrides(widget))
             {
                 changed = true;
             }
@@ -2081,6 +2252,17 @@ settings.FocusClickedWidgetOnRaise = false;
         if (!string.Equals(settings.FileStackOrderBy, normalizedFileStackOrderBy, StringComparison.Ordinal))
         {
             settings.FileStackOrderBy = normalizedFileStackOrderBy;
+            changed = true;
+        }
+
+        string normalizedFileStackOpenMode = NormalizeFileStackOpenMode(
+            settings.FileStackOpenMode);
+        if (!string.Equals(
+                settings.FileStackOpenMode,
+                normalizedFileStackOpenMode,
+                StringComparison.Ordinal))
+        {
+            settings.FileStackOpenMode = normalizedFileStackOpenMode;
             changed = true;
         }
 
@@ -2340,6 +2522,14 @@ settings.FocusClickedWidgetOnRaise = false;
             : FileStackOrderByWidget;
     }
 
+    public static string NormalizeFileStackOpenMode(string? openMode) =>
+        string.Equals(
+            openMode,
+            FileStackOpenModePopover,
+            StringComparison.OrdinalIgnoreCase)
+                ? FileStackOpenModePopover
+                : FileStackOpenModeInline;
+
     public static string NormalizeFileStackUnmatchedBehavior(string? behavior) =>
         string.Equals(behavior, FileStackUnmatchedOther, StringComparison.OrdinalIgnoreCase)
             ? FileStackUnmatchedOther
@@ -2422,6 +2612,12 @@ settings.FocusClickedWidgetOnRaise = false;
     private static bool NormalizeHotkeySettings(AppSettings settings)
     {
         bool changed = false;
+        if (!Enum.IsDefined(settings.GlobalHotkeyActivationKind))
+        {
+            settings.GlobalHotkeyActivationKind = DefaultGlobalHotkeyActivationKind;
+            changed = true;
+        }
+
         int normalizedModifiers = (int)((Models.HotkeyModifierKeys)settings.GlobalHotkeyModifiers &
             (Models.HotkeyModifierKeys.Alt |
              Models.HotkeyModifierKeys.Control |
@@ -2437,6 +2633,7 @@ settings.FocusClickedWidgetOnRaise = false;
         var gesture = GlobalHotkeyService.NormalizeGesture(settings.GlobalHotkeyModifiers, settings.GlobalHotkeyKey);
         if (!GlobalHotkeyService.IsValidGesture(gesture))
         {
+            settings.GlobalHotkeyActivationKind = DefaultGlobalHotkeyActivationKind;
             settings.GlobalHotkeyModifiers = DefaultGlobalHotkeyModifiers;
             settings.GlobalHotkeyKey = DefaultGlobalHotkeyKey;
             changed = true;
@@ -2468,6 +2665,40 @@ settings.FocusClickedWidgetOnRaise = false;
     private static bool NormalizeSearchSettings(AppSettings settings)
     {
         bool changed = false;
+
+        // Search now has one active filename authority. Legacy settings that enabled
+        // Windows Search or disabled the local catalog are migrated in place; the
+        // feature-level widget switch still owns complete runtime release.
+        if (settings.SearchIncludeSystemIndex)
+        {
+            settings.SearchIncludeSystemIndex = false;
+            changed = true;
+        }
+
+        if (!settings.SearchCustomIndexerEnabled)
+        {
+            settings.SearchCustomIndexerEnabled = true;
+            changed = true;
+        }
+
+        bool rustDefault = AppSettings.SearchRustIndexerDefaultEnabled;
+        if (settings.SearchRustIndexerPreviewEnabled != rustDefault)
+        {
+            settings.SearchRustIndexerPreviewEnabled = rustDefault;
+            changed = true;
+        }
+
+        if (settings.SearchCustomIndexPaths is null)
+        {
+            settings.SearchCustomIndexPaths = [];
+            changed = true;
+        }
+
+        if (settings.SearchIndexExcludedPaths is null)
+        {
+            settings.SearchIndexExcludedPaths = [];
+            changed = true;
+        }
 
         string normalized = settings.SearchDefaultTab?.Trim().ToLowerInvariant() ?? "all";
         if (normalized is not ("all" or "app" or "file" or "deskbox"))

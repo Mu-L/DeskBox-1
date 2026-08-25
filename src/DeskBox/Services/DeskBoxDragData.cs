@@ -18,6 +18,8 @@ public static class DeskBoxDragData
         "DeskBox.WidgetItemDrag.v2";
     public const string StackReorderKeyProperty =
         "DeskBoxStackReorderKey";
+    public const string SourceStackKeyProperty =
+        "DeskBoxSourceStackKey";
     public const string SourceTodo = "todo";
     public const string SourceQuickCapture = "quick-capture";
     private static readonly HttpClient s_virtualDropHttpClient = new()

@@ -618,6 +618,25 @@ public partial class App
         }
     }
 
+    private async Task ToggleWidgetsFromDesktopDoubleClickAsync(
+        DesktopDoubleClickSequence sequence)
+    {
+        if (WidgetManager is null)
+        {
+            return;
+        }
+
+        if (WidgetManager.ConsumeQuickRevealDesktopDoubleClickDismiss(sequence))
+        {
+            Log(
+                "[DesktopDoubleClick] Consumed matching quick-reveal outside dismissal");
+            return;
+        }
+
+        Log("[DesktopDoubleClick] Matched blank desktop sequence action=toggle");
+        await ToggleTrayWidgetsAsync("desktop-double-click");
+    }
+
     private void UpdateTrayLayerStateText(bool raised)
     {
         _widgetsRaisedFromTray = raised;

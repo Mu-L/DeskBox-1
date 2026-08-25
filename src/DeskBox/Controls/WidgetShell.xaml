@@ -7,6 +7,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:widgetContents="using:DeskBox.Controls.WidgetContents"
+    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
 
     <Grid
@@ -20,7 +21,7 @@
             <ScaleTransform x:Name="ShellRootScale" ScaleX="1" ScaleY="1" />
         </Grid.RenderTransform>
         <Grid.RowDefinitions>
-            <RowDefinition Height="46" />
+            <RowDefinition Height="Auto" MinHeight="46" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 

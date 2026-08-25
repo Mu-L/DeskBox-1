@@ -1039,6 +1039,7 @@ public sealed class SettingsServiceTests : IDisposable
             QuickCaptureItemPreviewLineCount = 1,
             QuickCaptureEditorEnterBehavior = SettingsService.EditorEnterBehaviorEnterSaves,
             ResizeSnapEnabled = false,
+            WidgetSnapSpacing = 27,
             KeepWidgetsVisibleOnShowDesktop = false,
             QuickCaptureTabStyle = SettingsService.WidgetTabStylePivot,
             TodoTabStyle = SettingsService.WidgetTabStylePivot,
@@ -1111,6 +1112,8 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(SettingsService.DefaultQuickCaptureItemPreviewLineCount, newUserDefaults.QuickCaptureItemPreviewLineCount);
         Assert.Equal(newUserDefaults.QuickCaptureEditorEnterBehavior, restoredDefaults.QuickCaptureEditorEnterBehavior);
         Assert.True(restoredDefaults.ResizeSnapEnabled);
+        Assert.Equal(SettingsService.DefaultWidgetSnapSpacing, newUserDefaults.WidgetSnapSpacing);
+        Assert.Equal(newUserDefaults.WidgetSnapSpacing, restoredDefaults.WidgetSnapSpacing);
         Assert.True(newUserDefaults.KeepWidgetsVisibleOnShowDesktop);
         Assert.Equal(
             newUserDefaults.KeepWidgetsVisibleOnShowDesktop,
@@ -1136,6 +1139,24 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(newUserDefaults.WeatherSkin, restoredDefaults.WeatherSkin);
         Assert.Equal(SettingsService.DefaultSearchMaxResults, newUserDefaults.SearchMaxResults);
         Assert.Equal(newUserDefaults.SearchMaxResults, restoredDefaults.SearchMaxResults);
+    }
+
+    [Fact]
+    public void NormalizeWidgetSnapSpacing_UsesFiniteDefaultAndConfiguredRange()
+    {
+        Assert.Equal(
+            SettingsService.DefaultWidgetSnapSpacing,
+            SettingsService.NormalizeWidgetSnapSpacing(double.NaN));
+        Assert.Equal(
+            SettingsService.DefaultWidgetSnapSpacing,
+            SettingsService.NormalizeWidgetSnapSpacing(double.PositiveInfinity));
+        Assert.Equal(
+            SettingsService.MinWidgetSnapSpacing,
+            SettingsService.NormalizeWidgetSnapSpacing(-1));
+        Assert.Equal(
+            SettingsService.MaxWidgetSnapSpacing,
+            SettingsService.NormalizeWidgetSnapSpacing(100));
+        Assert.Equal(7.5, SettingsService.NormalizeWidgetSnapSpacing(7.5));
     }
 
     [Fact]
@@ -1449,6 +1470,12 @@ public sealed class SettingsServiceTests : IDisposable
         if (type == typeof(DateTimeOffset?))
         {
             return new DateTimeOffset(2030, 1, 2, 3, 4, 5, TimeSpan.Zero);
+        }
+
+        if (type.IsEnum)
+        {
+            Array values = Enum.GetValues(type);
+            return values.Cast<object>().First(value => !Equals(value, defaultValue));
         }
 
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))

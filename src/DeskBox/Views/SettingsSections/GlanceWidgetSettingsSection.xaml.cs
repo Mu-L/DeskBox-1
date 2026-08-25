@@ -29,6 +29,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
     private readonly GlanceTraditionalCalendarService _traditionalCalendarService = new();
     private readonly SystemFontCatalogService _fontCatalogService = new();
     private readonly DispatcherTimer _scaleSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(280) };
+    private readonly DispatcherTimer _imageTransparencySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(280) };
     private readonly DispatcherTimer _calendarTransparencySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(280) };
     private readonly SemaphoreSlim _instanceSelectionGate = new(1, 1);
     private GlanceWidgetData _settings = new();
@@ -47,6 +48,7 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         _scaleSaveTimer.Tick += ScaleSaveTimer_Tick;
+        _imageTransparencySaveTimer.Tick += ImageTransparencySaveTimer_Tick;
         _calendarTransparencySaveTimer.Tick += CalendarTransparencySaveTimer_Tick;
         WidgetDangerActionStyle.Apply(DeleteInstanceMenuItem);
     }
@@ -477,11 +479,13 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
             SelectOption(FontComboBox, _settings.TimeFontFamily ?? string.Empty);
             RandomOrderToggle.IsOn = _settings.RandomOrder;
             TimeScaleSlider.Value = _settings.TimeScale;
+            BackgroundImageTransparencySlider.Value = _settings.BackgroundImageTransparency;
             CalendarImageTransparencySlider.Value = _settings.CalendarImageMaterialTransparency;
             ShowChineseFestivalsToggle.IsOn = _settings.ShowChineseFestivals;
             ShowPhotoControlsToggle.IsOn = _settings.ShowPhotoControls;
             UpdateDisplaySelectionSummary();
             UpdateLocalSourceState();
+            UpdateBackgroundImageTransparencyState();
             UpdateCalendarMaterialState();
         }
         finally
@@ -512,8 +516,10 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
     private async Task FlushPendingSavesAsync()
     {
         bool hasPendingSave = _scaleSaveTimer.IsEnabled ||
+            _imageTransparencySaveTimer.IsEnabled ||
             _calendarTransparencySaveTimer.IsEnabled;
         _scaleSaveTimer.Stop();
+        _imageTransparencySaveTimer.Stop();
         _calendarTransparencySaveTimer.Stop();
         if (hasPendingSave && _store is { } store)
         {
@@ -837,6 +843,30 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
         }
     }
 
+    private void BackgroundImageTransparencySlider_ValueChanged(
+        object sender,
+        RangeBaseValueChangedEventArgs e)
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        _settings.BackgroundImageTransparency = Math.Clamp(e.NewValue, 0.0, 1.0);
+        UpdateBackgroundImageTransparencyState();
+        _imageTransparencySaveTimer.Stop();
+        _imageTransparencySaveTimer.Start();
+    }
+
+    private async void ImageTransparencySaveTimer_Tick(object? sender, object e)
+    {
+        _imageTransparencySaveTimer.Stop();
+        if (_store is { } store)
+        {
+            await store.SaveAsync(_settings);
+        }
+    }
+
     private void CalendarImageTransparencySlider_ValueChanged(
         object sender,
         RangeBaseValueChangedEventArgs e)
@@ -1010,6 +1040,12 @@ public sealed partial class GlanceWidgetSettingsSection : UserControl
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         CalendarImageTransparencyValue.Text = $"{Math.Round(_settings.CalendarImageMaterialTransparency * 100):0}%";
+    }
+
+    private void UpdateBackgroundImageTransparencyState()
+    {
+        BackgroundImageTransparencyValue.Text =
+            $"{Math.Round(_settings.BackgroundImageTransparency * 100):0}%";
     }
 
     private void UpdateDisplaySelectionSummary()

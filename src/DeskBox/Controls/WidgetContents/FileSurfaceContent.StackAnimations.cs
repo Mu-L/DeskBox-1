@@ -137,7 +137,7 @@ public sealed partial class FileSurfaceContent
     private void StartStackMemberExitAnimations(
         WidgetStackItem stack)
     {
-        Border? anchor = FindStackSurface(stack);
+        Border? anchor = FindStackSurface(stack.StackKey);
         foreach (FrameworkElement element in
                  GetRealizedStackMemberElements(stack))
         {

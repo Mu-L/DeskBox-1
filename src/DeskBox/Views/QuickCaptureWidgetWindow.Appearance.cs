@@ -33,6 +33,11 @@ public sealed partial class QuickCaptureWidgetWindow
 {
     protected override void UpdateConfigBoundsFromPhysical(int x, int y, int width, int height, bool persist)
     {
+        if (persist && !CanPersistBoundsChange(persist))
+        {
+            return;
+        }
+
         if (IsCompactBoundsStateActive)
         {
             if (persist)
@@ -108,9 +113,15 @@ public sealed partial class QuickCaptureWidgetWindow
             accentColor.R,
             accentColor.G,
             accentColor.B);
-        var secondaryForeground = isDark
-            ? ColorHelper.FromArgb(0xD8, 0xC0, 0xC3, 0xC8)
-            : ColorHelper.FromArgb(0xD0, 0x62, 0x65, 0x6A);
+        var secondaryForeground =
+            RootGrid.Resources.TryGetValue(
+                "TextFillColorSecondaryBrush",
+                out object? secondaryBrushValue) &&
+            secondaryBrushValue is SolidColorBrush secondaryBrush
+                ? secondaryBrush.Color
+                : (isDark
+                    ? ColorHelper.FromArgb(0xD8, 0xC0, 0xC3, 0xC8)
+                    : ColorHelper.FromArgb(0xD0, 0x62, 0x65, 0x6A));
 
         BackgroundPlate.BorderThickness = new Thickness(borderThickness);
         BackgroundPlate.BorderBrush = GetOrUpdateSolidColorBrush(BackgroundPlate.BorderBrush, borderColor);
@@ -206,7 +217,8 @@ public sealed partial class QuickCaptureWidgetWindow
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(MoreButtonIcon, metrics);
         WidgetTitleBarMetricsCalculator.ApplyActionIcon(CloseButtonIcon, metrics);
 
-        RootGrid.RowDefinitions[0].Height = metrics.RowHeight;
+        RootGrid.RowDefinitions[0].MinHeight = metrics.RowHeight.Value;
+        RootGrid.RowDefinitions[0].Height = GridLength.Auto;
         QuickCaptureShell.SetTitleBarRowHeight(metrics.RowHeight);
         TitleBarGrid.Padding = metrics.InnerTitlePadding;
     }
@@ -289,7 +301,7 @@ public sealed partial class QuickCaptureWidgetWindow
             : ColorHelper.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
     }
 
-    private static Brush GetNeutralOverlayBorderBrush(bool isDark)
+    private Brush GetNeutralOverlayBorderBrush(bool isDark)
     {
         return GetBrushResourceOrFallback(
             "CardStrokeColorDefaultBrush",

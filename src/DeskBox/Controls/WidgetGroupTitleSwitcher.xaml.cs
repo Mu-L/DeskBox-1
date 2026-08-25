@@ -622,7 +622,7 @@ public sealed partial class WidgetGroupTitleSwitcher : UserControl
             var content = new Grid
             {
                 MinWidth = showText ? 44 : 30,
-                Height = 28,
+                MinHeight = 28,
                 Padding = new Thickness(7, 0, 7, 1)
             };
             content.Children.Add(identity);

@@ -34,20 +34,38 @@ public sealed partial class FileSurfaceContent
         object sender,
         PointerRoutedEventArgs e)
     {
-        if (sender is not ListViewBase listView ||
-            !e.GetCurrentPoint(listView).Properties.IsLeftButtonPressed ||
+        if (sender is ListViewBase listView)
+        {
+            HandleItemsPointerPressed(listView, listView, e);
+        }
+    }
+
+    private void HandleItemsPointerPressed(
+        ListViewBase listView,
+        UIElement pointerSurface,
+        PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(pointerSurface).Properties.IsLeftButtonPressed ||
             Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Shift) ||
             !CanStartBoxSelection(e.OriginalSource))
         {
             return;
         }
 
-        Root.Focus(FocusState.Programmatic);
+        if (ReferenceEquals(listView, _stackPopoverItemsView))
+        {
+            listView.Focus(FocusState.Programmatic);
+        }
+        else
+        {
+            Root.Focus(FocusState.Programmatic);
+        }
         ClearOtherWidgetSelections();
         _selectionPointerPressed = true;
         _isBoxSelecting = false;
+        Canvas selectionOverlay = ResolveSelectionOverlay(listView);
         _selectionStartPoint =
-            e.GetCurrentPoint(SelectionOverlay).Position;
+            e.GetCurrentPoint(selectionOverlay).Position;
         _selectionCurrentPoint = _selectionStartPoint;
         _selectionSnapshot =
             Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control)
@@ -67,14 +85,25 @@ public sealed partial class FileSurfaceContent
         object sender,
         PointerRoutedEventArgs e)
     {
-        if (sender is not ListViewBase listView ||
-            !_selectionPointerPressed)
+        if (sender is ListViewBase listView)
+        {
+            HandleItemsPointerMoved(listView, listView, e);
+        }
+    }
+
+    private void HandleItemsPointerMoved(
+        ListViewBase listView,
+        UIElement pointerSurface,
+        PointerRoutedEventArgs e)
+    {
+        if (!_selectionPointerPressed)
         {
             return;
         }
 
+        Canvas selectionOverlay = ResolveSelectionOverlay(listView);
         _selectionCurrentPoint =
-            e.GetCurrentPoint(SelectionOverlay).Position;
+            e.GetCurrentPoint(selectionOverlay).Position;
         if (!_isBoxSelecting &&
             FileItemSelectionGeometry.GetDragDistance(
                 _selectionStartPoint,
@@ -86,11 +115,11 @@ public sealed partial class FileSurfaceContent
         if (!_isBoxSelecting)
         {
             _isBoxSelecting = true;
-            listView.CapturePointer(e.Pointer);
-            CacheSelectionHits(listView);
+            pointerSurface.CapturePointer(e.Pointer);
+            CacheSelectionHits(listView, selectionOverlay);
         }
 
-        UpdateSelectionRectangle();
+        UpdateSelectionRectangle(listView);
         ApplySelectionPreview(listView);
         e.Handled = true;
     }
@@ -99,17 +128,23 @@ public sealed partial class FileSurfaceContent
         object sender,
         PointerRoutedEventArgs e)
     {
-        if (sender is not ListViewBase listView)
+        if (sender is ListViewBase listView)
         {
-            return;
+            HandleItemsPointerReleased(listView, listView, e);
         }
+    }
 
+    private void HandleItemsPointerReleased(
+        ListViewBase listView,
+        UIElement pointerSurface,
+        PointerRoutedEventArgs e)
+    {
         bool wasBoxSelecting = _isBoxSelecting;
         FinishBoxSelection(listView);
         _pendingPointerDragItems = [];
         if (wasBoxSelecting)
         {
-            listView.ReleasePointerCapture(e.Pointer);
+            pointerSurface.ReleasePointerCapture(e.Pointer);
             e.Handled = true;
         }
     }
@@ -124,6 +159,9 @@ public sealed partial class FileSurfaceContent
         }
     }
 
+    private void HandleItemsPointerCaptureLost(ListViewBase listView) =>
+        FinishBoxSelection(listView);
+
     private bool CanStartBoxSelection(object? originalSource)
     {
         if (originalSource is not DependencyObject source)
@@ -137,7 +175,9 @@ public sealed partial class FileSurfaceContent
                !FileItemSelectionGeometry.HasAncestor<TextBox>(source);
     }
 
-    private void CacheSelectionHits(ListViewBase listView)
+    private void CacheSelectionHits(
+        ListViewBase listView,
+        Canvas selectionOverlay)
     {
         _selectionHits = [];
         foreach (WidgetItem item in listView.Items
@@ -153,9 +193,10 @@ public sealed partial class FileSurfaceContent
             }
 
             FrameworkElement target =
-                FindItemSurface(item) ?? container;
+                FindDescendantByTag(container, "InteractiveSurface") ??
+                container;
             Windows.Foundation.Point topLeft =
-                target.TransformToVisual(SelectionOverlay)
+                target.TransformToVisual(selectionOverlay)
                     .TransformPoint(new Windows.Foundation.Point(0, 0));
             _selectionHits.Add(new SelectionHit(
                 item,
@@ -203,17 +244,18 @@ public sealed partial class FileSurfaceContent
         RefreshItemSelectionVisuals();
     }
 
-    private void UpdateSelectionRectangle()
+    private void UpdateSelectionRectangle(ListViewBase listView)
     {
         Windows.Foundation.Rect rect =
             FileItemSelectionGeometry.GetSelectionRect(
                 _selectionStartPoint,
                 _selectionCurrentPoint);
-        Canvas.SetLeft(SelectionRectangle, rect.X);
-        Canvas.SetTop(SelectionRectangle, rect.Y);
-        SelectionRectangle.Width = rect.Width;
-        SelectionRectangle.Height = rect.Height;
-        SelectionRectangle.Visibility =
+        Border selectionRectangle = ResolveSelectionRectangle(listView);
+        Canvas.SetLeft(selectionRectangle, rect.X);
+        Canvas.SetTop(selectionRectangle, rect.Y);
+        selectionRectangle.Width = rect.Width;
+        selectionRectangle.Height = rect.Height;
+        selectionRectangle.Visibility =
             rect.Width > 0 && rect.Height > 0
                 ? Visibility.Visible
                 : Visibility.Collapsed;
@@ -231,21 +273,48 @@ public sealed partial class FileSurfaceContent
             ApplySelectionPreview(listView);
         }
 
+        ResetBoxSelectionState();
+        UpdateSelectionCommandBar();
+        RefreshItemSelectionVisuals();
+    }
+
+    private Canvas ResolveSelectionOverlay(ListViewBase listView) =>
+        ReferenceEquals(listView, _stackPopoverItemsView) &&
+        _stackPopoverSelectionOverlay is { } popoverOverlay
+            ? popoverOverlay
+            : SelectionOverlay;
+
+    private Border ResolveSelectionRectangle(ListViewBase listView) =>
+        ReferenceEquals(listView, _stackPopoverItemsView) &&
+        _stackPopoverSelectionRectangle is { } popoverRectangle
+            ? popoverRectangle
+            : SelectionRectangle;
+
+    private void ResetBoxSelectionState()
+    {
         _selectionPointerPressed = false;
         _isBoxSelecting = false;
         _selectionSnapshot = [];
         _selectionHits = [];
-        SelectionRectangle.Visibility = Visibility.Collapsed;
-        SelectionRectangle.Width = 0;
-        SelectionRectangle.Height = 0;
-        UpdateSelectionCommandBar();
-        RefreshItemSelectionVisuals();
+        HideSelectionRectangle(SelectionRectangle);
+        if (_stackPopoverSelectionRectangle is { } popoverRectangle)
+        {
+            HideSelectionRectangle(popoverRectangle);
+        }
+    }
+
+    private static void HideSelectionRectangle(Border rectangle)
+    {
+        rectangle.Visibility = Visibility.Collapsed;
+        rectangle.Width = 0;
+        rectangle.Height = 0;
     }
 
     public void ClearItemSelection()
     {
         ItemsGrid.SelectedItems.Clear();
         ItemsList.SelectedItems.Clear();
+        _stackPopoverItemsView?.SelectedItems.Clear();
         UpdateSelectionCommandBar();
         RefreshItemSelectionVisuals();
     }
@@ -337,7 +406,7 @@ public sealed partial class FileSurfaceContent
             ShowFileProperties,
             CanMoveItemsBackToDesktop,
             _ => MoveSelectedItemsBackToDesktopAsync(),
-            DeleteItemsAsync,
+            items => DeleteItemsAsync(items),
             GetSelectedItems,
             CanCreateManualStack: true,
             items =>
@@ -373,6 +442,7 @@ public sealed partial class FileSurfaceContent
 
         MenuFlyoutItem refresh =
             CreateMenuItem("Common.Refresh", "\uE72C");
+        refresh.KeyboardAcceleratorTextOverride = "F5";
         refresh.Click += async (_, _) =>
         {
             flyout.Hide();
@@ -382,6 +452,7 @@ public sealed partial class FileSurfaceContent
 
         MenuFlyoutItem paste =
             CreateMenuItem("Common.Paste", "\uE77F");
+        paste.KeyboardAcceleratorTextOverride = "Ctrl+V";
         paste.IsEnabled = hasMappedFolder && CanPasteFromClipboard();
         paste.Click += async (_, _) =>
         {
@@ -392,6 +463,7 @@ public sealed partial class FileSurfaceContent
 
         MenuFlyoutItem newFolder =
             CreateMenuItem("Common.NewFolder", "\uE8B7");
+        newFolder.KeyboardAcceleratorTextOverride = "Ctrl+Shift+N";
         newFolder.IsEnabled = hasMappedFolder;
         newFolder.Click += async (_, _) =>
         {
@@ -453,6 +525,7 @@ public sealed partial class FileSurfaceContent
             }
         };
         viewAndSort.Items.Add(listView);
+        viewAndSort.Items.Add(CreateIconSizeMenu());
         viewAndSort.Items.Add(new MenuFlyoutSeparator());
         AddSortItem(
             viewAndSort,
@@ -483,6 +556,35 @@ public sealed partial class FileSurfaceContent
             flyout.Items.Add(hostItems.CloseWidgetItem);
         }
         return flyout;
+    }
+
+    private MenuFlyoutSubItem CreateIconSizeMenu()
+    {
+        var menu = new MenuFlyoutSubItem
+        {
+            Text = T("Settings.IconSize.Title")
+        };
+        foreach (double size in FileWidgetIconSizePolicy.Steps)
+        {
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = $"{size:0}",
+                IsChecked = Math.Abs(ViewModel.EffectiveIconSize - size) < 0.01
+            };
+            item.Click += (_, _) => ViewModel.SetIconSizeOverride(size);
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var reset = new MenuFlyoutItem
+        {
+            Text = T("Widget.IconSize.FollowGlobal"),
+            IsEnabled = ViewModel.Config.IconSizeOverride is not null,
+            Icon = new FontIcon { Glyph = "\uE777" }
+        };
+        reset.Click += (_, _) => ViewModel.SetIconSizeOverride(null);
+        menu.Items.Add(reset);
+        return menu;
     }
 
     private async Task CreateFolderInMappedLocationAsync()
@@ -588,6 +690,7 @@ public sealed partial class FileSurfaceContent
             ApplyStackProjectionChange(() =>
                 ViewModel.SetFileStacksEnabledOverride(enabled.IsChecked));
         menu.Items.Add(enabled);
+        menu.Items.Add(CreateStackOpenModeMenu());
         menu.Items.Add(new MenuFlyoutSeparator());
 
         var defaultGrouping = new ToggleMenuFlyoutItem
@@ -757,6 +860,56 @@ public sealed partial class FileSurfaceContent
             SettingsService.FileStackOrderByDateModified,
             "Settings.FileStacks.OrderBy.DateModified");
         return menu;
+    }
+
+    private MenuFlyoutSubItem CreateStackOpenModeMenu()
+    {
+        var menu = new MenuFlyoutSubItem
+        {
+            Text = T("Settings.FileStacks.OpenMode.Title")
+        };
+        var useDefault = new ToggleMenuFlyoutItem
+        {
+            Text = T("Widget.Stack.UseDefaultOpenMode"),
+            IsChecked = ViewModel.FileStackOpenModeFollowsGlobal
+        };
+        useDefault.Click += (_, _) =>
+        {
+            useDefault.IsChecked = true;
+            ViewModel.SetFileStackOpenModeOverride(null);
+        };
+        menu.Items.Add(useDefault);
+        menu.Items.Add(new MenuFlyoutSeparator());
+
+        AddStackOpenModeItem(
+            menu,
+            SettingsService.FileStackOpenModeInline,
+            "Settings.FileStacks.OpenMode.Inline");
+        AddStackOpenModeItem(
+            menu,
+            SettingsService.FileStackOpenModePopover,
+            "Settings.FileStacks.OpenMode.Popover");
+        return menu;
+    }
+
+    private void AddStackOpenModeItem(
+        MenuFlyoutSubItem menu,
+        string openMode,
+        string localizationKey)
+    {
+        var item = new ToggleMenuFlyoutItem
+        {
+            Text = T(localizationKey),
+            IsChecked =
+                !ViewModel.FileStackOpenModeFollowsGlobal &&
+                string.Equals(
+                    ViewModel.FileStackOpenMode,
+                    openMode,
+                    StringComparison.Ordinal)
+        };
+        item.Click += (_, _) =>
+            ViewModel.SetFileStackOpenModeOverride(openMode);
+        menu.Items.Add(item);
     }
 
     private void AddStackOrderItem(
@@ -985,6 +1138,7 @@ public sealed partial class FileSurfaceContent
         change();
         DispatcherQueue.TryEnqueue(() =>
         {
+            ReconcileStackPopover();
             ResetSelectionForStackProjectionChange();
             // Collection reconciliation and container recycling can finish on
             // the following layout turn. Clear once more after that work so a
@@ -997,18 +1151,13 @@ public sealed partial class FileSurfaceContent
 
     private void ResetSelectionForStackProjectionChange()
     {
-        _selectionPointerPressed = false;
-        _isBoxSelecting = false;
-        _selectionSnapshot = [];
-        _selectionHits = [];
+        ResetBoxSelectionState();
         _pendingPointerDragItems = [];
         _pressedStack = null;
         _stackPointerDragStarted = false;
-        SelectionRectangle.Visibility = Visibility.Collapsed;
-        SelectionRectangle.Width = 0;
-        SelectionRectangle.Height = 0;
         ItemsGrid.SelectedItems.Clear();
         ItemsList.SelectedItems.Clear();
+        _stackPopoverItemsView?.SelectedItems.Clear();
         UpdateSelectionCommandBar();
         UpdateItemSurfaceVisuals();
     }
@@ -1016,6 +1165,29 @@ public sealed partial class FileSurfaceContent
     private void SelectStackMembers(WidgetStackItem stack)
     {
         ResetSelectionForStackProjectionChange();
+        if (ViewModel.UsesStackPopover)
+        {
+            ShowStackPopover(stack);
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_stackPopoverItemsView is not { } listView)
+                {
+                    return;
+                }
+
+                listView.SelectedItems.Clear();
+                foreach (WidgetItem member in stack.Members)
+                {
+                    if (listView.Items.Contains(member))
+                    {
+                        listView.SelectedItems.Add(member);
+                    }
+                }
+                UpdateSelectionCommandBar();
+            });
+            return;
+        }
+
         ViewModel.SetStackExpanded(stack, true);
         DispatcherQueue.TryEnqueue(() =>
         {

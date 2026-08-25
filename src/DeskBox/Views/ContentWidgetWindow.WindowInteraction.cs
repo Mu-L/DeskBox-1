@@ -142,7 +142,8 @@ public sealed partial class ContentWidgetWindow
         }
 
         BeginTitleBarClickCollapse(e, ShouldOpenTitleBarFlyout(e.OriginalSource));
-        if (ShouldOpenTitleBarFlyout(e.OriginalSource))
+        if (ShouldOpenTitleBarFlyout(e.OriginalSource) &&
+            !Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
         {
             App.Current.WidgetManager?.ActivateAllVisibleWidgetsFromTitle(HWnd);
         }

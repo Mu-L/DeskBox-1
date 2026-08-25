@@ -133,6 +133,24 @@
                             </StackPanel>
                         </Grid>
                     </toolkit:SettingsCard>
+                    <toolkit:SettingsCard
+                        HorizontalContentAlignment="Right"
+                        svc:Localized.DescriptionKey="Glance.Background.Transparency.Description"
+                        svc:Localized.HeaderKey="Glance.Background.Transparency.Title">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                x:Name="BackgroundImageTransparencyValue"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SettingValueTextStyle}" />
+                            <Slider
+                                x:Name="BackgroundImageTransparencySlider"
+                                Width="190"
+                                Maximum="1"
+                                Minimum="0"
+                                StepFrequency="0.02"
+                                ValueChanged="BackgroundImageTransparencySlider_ValueChanged" />
+                        </StackPanel>
+                    </toolkit:SettingsCard>
                     <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.HeaderKey="Glance.Rotation.Title">
                         <ComboBox x:Name="RotationComboBox" Width="220" SelectionChanged="RotationComboBox_SelectionChanged" />
                     </toolkit:SettingsCard>

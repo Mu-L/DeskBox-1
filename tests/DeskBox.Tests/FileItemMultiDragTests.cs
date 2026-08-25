@@ -1,4 +1,5 @@
 using DeskBox.Controls;
+using DeskBox.Controls.WidgetContents;
 using DeskBox.Models;
 using DeskBox.Services;
 using DeskBox.ViewModels;
@@ -9,6 +10,28 @@ namespace DeskBox.Tests;
 
 public sealed class FileItemMultiDragTests
 {
+    [Theory]
+    [InlineData(DataPackageOperation.Move, true, false, true, true)]
+    [InlineData(DataPackageOperation.None, true, false, true, false)]
+    [InlineData(DataPackageOperation.None, true, false, false, true)]
+    [InlineData(DataPackageOperation.None, false, false, false, false)]
+    [InlineData(DataPackageOperation.Move, true, true, true, false)]
+    public void ShouldObserveExternalDragOut_DistinguishesPopoverCancellation(
+        DataPackageOperation dropResult,
+        bool hasStorageItems,
+        bool handledAsStackMembership,
+        bool fromStackPopover,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            FileSurfaceContent.ShouldObserveExternalDragOut(
+                dropResult,
+                hasStorageItems,
+                handledAsStackMembership,
+                fromStackPopover));
+    }
+
     [Fact]
     public void TryMoveStackMemberOverride_ReordersPersistedManualMembers()
     {
@@ -30,6 +53,59 @@ public sealed class FileItemMultiDragTests
             @"E:\DeskBox\my\second.lnk",
             @"E:\DeskBox\my\third.lnk",
             @"E:\DeskBox\my\first.lnk"
+        ], paths);
+    }
+
+    [Fact]
+    public void TryMoveStackMemberOverrides_MovesSelectionAsOneStableBlock()
+    {
+        List<string> paths =
+        [
+            @"E:\DeskBox\first.lnk",
+            @"E:\DeskBox\second.lnk",
+            @"E:\DeskBox\third.lnk",
+            @"E:\DeskBox\fourth.lnk"
+        ];
+
+        bool moved = WidgetViewModel.TryMoveStackMemberOverrides(
+            paths,
+            [
+                @"E:\DeskBox\first.lnk",
+                @"E:\DeskBox\third.lnk"
+            ],
+            insertionIndex: 4);
+
+        Assert.True(moved);
+        Assert.Equal(
+        [
+            @"E:\DeskBox\second.lnk",
+            @"E:\DeskBox\fourth.lnk",
+            @"E:\DeskBox\first.lnk",
+            @"E:\DeskBox\third.lnk"
+        ], paths);
+    }
+
+    [Fact]
+    public void TryMoveStackMemberOverrides_DoesNotMutateEquivalentDrop()
+    {
+        List<string> paths =
+        [
+            @"E:\DeskBox\first.lnk",
+            @"E:\DeskBox\second.lnk",
+            @"E:\DeskBox\third.lnk"
+        ];
+
+        bool moved = WidgetViewModel.TryMoveStackMemberOverrides(
+            paths,
+            [@"E:\DeskBox\second.lnk"],
+            insertionIndex: 2);
+
+        Assert.False(moved);
+        Assert.Equal(
+        [
+            @"E:\DeskBox\first.lnk",
+            @"E:\DeskBox\second.lnk",
+            @"E:\DeskBox\third.lnk"
         ], paths);
     }
 

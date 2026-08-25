@@ -212,6 +212,33 @@ public static class WidgetLayerService
         Win32Helper.BringWindowTemporarilyToFront(windowHandle);
     }
 
+    /// <summary>
+    /// Keeps a transient overlay group in the topmost band without activating
+    /// any member. Callers must clear the state when the exit animation ends.
+    /// The input order is visually highest to lowest.
+    /// </summary>
+    public static void HoldGroupTopMostWithoutActivation(
+        IReadOnlyList<IntPtr> windowHandles)
+    {
+        List<IntPtr> handles = windowHandles
+            .Where(handle => handle != IntPtr.Zero && Win32Helper.IsWindow(handle))
+            .Distinct()
+            .ToList();
+
+        // Set the lowest peer first so the final call leaves the first input
+        // handle visually highest inside the topmost band.
+        for (int index = handles.Count - 1; index >= 0; index--)
+        {
+            IntPtr handle = handles[index];
+            ApplyDesktopPinnedActivationStyle(handle);
+            DetachFromDesktopIconLayerIfNeeded(handle);
+            Win32Helper.SetWindowTopMost(handle);
+        }
+
+        App.LogVerbose(
+            $"[ZOrder] Topmost overlay group held count={handles.Count}");
+    }
+
     public static void BringToFront(IntPtr windowHandle)
     {
         ApplyDesktopPinnedActivationStyle(windowHandle);
@@ -239,22 +266,7 @@ public static class WidgetLayerService
     {
         if (UsesDesktopPinnedMode())
         {
-            if (TryAttachToDesktopIconLayer(windowHandle))
-            {
-                Win32Helper.SetWindowPos(
-                    windowHandle,
-                    Win32Helper.HWND_TOP,
-                    0,
-                    0,
-                    0,
-                    0,
-                    Win32Helper.SWP_NOMOVE |
-                        Win32Helper.SWP_NOSIZE |
-                        Win32Helper.SWP_NOACTIVATE |
-                        Win32Helper.SWP_NOOWNERZORDER |
-                        Win32Helper.SWP_SHOWWINDOW);
-            }
-
+            MoveToDesktopBottom(windowHandle);
             return;
         }
 
@@ -272,6 +284,15 @@ public static class WidgetLayerService
     /// </summary>
     public static bool TryBringAbovePeerWidgetsAtDesktopLayer(IntPtr windowHandle)
     {
+        if (UsesDesktopPinnedMode())
+        {
+            // Fixed-layer widgets never acquire an interaction-time peer raise.
+            // Keeping the active HWND at the desktop bottom is more important
+            // than letting an expanded capsule cover another fixed widget.
+            MoveToDesktopBottom(windowHandle);
+            return true;
+        }
+
         if (!ShouldAttachRestingWindowToDesktop() ||
             !TryAttachToDesktopIconLayer(windowHandle, placeAtBottom: false))
         {
@@ -612,6 +633,13 @@ public static class WidgetLayerService
         var settings = App.Current?.SettingsService?.Settings;
         string mode = SettingsService.NormalizeWidgetLayerModeSetting(settings?.WidgetLayerMode);
         return string.Equals(mode, SettingsService.WidgetLayerModeDesktopPinned, StringComparison.Ordinal);
+    }
+
+    public static bool UsesQuickRevealMode()
+    {
+        var settings = App.Current?.SettingsService?.Settings;
+        string mode = SettingsService.NormalizeWidgetLayerModeSetting(settings?.WidgetLayerMode);
+        return string.Equals(mode, SettingsService.WidgetLayerModeQuickReveal, StringComparison.Ordinal);
     }
 
     /// <summary>

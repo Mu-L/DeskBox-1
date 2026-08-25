@@ -41,28 +41,44 @@ public sealed class FileSurfaceParityContractTests
     [Fact]
     public void UnifiedFileSurface_UsesTheSharedItemSurfaceContract()
     {
+        string root = FindRepositoryRoot();
         XDocument document = XDocument.Load(Path.Combine(
-            FindRepositoryRoot(),
+            root,
             "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml"));
+        string visuals = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs"));
         XNamespace controls = "using:DeskBox.Controls";
 
         XElement[] surfaces = document
             .Descendants(controls + "FileItemSurface")
             .ToArray();
 
-        Assert.Equal(2, surfaces.Length);
-        Assert.Equal(["Icon", "List"], surfaces
+        Assert.Equal(4, surfaces.Length);
+        Assert.Equal(["Icon", "List", "Icon", "List"], surfaces
             .Select(surface => (string?)surface.Attribute("Mode"))
             .ToArray());
         Assert.All(surfaces, surface =>
         {
-            Assert.NotNull(surface.Attribute("LayoutContext"));
-            Assert.Equal("True", (string?)surface.Attribute("UseStackChildIndent"));
             Assert.Equal("True", (string?)surface.Attribute("AllowDrop"));
             Assert.Equal("ItemSurface_DragOver", (string?)surface.Attribute("DragOver"));
             Assert.Equal("ItemSurface_DragLeave", (string?)surface.Attribute("DragLeave"));
             Assert.Equal("ItemSurface_Drop", (string?)surface.Attribute("Drop"));
         });
+        Assert.All(surfaces.Take(2), surface =>
+        {
+            Assert.NotNull(surface.Attribute("LayoutContext"));
+            Assert.Equal("True", (string?)surface.Attribute("UseStackChildIndent"));
+        });
+        Assert.All(surfaces.Skip(2), surface =>
+        {
+            Assert.Null(surface.Attribute("LayoutContext"));
+            Assert.Equal("False", (string?)surface.Attribute("UseStackChildIndent"));
+        });
+        Assert.Contains(
+            "surface.LayoutContext ??= ViewModel",
+            visuals,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -341,10 +357,25 @@ public sealed class FileSurfaceParityContractTests
         string stackAnimations = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.StackAnimations.cs"));
+        string stackPopover = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.StackPopover.cs"));
+        string stackPopoverRenameWindow = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/StackPopoverInlineRenameWindow.cs"));
+        string navigation = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.Navigation.cs"));
 
         Assert.Contains("FindOrRealizeStackRenameTargetAsync", source, StringComparison.Ordinal);
-        Assert.Contains("StartItemRenameAsync(stack)", source, StringComparison.Ordinal);
-        Assert.Contains("SetStackNameOverride(stack.StackKey, newName)", source, StringComparison.Ordinal);
+        Assert.Contains("StartItemRenameAsync(currentStack, stackKey)", source, StringComparison.Ordinal);
+        Assert.Contains("_itemRenameStackKey", source, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.FindStackByKey(stackKey)", source, StringComparison.Ordinal);
+        Assert.Contains("SetStackNameOverride(stackKey, newName)", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "targetLeft + ((target.ActualWidth - width) / 2)",
+            source,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("new ContentDialog", menus, StringComparison.Ordinal);
 
         Assert.DoesNotContain("AddDeleteThemeTransition", xaml, StringComparison.Ordinal);
@@ -373,9 +404,316 @@ public sealed class FileSurfaceParityContractTests
         Assert.Contains("selectedStacks", source, StringComparison.Ordinal);
         Assert.Contains("listView.SelectedItems.Remove(stack)", source, StringComparison.Ordinal);
         Assert.Contains("DispatcherQueuePriority.Low", menus, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.UsesStackPopover", source, StringComparison.Ordinal);
+        Assert.Contains("ToggleStackPopover(stack)", source, StringComparison.Ordinal);
+        Assert.Contains("RequestStackState(", source, StringComparison.Ordinal);
         Assert.Contains(
-            "RequestStackState(\n            stack,\n            !GetDesiredStackState(stack))",
-            source.Replace("\r\n", "\n", StringComparison.Ordinal),
+            "SystemBackdrop = new DesktopAcrylicBackdrop()",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CreateStackPopoverTintBrush()",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "view.Width = layout.ItemsWidth",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "(layout.CellWidth - ViewModel.IconTileWidth) / 2",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            2,
+            xaml.Split(
+                "Tag=\"StackPopoverFolderBackdrop\"",
+                StringSplitOptions.None).Length - 1);
+        Assert.Equal(
+            2,
+            xaml.Split(
+                "Tag=\"StackPreviewFour\"",
+                StringSplitOptions.None).Length - 1);
+        Assert.Contains(
+            "four.Visibility = stack.FourthPreviewVisibility",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ApplyStackFolderPreviewMode(border)",
+            itemVisuals,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackFolderPreviewMetricsCalculator.Calculate(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "metrics.MiniatureScale",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "metrics.MiniatureOffset",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_settingsService.Settings.WidgetCornerPreference",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "countBadge.Visibility = Visibility.Collapsed",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "countBadge.Visibility = Visibility.Visible",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RestoreInlineStackPreview(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ShouldConstrainToRootBounds = false",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverPositionCalculator.Calculate(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HorizontalOffset = position.Left",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "VerticalOffset = position.Top",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UIElement coordinateRoot = XamlRoot?.Content ?? Root",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            ".TransformToVisual(coordinateRoot)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IsLightDismissEnabled = true",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverLayoutCalculator.Calculate",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "var title = new TextBlock",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverTitle_DoubleTapped",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "BeginStackPopoverTitleRename(title);",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "WidgetInlineRenameTextBoxStyle",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackPopoverTitleEditor",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "new StackPopoverInlineRenameWindow(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveStackPopoverTitleEditorBounds(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "editorWindow.ShowAndFocus(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverSurface_PointerPressed",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CommitStackPopoverTitleRename();",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "class StackPopoverInlineRenameWindow : Window",
+            stackPopoverRenameWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "presenter.SetBorderAndTitleBar(false, false)",
+            stackPopoverRenameWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "extendedStyle &= ~Win32Helper.WS_EX_NOACTIVATE",
+            stackPopoverRenameWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Activate();",
+            stackPopoverRenameWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Win32Helper.SetForegroundWindow(WindowHandle)",
+            stackPopoverRenameWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Editor.Focus(FocusState.Programmatic)",
+            stackPopoverRenameWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Editor.SelectAll()",
+            stackPopoverRenameWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IsShownInSwitchers = false",
+            stackPopoverRenameWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "new ContentDialog",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "TextCompositionStarted",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ViewModel.SetStackNameOverride(stackKey, newName)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "closeButton",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "renameButton",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "view.CanReorderItems = false",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "view.AllowDrop = true",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "itemsHost.AddHandler(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UIElement.PointerPressedEvent",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "handledEventsToo: true",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverSelectionHost_PointerPressed",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverSelectionHost_PointerMoved",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackPopoverSelectionOverlay = selectionOverlay",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveSelectionOverlay(listView)",
+            menus,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "target.TransformToVisual(selectionOverlay)",
+            menus,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "listView.SelectedItems.Clear()",
+            menus,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverItems_DragOver",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MoveStackMembersForReorder(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "QueueStackPopoverReconciliation(\n" +
+            "                        targetStackKey,\n" +
+            "                        targetStackMemberAnchors)",
+            itemVisuals.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UpdateStackPopoverKeyFromMemberPaths(anchors)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ApplyStackPopoverLayout(stack)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "filter.Visibility = layout.ShowFilter",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "layout.HasVerticalOverflow",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UpdateStackPopoverScrollPolicy(visible.Length)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ScrollBarVisibility.Disabled",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TryGetStackPopoverDragItems(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ViewModel.RemoveItemsFromStack(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DeskBoxDragData.SourceStackKeyProperty",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackPopoverDragActive",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "WidgetCompactBoundsCalculator.ResolveOuterCornerRadius",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UpdateStackFolderPreviewModes();",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "WidgetBorderVisualCalculator.Resolve",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (IsItemInStackPopover(item) ||",
+            navigation,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "view.ItemsSource = null",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SearchEngineService",
+            stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
             "public void PrepareForReuse()",
@@ -482,12 +820,14 @@ public sealed class FileSurfaceParityContractTests
             "CollapsedPreviewVisibility",
             "CountText",
             "ExpandedAnchorVisibility",
+            "FourthPreviewVisibility",
             "LabelFontSize",
             "LabelMaxWidth",
             "ListIconSize",
             "ListMargin",
             "ListPadding",
             "Name",
+            "PreviewFour",
             "PreviewItemSize",
             "PreviewOne",
             "PreviewSize",
@@ -521,7 +861,7 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
-    public void ManagedShortcutDrag_UsesMoveOnlyAndFinalizesVirtualCopy()
+    public void ManagedShortcutDrag_UsesMoveOnlyWithoutPostDropDesktopMove()
     {
         string root = FindRepositoryRoot();
         XDocument document = XDocument.Load(Path.Combine(
@@ -546,13 +886,48 @@ public sealed class FileSurfaceParityContractTests
             "e.AllowedOperations = DataPackageOperation.Move",
             source,
             StringComparison.Ordinal);
-        Assert.Contains(
+        Assert.DoesNotContain(
             "CompleteVirtualShortcutDesktopMoveAsync",
             source,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "FindMaterializedVirtualShortcutSourcesAsync",
+        Assert.DoesNotContain(
+            "MoveRejectedManagedDragToDesktopAsync",
             source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ObserveExternalDragOutAsync",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ShouldObserveExternalDragOut(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "return !fromStackPopover &&",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfirmedExternalMove_PrunesPersistedStackMembership()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/ViewModels/WidgetViewModel.Operations.cs"));
+
+        int methodStart = source.IndexOf(
+            "public Task HandleItemsMovedOutAsync(",
+            StringComparison.Ordinal);
+        int methodEnd = source.IndexOf(
+            "public async Task RenameItemAsync(",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(methodStart >= 0);
+        Assert.True(methodEnd > methodStart);
+        string method = source[methodStart..methodEnd];
+        Assert.Contains(
+            "RemoveStackMemberOverridePaths(normalizedPaths);",
+            method,
             StringComparison.Ordinal);
     }
 
@@ -766,6 +1141,39 @@ public sealed class FileSurfaceParityContractTests
         Assert.True(transfer > release);
         Assert.Contains("deferral = null;", drop, StringComparison.Ordinal);
         Assert.Contains("deferral?.Complete();", drop, StringComparison.Ordinal);
+        Assert.Contains("stage=Received", drop, StringComparison.Ordinal);
+        Assert.Contains("stage=PayloadMaterialized", drop, StringComparison.Ordinal);
+        Assert.Contains("stage=DeferralReleased", drop, StringComparison.Ordinal);
+        Assert.Contains("stage=ImportCompleted", drop, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LargeSurfaceDrop_ProbesCopiedPathsOffTheUiThread()
+    {
+        string surface = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        int methodStart = surface.IndexOf(
+            "private static async Task<DroppedFileBatch> GetSurfaceDropFilesAsync(",
+            StringComparison.Ordinal);
+        int methodEnd = surface.IndexOf(
+            "private async Task<IReadOnlyList<string>> ImportDroppedFilesAsync(",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(methodStart >= 0);
+        Assert.True(methodEnd > methodStart);
+        string method = surface[methodStart..methodEnd];
+
+        int copiedPaths = method.IndexOf(
+            "string[] paths = GetPackagePaths(dataView);",
+            StringComparison.Ordinal);
+        int offload = method.IndexOf("Task.Run(() => paths", StringComparison.Ordinal);
+        int filesystemProbe = method.IndexOf(
+            "File.Exists(path) || Directory.Exists(path)",
+            StringComparison.Ordinal);
+        Assert.True(copiedPaths >= 0);
+        Assert.True(offload > copiedPaths);
+        Assert.True(filesystemProbe > offload);
     }
 
     [Fact]

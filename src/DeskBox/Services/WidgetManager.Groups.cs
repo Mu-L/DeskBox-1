@@ -1033,6 +1033,9 @@ public sealed partial class WidgetManager
             persistentWindow.TakeCachedGroupContent(targetConfig.Id);
         ContentWidgetWindowPlan plan =
             contentWindowFactory.CreateContentWindowPlan(targetConfig, cachedContent);
+        PreviewWidgetGroupTransientState(
+            targetConfig.Id,
+            plan.Content as IWidgetTransientStateContent);
         using var loadingDelayCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(
                 request.CancellationToken);
@@ -1070,6 +1073,10 @@ public sealed partial class WidgetManager
         {
             return false;
         }
+
+        PreviewWidgetGroupTransientState(
+            targetConfig.Id,
+            plan.Content as IWidgetTransientStateContent);
 
         request.CancellationToken.ThrowIfCancellationRequested();
         using ContentWidgetWindow.ContentWidgetSwitchTransition? transition =
@@ -1623,39 +1630,18 @@ public sealed partial class WidgetManager
         }
 
         _groupDragSourceId = sourceWidgetId;
-        WidgetGroupConfig? sourceGroup = WidgetGroupSettings.FindByMember(
-            _settingsService.Settings,
-            sourceWidgetId);
-        IReadOnlyList<WidgetGroupJoinTarget> joinTargets =
-            GetWidgetGroupJoinTargets(sourceWidgetId);
-        HashSet<string> knownTargetIds = joinTargets
-            .Select(target => target.TargetWidgetId)
-            .ToHashSet(StringComparer.Ordinal);
-        string? targetId = GetLoadedDesktopWindows()
-            .Where(window =>
-                window.Visible &&
-                knownTargetIds.Contains(window.Config.Id) &&
-                !string.Equals(window.Config.Id, sourceWidgetId, StringComparison.Ordinal) &&
-                (sourceGroup is null ||
-                 WidgetGroupSettings.FindByMember(_settingsService.Settings, window.Config.Id)?.Id != sourceGroup.Id))
-            .Select(window =>
-                (Window: window, Bounds: window.GetGroupMergeTitleScreenBounds()))
-            .Where(candidate =>
-                WidgetGroupDropHitTestPolicy.Contains(
-                    candidate.Bounds,
-                    cursor.X,
-                    cursor.Y))
-            .OrderBy(candidate =>
-                (long)candidate.Bounds!.Value.Width * candidate.Bounds.Value.Height)
-            .Select(candidate => candidate.Window.Config.Id)
-            .FirstOrDefault();
+        WidgetGroupDragCandidate? candidate = FindWidgetGroupDragCandidateAtPoint(
+            sourceWidgetId,
+            cursor.X,
+            cursor.Y);
+        string? targetId = candidate?.Window.Config.Id;
 
         if (string.Equals(targetId, _groupDragTargetId, StringComparison.Ordinal))
         {
             return;
         }
 
-        ClearGroupDragPreview();
+        ClearGroupDragTargetPreview();
         if (targetId is null)
         {
             return;
@@ -1664,11 +1650,7 @@ public sealed partial class WidgetManager
         _groupDragSourceId = sourceWidgetId;
         _groupDragTargetId = targetId;
         _groupDragDropReady = false;
-        WidgetGroupJoinTarget? targetRule = joinTargets.FirstOrDefault(
-            target => string.Equals(
-                target.TargetWidgetId,
-                targetId,
-                StringComparison.Ordinal));
+        WidgetGroupJoinTarget targetRule = candidate!.Value.Rule;
         if (targetRule is { CanJoin: false })
         {
             GetLoadedWindow(targetId)?.SetGroupDropPreview(
@@ -2122,12 +2104,18 @@ public sealed partial class WidgetManager
 
     private void ClearGroupDragPreview()
     {
+        ClearGroupDragTargetPreview();
+        _groupDragSourceId = null;
+        ClearWidgetGroupDragCandidateCache();
+    }
+
+    private void ClearGroupDragTargetPreview()
+    {
         _groupDragDwellTimer?.Stop();
         if (_groupDragTargetId is not null)
         {
             GetLoadedWindow(_groupDragTargetId)?.SetGroupDropPreview(visible: false, ready: false);
         }
-        _groupDragSourceId = null;
         _groupDragTargetId = null;
         _groupDragDropReady = false;
     }
@@ -2170,6 +2158,25 @@ public sealed partial class WidgetManager
             transientStateTarget.RestoreTransientState(
                 state.OpaqueContentState);
         }
+    }
+
+    private void PreviewWidgetGroupTransientState(
+        string widgetId,
+        IWidgetTransientStateContent? transientStateTarget)
+    {
+        if (transientStateTarget is null ||
+            !_widgetGroupTransientStates.TryGetValue(
+                widgetId,
+                out WidgetGroupTransientState? state))
+        {
+            return;
+        }
+
+        // The switch calls this both before initialization and again after it.
+        // That keeps the first data projection and the staged XAML tree on the
+        // same member-specific state. The state remains cached until commit,
+        // so cancellation or rollback can safely retry it later.
+        transientStateTarget.RestoreTransientState(state.OpaqueContentState);
     }
 
     private void ClearWidgetGroupTransientState(string widgetId)

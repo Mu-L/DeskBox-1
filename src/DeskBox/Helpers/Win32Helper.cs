@@ -281,6 +281,13 @@ public static partial class Win32Helper
     public static partial IntPtr GetForegroundWindow();
 
     [LibraryImport("user32.dll")]
+    public static partial IntPtr GetShellWindow();
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool AllowSetForegroundWindow(uint processId);
+
+    [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetForegroundWindow(IntPtr hWnd);
 
@@ -692,6 +699,9 @@ public static partial class Win32Helper
     [LibraryImport("user32.dll")]
     public static partial int GetSystemMetrics(int nIndex);
 
+    [LibraryImport("user32.dll")]
+    public static partial uint GetDoubleClickTime();
+
     public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
     public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -1021,6 +1031,15 @@ public static partial class Win32Helper
 
     public static IReadOnlyList<IntPtr> FindVisibleDialogWindowsForCurrentProcess(IntPtr excludeHwnd)
     {
+        return FindVisibleDialogWindowsForCurrentProcess(
+            excludeHwnd,
+            requiredOwnerHwnd: IntPtr.Zero);
+    }
+
+    public static IReadOnlyList<IntPtr> FindVisibleDialogWindowsForCurrentProcess(
+        IntPtr excludeHwnd,
+        IntPtr requiredOwnerHwnd)
+    {
         uint currentProcessId = (uint)Environment.ProcessId;
         var windows = new List<IntPtr>();
 
@@ -1033,6 +1052,12 @@ public static partial class Win32Helper
 
             GetWindowThreadProcessId(hWnd, out uint processId);
             if (processId != currentProcessId)
+            {
+                return true;
+            }
+
+            if (requiredOwnerHwnd != IntPtr.Zero &&
+                !IsWindowOwnedBy(hWnd, requiredOwnerHwnd))
             {
                 return true;
             }
@@ -1052,6 +1077,22 @@ public static partial class Win32Helper
         }, IntPtr.Zero);
 
         return windows;
+    }
+
+    private static bool IsWindowOwnedBy(IntPtr windowHandle, IntPtr requiredOwnerHwnd)
+    {
+        IntPtr current = GetWindow(windowHandle, GW_OWNER);
+        for (int depth = 0; depth < 16 && current != IntPtr.Zero; depth++)
+        {
+            if (current == requiredOwnerHwnd)
+            {
+                return true;
+            }
+
+            current = GetWindow(current, GW_OWNER);
+        }
+
+        return false;
     }
 
     private static string GetWindowTitle(IntPtr hWnd)
@@ -1653,7 +1694,6 @@ public static partial class Win32Helper
     /// </remarks>
     public static bool OpenFileOrChooseApp(IntPtr ownerWindow, string path)
     {
-        App.Log($"[DIAG] OpenFileOrChooseApp enter owner=0x{ownerWindow.ToInt64():X} path='{path}'");
         // Win32 ERROR_NO_ASSOCIATION: "No application is associated with the specified
         // file for this operation." ShellExecuteEx surfaces this (1155) rather than the
         // legacy SE_ERR_NOASSOC (31) that raw ShellExecute returns.
@@ -1666,7 +1706,6 @@ public static partial class Win32Helper
                 "open",
                 out string? explorerLaunchError))
         {
-            App.Log($"[DIAG] Explorer-hosted ShellExecute OK path='{path}'");
             return true;
         }
 
@@ -1699,7 +1738,6 @@ public static partial class Win32Helper
         try
         {
             Process.Start(startInfo);
-            App.Log($"[DIAG] Process.Start OK path='{path}' electronVarStripped={savedElectronRunAsNode is not null}");
             return true;
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorNoAssociation)

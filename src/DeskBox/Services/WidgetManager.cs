@@ -57,9 +57,13 @@ internal interface IDesktopWidgetWindow
     bool Visible { get; }
     bool IsRaisedAboveDesktopLayer { get; }
     bool IsCompactArrangementActive { get; }
+    bool CanParticipateInCoordinatedMove { get; }
+    Windows.Graphics.RectInt32 CoordinatedMoveBounds { get; }
     Windows.Foundation.Rect AnimationBounds { get; }
     Windows.Foundation.Rect RestingAnimationBounds { get; }
     void ApplyAppearancePreview();
+    void BeginDisplayTopologyTransition(long generation);
+    void EndDisplayTopologyTransition(long generation);
     void RestoreBoundsForCurrentTopology();
     bool TryRestoreBoundsForDisplayTopology();
     void ApplyCompactArrangement(Windows.Graphics.RectInt32 bounds, bool constrainSize);
@@ -80,6 +84,11 @@ internal interface IDesktopWidgetWindow
     void ActivateRaisedFromTrayBatch();
     void EnsureRaisedFromTrayTopMost();
     void RaiseTemporarilyFromManager();
+    void BeginCoordinatedMoveParticipation(bool isSource);
+    void PrepareCoordinatedMoveBounds(Windows.Graphics.RectInt32 bounds);
+    void CompleteCoordinatedMoveBoundsPreview();
+    void ApplyCoordinatedMoveBoundsFallback(Windows.Graphics.RectInt32 bounds);
+    void CompleteCoordinatedMoveParticipation(bool hasMoved, bool isSource);
     void ForceRestoreDesktopLayerFromManager();
     void RestoreDesktopLayerFromManager();
     Task WaitForFirstPresentedFrameAsync(CancellationToken cancellationToken);
@@ -110,6 +119,7 @@ public sealed partial class WidgetManager
     private readonly WidgetRegistry _widgetRegistry;
     private readonly WidgetSessionManager _sessionManager;
     private readonly FileWidgetHostDiagnostics _fileWidgetHostDiagnostics;
+    private readonly WidgetTopologyLayoutService _topologyLayoutService = new();
     private readonly Dictionary<string, FileWidgetSession> _fileWidgets = new();
     private readonly Dictionary<string, ContentWidgetWindow> _contentWidgets = new();
     private readonly HashSet<IntPtr> _widgetWindowHandles = new();
@@ -244,17 +254,27 @@ public sealed partial class WidgetManager
                                IsDesktopShellWindow(foregroundWindow) ||
                                IsTaskbarWindow(foregroundWindow);
         var context = new TrayToggleDecisionContext(
+            WidgetLayerService.UsesDesktopPinnedMode(),
+            WidgetLayerService.UsesQuickRevealMode(),
             _widgetsRaisedFromTray,
             HasVisibleWidgets,
             foregroundLocal);
         bool shouldHide = TrayToggleDecisionPolicy.ShouldHide(context);
-        string reason = context.IsRaisedSession
-            ? "raised-session"
-            : !context.HasVisibleWidgets
-                ? "no-visible-windows"
-                : context.IsForegroundLocal
-                    ? "foreground-local"
-                    : "visible-widgets-behind";
+        string reason = context.IsQuickRevealMode
+            ? context.HasVisibleWidgets
+                ? "quick-reveal-visible"
+                : "quick-reveal-hidden"
+            : context.IsDesktopPinnedMode
+            ? context.HasVisibleWidgets
+                ? "desktop-pinned-visible"
+                : "desktop-pinned-hidden"
+            : context.IsRaisedSession
+                ? "raised-session"
+                : !context.HasVisibleWidgets
+                    ? "no-visible-windows"
+                    : context.IsForegroundLocal
+                        ? "foreground-local"
+                        : "visible-widgets-behind";
         App.LogVerbose(
             $"[TrayBatch] ToggleDecision={(shouldHide ? "hide" : "raise")} " +
             $"reason={reason} hwnd=0x{foregroundWindow.ToInt64():X}");
@@ -282,7 +302,7 @@ public sealed partial class WidgetManager
                     return;
                 }
 
-                await RaiseWidgetsFromTrayCoreAsync();
+                await RaiseWidgetsFromTrayCoreAsync(source);
             }));
     }
 
@@ -519,6 +539,18 @@ public sealed partial class WidgetManager
         _lastWidgetLayerMode = layerMode;
         WidgetLayerService.InvalidateDesktopIconViewCache();
         App.Log($"[WidgetManager] Widget layer mode changed {previousMode}->{layerMode}");
+        if (string.Equals(layerMode, SettingsService.WidgetLayerModeQuickReveal, StringComparison.Ordinal))
+        {
+            _ = SetAllWidgetsVisibleAsync(false);
+            return;
+        }
+
+        if (string.Equals(previousMode, SettingsService.WidgetLayerModeQuickReveal, StringComparison.Ordinal))
+        {
+            _ = SetAllWidgetsVisibleAsync(true);
+            return;
+        }
+
         RefreshVisibleWidgetDesktopLayers("layer-mode-changed");
     }
 
@@ -531,6 +563,12 @@ public sealed partial class WidgetManager
         }
 
         App.Log($"[WidgetManager] Refresh visible widget desktop layers reason={reason}");
+        if (WidgetLayerService.UsesQuickRevealMode())
+        {
+            _ = SetAllWidgetsVisibleAsync(false);
+            return;
+        }
+
         ClearTemporaryRaiseLease(reason);
         foreach (var window in GetLoadedDesktopWindows())
         {
@@ -584,6 +622,10 @@ public sealed partial class WidgetManager
         // multiple independently configured instances.
         DeduplicateFeatureWidgets();
         NormalizeWidgetGroupsForRuntime();
+        if (_topologyLayoutService.ActivateCurrentTopology(_settingsService.Settings))
+        {
+            _settingsService.SaveDebounced(notifySubscribers: false);
+        }
 
         // A process shutdown closes every HWND. Closed handlers historically
         // persisted that teardown as IsVisible=false, which made the next
@@ -648,7 +690,12 @@ public sealed partial class WidgetManager
 
         QueueDeferredStartupWidgetBoundsReconciliation();
 
-        if (configs.Count > 0)
+        if (configs.Count > 0 && WidgetLayerService.UsesQuickRevealMode())
+        {
+            await SetAllWidgetsVisibleCoreAsync(false);
+            App.LogVerbose("[WidgetManager] Startup widgets hidden for quick-reveal layer");
+        }
+        else if (configs.Count > 0)
         {
             RaiseVisibleWidgetsTemporarily("startup-restore");
             _sessionManager.MarkDesktopResting("restore-widgets");
@@ -1004,6 +1051,10 @@ public sealed partial class WidgetManager
     private async Task SetAllWidgetsVisibleCoreAsync(bool visible)
     {
         using var perfScope = PerformanceLogger.Measure("WidgetManager.SetAllWidgetsVisible", $"visible={visible}");
+        bool holdQuickRevealTopMostDuringHide =
+            !visible &&
+            _widgetsRaisedFromTray &&
+            WidgetLayerService.UsesQuickRevealMode();
         App.LogVerbose(
             $"[TrayBatch] SetAllVisible requested visible={visible} raised={_widgetsRaisedFromTray} " +
             $"loadedFile={_fileWidgets.Count} loadedContent={_contentWidgets.Count}");
@@ -1093,6 +1144,16 @@ public sealed partial class WidgetManager
         }
 
         App.LogVerbose($"[TrayBatch] SetAllVisible preparedHide={windowsToHide.Count}");
+        if (holdQuickRevealTopMostDuringHide)
+        {
+            IReadOnlyList<IDesktopWidgetWindow> orderedWindows =
+                GetWindowsInIdleHighestFirstOrder(windowsToHide);
+            WidgetLayerService.HoldGroupTopMostWithoutActivation(
+                orderedWindows.Select(window => window.WindowHandle).ToList());
+            App.LogVerbose(
+                $"[QuickReveal] Holding topmost through hide animation count={orderedWindows.Count}");
+        }
+
         PlayPreparedTrayHideAnimations(windowsToHide);
 
         ClearTemporaryRaiseLease("set-all-hidden");
@@ -1119,24 +1180,59 @@ public sealed partial class WidgetManager
             $"[WidgetManager] Restoring widget positions for current display topology " +
             $"generation={generation} reasons={reasons}");
 
-        bool allRestored = true;
-
-        foreach (IDesktopWidgetWindow window in GetLoadedDesktopWindows())
+        if (_sessionManager.IsInteractionActive)
         {
-            try
+            App.LogVerbose(
+                $"[WidgetManager] Deferring topology generation={generation}; widget interaction is active");
+            return false;
+        }
+
+        bool allRestored = true;
+        IReadOnlyList<IDesktopWidgetWindow> windows = GetLoadedDesktopWindows();
+        foreach (IDesktopWidgetWindow window in windows)
+        {
+            window.BeginDisplayTopologyTransition(generation);
+        }
+
+        try
+        {
+            if (_topologyLayoutService.ActivateCurrentTopology(_settingsService.Settings))
             {
-                allRestored &= window.TryRestoreBoundsForDisplayTopology();
+                _settingsService.SaveDebounced(notifySubscribers: false);
             }
-            catch (Exception ex)
+
+            foreach (IDesktopWidgetWindow window in windows)
             {
-                allRestored = false;
-                App.Log($"[WidgetManager] Failed to restore position for widget '{window.Identity.WidgetId}': {ex.Message}");
+                try
+                {
+                    allRestored &= window.TryRestoreBoundsForDisplayTopology();
+                }
+                catch (Exception ex)
+                {
+                    allRestored = false;
+                    App.Log($"[WidgetManager] Failed to restore position for widget '{window.Identity.WidgetId}': {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            foreach (IDesktopWidgetWindow window in windows)
+            {
+                window.EndDisplayTopologyTransition(generation);
             }
         }
 
         await Task.Yield();
         QueueIdleWidgetZOrderNormalization("display-topology-restored");
         return allRestored;
+    }
+
+    internal void CaptureCurrentTopologyLayout(WidgetConfig config)
+    {
+        if (_topologyLayoutService.CaptureCurrentSurface(_settingsService.Settings, config))
+        {
+            _settingsService.SaveDebounced(notifySubscribers: false);
+        }
     }
 
     /// <summary>
@@ -1194,6 +1290,7 @@ public sealed partial class WidgetManager
         }
 
         _settingsService.RemoveWidgetImmediate(widgetId);
+        _topologyLayoutService.RemoveSurface(_settingsService.Settings, widgetId);
         ClearWidgetGroupTransientState(widgetId);
         if (config is not null && FeatureWidgetSettings.IsFeatureWidget(config.WidgetKind))
         {

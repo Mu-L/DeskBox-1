@@ -110,7 +110,7 @@ public enum GlanceImageFocus
 /// </summary>
 public sealed class GlanceWidgetData
 {
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
 
     public int Version { get; set; } = CurrentVersion;
     public bool ShowTime { get; set; } = true;
@@ -129,6 +129,11 @@ public sealed class GlanceWidgetData
     public GlanceTransitionMode Transition { get; set; } = GlanceTransitionMode.CrossFade;
     public GlanceTransitionSpeed TransitionSpeed { get; set; } = GlanceTransitionSpeed.Standard;
     public GlanceReadabilityMode Readability { get; set; } = GlanceReadabilityMode.Soft;
+    /// <summary>
+    /// Transparency applied only to the background image. Zero keeps the
+    /// existing fully opaque presentation; one makes the image invisible.
+    /// </summary>
+    public double BackgroundImageTransparency { get; set; }
     public bool ShowPhotoControls { get; set; } = true;
     public GlanceCalendarMaterialMode CalendarMaterialMode { get; set; } =
         GlanceCalendarMaterialMode.FollowSystem;

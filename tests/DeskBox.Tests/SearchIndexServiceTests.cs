@@ -47,6 +47,23 @@ public sealed class SearchIndexServiceTests : IDisposable
     }
 
     [Fact]
+    public void SearchPage_ReturnsMaterializedItemsAndTheUncappedMatchCount()
+    {
+        string storePath = CreatePersistedIndex();
+        var settings = new SettingsService(Path.Combine(_root, "settings-page"));
+        settings.Settings.SearchCustomIndexerEnabled = true;
+
+        using var service = new SearchIndexService(settings, storePath);
+        service.TryLoadPersistedIndex();
+
+        SearchIndexQueryPage page = service.SearchPage("alpha", maxResults: 2);
+
+        Assert.Equal(2, page.Items.Count);
+        Assert.Equal(3, page.TotalMatchedCount);
+        Assert.Equal(3, page.ScannedEntryCount);
+    }
+
+    [Fact]
     public void StopIndexing_ClearsLoadedEntries()
     {
         string storePath = CreatePersistedIndex();
@@ -181,6 +198,7 @@ public sealed class SearchIndexServiceTests : IDisposable
         string storePath = CreatePersistedIndex();
         var settings = new SettingsService(Path.Combine(_root, "settings-rust"));
         settings.Settings.SearchCustomIndexerEnabled = true;
+        settings.Settings.SearchHideSystemNoise = false;
 
         using (var migration = new SearchIndexService(settings, storePath))
         {
@@ -608,7 +626,7 @@ public sealed class SearchIndexServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RustPreviewSetting_DirectX64DefaultsOn_AndPersistsExplicitOptOut()
+    public async Task RustPreviewSetting_DirectX64BuildPolicyOverridesLegacyOptOut()
     {
         var settings = new SettingsService(Path.Combine(_root, "settings-preview"));
         await settings.LoadAsync();
@@ -620,7 +638,7 @@ public sealed class SearchIndexServiceTests : IDisposable
 
         var reloaded = new SettingsService(Path.Combine(_root, "settings-preview"));
         await reloaded.LoadAsync();
-        Assert.False(reloaded.Settings.SearchRustIndexerPreviewEnabled);
+        Assert.True(reloaded.Settings.SearchRustIndexerPreviewEnabled);
     }
 
     private static void SetIndexingEnabled(SearchIndexService service, bool enabled)
@@ -764,6 +782,7 @@ public sealed class SearchIndexServiceTests : IDisposable
         string storePath = CreatePersistedIndex($"index-{suffix}.json");
         var settings = new SettingsService(Path.Combine(_root, $"settings-{suffix}"));
         settings.Settings.SearchCustomIndexerEnabled = true;
+        settings.Settings.SearchHideSystemNoise = false;
         using (var migration = new SearchIndexService(settings, storePath))
         {
             migration.TryLoadPersistedIndex();

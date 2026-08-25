@@ -3,7 +3,6 @@ using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace DeskBox.Controls.WidgetContents;
 
@@ -64,7 +63,7 @@ public sealed class PlaceholderWidgetContent : IWidgetContent
         {
             Text = "Content placeholder",
             FontSize = 12,
-            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xB3, 0x80, 0x80, 0x80)),
+            Opacity = 0.72,
             TextAlignment = TextAlignment.Center,
             TextWrapping = TextWrapping.Wrap
         };

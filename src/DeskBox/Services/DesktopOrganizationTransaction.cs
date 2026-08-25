@@ -36,7 +36,6 @@ public sealed class DesktopOrganizationTransaction
         try
         {
             ValidatePlan(plan);
-            RevalidateSources(plan);
             ValidateAvailableSpace(plan);
 
             var settings = _settingsService.Settings;
@@ -45,6 +44,7 @@ public sealed class DesktopOrganizationTransaction
             var originalHistory = settings.RecentOrganizationHistory.ToList();
             var createdDirectories = new List<string>();
             var completedMoves = new List<FileService.FileTransferResult>();
+            var retainedItems = new List<DesktopOrganizationRetainedItem>();
             var createdWidgets = CreateCandidateWidgets(plan, settings);
             var journal = BuildJournal(plan);
 
@@ -52,31 +52,78 @@ public sealed class DesktopOrganizationTransaction
             {
                 foreach (DesktopOrganizationTargetPlan target in plan.Targets)
                 {
-                    if (!Directory.Exists(target.TargetDirectoryPath))
+                    try
                     {
-                        Directory.CreateDirectory(target.TargetDirectoryPath);
-                        createdDirectories.Add(target.TargetDirectoryPath);
+                        if (!Directory.Exists(target.TargetDirectoryPath))
+                        {
+                            Directory.CreateDirectory(target.TargetDirectoryPath);
+                            createdDirectories.Add(target.TargetDirectoryPath);
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        retainedItems.AddRange(target.Items.Select(item =>
+                            CreateRetainedItem(item, ex)));
+                        journal.Items.RemoveAll(item => string.Equals(
+                            item.TargetWidgetId,
+                            target.TargetWidgetId,
+                            StringComparison.Ordinal));
+                        App.Log(
+                            $"[DesktopOrganization] Target unavailable " +
+                            $"widget={target.TargetWidgetId} path={target.TargetDirectoryPath}: {ex}");
                     }
                 }
 
                 ReserveDestinations(journal);
-                await _recoveryStore.SaveAsync(journal);
+                if (journal.Items.Count > 0)
+                {
+                    await _recoveryStore.SaveAsync(journal);
+                }
                 int totalCount = journal.Items.Count;
                 int completedCount = 0;
+                var snapshotsByPath = plan.Targets
+                    .SelectMany(target => target.Items)
+                    .ToDictionary(
+                        item => item.SourcePath,
+                        StringComparer.OrdinalIgnoreCase);
 
                 for (int index = 0; index < journal.Items.Count; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     DesktopOrganizationRecoveryItem journalItem = journal.Items[index];
-                    var result = await _fileService.ExecuteTransferPlanAsync(
-                        [new FileService.FileTransferPlan(
-                            journalItem.SourcePath,
-                            journalItem.DestinationPath)],
-                        move: true,
-                        useShellProgress: false);
-                    completedMoves.Add(result.Single());
-                    journalItem.Completed = true;
-                    await _recoveryStore.SaveAsync(journal);
+                    DesktopOrganizationFileSnapshot snapshot =
+                        snapshotsByPath[journalItem.SourcePath];
+                    FileService.FileTransferResult? completedMove = null;
+                    try
+                    {
+                        RevalidateSource(snapshot);
+                        var result = await _fileService.ExecuteTransferPlanAsync(
+                            [new FileService.FileTransferPlan(
+                                journalItem.SourcePath,
+                                journalItem.DestinationPath)],
+                            move: true,
+                            useShellProgress: false);
+                        completedMove = result.Single();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        retainedItems.Add(CreateRetainedItem(snapshot, ex));
+                        App.Log(
+                            $"[DesktopOrganization] Retained source after item failure " +
+                            $"path={snapshot.SourcePath}: {ex}");
+                    }
+
+                    if (completedMove is not null)
+                    {
+                        completedMoves.Add(completedMove);
+                        journalItem.Completed = true;
+                        await _recoveryStore.SaveAsync(journal);
+                    }
+
                     completedCount++;
                     DesktopOrganizationTargetPlan? progressTarget = plan.Targets.FirstOrDefault(
                         target => string.Equals(
@@ -90,23 +137,45 @@ public sealed class DesktopOrganizationTransaction
                         progressTarget?.SuggestedDisplayName ?? string.Empty));
                 }
 
-                AddRulesForNewTargets(plan, settings.DesktopOrganizationRules);
-                OrganizationHistoryEntry history = CreateHistory(plan, journal);
-                settings.RecentOrganizationHistory.Insert(0, history);
-                if (settings.RecentOrganizationHistory.Count > SettingsService.MaxRecentOrganizationHistoryCount)
+                DesktopOrganizationPlan committedPlan = CreateCommittedPlan(
+                    plan,
+                    journal);
+                var committedTargetIds = committedPlan.Targets
+                    .Select(target => target.TargetWidgetId)
+                    .ToHashSet(StringComparer.Ordinal);
+                createdWidgets.RemoveAll(widget => !committedTargetIds.Contains(widget.Id));
+                settings.Widgets.RemoveAll(widget =>
+                    plan.Targets.Any(target =>
+                        target.CreatesWidget &&
+                        string.Equals(target.TargetWidgetId, widget.Id, StringComparison.Ordinal)) &&
+                    !committedTargetIds.Contains(widget.Id));
+
+                AddRulesForNewTargets(
+                    committedPlan,
+                    settings.DesktopOrganizationRules);
+                OrganizationHistoryEntry history = CreateHistory(
+                    committedPlan,
+                    journal);
+                if (history.Items.Count > 0)
                 {
-                    settings.RecentOrganizationHistory.RemoveRange(
-                        SettingsService.MaxRecentOrganizationHistoryCount,
-                        settings.RecentOrganizationHistory.Count - SettingsService.MaxRecentOrganizationHistoryCount);
+                    settings.RecentOrganizationHistory.Insert(0, history);
+                    if (settings.RecentOrganizationHistory.Count > SettingsService.MaxRecentOrganizationHistoryCount)
+                    {
+                        settings.RecentOrganizationHistory.RemoveRange(
+                            SettingsService.MaxRecentOrganizationHistoryCount,
+                            settings.RecentOrganizationHistory.Count - SettingsService.MaxRecentOrganizationHistoryCount);
+                    }
                 }
 
                 await _settingsService.SaveAsync(notifySubscribers: false);
                 _recoveryStore.Clear();
+                RemoveEmptyCreatedDirectories(createdDirectories);
 
                 return new DesktopOrganizationExecutionResult
                 {
                     History = history,
-                    CreatedWidgets = createdWidgets
+                    CreatedWidgets = createdWidgets,
+                    RetainedItems = retainedItems
                 };
             }
             catch
@@ -141,7 +210,7 @@ public sealed class DesktopOrganizationTransaction
         int restored = 0;
         foreach (DesktopOrganizationRecoveryItem item in journal.Items.AsEnumerable().Reverse())
         {
-            if (!File.Exists(item.DestinationPath))
+            if (!EntryExists(item.DestinationPath))
             {
                 continue;
             }
@@ -250,17 +319,26 @@ public sealed class DesktopOrganizationTransaction
         }
     }
 
-    private static void RevalidateSources(DesktopOrganizationPlan plan)
+    private static void RevalidateSource(DesktopOrganizationFileSnapshot item)
     {
-        foreach (DesktopOrganizationFileSnapshot item in plan.Targets.SelectMany(target => target.Items))
+        if (item.IsDirectory)
         {
-            var file = new FileInfo(item.SourcePath);
-            if (!file.Exists ||
-                file.Length != item.Size ||
-                file.LastWriteTimeUtc != item.LastWriteTimeUtc)
+            var directory = new DirectoryInfo(item.SourcePath);
+            if (!directory.Exists ||
+                directory.LastWriteTimeUtc != item.LastWriteTimeUtc)
             {
-                throw new IOException($"The desktop item changed after it was scanned: {item.Name}");
+                throw new DesktopOrganizationSourceChangedException(item.Name);
             }
+
+            return;
+        }
+
+        var file = new FileInfo(item.SourcePath);
+        if (!file.Exists ||
+            file.Length != item.Size ||
+            file.LastWriteTimeUtc != item.LastWriteTimeUtc)
+        {
+            throw new DesktopOrganizationSourceChangedException(item.Name);
         }
     }
 
@@ -356,7 +434,7 @@ public sealed class DesktopOrganizationTransaction
             Id = plan.Id,
             ActionType = OrganizationActionType.DesktopOrganization,
             TransferMode = "Move",
-            CanUndo = true,
+            CanUndo = journal.Items.Any(item => item.Completed),
             WidgetName = "Desktop organization",
             Targets = plan.Targets.Select(target => new OrganizationHistoryTarget
             {
@@ -365,23 +443,92 @@ public sealed class DesktopOrganizationTransaction
                 DirectoryPath = target.TargetDirectoryPath,
                 WasCreated = target.CreatesWidget
             }).ToList(),
-            Items = journal.Items.Select(item => new OrganizationHistoryItem
+            Items = journal.Items
+                .Where(item => item.Completed)
+                .Select(item => new OrganizationHistoryItem
             {
                 Name = Path.GetFileName(item.DestinationPath),
                 SourcePath = item.SourcePath,
                 DestinationPath = item.DestinationPath,
                 TargetWidgetId = item.TargetWidgetId,
                 TargetWidgetName = targetsById[item.TargetWidgetId].SuggestedDisplayName
-            }).ToList()
+                }).ToList()
         };
     }
+
+    private static DesktopOrganizationPlan CreateCommittedPlan(
+        DesktopOrganizationPlan plan,
+        DesktopOrganizationRecoveryJournal journal)
+    {
+        var completedPathsByTarget = journal.Items
+            .Where(item => item.Completed)
+            .GroupBy(item => item.TargetWidgetId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .Select(item => item.SourcePath)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase),
+                StringComparer.Ordinal);
+        return new DesktopOrganizationPlan
+        {
+            Id = plan.Id,
+            DesktopPath = plan.DesktopPath,
+            StorageRootPath = plan.StorageRootPath,
+            ExcludedItems = plan.ExcludedItems.ToList(),
+            Targets = plan.Targets
+                .Where(target => completedPathsByTarget.ContainsKey(target.TargetWidgetId))
+                .Select(target => target.CloneWith(
+                    target.TargetWidgetId,
+                    target.SuggestedDisplayName,
+                    target.TargetDirectoryPath,
+                    target.CreatesWidget,
+                    target.Items.Where(item =>
+                        completedPathsByTarget[target.TargetWidgetId].Contains(
+                            item.SourcePath))))
+                .Where(target => target.Items.Count > 0)
+                .ToList()
+        };
+    }
+
+    private static DesktopOrganizationRetainedItem CreateRetainedItem(
+        DesktopOrganizationFileSnapshot item,
+        Exception exception)
+    {
+        DesktopOrganizationRetentionReason reason = exception switch
+        {
+            DesktopOrganizationSourceChangedException =>
+                DesktopOrganizationRetentionReason.SourceChanged,
+            UnauthorizedAccessException =>
+                DesktopOrganizationRetentionReason.AccessDenied,
+            FileNotFoundException or DirectoryNotFoundException =>
+                DesktopOrganizationRetentionReason.Unavailable,
+            IOException ioException when IsSharingViolation(ioException) =>
+                DesktopOrganizationRetentionReason.InUse,
+            IOException => DesktopOrganizationRetentionReason.Unavailable,
+            _ => DesktopOrganizationRetentionReason.TransferFailed
+        };
+        return new DesktopOrganizationRetainedItem(
+            item.SourcePath,
+            item.Name,
+            reason,
+            exception.Message);
+    }
+
+    private static bool IsSharingViolation(IOException exception)
+    {
+        int code = exception.HResult & 0xFFFF;
+        return code is 32 or 33;
+    }
+
+    private static bool EntryExists(string path) =>
+        File.Exists(path) || Directory.Exists(path);
 
     private async Task<bool> RollBackMovesAsync(IReadOnlyCollection<FileService.FileTransferResult> completedMoves)
     {
         bool succeeded = true;
         foreach (FileService.FileTransferResult move in completedMoves.Reverse())
         {
-            if (!File.Exists(move.DestinationPath))
+            if (!EntryExists(move.DestinationPath))
             {
                 continue;
             }
@@ -421,4 +568,7 @@ public sealed class DesktopOrganizationTransaction
             }
         }
     }
+
+    private sealed class DesktopOrganizationSourceChangedException(string itemName)
+        : IOException($"The desktop item changed after it was scanned: {itemName}");
 }

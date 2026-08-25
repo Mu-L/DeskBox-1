@@ -41,7 +41,7 @@ if (-not (Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
 foreach ($required in @(
     (Join-Path (Split-Path -Parent $ExecutablePath) "deskbox_search_core.dll"),
     (Join-Path $SourceDataRoot "data\settings.json"),
-    (Join-Path $SourceDataRoot "cache\search-index.json"))) {
+    (Join-Path $SourceDataRoot "cache\search-index-v2.json"))) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Stage 6C product memory input is missing '$required'."
     }
@@ -244,7 +244,7 @@ $runRoot = Join-Path $OutputDirectory $runId
 New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
 
 $sourceSettings = Join-Path $SourceDataRoot "data\settings.json"
-$sourceIndex = Join-Path $SourceDataRoot "cache\search-index.json"
+$sourceIndex = Join-Path $SourceDataRoot "cache\search-index-v2.json"
 $sourceBefore = @(
     Get-FileFingerprint $sourceSettings
     Get-FileFingerprint $sourceIndex
@@ -266,7 +266,7 @@ foreach ($backend in @("managed", "rust")) {
     Set-PreviewSettings `
         -SettingsPath (Join-Path $dataRoot "data\settings.json") `
         -RustEnabled ($backend -eq "rust")
-    Set-DbixFreshTimestamp (Join-Path $dataRoot "cache\search-index.json")
+    Set-DbixFreshTimestamp (Join-Path $dataRoot "cache\search-index-v2.json")
     $backendRoots[$backend] = $dataRoot
 }
 

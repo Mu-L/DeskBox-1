@@ -1490,13 +1490,12 @@ public sealed partial class SearchPopupWindow : Window
         bool tabHasItems = _viewModel.HasCurrentResults;
         bool tabSelected = _viewModel.SelectedTab is not null;
 
-        SearchProgressBar.Visibility = searching && hasQuery
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        // A ready resident index answers normal keystrokes directly. Avoid flashing a
+        // progress animation for the short cancellable query window; indexing state
+        // remains available in Settings for first-build and rebuild diagnostics.
+        SearchProgressBar.Visibility = Visibility.Collapsed;
         LoadingStatusText.Text = _localizationService.T("Search.Status.Searching");
-        LoadingPanel.Visibility = searching && hasQuery && !hasResults
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        LoadingPanel.Visibility = Visibility.Collapsed;
         TabsList.Visibility = hasQuery ? Visibility.Visible : Visibility.Collapsed;
 
         NoResultsPanel.Visibility = hasQuery && !searching && !hasResults
@@ -1561,10 +1560,11 @@ public sealed partial class SearchPopupWindow : Window
             ? Visibility.Collapsed
             : Visibility.Visible;
 
-        // Debounce: wait 150ms after the last keystroke before triggering the
-        // actual search so rapid typing does not cause per-character UI churn.
+        // Keep only a short coalescing window. Native queries are cancellable and the
+        // resident catalog is the sole file provider, so a long visual debounce is
+        // both unnecessary and directly visible as input latency.
         _searchDebounceTimer?.Stop();
-        _searchDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _searchDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(35) };
         _searchDebounceTimer.Tick -= OnSearchDebounceTick;
         _searchDebounceTimer.Tick += OnSearchDebounceTick;
         _searchDebounceTimer.Start();
@@ -1612,14 +1612,12 @@ public sealed partial class SearchPopupWindow : Window
             case Windows.System.VirtualKey.Up:
                 _viewModel.MoveSelectionUp();
                 _isNavigatingResults = true;
-                FocusSelectedResult();
                 e.Handled = true;
                 break;
 
             case Windows.System.VirtualKey.Down:
                 _viewModel.MoveSelectionDown();
                 _isNavigatingResults = true;
-                FocusSelectedResult();
                 e.Handled = true;
                 break;
 
@@ -2462,8 +2460,8 @@ public sealed partial class SearchPopupWindow : Window
     {
         var point = e.GetCurrentPoint(ResultsPanel);
         var source = e.OriginalSource as DependencyObject;
-        var item = FindDataContext<SearchResultItem>(source);
         var row = FindItemRow(source);
+        var item = ResolveResultItem(source);
         _pressedItem = null;
 
         bool isCtrlPressed = Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control);
@@ -2698,16 +2696,10 @@ public sealed partial class SearchPopupWindow : Window
             return;
         }
 
-        var releasedItem = FindDataContext<SearchResultItem>(e.OriginalSource as DependencyObject);
-        bool isLeftRelease = e.GetCurrentPoint(ResultsPanel).Properties.PointerUpdateKind ==
-                             PointerUpdateKind.LeftButtonReleased;
-        if (isLeftRelease && _pressedItem is not null && !_dragOccurred &&
-            ReferenceEquals(_pressedItem, releasedItem))
-        {
-            _viewModel.ExecuteItem(_pressedItem);
-            e.Handled = true;
-        }
-
+        // A normal click selects the row in ResultsPanel_PointerPressed. Opening is
+        // intentionally reserved for DoubleTapped or Enter, matching Explorer and
+        // Everything and preventing the first click of a double-click from hiding
+        // the popup before the second click arrives.
         _pressedItem = null;
         _dragCandidate = null;
         _dragSourceRow = null;
@@ -2716,8 +2708,7 @@ public sealed partial class SearchPopupWindow : Window
 
     private void ResultsPanel_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        var item = FindDataContext<SearchResultItem>(e.OriginalSource as DependencyObject);
-        App.Log($"[DIAG] ResultsPanel_DoubleTapped found={item is not null} kind={item?.Kind} detailPath='{item?.DetailPath}'");
+        var item = ResolveResultItem(e.OriginalSource as DependencyObject);
         if (item is null)
         {
             return;
@@ -2971,7 +2962,7 @@ public sealed partial class SearchPopupWindow : Window
         _dragSourceRow = null;
         _dragOccurred = false;
 
-        var item = FindDataContext<SearchResultItem>(e.OriginalSource as DependencyObject);
+        var item = ResolveResultItem(e.OriginalSource as DependencyObject);
         if (item is null)
         {
             // Right-click on empty area with multi-selection: show batch context menu.
@@ -3140,6 +3131,21 @@ public sealed partial class SearchPopupWindow : Window
         ResultsSurface.MinHeight = Math.Max(
             0,
             e.NewSize.Height - ResultsPanel.Padding.Top - ResultsPanel.Padding.Bottom);
+    }
+
+    private void ResultsPanel_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (_isRubberBanding || !_viewModel.HasMoreResults || _viewModel.IsLoadingMore)
+        {
+            return;
+        }
+
+        double remaining = ResultsPanel.ScrollableHeight - ResultsPanel.VerticalOffset;
+        double threshold = Math.Max(320, ResultsPanel.ViewportHeight * 0.75);
+        if (remaining <= threshold)
+        {
+            _ = _viewModel.LoadMoreResultsAsync();
+        }
     }
 
     private void UpdateRubberBandRect(Point start, Point end)
@@ -3942,6 +3948,15 @@ public sealed partial class SearchPopupWindow : Window
         }
 
         return null;
+    }
+
+    private static SearchResultItem? ResolveResultItem(DependencyObject? element)
+    {
+        // ItemsRepeater can prepare a row before its inherited DataContext settles.
+        // The typed Item bridge is the authoritative projection in that window and
+        // remains correct when a row is recycled. DataContext is retained only for
+        // non-row surfaces such as recommendation buttons.
+        return FindItemRow(element)?.Item ?? FindDataContext<SearchResultItem>(element);
     }
 
     private static SearchResultRowControl? FindRowByDataContext(DependencyObject root, object data)

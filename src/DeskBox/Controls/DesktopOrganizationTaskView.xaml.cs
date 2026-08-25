@@ -8,12 +8,17 @@ namespace DeskBox.Controls;
 public sealed partial class DesktopOrganizationTaskView : UserControl
 {
     private DesktopOrganizationPlan? _plan;
+    private DesktopOrganizationPlan? _basePlan;
+    private readonly HashSet<string> _optionalIncludedPaths =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<DesktopOrganizationRetainedItem> _runtimeRetainedItems = [];
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _executionCts;
     private string? _lastHistoryId;
     private int _scanGeneration;
     private bool _isExecuting;
     private bool _closeAfterExecutionStops;
+    private bool _hasCompletedExecution;
 
     public DesktopOrganizationTaskView()
     {
@@ -69,6 +74,10 @@ public sealed partial class DesktopOrganizationTaskView : UserControl
         int generation = ++_scanGeneration;
 
         _plan = null;
+        _basePlan = null;
+        _optionalIncludedPaths.Clear();
+        _runtimeRetainedItems.Clear();
+        _hasCompletedExecution = false;
         _lastHistoryId = null;
         UndoButton.Visibility = Visibility.Collapsed;
         DoneButton.Visibility = Visibility.Collapsed;
@@ -98,6 +107,7 @@ public sealed partial class DesktopOrganizationTaskView : UserControl
             }
 
             _plan = plan;
+            _basePlan = plan;
             RenderPlan(plan);
         }
         catch (OperationCanceledException)

@@ -1,6 +1,4 @@
-#if !DESKBOX_NATIVE_AOT
 using System.Runtime.InteropServices;
-#endif
 
 namespace DeskBox.Helpers;
 
@@ -14,6 +12,11 @@ internal static class ExplorerShellLaunchService
     private const int ShellWindowClassDesktop = 8;
     private const int ShellWindowFindNeedDispatch = 1;
     private const int ShowNormal = 1;
+
+    [DllImport("ole32.dll")]
+    private static extern int CoAllowSetForegroundWindow(
+        IntPtr unknown,
+        IntPtr reserved);
 #endif
 
     public static bool TryOpen(
@@ -38,6 +41,7 @@ internal static class ExplorerShellLaunchService
         out ExplorerShellLaunchNativeCallResult? nativeResult)
     {
         nativeResult = null;
+        TryGrantExplorerForegroundActivation();
 #if !DESKBOX_NATIVE_AOT
         if (ExplorerShellLaunchBackendPolicy.Current == ExplorerShellLaunchBackendMode.CSharp)
         {
@@ -128,6 +132,7 @@ internal static class ExplorerShellLaunchService
             }
 
             dynamic explorerShell = explorerHostedShell;
+            TryTransferForegroundToExplorerHostedShell(explorerHostedShell);
             explorerShell.ShellExecute(
                 path,
                 string.Empty,
@@ -172,5 +177,71 @@ internal static class ExplorerShellLaunchService
             // COM cleanup must never turn a successful launch into a user-visible failure.
         }
     }
+
+    private static void TryTransferForegroundToExplorerHostedShell(object explorerHostedShell)
+    {
+        IntPtr unknown = IntPtr.Zero;
+        try
+        {
+            unknown = Marshal.GetIUnknownForObject(explorerHostedShell);
+            int hResult = CoAllowSetForegroundWindow(unknown, IntPtr.Zero);
+            if (hResult < 0)
+            {
+                App.Log(
+                    $"[ShellActivation] COM foreground transfer to Explorer " +
+                    $"was unavailable HRESULT=0x{hResult:X8}");
+            }
+            else
+            {
+                App.LogVerbose(
+                    "[ShellActivation] COM foreground privilege transferred to Explorer");
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[ShellActivation] COM foreground transfer to Explorer failed: " +
+                ex.Message);
+        }
+        finally
+        {
+            if (unknown != IntPtr.Zero)
+            {
+                _ = Marshal.Release(unknown);
+            }
+        }
+    }
 #endif
+
+    private static void TryGrantExplorerForegroundActivation()
+    {
+        IntPtr shellWindow = Win32Helper.GetShellWindow();
+        if (shellWindow == IntPtr.Zero)
+        {
+            App.Log("[ShellActivation] Explorer foreground grant skipped: shell window unavailable");
+            return;
+        }
+
+        _ = Win32Helper.GetWindowThreadProcessId(shellWindow, out uint explorerProcessId);
+        if (explorerProcessId == 0)
+        {
+            App.Log("[ShellActivation] Explorer foreground grant skipped: process unavailable");
+            return;
+        }
+
+        Win32Helper.SetLastError(0);
+        bool granted = Win32Helper.AllowSetForegroundWindow(explorerProcessId);
+        int error = granted ? 0 : Marshal.GetLastWin32Error();
+        if (granted)
+        {
+            App.LogVerbose(
+                $"[ShellActivation] Explorer foreground grant succeeded " +
+                $"pid={explorerProcessId}");
+            return;
+        }
+
+        App.Log(
+            $"[ShellActivation] Explorer foreground grant was unavailable " +
+            $"pid={explorerProcessId} error={error}");
+    }
 }

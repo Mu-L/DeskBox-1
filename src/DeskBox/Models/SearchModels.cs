@@ -200,6 +200,9 @@ public sealed class SearchResponse
     public IReadOnlyList<SearchResultItem> RankedItems { get; init; } = [];
     public required IReadOnlyList<SearchResultGroup> Groups { get; init; }
     public int TotalResultCount { get; init; }
+    public int MaterializedFileResultCount { get; init; }
+    public int TotalFileResultCount { get; init; }
+    public bool HasMoreResults { get; init; }
     public TimeSpan Elapsed { get; init; }
     public bool IsComplete { get; init; }
 }

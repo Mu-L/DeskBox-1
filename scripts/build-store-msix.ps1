@@ -62,6 +62,7 @@ $properties = @(
 if ($NativeAot.IsPresent) {
     $properties += @(
         "-p:DeskBoxAotAudit=true",
+        "-p:DeskBoxAotSmokeHarness=false",
         "-p:PublishAot=true",
         "-p:DeskBoxRustNative=true",
         "-p:DeskBoxRustCrtLinkage=Static",

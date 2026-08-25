@@ -96,49 +96,22 @@
                     Toggled="SearchScopeToggle_Toggled" />
             </toolkit:SettingsCard>
 
-            <!-- Scope: System index -->
             <toolkit:SettingsCard
                 HorizontalContentAlignment="Right"
-                svc:Localized.DescriptionKey="Settings.Search.Scope.SystemIndex.Description"
-                svc:Localized.HeaderKey="Settings.Search.Scope.SystemIndex">
-                <ToggleSwitch
-                    x:Name="SearchSystemIndexToggle"
-                    OnContent=""
-                    OffContent=""
-                    MinWidth="0"
-                    Toggled="SearchScopeToggle_Toggled" />
-            </toolkit:SettingsCard>
-
-            <!-- Scope: Custom indexer -->
-            <toolkit:SettingsCard
-                HorizontalContentAlignment="Right"
-                svc:Localized.DescriptionKey="Settings.Search.Scope.CustomIndexer.Description"
-                svc:Localized.HeaderKey="Settings.Search.Scope.CustomIndexer">
-                <ToggleSwitch
-                    x:Name="SearchCustomIndexerToggle"
-                    OnContent=""
-                    OffContent=""
-                    MinWidth="0"
-                    Toggled="SearchScopeToggle_Toggled" />
-            </toolkit:SettingsCard>
-
-            <toolkit:SettingsCard
-                x:Name="SearchRustPreviewCard"
-                HorizontalContentAlignment="Right"
-                svc:Localized.DescriptionKey="Settings.Search.Index.RustPreview.Description"
-                svc:Localized.HeaderKey="Settings.Search.Index.RustPreview.Title">
+                svc:Localized.DescriptionKey="Settings.Search.Filter.SystemNoise.Description"
+                svc:Localized.HeaderKey="Settings.Search.Filter.SystemNoise.Title">
                 <toolkit:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE950;" />
+                    <FontIcon Glyph="&#xE72E;" />
                 </toolkit:SettingsCard.HeaderIcon>
                 <ToggleSwitch
-                    x:Name="SearchRustPreviewToggle"
+                    x:Name="SearchSystemNoiseToggle"
                     MinWidth="0"
                     OffContent=""
                     OnContent=""
-                    Toggled="SearchRustPreviewToggle_Toggled" />
+                    Toggled="SearchSystemNoiseToggle_Toggled" />
             </toolkit:SettingsCard>
 
-            <!-- Index status dashboard (visible when custom indexer is enabled) -->
+            <!-- The single local SearchCore index is the only filename provider. -->
             <toolkit:SettingsCard
                 x:Name="IndexDashboardCard"
                 ContentAlignment="Vertical"
@@ -239,23 +212,6 @@
                     <ComboBoxItem Tag="deskbox">
                         <TextBlock svc:Localized.Key="Search.Tab.DeskBox" />
                     </ComboBoxItem>
-                </ComboBox>
-            </toolkit:SettingsCard>
-
-            <!-- Max results -->
-            <toolkit:SettingsCard
-                HorizontalContentAlignment="Right"
-                svc:Localized.DescriptionKey="Settings.Search.MaxResults.Description"
-                svc:Localized.HeaderKey="Settings.Search.MaxResults.Title">
-                <toolkit:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE8FD;" />
-                </toolkit:SettingsCard.HeaderIcon>
-                <ComboBox x:Name="SearchMaxResultsComboBox"
-                          MinWidth="100"
-                          SelectionChanged="SearchMaxResultsComboBox_SelectionChanged">
-                    <ComboBoxItem Tag="50" Content="50" />
-                    <ComboBoxItem Tag="100" Content="100" />
-                    <ComboBoxItem Tag="200" Content="200" />
                 </ComboBox>
             </toolkit:SettingsCard>
 

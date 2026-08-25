@@ -19,6 +19,31 @@ public sealed class ExplorerShellLaunchContractTests
     }
 
     [Fact]
+    public void ExplorerLaunch_TransfersTheExplicitUserForegroundPrivilege()
+    {
+        string service = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Helpers/ExplorerShellLaunchService.cs"));
+        string rust = File.ReadAllText(TestPaths.FromRepository(
+            "native/deskbox-native/src/explorer_shell_launch.rs"));
+
+        int processGrant = service.IndexOf(
+            "TryGrantExplorerForegroundActivation();",
+            StringComparison.Ordinal);
+        int nativeLaunch = service.IndexOf(
+            "ExplorerShellLaunchNativeBackend.TryOpen(",
+            StringComparison.Ordinal);
+
+        Assert.True(processGrant >= 0 && processGrant < nativeLaunch);
+        Assert.Contains("AllowSetForegroundWindow(explorerProcessId)", service, StringComparison.Ordinal);
+        Assert.Contains("Marshal.GetIUnknownForObject", service, StringComparison.Ordinal);
+        Assert.Contains("CoAllowSetForegroundWindow(", service, StringComparison.Ordinal);
+        Assert.Contains(
+            "CoAllowSetForegroundWindow(&explorer_shell, None)",
+            rust,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OpenFile_TriesExplorerEnvironmentBeforeLocalShellFallback()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(

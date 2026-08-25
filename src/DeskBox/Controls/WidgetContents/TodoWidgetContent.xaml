@@ -7,6 +7,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
     KeyDown="TodoWidgetContent_KeyDown"
     IsTabStop="True"
     SizeChanged="TodoWidgetContent_SizeChanged"
@@ -912,6 +913,7 @@
                                     x:Name="DetailNotesView"
                                     AreTaskListsInteractive="True"
                                     FontSize="{Binding ElementName=RootGrid, Path=DataContext.TextSize}"
+                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                     Markdown="{Binding Notes}"
                                     TaskToggleRequested="DetailNotesView_TaskToggleRequested"
                                     UseInternalScrollViewer="False" />

@@ -38,6 +38,7 @@ UninstallDisplayName={#MyAppName} {#MyAppVersion}
 UninstallDisplayIcon={app}\Assets\deskbox.ico
 ArchitecturesAllowed=arm64
 ArchitecturesInstallIn64BitMode=arm64
+MinVersion=10.0.19044
 DefaultDirName={code:GetDefaultInstallDir}
 DisableProgramGroupPage=yes
 DisableDirPage=no

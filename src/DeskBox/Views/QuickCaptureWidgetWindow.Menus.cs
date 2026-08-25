@@ -31,14 +31,22 @@ namespace DeskBox.Views;
 
 public sealed partial class QuickCaptureWidgetWindow
 {
-    private void MoreButton_Click(object sender, RoutedEventArgs e)
+    private void MoreButton_Click(object sender, WidgetMenuRequestedEventArgs e)
     {
-        var target = sender as FrameworkElement ?? MoreButton;
-        ShowFlyoutWithElevation(CreateMoreFlyout(), target);
+        ShowFlyoutWithElevation(
+            CreateMoreFlyout(),
+            e.Anchor,
+            e.PointerPosition);
     }
 
     private void TitleBarGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        if (IsTrayHideInputSuppressed || IsHideAnimationRunning)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (!ShouldOpenTitleBarFlyout(e.OriginalSource))
         {
             return;
@@ -57,6 +65,12 @@ public sealed partial class QuickCaptureWidgetWindow
 
     private void QuickCaptureShell_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        if (IsTrayHideInputSuppressed || IsHideAnimationRunning)
+        {
+            e.Handled = true;
+            return;
+        }
+
         // Item-level context menus mark the event handled before it reaches the shell.
         // Any remaining right click is on the blank content background, where the
         // title-bar menu is the appropriate widget-level menu.
@@ -73,12 +87,18 @@ public sealed partial class QuickCaptureWidgetWindow
             Icon = new FontIcon { Glyph = "\uE8AC" }
         };
         bool startRenameWhenClosed = false;
+        bool showForegroundColorPickerWhenClosed = false;
         renameItem.Click += (_, _) => startRenameWhenClosed = true;
         flyout.Closed += (_, _) =>
         {
             if (startRenameWhenClosed)
             {
                 DispatcherQueue.TryEnqueue(StartTitleRename);
+            }
+            else if (showForegroundColorPickerWhenClosed)
+            {
+                DispatcherQueue.TryEnqueue(async () =>
+                    await ShowWidgetForegroundColorPickerAsync());
             }
         };
         flyout.Items.Add(renameItem);
@@ -101,6 +121,12 @@ public sealed partial class QuickCaptureWidgetWindow
             ViewModel.Config.IsSizeLocked,
             SetPositionLocked,
             SetSizeLocked));
+        flyout.Items.Add(WidgetForegroundMenuBuilder.Create(
+            ViewModel.Config,
+            _localizationService,
+            SetWidgetForegroundModeOverride,
+            () => showForegroundColorPickerWhenClosed = true,
+            SetWidgetTextEdgeModeOverride));
 
         WidgetGroupMenuBuilder.Append(
             flyout,

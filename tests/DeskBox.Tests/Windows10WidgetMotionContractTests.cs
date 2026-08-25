@@ -3,6 +3,52 @@ namespace DeskBox.Tests;
 public sealed class Windows10WidgetMotionContractTests
 {
     [Fact]
+    public void TitleDrag_CoalescesPointerBurstsAndDefersPersistenceUntilRelease()
+    {
+        string baseWindow = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.cs"));
+        string interaction = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.Interaction.cs"));
+        string bounds = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.Bounds.cs"));
+        string coordinatedMove = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetManager.CoordinatedMove.cs"));
+        string snapCalculator = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetSnapCalculator.cs"));
+        string groupDrag = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetManager.GroupDragPerformance.cs"));
+
+        Assert.Contains("_pendingTitleBarDragFrame", baseWindow, StringComparison.Ordinal);
+        Assert.Contains("QueueTitleBarDragFrame(deltaX, deltaY);", interaction, StringComparison.Ordinal);
+        Assert.Contains(
+            "WidgetCompactAnimationCoordinator.Register(ApplyPendingTitleBarDragFrame)",
+            interaction,
+            StringComparison.Ordinal);
+        Assert.Contains("FlushPendingTitleBarDragFrame();", interaction, StringComparison.Ordinal);
+        Assert.Contains("updateConfig: false", interaction, StringComparison.Ordinal);
+        Assert.Contains("_deferTitleBarDragConfigUpdates", baseWindow, StringComparison.Ordinal);
+        Assert.Contains("_deferTitleBarDragConfigUpdates", bounds, StringComparison.Ordinal);
+        Assert.Contains("if (!IsDragging &&", bounds, StringComparison.Ordinal);
+
+        Assert.Contains("CoordinatedMoveTarget[] targets = session.Targets;", coordinatedMove, StringComparison.Ordinal);
+        Assert.Contains(
+            "new CoordinatedMoveTarget[entries.Length]",
+            coordinatedMove,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            ".Select(entry => new CoordinatedMoveTarget(",
+            coordinatedMove,
+            StringComparison.Ordinal);
+        Assert.Contains("ConsiderCandidate", snapCalculator, StringComparison.Ordinal);
+        Assert.DoesNotContain("List<SnapCandidate>", snapCalculator, StringComparison.Ordinal);
+        Assert.DoesNotContain(".OrderBy(", snapCalculator, StringComparison.Ordinal);
+        Assert.Contains("_groupDragCandidates", groupDrag, StringComparison.Ordinal);
+        Assert.Contains("EnsureWidgetGroupDragCandidateCache", groupDrag, StringComparison.Ordinal);
+        Assert.DoesNotContain(".OrderBy(", groupDrag, StringComparison.Ordinal);
+        Assert.DoesNotContain(".ToHashSet(", groupDrag, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void InteractiveResize_CoalescesWin10BurstsWithoutTimerOrDuplicatePressHandler()
     {
         string baseWindow = File.ReadAllText(TestPaths.FromRepository(

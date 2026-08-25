@@ -26,7 +26,13 @@ public sealed partial class QuickCaptureWidgetViewModel
 
         _cachedData = data;
         ApplyTabVisibilityFromSettings();
-        _selectedView = MapDefaultView(_settingsService.Settings.QuickCaptureDefaultView);
+        _selectedView =
+            _restoredViewForInitialization is { } restoredView &&
+            IsViewVisible(restoredView)
+                ? restoredView
+                : MapDefaultView(
+                    _settingsService.Settings.QuickCaptureDefaultView);
+        _restoredViewForInitialization = null;
         OnPropertyChanged(nameof(SelectedView));
         OnPropertyChanged(nameof(IsRecordsView));
         OnPropertyChanged(nameof(IsPinnedView));
@@ -66,6 +72,37 @@ public sealed partial class QuickCaptureWidgetViewModel
     public Task RefreshItemsAsync()
     {
         return RefreshVisibleItemsAsync();
+    }
+
+    public void RestoreSelectedViewImmediately(QuickCaptureViewMode view)
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        if (!IsInitialized)
+        {
+            // Group switching primes the incoming member before InitializeAsync
+            // so its first data projection never uses the global default tab.
+            _restoredViewForInitialization = view;
+        }
+
+        QuickCaptureViewMode target = IsViewVisible(view)
+            ? view
+            : MapDefaultView(
+                SettingsService.GetFirstVisibleQuickCaptureTab(
+                    _settingsService.Settings));
+        SelectedView = target;
+        _viewSwitchRefreshTimer.Stop();
+        if (_cachedData is { } data)
+        {
+            _ = RefreshFromDataAsync(data);
+        }
+        else
+        {
+            SetViewSwitchLoading(false);
+        }
     }
 
     public async Task<QuickCaptureWriteResult> AddInputAsync()

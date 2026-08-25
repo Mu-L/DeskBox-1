@@ -270,6 +270,7 @@ $commonProperties = @(
     "-p:RuntimeIdentifier=$runtimeIdentifier",
     "-p:DeskBoxDistribution=Direct",
     "-p:DeskBoxAotAudit=true",
+    "-p:DeskBoxAotSmokeHarness=true",
     "-p:PublishAot=true",
     "-p:DeskBoxRustNative=true",
     "-p:DeskBoxSearchCorePreviewModule=true",
@@ -495,6 +496,8 @@ $auditStopwatch.Stop()
 $summary = [ordered]@{
     schemaVersion = $summarySchemaVersion
     auditProfileVersion = $auditProfileVersion
+    productProfile = "smoke-audit"
+    smokeHarnessEnabled = $true
     evidenceLevel = $evidenceLevel
     generatedAtUtc = [DateTime]::UtcNow.ToString("O")
     durationMilliseconds = $auditStopwatch.ElapsedMilliseconds

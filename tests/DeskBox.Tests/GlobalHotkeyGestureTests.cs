@@ -19,10 +19,12 @@ public sealed class GlobalHotkeyGestureTests
     }
 
     [Fact]
-    public void WinSpace_IsTheOnlyReservedHookGesture()
+    public void WinSpaceAndAltSpace_AreReservedSystemGestures()
     {
         Assert.True(GlobalHotkeyService.IsReservedSystemGesture(
             new GlobalHotkeyGesture(HotkeyModifierKeys.Windows, (int)VirtualKey.Space)));
+        Assert.True(GlobalHotkeyService.IsReservedSystemGesture(
+            new GlobalHotkeyGesture(HotkeyModifierKeys.Alt, (int)VirtualKey.Space)));
         Assert.False(GlobalHotkeyService.IsReservedSystemGesture(
             new GlobalHotkeyGesture(
                 HotkeyModifierKeys.Windows | HotkeyModifierKeys.Control,
@@ -41,5 +43,30 @@ public sealed class GlobalHotkeyGestureTests
     {
         Assert.True(GlobalHotkeyService.IsValidGesture(
             new GlobalHotkeyGesture(modifiers, (int)key)));
+    }
+
+    [Theory]
+    [InlineData(HotkeyActivationKind.DoubleControl)]
+    [InlineData(HotkeyActivationKind.WindowsTap)]
+    public void SpecialActivationKinds_DoNotDependOnTheStoredFallbackChord(
+        HotkeyActivationKind kind)
+    {
+        var activation = new GlobalHotkeyActivation(
+            kind,
+            new GlobalHotkeyGesture(HotkeyModifierKeys.None, 0));
+
+        Assert.True(GlobalHotkeyService.IsValidActivation(activation));
+    }
+
+    [Fact]
+    public void NormalizeActivation_RejectsUnknownKindByFallingBackToChord()
+    {
+        GlobalHotkeyActivation activation = GlobalHotkeyService.NormalizeActivation(
+            (HotkeyActivationKind)999,
+            (int)HotkeyModifierKeys.None,
+            (int)VirtualKey.F7);
+
+        Assert.Equal(HotkeyActivationKind.Chord, activation.Kind);
+        Assert.Equal((int)VirtualKey.F7, activation.Gesture.VirtualKey);
     }
 }

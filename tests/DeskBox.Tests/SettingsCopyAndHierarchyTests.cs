@@ -183,6 +183,7 @@ public sealed class SettingsCopyAndHierarchyTests
             ["Settings.WidgetLayerMode.Title"] = "格子层级",
             ["Settings.WidgetLayerMode.Dynamic"] = "动态层级",
             ["Settings.WidgetLayerMode.DesktopPinned"] = "桌面固定层",
+            ["Settings.WidgetLayerMode.QuickReveal"] = "快捷唤起层",
             ["Settings.AttachmentStorageMode.Title"] = "附件保存方式",
             ["Settings.ShowImageFilesAsIcons.Title"] = "图片和视频只显示图标",
             ["Settings.Capsule.WidthMode.Title"] = "展开后的宽度",
@@ -399,6 +400,10 @@ public sealed class SettingsCopyAndHierarchyTests
             "svc:Localized.HeaderKey=\"Settings.ResizeSnap.Title\"",
             interactionDetail,
             StringComparison.Ordinal);
+        int desktopDoubleClick = windowXaml.IndexOf(
+            "svc:Localized.HeaderKey=\"Settings.DesktopDoubleClick.Title\"",
+            interactionDetail,
+            StringComparison.Ordinal);
 
         int generalSection = windowXaml.IndexOf(
             "x:Name=\"GeneralSection\"",
@@ -428,6 +433,7 @@ public sealed class SettingsCopyAndHierarchyTests
         Assert.True(openMethod < showDesktopBehavior);
         Assert.True(showDesktopBehavior < globalHotkey);
         Assert.True(globalHotkey < resizeSnap);
+        Assert.True(resizeSnap < desktopDoubleClick);
         Assert.True(generalSection >= 0);
         Assert.True(generalSection < language);
         Assert.True(language < attachmentStorage);

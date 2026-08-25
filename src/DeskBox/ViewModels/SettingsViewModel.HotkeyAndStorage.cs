@@ -20,11 +20,22 @@ public partial class SettingsViewModel
         return GlobalHotkeyService.NormalizeGesture(settings.GlobalHotkeyModifiers, settings.GlobalHotkeyKey);
     }
 
+    public GlobalHotkeyActivation GetCurrentGlobalHotkeyActivation()
+    {
+        var settings = _settingsService.Settings;
+        return GlobalHotkeyService.NormalizeActivation(
+            settings.GlobalHotkeyActivationKind,
+            settings.GlobalHotkeyModifiers,
+            settings.GlobalHotkeyKey);
+    }
+
     public void RefreshGlobalHotkeyState()
     {
         var settings = _settingsService.Settings;
         _globalHotkeyEnabled = settings.GlobalHotkeyEnabled;
-        GlobalHotkeyText = GlobalHotkeyService.FormatGesture(GetCurrentGlobalHotkeyGesture(), _localizationService);
+        GlobalHotkeyText = GlobalHotkeyService.FormatActivation(
+            GetCurrentGlobalHotkeyActivation(),
+            _localizationService);
         RefreshGlobalHotkeyStatus();
         OnPropertyChanged(nameof(GlobalHotkeyEnabled));
         OnPropertyChanged(nameof(CanShowGlobalHotkeyWarning));
@@ -53,7 +64,7 @@ public partial class SettingsViewModel
 
         if (hotkeyService.IsRegistered)
         {
-            GlobalHotkeyStatusKind = GlobalHotkeyService.IsRiskyGesture(hotkeyService.CurrentGesture) ? "Warning" : "Normal";
+            GlobalHotkeyStatusKind = GlobalHotkeyService.IsRiskyActivation(hotkeyService.CurrentActivation) ? "Warning" : "Normal";
             GlobalHotkeyStatusText = _localizationService.Format(
                 "Settings.GlobalHotkey.Status.Active",
                 hotkeyService.CurrentGestureText);

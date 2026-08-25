@@ -10,6 +10,7 @@ public partial class App
 {
     private const double AotGlanceBaselineRotationMinutes = 30;
     private const double AotGlanceMutatedRotationMinutes = 0;
+    private const double AotGlanceMutatedBackgroundImageTransparency = 0.64;
 
     private async Task CaptureAotManagedUiGlancePersistenceAsync(
         AotManagedUiSmokeResult result,
@@ -96,6 +97,8 @@ public partial class App
         string fixturePath)
     {
         await viewModel.SetLocalImageFilesAsync([fixturePath]);
+        await viewModel.SetBackgroundImageTransparencyAsync(
+            AotGlanceMutatedBackgroundImageTransparency);
         await viewModel.SetDisplayElementAsync(GlanceDisplayElement.Time, isVisible: true);
         await viewModel.SetDisplayElementAsync(GlanceDisplayElement.Date, isVisible: true);
         await viewModel.SetDisplayElementAsync(GlanceDisplayElement.Year, isVisible: true);
@@ -115,6 +118,7 @@ public partial class App
         GlanceWidgetViewModel viewModel)
     {
         await viewModel.SetLocalImageFilesAsync([]);
+        await viewModel.SetBackgroundImageTransparencyAsync(0);
         await viewModel.SetDisplayElementAsync(GlanceDisplayElement.Time, isVisible: true);
         await viewModel.SetDisplayElementAsync(GlanceDisplayElement.Year, isVisible: false);
         await viewModel.SetDisplayElementAsync(GlanceDisplayElement.Date, isVisible: true);
@@ -141,7 +145,10 @@ public partial class App
             await host.Surface.WaitForAotGlanceSurfaceAsync(
                 expectMutation ? fixturePath : null,
                 expectMutation ? GlanceLayoutMode.Editorial : GlanceLayoutMode.Centered,
-                expectImage: expectMutation);
+                expectImage: expectMutation,
+                expectedBackgroundImageOpacity: expectMutation
+                    ? 1.0 - AotGlanceMutatedBackgroundImageTransparency
+                    : 1.0);
         GlanceWidgetData store = await GlanceWidgetStore
             .ForWidget(AotManagedUiGlanceWidgetId)
             .LoadAsync();
@@ -224,6 +231,7 @@ public partial class App
             Transition = store.Transition.ToString(),
             TransitionSpeed = store.TransitionSpeed.ToString(),
             Readability = store.Readability.ToString(),
+            BackgroundImageTransparency = store.BackgroundImageTransparency,
             ShowPhotoControls = store.ShowPhotoControls
         };
     }
@@ -246,6 +254,8 @@ public partial class App
             Transition = viewModel.Transition,
             TransitionSpeed = viewModel.TransitionSpeed,
             Readability = viewModel.Readability,
+            BackgroundImageTransparency = viewModel.BackgroundImageTransparency,
+            BackgroundImageOpacity = viewModel.BackgroundImageOpacity,
             ShowPhotoControlsSetting = viewModel.ShowPhotoControlsSetting,
             ImageCount = viewModel.ImageCount,
             CurrentImagePath = viewModel.CurrentImagePath,
@@ -273,6 +283,7 @@ public partial class App
             ActiveBackgroundIsImageBrush = surface.ActiveBackgroundIsImageBrush,
             ActiveImageUri = surface.ActiveImageUri,
             ActiveBackgroundOpacity = surface.ActiveBackgroundOpacity,
+            BackgroundImageLayerOpacity = surface.BackgroundImageLayerOpacity,
             ImageStretch = surface.ImageStretch,
             ImageAlignmentX = surface.ImageAlignmentX,
             ImageAlignmentY = surface.ImageAlignmentY,
@@ -316,6 +327,7 @@ public partial class App
             state.Surface.DecodedImagePath is null &&
             !state.Surface.BackgroundAHasBrush &&
             !state.Surface.BackgroundBHasBrush &&
+            Math.Abs(state.Surface.BackgroundImageLayerOpacity - 1.0) < 0.001 &&
             state.Surface.ActiveImageUri is null &&
             !state.Surface.ImmersiveLayoutVisible &&
             state.Surface.CenteredLayoutVisible &&
@@ -340,6 +352,9 @@ public partial class App
             state.Surface.ActiveBackgroundIsImageBrush &&
             string.Equals(state.Surface.ActiveImageUri, fixturePath, StringComparison.OrdinalIgnoreCase) &&
             state.Surface.ActiveBackgroundOpacity > 0.99 &&
+            Math.Abs(
+                state.Surface.BackgroundImageLayerOpacity -
+                (1.0 - AotGlanceMutatedBackgroundImageTransparency)) < 0.001 &&
             string.Equals(state.Surface.ImageStretch, "UniformToFill", StringComparison.Ordinal) &&
             string.Equals(state.Surface.ImageAlignmentX, "Center", StringComparison.Ordinal) &&
             string.Equals(state.Surface.ImageAlignmentY, "Center", StringComparison.Ordinal) &&
@@ -369,6 +384,7 @@ public partial class App
             store.Transition == nameof(GlanceTransitionMode.CrossFade) &&
             store.TransitionSpeed == nameof(GlanceTransitionSpeed.Standard) &&
             store.Readability == nameof(GlanceReadabilityMode.Soft) &&
+            Math.Abs(store.BackgroundImageTransparency) < 0.001 &&
             store.ShowPhotoControls;
     }
 
@@ -392,6 +408,9 @@ public partial class App
             store.Transition == nameof(GlanceTransitionMode.None) &&
             store.TransitionSpeed == nameof(GlanceTransitionSpeed.Fast) &&
             store.Readability == nameof(GlanceReadabilityMode.Strong) &&
+            Math.Abs(
+                store.BackgroundImageTransparency -
+                AotGlanceMutatedBackgroundImageTransparency) < 0.001 &&
             store.ShowPhotoControls;
     }
 
@@ -411,6 +430,8 @@ public partial class App
             viewModel.Transition == nameof(GlanceTransitionMode.CrossFade) &&
             viewModel.TransitionSpeed == nameof(GlanceTransitionSpeed.Standard) &&
             viewModel.Readability == nameof(GlanceReadabilityMode.Soft) &&
+            Math.Abs(viewModel.BackgroundImageTransparency) < 0.001 &&
+            Math.Abs(viewModel.BackgroundImageOpacity - 1.0) < 0.001 &&
             viewModel.ShowPhotoControlsSetting &&
             viewModel.ImageCount == 0 &&
             viewModel.CurrentImagePath is null &&
@@ -437,6 +458,8 @@ public partial class App
             viewModel.Transition == nameof(GlanceTransitionMode.CrossFade) &&
             viewModel.TransitionSpeed == nameof(GlanceTransitionSpeed.Standard) &&
             viewModel.Readability == nameof(GlanceReadabilityMode.Soft) &&
+            Math.Abs(viewModel.BackgroundImageTransparency) < 0.001 &&
+            Math.Abs(viewModel.BackgroundImageOpacity - 1.0) < 0.001 &&
             viewModel.ShowPhotoControlsSetting &&
             viewModel.ImageCount == 0 &&
             viewModel.CurrentImagePath is null &&
@@ -465,6 +488,12 @@ public partial class App
             viewModel.Transition == nameof(GlanceTransitionMode.None) &&
             viewModel.TransitionSpeed == nameof(GlanceTransitionSpeed.Fast) &&
             viewModel.Readability == nameof(GlanceReadabilityMode.Strong) &&
+            Math.Abs(
+                viewModel.BackgroundImageTransparency -
+                AotGlanceMutatedBackgroundImageTransparency) < 0.001 &&
+            Math.Abs(
+                viewModel.BackgroundImageOpacity -
+                (1.0 - AotGlanceMutatedBackgroundImageTransparency)) < 0.001 &&
             viewModel.ShowPhotoControlsSetting &&
             viewModel.ImageCount == 1 &&
             string.Equals(viewModel.CurrentImagePath, fixturePath, StringComparison.OrdinalIgnoreCase) &&
@@ -493,6 +522,12 @@ public partial class App
             viewModel.Transition == nameof(GlanceTransitionMode.None) &&
             viewModel.TransitionSpeed == nameof(GlanceTransitionSpeed.Fast) &&
             viewModel.Readability == nameof(GlanceReadabilityMode.Strong) &&
+            Math.Abs(
+                viewModel.BackgroundImageTransparency -
+                AotGlanceMutatedBackgroundImageTransparency) < 0.001 &&
+            Math.Abs(
+                viewModel.BackgroundImageOpacity -
+                (1.0 - AotGlanceMutatedBackgroundImageTransparency)) < 0.001 &&
             viewModel.ShowPhotoControlsSetting &&
             viewModel.ImageCount == 1 &&
             string.Equals(viewModel.CurrentImagePath, fixturePath, StringComparison.OrdinalIgnoreCase) &&
@@ -541,6 +576,7 @@ internal sealed class AotManagedUiGlanceStoreEvidence
     public string Transition { get; set; } = string.Empty;
     public string TransitionSpeed { get; set; } = string.Empty;
     public string Readability { get; set; } = string.Empty;
+    public double BackgroundImageTransparency { get; set; }
     public bool ShowPhotoControls { get; set; }
 }
 
@@ -559,6 +595,8 @@ internal sealed class AotManagedUiGlanceViewModelEvidence
     public string Transition { get; set; } = string.Empty;
     public string TransitionSpeed { get; set; } = string.Empty;
     public string Readability { get; set; } = string.Empty;
+    public double BackgroundImageTransparency { get; set; }
+    public double BackgroundImageOpacity { get; set; }
     public bool ShowPhotoControlsSetting { get; set; }
     public int ImageCount { get; set; }
     public string? CurrentImagePath { get; set; }
@@ -582,6 +620,7 @@ internal sealed class AotManagedUiGlanceSurfaceEvidence
     public bool ActiveBackgroundIsImageBrush { get; set; }
     public string? ActiveImageUri { get; set; }
     public double ActiveBackgroundOpacity { get; set; }
+    public double BackgroundImageLayerOpacity { get; set; }
     public string? ImageStretch { get; set; }
     public string? ImageAlignmentX { get; set; }
     public string? ImageAlignmentY { get; set; }

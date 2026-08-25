@@ -8,6 +8,7 @@ const
   DeskBoxTemporaryRootPath = '{%TEMP}\DeskBox';
   DeskBoxProductRegistryKey = 'Software\DeskBox';
   DeskBoxStartupRunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  DeskBoxStartupTaskName = 'DeskBox User Startup';
   DeskBoxAppUserModelId = 'DeskBox.DeskBox';
   DeskBoxAppUserModelIdRegistryKey = 'Software\Classes\AppUserModelId';
   DeskBoxNotificationSettingsRegistryKey = 'Software\Microsoft\Windows\CurrentVersion\Notifications\Settings';
@@ -320,6 +321,45 @@ begin
   end;
 end;
 
+procedure RemoveStartupScheduledTask;
+var
+  ScheduleService: Variant;
+  RootFolder: Variant;
+  RegisteredTask: Variant;
+  TaskDefinition: Variant;
+  Actions: Variant;
+  Action: Variant;
+  ActionPath: string;
+begin
+  try
+    ScheduleService := CreateOleObject('Schedule.Service');
+    ScheduleService.Connect;
+    RootFolder := ScheduleService.GetFolder('\');
+    RegisteredTask := RootFolder.GetTask(DeskBoxStartupTaskName);
+    TaskDefinition := RegisteredTask.Definition;
+    Actions := TaskDefinition.Actions;
+
+    if Actions.Count < 1 then
+    begin
+      Log('DeskBox uninstall preserved a startup task with no executable action.');
+      Exit;
+    end;
+
+    Action := Actions.Item(1);
+    ActionPath := Action.Path;
+    if SameInstallPath(ExtractFileDir(ActionPath), ExpandConstant('{app}')) and
+       (CompareText(ExtractFileName(ActionPath), DeskBoxProcessName) = 0) then
+    begin
+      RootFolder.DeleteTask(DeskBoxStartupTaskName, 0);
+      Log('DeskBox uninstall removed the startup scheduled task.');
+    end
+    else
+      Log('DeskBox uninstall preserved a startup task owned by another DeskBox installation.');
+  except
+    Log('DeskBox startup scheduled task was not present or could not be inspected.');
+  end;
+end;
+
 procedure RemoveTaskbarPinnedShortcut;
 var
   Path: string;
@@ -511,6 +551,7 @@ begin
 
   if CurUninstallStep = usPostUninstall then
   begin
+    RemoveStartupScheduledTask;
     RemoveStartupRegistryEntry;
     RemoveTaskbarPinnedShortcut;
     RemoveAppCompatFlag;

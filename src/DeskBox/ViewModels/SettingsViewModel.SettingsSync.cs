@@ -60,6 +60,8 @@ public partial class SettingsViewModel
             ShowImageFilesAsIcons = settings.ShowImageFilesAsIcons;
             ShowHoverButtons = settings.ShowHoverButtons;
             ResizeSnapEnabled = settings.ResizeSnapEnabled;
+            WidgetSnapSpacing = SettingsService.NormalizeWidgetSnapSpacing(
+                settings.WidgetSnapSpacing);
             KeepWidgetsVisibleOnShowDesktop = settings.KeepWidgetsVisibleOnShowDesktop;
             ShowListItemDetails = settings.ShowListItemDetails;
             ShowFileItemPathTooltips = settings.ShowFileItemPathTooltips;
@@ -67,6 +69,7 @@ public partial class SettingsViewModel
 
             WidgetOpacity = settings.WidgetOpacity;
             WidgetMaterialIntensity = settings.WidgetMaterialIntensity;
+            ApplyWidgetForegroundSettingsSnapshot(settings);
             SelectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerSquare or CornerSmall or CornerRound
                 ? settings.WidgetCornerPreference
                 : CornerRound;
@@ -368,6 +371,8 @@ RefreshWeatherCityPopularCities();
             RefreshContentEditorLocalizedProperties();
             NotifySelectionOptionsChanged();
         }
+
+        RefreshWidgetForegroundSelectionProperties(refreshLocalizedOptions);
 
         OnPropertyChanged(nameof(IsOpacitySliderEnabled));
         OnPropertyChanged(nameof(WidgetOpacityVisibility));

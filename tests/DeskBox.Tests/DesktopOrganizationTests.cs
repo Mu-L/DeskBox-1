@@ -70,7 +70,9 @@ public sealed class DesktopOrganizationTests : IDisposable
         Assert.Equal(1, result.EligibleCount);
         Assert.Contains(result.Items, item =>
             item.Name == "folder" &&
-            item.ExclusionReason == DesktopOrganizationExclusionReason.Folder);
+            item.ExclusionReason == DesktopOrganizationExclusionReason.Folder &&
+            item.IsDirectory &&
+            item.CanOptIn);
         Assert.Contains(result.Items, item =>
             item.Name == "download.crdownload" &&
             item.ExclusionReason == DesktopOrganizationExclusionReason.TemporaryOrDownloading);
@@ -99,6 +101,30 @@ public sealed class DesktopOrganizationTests : IDisposable
         Assert.Equal(DesktopOrganizationScanner.SlowItemThresholdBytes, item.Size);
         Assert.Equal(DesktopOrganizationExclusionReason.None, item.ExclusionReason);
         Assert.Equal(1, result.EligibleCount);
+    }
+
+    [Fact]
+    public async Task Scanner_DoesNotAllowHiddenFolderOptIn()
+    {
+        Directory.CreateDirectory(_root);
+        string hiddenFolder = Directory.CreateDirectory(
+            Path.Combine(_root, "hidden-folder")).FullName;
+        File.SetAttributes(
+            hiddenFolder,
+            File.GetAttributes(hiddenFolder) | FileAttributes.Hidden);
+        var scanner = new DesktopOrganizationScanner(
+            new DesktopOrganizationClassifier(),
+            () => _root,
+            () => string.Empty);
+
+        DesktopOrganizationFileSnapshot item = Assert.Single(
+            (await scanner.ScanAsync()).Items);
+
+        Assert.True(item.IsDirectory);
+        Assert.Equal(
+            DesktopOrganizationExclusionReason.HiddenOrSystem,
+            item.ExclusionReason);
+        Assert.False(item.CanOptIn);
     }
 
     [Fact]
@@ -383,6 +409,155 @@ public sealed class DesktopOrganizationTests : IDisposable
 
         Assert.True(File.Exists(sourceOne));
         Assert.True(File.Exists(sourceTwo));
+        Assert.True(organizer.AutoOrganizationSuppressions.TryConsume(sourceOne));
+        Assert.True(organizer.AutoOrganizationSuppressions.TryConsume(sourceTwo));
+    }
+
+    [Fact]
+    public async Task Transaction_RetainsChangedItemAndContinuesTheRemainingBatch()
+    {
+        string desktop = Directory.CreateDirectory(
+            Path.Combine(_root, "partial-desktop")).FullName;
+        string storage = Directory.CreateDirectory(
+            Path.Combine(_root, "partial-storage")).FullName;
+        string retainedSource = Path.Combine(desktop, "changed.txt");
+        string movedSource = Path.Combine(desktop, "stable.txt");
+        File.WriteAllText(retainedSource, "before");
+        File.WriteAllText(movedSource, "stable");
+        var scanner = new DesktopOrganizationScanner(
+            new DesktopOrganizationClassifier(),
+            () => desktop,
+            () => string.Empty);
+        DesktopOrganizationScanResult scan = await scanner.ScanAsync();
+        DesktopOrganizationPlan plan = new DesktopOrganizationPlanner(
+            new DesktopOrganizationRuleResolver()).CreatePlan(
+            scan,
+            storage,
+            [],
+            [],
+            _ => "Documents");
+        File.AppendAllText(retainedSource, "-changed-after-preview");
+        var settings = new SettingsService(Path.Combine(_root, "partial-settings"));
+
+        DesktopOrganizationExecutionResult result =
+            await new DesktopOrganizationTransaction(
+                settings,
+                new FileService()).ExecuteAsync(plan);
+
+        OrganizationHistoryItem moved = Assert.Single(result.History.Items);
+        DesktopOrganizationRetainedItem retained = Assert.Single(result.RetainedItems);
+        Assert.Equal("stable.txt", moved.Name);
+        Assert.Equal("changed.txt", retained.Name);
+        Assert.Equal(
+            DesktopOrganizationRetentionReason.SourceChanged,
+            retained.Reason);
+        Assert.True(File.Exists(retainedSource));
+        Assert.False(File.Exists(movedSource));
+        Assert.True(File.Exists(moved.DestinationPath));
+        Assert.Single(result.CreatedWidgets);
+    }
+
+    [Fact]
+    public async Task Transaction_RetainsInUseItemAndContinuesTheRemainingBatch()
+    {
+        string desktop = Directory.CreateDirectory(
+            Path.Combine(_root, "locked-desktop")).FullName;
+        string storage = Directory.CreateDirectory(
+            Path.Combine(_root, "locked-storage")).FullName;
+        string lockedSource = Path.Combine(desktop, "locked.txt");
+        string movedSource = Path.Combine(desktop, "available.txt");
+        File.WriteAllText(lockedSource, "locked");
+        File.WriteAllText(movedSource, "available");
+        var scanner = new DesktopOrganizationScanner(
+            new DesktopOrganizationClassifier(),
+            () => desktop,
+            () => string.Empty);
+        DesktopOrganizationScanResult scan = await scanner.ScanAsync();
+        DesktopOrganizationPlan plan = new DesktopOrganizationPlanner(
+            new DesktopOrganizationRuleResolver()).CreatePlan(
+            scan,
+            storage,
+            [],
+            [],
+            _ => "Documents");
+        var settings = new SettingsService(Path.Combine(_root, "locked-settings"));
+
+        DesktopOrganizationExecutionResult result;
+        using (File.Open(
+                   lockedSource,
+                   FileMode.Open,
+                   FileAccess.Read,
+                   FileShare.None))
+        {
+            result = await new DesktopOrganizationTransaction(
+                settings,
+                new FileService()).ExecuteAsync(plan);
+        }
+
+        Assert.Single(result.History.Items);
+        DesktopOrganizationRetainedItem retained = Assert.Single(result.RetainedItems);
+        Assert.Equal("locked.txt", retained.Name);
+        Assert.Equal(DesktopOrganizationRetentionReason.InUse, retained.Reason);
+        Assert.True(File.Exists(lockedSource));
+        Assert.False(File.Exists(movedSource));
+    }
+
+    [Fact]
+    public async Task Transaction_OptedInFolderMovesAndUndoRestoresItsContents()
+    {
+        string desktop = Directory.CreateDirectory(
+            Path.Combine(_root, "folder-desktop")).FullName;
+        string storage = Directory.CreateDirectory(
+            Path.Combine(_root, "folder-storage")).FullName;
+        string sourceFolder = Directory.CreateDirectory(
+            Path.Combine(desktop, "Project")).FullName;
+        File.WriteAllText(Path.Combine(sourceFolder, "readme.txt"), "content");
+        var directory = new DirectoryInfo(sourceFolder);
+        var plan = new DesktopOrganizationPlan
+        {
+            DesktopPath = desktop,
+            StorageRootPath = storage,
+            Targets =
+            [
+                new DesktopOrganizationTargetPlan
+                {
+                    SourceBucketId = "category:Other",
+                    TargetWidgetId = "folder-target",
+                    CategoryId = DesktopOrganizationCategoryIds.Other,
+                    SuggestedDisplayName = "Other",
+                    TargetDirectoryPath = Path.Combine(storage, "Other"),
+                    CreatesWidget = true,
+                    Items =
+                    [
+                        new DesktopOrganizationFileSnapshot(
+                            sourceFolder,
+                            "Project",
+                            string.Empty,
+                            0,
+                            directory.LastWriteTimeUtc,
+                            DesktopOrganizationCategoryIds.Other,
+                            null,
+                            DesktopOrganizationExclusionReason.None,
+                            IsDirectory: true)
+                    ]
+                }
+            ]
+        };
+        var settings = new SettingsService(Path.Combine(_root, "folder-settings"));
+        var fileService = new FileService();
+        DesktopOrganizationExecutionResult result =
+            await new DesktopOrganizationTransaction(settings, fileService)
+                .ExecuteAsync(plan);
+
+        string destinationFolder = Assert.Single(result.History.Items).DestinationPath;
+        Assert.False(Directory.Exists(sourceFolder));
+        Assert.True(File.Exists(Path.Combine(destinationFolder, "readme.txt")));
+
+        await new OrganizerService(settings, fileService, () => desktop)
+            .UndoAsync(result.History.Id);
+
+        Assert.True(File.Exists(Path.Combine(sourceFolder, "readme.txt")));
+        Assert.False(Directory.Exists(destinationFolder));
     }
 
     [Fact]

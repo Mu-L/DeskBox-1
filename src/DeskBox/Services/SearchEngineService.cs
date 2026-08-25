@@ -5,52 +5,52 @@ using DeskBox.Models;
 namespace DeskBox.Services;
 
 /// <summary>
-/// Coordinates search across all layers: DeskBox internal data, custom file index,
-/// and (future) Windows Search Index.
+/// Coordinates the single SearchCore filename catalog with a small DeskBox-content
+/// snapshot. The snapshot is not a second filename index and performs no I/O in the
+/// per-keystroke query path.
 /// </summary>
 public sealed class SearchEngineService : IDisposable
 {
+    public const int InitialFileResultPageSize = 200;
+    public const int FileResultPageSize = 200;
+    private const int DeskBoxContentRefreshIntervalMilliseconds = 1000;
+
     private readonly SettingsService _settingsService;
     private readonly LocalizationService _localizationService;
     private readonly SearchIndexService _indexService;
-    private readonly WindowsIndexSearchService _windowsIndexService;
-    private readonly UsnJournalIndexService? _usnIndexService;
+    private readonly QuickCaptureService _quickCaptureService;
+    private readonly object _deskBoxContentRefreshLock = new();
+    private readonly CancellationTokenSource _deskBoxContentLifetimeCts = new();
+    private DeskBoxSearchDocument[] _deskBoxContentSnapshot = [];
+    private Task? _deskBoxContentRefreshTask;
+    private long _deskBoxContentLastRefreshMs = long.MinValue;
+    private int _deskBoxContentInitialized;
     private bool _isDisposed;
 
     public SearchEngineService(
         SettingsService settingsService,
         LocalizationService localizationService,
         SearchIndexService indexService,
-        WindowsIndexSearchService windowsIndexService,
-        UsnJournalIndexService? usnIndexService = null)
+        QuickCaptureService quickCaptureService)
     {
         _settingsService = settingsService;
         _localizationService = localizationService;
         _indexService = indexService;
-        _windowsIndexService = windowsIndexService;
-        _usnIndexService = usnIndexService;
+        _quickCaptureService = quickCaptureService;
         _indexService.IndexUpdated += OnIndexUpdated;
         _indexService.ProgressChanged += OnIndexProgressChanged;
-        if (_usnIndexService is not null)
-        {
-            _usnIndexService.IndexUpdated += OnIndexUpdated;
-            _usnIndexService.ProgressChanged += OnIndexProgressChanged;
-        }
+        _quickCaptureService.Changed += OnQuickCaptureChanged;
     }
 
     public SearchIndexService IndexService => _indexService;
 
-    public int IndexedItemCount => _usnIndexService is { IsAvailable: true }
-        ? _usnIndexService.EntryCount
-        : _indexService.EntryCount;
+    public int IndexedItemCount => _indexService.EntryCount;
 
     public bool IsCustomIndexing => _indexService.IsScanning ||
                                     _indexService.IsLoading ||
-                                    _indexService.IsReconciliationPending ||
-                                    _usnIndexService is { IsScanning: true };
+                                    _indexService.IsReconciliationPending;
 
-    public bool IsIndexPaused => _indexService.IsPaused ||
-                                 _usnIndexService is { IsPaused: true };
+    public bool IsIndexPaused => _indexService.IsPaused;
 
     public DateTime? LastScanTime => _indexService.LastScanTime;
     public bool IsCustomIndexResident => _indexService.IsIndexResident;
@@ -58,10 +58,12 @@ public sealed class SearchEngineService : IDisposable
     public string? RustIndexPreviewFallbackReason =>
         _indexService.RustPreviewFallbackReason;
 
-    public bool IsUsnIndexAvailable => _usnIndexService?.IsAvailable == true;
-    public bool IsUsnIndexScanning => _usnIndexService?.IsScanning == true;
-    public bool IsUsnIndexIncrementalSyncing =>
-        _usnIndexService?.IsIncrementalSyncing == true;
+    // Retained for the diagnostics schema. The former USN service no longer owns
+    // a parallel query index; the single SearchIndexService/SearchCore catalog is
+    // now the only runtime search authority.
+    public bool IsUsnIndexAvailable => false;
+    public bool IsUsnIndexScanning => false;
+    public bool IsUsnIndexIncrementalSyncing => false;
 
     public event Action? IndexUpdated;
 
@@ -69,6 +71,16 @@ public sealed class SearchEngineService : IDisposable
     public event Action<int>? IndexProgressChanged;
 
     private void OnIndexUpdated() => IndexUpdated?.Invoke();
+
+    private void OnQuickCaptureChanged()
+    {
+        if (!_isDisposed && _settingsService.Settings.SearchIncludeDeskBoxContent)
+        {
+            _ = EnsureDeskBoxContentSnapshotAsync(
+                forceRefresh: true,
+                _deskBoxContentLifetimeCts.Token);
+        }
+    }
 
     private void OnIndexProgressChanged(int _)
     {
@@ -86,7 +98,6 @@ public sealed class SearchEngineService : IDisposable
         {
             _indexService.SaveIndex();
             _indexService.StopIndexing();
-            _usnIndexService?.StopIndexing();
         }
     }
 
@@ -118,7 +129,11 @@ public sealed class SearchEngineService : IDisposable
             return;
         }
 
-        await _indexService.EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+        Task<bool> fileIndexTask = _indexService.EnsureLoadedAsync(cancellationToken);
+        Task contentTask = _settingsService.Settings.SearchIncludeDeskBoxContent
+            ? EnsureDeskBoxContentSnapshotAsync(forceRefresh: true, cancellationToken)
+            : Task.CompletedTask;
+        await Task.WhenAll(fileIndexTask, contentTask).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (_isDisposed)
         {
@@ -126,46 +141,51 @@ public sealed class SearchEngineService : IDisposable
         }
 
         _indexService.StartIndexing();
-        _usnIndexService?.StartIndexing();
     }
 
     /// <summary>
-    /// Begins restoring an idle-unloaded index as soon as the popup is invoked.
-    /// Search itself also awaits this task, so an unusually fast first keystroke
-    /// cannot observe an empty custom index.
+    /// Awaits the startup preload when search is invoked unusually early.
     /// </summary>
     public Task<bool> PrepareForPopupAsync(
         CancellationToken cancellationToken = default) =>
         _indexService.EnsureLoadedAsync(cancellationToken);
 
-    public Task<bool> TryUnloadCustomIndexForIdleAsync(
-        CancellationToken cancellationToken = default) =>
-        _indexService.TryUnloadForIdleAsync(cancellationToken);
+    public void SetDeskBoxContentSearchEnabled(bool enabled)
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        if (enabled)
+        {
+            _ = EnsureDeskBoxContentSnapshotAsync(
+                forceRefresh: true,
+                _deskBoxContentLifetimeCts.Token);
+            return;
+        }
+
+        Volatile.Write(ref _deskBoxContentSnapshot, []);
+        Volatile.Write(ref _deskBoxContentInitialized, 0);
+        Interlocked.Exchange(ref _deskBoxContentLastRefreshMs, long.MinValue);
+    }
 
     /// <summary>Pauses all in-progress indexing.</summary>
     public void PauseIndexing()
     {
         _indexService.PauseIndexing();
-        _usnIndexService?.PauseIndexing();
     }
 
     /// <summary>Resumes paused indexing.</summary>
     public void ResumeIndexing()
     {
         _indexService.ResumeIndexing();
-        _usnIndexService?.ResumeIndexing();
     }
 
     /// <summary>Clears and rebuilds the index from scratch.</summary>
     public void RebuildIndex()
     {
         _indexService.RebuildIndex();
-        // USN journal index is ephemeral (no disk persistence); just restart it.
-        if (_usnIndexService is not null)
-        {
-            _usnIndexService.StopIndexing();
-            _usnIndexService.StartIndexing();
-        }
     }
 
     /// <summary>Returns the on-disk storage size (bytes) of the persisted index.</summary>
@@ -175,138 +195,139 @@ public sealed class SearchEngineService : IDisposable
     /// Performs a unified search across all enabled layers.
     /// </summary>
     public async Task<SearchResponse> SearchAsync(string query, CancellationToken cancellationToken = default)
+        => await SearchPageAsync(
+            query,
+            InitialFileResultPageSize,
+            cancellationToken).ConfigureAwait(false);
+
+    public async Task<SearchResponse> SearchPageAsync(
+        string query,
+        int requestedFileResults,
+        CancellationToken cancellationToken = default)
     {
-        SearchResponse? latest = null;
-        await foreach (SearchResponse stage in SearchStagedAsync(
-                           query,
-                           cancellationToken))
+        var stopwatch = Stopwatch.StartNew();
+        int fileResultLimit = Math.Clamp(
+            requestedFileResults,
+            InitialFileResultPageSize,
+            SearchIndexService.MaxSearchResultCount);
+
+        Task<MeasuredProviderResult<SearchIndexQueryPage>> fileTask = MeasureProviderAsync(
+            "rust-index",
+            () => SearchCustomIndexPageAsync(query, fileResultLimit, cancellationToken));
+        Task<MeasuredProviderResult<IReadOnlyList<SearchResultItem>>> deskBoxTask =
+            _settingsService.Settings.SearchIncludeDeskBoxContent
+                ? MeasureProviderAsync(
+                    "deskbox-content",
+                    () => SearchDeskBoxContentAsync(query, cancellationToken))
+                : Task.FromResult(new MeasuredProviderResult<IReadOnlyList<SearchResultItem>>(
+                    [],
+                    0,
+                    null));
+
+        IReadOnlyList<SearchResultItem> actions = SearchActions(query);
+        await Task.WhenAll(fileTask, deskBoxTask).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        MeasuredProviderResult<SearchIndexQueryPage> measuredFile = await fileTask.ConfigureAwait(false);
+        MeasuredProviderResult<IReadOnlyList<SearchResultItem>> measuredDeskBox =
+            await deskBoxTask.ConfigureAwait(false);
+        if (measuredFile.Failure is not null)
         {
-            latest = stage;
+            LogProviderFailure(measuredFile.Provider, measuredFile.Failure);
+        }
+        if (measuredDeskBox.Failure is not null)
+        {
+            LogProviderFailure(measuredDeskBox.Provider, measuredDeskBox.Failure);
         }
 
-        return latest ?? BuildSearchResponse(
+        SearchIndexQueryPage filePage = measuredFile.Failure is null
+            ? measuredFile.Value
+            : SearchIndexQueryPage.Empty;
+        IReadOnlyList<SearchResultItem> deskBoxResults = measuredDeskBox.Failure is null
+            ? measuredDeskBox.Value
+            : [];
+        stopwatch.Stop();
+        SearchResponse response = BuildSearchResponse(
             query,
-            [],
-            Math.Clamp(_settingsService.Settings.SearchMaxResults, 10, 200),
-            TimeSpan.Zero,
-            isComplete: true);
+            filePage,
+            deskBoxResults,
+            actions,
+            stopwatch.Elapsed);
+        App.Log(
+            $"[Search] Query completed chars={query.Trim().Length} " +
+            $"rustMs={measuredFile.ElapsedMilliseconds} " +
+            $"deskboxMs={measuredDeskBox.ElapsedMilliseconds} " +
+            $"totalMs={stopwatch.ElapsedMilliseconds} " +
+            $"files={response.MaterializedFileResultCount}/{response.TotalFileResultCount} " +
+            $"visible={response.RankedItems.Count}");
+        return response;
     }
 
     public async IAsyncEnumerable<SearchResponse> SearchStagedAsync(
         string query,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var stopwatch = Stopwatch.StartNew();
-        var settings = _settingsService.Settings;
-        int maxResults = Math.Clamp(settings.SearchMaxResults, 10, 200);
-
-        var immediateProviders = new List<SearchProviderTask>();
-        var extendedProviders = new List<SearchProviderTask>();
-
-        // Start all enabled providers together, but publish the lightweight
-        // DeskBox/action stage before waiting for system and disk indexes.
-        if (settings.SearchIncludeDeskBoxContent)
-        {
-            immediateProviders.Add(new SearchProviderTask(
-                "deskbox-content",
-                SearchDeskBoxContentAsync(query, maxResults, cancellationToken)));
-        }
-
-        immediateProviders.Add(new SearchProviderTask(
-            "actions",
-            Task.FromResult(SearchActions(query))));
-
-        // Layer 2: Windows Search Index (system-indexed locations)
-        if (settings.SearchIncludeSystemIndex)
-        {
-            extendedProviders.Add(new SearchProviderTask(
-                "windows-index",
-                _windowsIndexService.SearchAsync(query, maxResults, cancellationToken)));
-        }
-
-        // Layer 3: File indexes. The USN journal is fast and broad when available,
-        // but it can be incomplete while a volume is offline, capped, or being
-        // refreshed. Always query the directory index as well so a stale/partial
-        // USN snapshot is never the sole authority; the ranker de-duplicates paths.
-        if (settings.SearchCustomIndexerEnabled)
-        {
-            if (_usnIndexService is { IsAvailable: true })
-            {
-                extendedProviders.Add(new SearchProviderTask(
-                    "usn-index",
-                    Task.Run<IReadOnlyList<SearchResultItem>>(
-                        () => _usnIndexService.Search(query, maxResults, cancellationToken)
-                            .Where(item => PathExists(item.DetailPath))
-                            .ToList(),
-                        cancellationToken)));
-            }
-
-            extendedProviders.Add(new SearchProviderTask(
-                "custom-index",
-                SearchCustomIndexAsync(query, maxResults, cancellationToken)));
-        }
-
-        SearchProviderBatchResult immediate = await SearchProviderCoordinator.CollectSafelyAsync(
-            immediateProviders,
-            cancellationToken,
-            LogProviderFailure);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (extendedProviders.Count == 0)
-        {
-            yield return BuildSearchResponse(
-                query,
-                immediate.Results,
-                maxResults,
-                stopwatch.Elapsed,
-                isComplete: true);
-            yield break;
-        }
-
-        yield return BuildSearchResponse(
-            query,
-            immediate.Results,
-            maxResults,
-            stopwatch.Elapsed,
-            isComplete: false);
-
-        SearchProviderBatchResult extended = await SearchProviderCoordinator.CollectSafelyAsync(
-            extendedProviders,
-            cancellationToken,
-            LogProviderFailure);
-        cancellationToken.ThrowIfCancellationRequested();
-        stopwatch.Stop();
-
-        yield return BuildSearchResponse(
-            query,
-            immediate.Results.Concat(extended.Results),
-            maxResults,
-            stopwatch.Elapsed,
-            isComplete: true);
+        yield return await SearchAsync(query, cancellationToken).ConfigureAwait(false);
     }
 
     private SearchResponse BuildSearchResponse(
         string query,
-        IEnumerable<IReadOnlyList<SearchResultItem>> providerResults,
-        int maxResults,
-        TimeSpan elapsed,
-        bool isComplete)
+        SearchIndexQueryPage filePage,
+        IReadOnlyList<SearchResultItem> deskBoxResults,
+        IReadOnlyList<SearchResultItem> actions,
+        TimeSpan elapsed)
     {
         IReadOnlyList<SearchResultItem> rankedItems = SearchResultRanker.MergeAndRank(
-            providerResults.SelectMany(items => items),
+            filePage.Items.Concat(deskBoxResults).Concat(actions),
             query.Trim(),
-            maxResults);
+            int.MaxValue);
         IReadOnlyList<SearchResultGroup> groups = BuildGroups(rankedItems);
+        int materializedFileResults = rankedItems.Count(item =>
+            item.Kind is SearchResultKind.File or SearchResultKind.Folder);
+        int nonFileResults = rankedItems.Count - materializedFileResults;
 
         return new SearchResponse
         {
             Query = query,
             RankedItems = rankedItems,
             Groups = groups,
-            TotalResultCount = rankedItems.Count,
+            TotalResultCount = checked(filePage.TotalMatchedCount + nonFileResults),
+            MaterializedFileResultCount = materializedFileResults,
+            TotalFileResultCount = filePage.TotalMatchedCount,
+            HasMoreResults = materializedFileResults < filePage.TotalMatchedCount,
             Elapsed = elapsed,
-            IsComplete = isComplete
+            IsComplete = true
         };
+    }
+
+    private static async Task<MeasuredProviderResult<T>> MeasureProviderAsync<T>(
+        string provider,
+        Func<Task<T>> operation)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            T value = await operation().ConfigureAwait(false);
+            stopwatch.Stop();
+            return new MeasuredProviderResult<T>(
+                value,
+                stopwatch.ElapsedMilliseconds,
+                null,
+                provider);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            return new MeasuredProviderResult<T>(
+                default!,
+                stopwatch.ElapsedMilliseconds,
+                ex,
+                provider);
+        }
     }
 
     private static void LogProviderFailure(string provider, Exception ex)
@@ -314,7 +335,7 @@ public sealed class SearchEngineService : IDisposable
         App.Log($"[Search] Provider '{provider}' failed; returning partial results: {ex}");
     }
 
-    private async Task<IReadOnlyList<SearchResultItem>> SearchCustomIndexAsync(
+    private async Task<SearchIndexQueryPage> SearchCustomIndexPageAsync(
         string query,
         int maxResults,
         CancellationToken cancellationToken)
@@ -324,30 +345,19 @@ public sealed class SearchEngineService : IDisposable
             .ConfigureAwait(false);
         if (!loaded)
         {
-            return [];
+            return SearchIndexQueryPage.Empty;
         }
 
         return await Task.Run(
-            () => _indexService.Search(query, maxResults, cancellationToken),
+            () => _indexService.SearchPage(query, maxResults, cancellationToken),
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool PathExists(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return false;
-        }
-
-        try
-        {
-            return File.Exists(path) || Directory.Exists(path);
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    private readonly record struct MeasuredProviderResult<T>(
+        T Value,
+        long ElapsedMilliseconds,
+        Exception? Failure,
+        string Provider = "deskbox-content");
 
     /// <summary>
     /// Gets recommendations for the empty-state view.
@@ -545,135 +555,272 @@ public sealed class SearchEngineService : IDisposable
     }
 
     private async Task<IReadOnlyList<SearchResultItem>> SearchDeskBoxContentAsync(
-        string query, int maxResults, CancellationToken cancellationToken)
+        string query,
+        CancellationToken cancellationToken)
     {
-        var results = new List<SearchResultItem>();
+        bool initialized = Volatile.Read(ref _deskBoxContentInitialized) != 0;
+        if (!initialized)
+        {
+            await EnsureDeskBoxContentSnapshotAsync(
+                    forceRefresh: true,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else if (Environment.TickCount64 -
+                 Interlocked.Read(ref _deskBoxContentLastRefreshMs) >=
+                 DeskBoxContentRefreshIntervalMilliseconds)
+        {
+            // Return the current immutable snapshot immediately. The refresh runs
+            // outside the query hot path and raises IndexUpdated only if content
+            // actually changed, which refreshes an already-visible query in place.
+            _ = EnsureDeskBoxContentSnapshotAsync(
+                forceRefresh: false,
+                _deskBoxContentLifetimeCts.Token);
+        }
 
-        var todoTask = SearchTodosAsync(query, maxResults / 2, cancellationToken);
-        var noteTask = SearchQuickCaptureAsync(query, maxResults / 2, cancellationToken);
-        await Task.WhenAll(todoTask, noteTask);
-        results.AddRange(await todoTask);
-        results.AddRange(await noteTask);
-
-        return results;
+        DeskBoxSearchDocument[] snapshot = Volatile.Read(ref _deskBoxContentSnapshot);
+        return await Task.Run(
+                () => SearchDeskBoxContentSnapshot(snapshot, query, cancellationToken),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    private async Task<IReadOnlyList<SearchResultItem>> SearchTodosAsync(
-        string query, int maxResults, CancellationToken cancellationToken)
+    private Task EnsureDeskBoxContentSnapshotAsync(
+        bool forceRefresh,
+        CancellationToken cancellationToken)
     {
-        var results = new List<SearchResultItem>();
-        var settings = _settingsService.Settings;
-
-        var todoWidgets = settings.Widgets
-            .Where(w => w.WidgetKind == WidgetKind.Todo && !w.IsDisabled)
-            .ToList();
-
-        foreach (var widget in todoWidgets)
+        if (_isDisposed || !_settingsService.Settings.SearchIncludeDeskBoxContent)
         {
-            if (cancellationToken.IsCancellationRequested)
+            return Task.CompletedTask;
+        }
+
+        Task refreshTask;
+        lock (_deskBoxContentRefreshLock)
+        {
+            if (_deskBoxContentRefreshTask is { IsCompleted: false } activeRefresh)
             {
-                break;
+                refreshTask = activeRefresh;
             }
-
-            try
+            else
             {
-                var store = new TodoWidgetStore(widget.Id);
-                var data = await store.LoadAsync();
-
-                foreach (var item in data.Items)
+                long elapsed = Environment.TickCount64 -
+                               Interlocked.Read(ref _deskBoxContentLastRefreshMs);
+                if (!forceRefresh &&
+                    Volatile.Read(ref _deskBoxContentInitialized) != 0 &&
+                    elapsed < DeskBoxContentRefreshIntervalMilliseconds)
                 {
-                    if (results.Count >= maxResults)
-                    {
-                        break;
-                    }
-
-                    bool matches = item.Text.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                                   (item.Notes?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
-
-                    if (!matches)
-                    {
-                        continue;
-                    }
-
-                    double score = ComputeTextRelevance(item.Text, query);
-                    results.Add(new SearchResultItem
-                    {
-                        Kind = SearchResultKind.Todo,
-                        Title = item.Text,
-                        Subtitle = item.DueDate.HasValue
-                            ? $"{_localizationService.T("Search.Todo.Due")}: {item.DueDate.Value:yyyy-MM-dd}"
-                            : widget.Name,
-                        TodoWidgetId = widget.Id,
-                        TodoItemId = item.Id,
-                        TodoIsCompleted = item.IsCompleted,
-                        Glyph = "\uE9D5",
-                        RelevanceScore = score + (item.IsCompleted ? -20 : 10)
-                    });
+                    return Task.CompletedTask;
                 }
-            }
-            catch
-            {
-                // Skip widgets that fail to load
+
+                refreshTask = Task.Run(
+                    () => RefreshDeskBoxContentSnapshotAsync(
+                        _deskBoxContentLifetimeCts.Token),
+                    _deskBoxContentLifetimeCts.Token);
+                _deskBoxContentRefreshTask = refreshTask;
             }
         }
 
-        return results.OrderByDescending(r => r.RelevanceScore).Take(maxResults).ToList();
+        return cancellationToken.CanBeCanceled
+            ? refreshTask.WaitAsync(cancellationToken)
+            : refreshTask;
     }
 
-    private async Task<IReadOnlyList<SearchResultItem>> SearchQuickCaptureAsync(
-        string query, int maxResults, CancellationToken cancellationToken)
+    private async Task RefreshDeskBoxContentSnapshotAsync(
+        CancellationToken cancellationToken)
     {
-        var results = new List<SearchResultItem>();
-
         try
         {
-            var store = new QuickCaptureStore();
-            var data = await store.LoadAsync();
-
-            foreach (var item in data.Items)
+            DeskBoxSearchDocument[] next = await BuildDeskBoxContentSnapshotAsync(
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (_isDisposed ||
+                cancellationToken.IsCancellationRequested ||
+                !_settingsService.Settings.SearchIncludeDeskBoxContent)
             {
-                if (results.Count >= maxResults)
-                {
-                    break;
-                }
+                return;
+            }
 
-                if (item.IsDeleted)
-                {
-                    continue;
-                }
+            DeskBoxSearchDocument[] previous = Volatile.Read(ref _deskBoxContentSnapshot);
+            bool wasInitialized = Volatile.Read(ref _deskBoxContentInitialized) != 0;
+            bool changed = !previous.SequenceEqual(next);
+            Volatile.Write(ref _deskBoxContentSnapshot, next);
+            Volatile.Write(ref _deskBoxContentInitialized, 1);
+            Interlocked.Exchange(
+                ref _deskBoxContentLastRefreshMs,
+                Environment.TickCount64);
 
-                bool matches = item.Body.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                               (item.Title?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                               (item.Url?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
-
-                if (!matches)
-                {
-                    continue;
-                }
-
-                string displayTitle = !string.IsNullOrWhiteSpace(item.Title)
-                    ? item.Title
-                    : TruncateText(item.Body, 60);
-
-                double score = ComputeTextRelevance(displayTitle, query);
-                results.Add(new SearchResultItem
-                {
-                    Kind = SearchResultKind.QuickCapture,
-                    Title = displayTitle,
-                    Subtitle = item.Type.ToString(),
-                    QuickCaptureItemId = item.Id,
-                    Glyph = "\uE70F",
-                    ModifiedAt = item.UpdatedAt,
-                    RelevanceScore = score + (item.IsPinned ? 5 : 0)
-                });
+            if (wasInitialized && changed)
+            {
+                IndexUpdated?.Invoke();
             }
         }
-        catch
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Skip if QuickCapture data fails to load
+            // Normal feature shutdown.
+        }
+        catch (Exception ex)
+        {
+            Interlocked.Exchange(
+                ref _deskBoxContentLastRefreshMs,
+                Environment.TickCount64);
+            App.Log($"[Search] DeskBox content snapshot refresh failed: {ex.Message}");
+        }
+        finally
+        {
+            lock (_deskBoxContentRefreshLock)
+            {
+                _deskBoxContentRefreshTask = null;
+            }
+        }
+    }
+
+    private async Task<DeskBoxSearchDocument[]> BuildDeskBoxContentSnapshotAsync(
+        CancellationToken cancellationToken)
+    {
+        var documents = new List<DeskBoxSearchDocument>();
+        QuickCaptureStoreData quickCapture = await _quickCaptureService
+            .GetDataAsync()
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        foreach (QuickCaptureItem item in quickCapture.Items)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (item.IsDeleted)
+            {
+                continue;
+            }
+
+            string displayTitle = !string.IsNullOrWhiteSpace(item.Title)
+                ? item.Title
+                : TruncateText(item.Body, 60);
+            documents.Add(new DeskBoxSearchDocument(
+                SearchResultKind.QuickCapture,
+                displayTitle,
+                item.Body,
+                item.Url,
+                item.Type.ToString(),
+                TodoWidgetId: null,
+                TodoItemId: null,
+                TodoIsCompleted: false,
+                QuickCaptureItemId: item.Id,
+                IsPinned: item.IsPinned,
+                item.UpdatedAt));
         }
 
-        return results.OrderByDescending(r => r.RelevanceScore).Take(maxResults).ToList();
+        List<WidgetConfig> todoWidgets = _settingsService.Settings.Widgets
+            .Where(widget => widget.WidgetKind == WidgetKind.Todo && !widget.IsDisabled)
+            .ToList();
+        Task<(WidgetConfig Widget, TodoWidgetData? Data)>[] todoLoads = todoWidgets
+            .Select(async widget =>
+            {
+                try
+                {
+                    TodoWidgetData data = await new TodoWidgetStore(widget.Id)
+                        .LoadAsync()
+                        .WaitAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    return (Widget: widget, Data: (TodoWidgetData?)data);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    App.Log(
+                        $"[Search] Todo snapshot skipped widget={widget.Id}: {ex.Message}");
+                    return (Widget: widget, Data: (TodoWidgetData?)null);
+                }
+            })
+            .ToArray();
+
+        foreach ((WidgetConfig widget, TodoWidgetData? data) in
+                 await Task.WhenAll(todoLoads).ConfigureAwait(false))
+        {
+            if (data is null)
+            {
+                continue;
+            }
+
+            foreach (TodoItem item in data.Items)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                documents.Add(new DeskBoxSearchDocument(
+                    SearchResultKind.Todo,
+                    item.Text,
+                    item.Notes,
+                    AuxiliaryText: null,
+                    item.DueDate.HasValue
+                        ? $"{_localizationService.T("Search.Todo.Due")}: {item.DueDate.Value:yyyy-MM-dd}"
+                        : widget.Name,
+                    TodoWidgetId: widget.Id,
+                    TodoItemId: item.Id,
+                    TodoIsCompleted: item.IsCompleted,
+                    QuickCaptureItemId: null,
+                    IsPinned: false,
+                    item.UpdatedAt));
+            }
+        }
+
+        return documents.ToArray();
+    }
+
+    private static IReadOnlyList<SearchResultItem> SearchDeskBoxContentSnapshot(
+        IReadOnlyList<DeskBoxSearchDocument> snapshot,
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<SearchResultItem>();
+        foreach (DeskBoxSearchDocument document in snapshot)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            bool titleMatches = document.Title.Contains(
+                query,
+                StringComparison.OrdinalIgnoreCase);
+            bool bodyMatches = document.BodyText?.Contains(
+                query,
+                StringComparison.OrdinalIgnoreCase) == true;
+            bool auxiliaryMatches = document.AuxiliaryText?.Contains(
+                query,
+                StringComparison.OrdinalIgnoreCase) == true;
+            if (!titleMatches && !bodyMatches && !auxiliaryMatches)
+            {
+                continue;
+            }
+
+            double score = 1;
+            if (titleMatches)
+            {
+                score = Math.Max(score, ComputeTextRelevance(document.Title, query));
+            }
+            if (bodyMatches)
+            {
+                score = Math.Max(score, ComputeTextRelevance(document.BodyText!, query) - 5);
+            }
+            if (auxiliaryMatches)
+            {
+                score = Math.Max(score, ComputeTextRelevance(document.AuxiliaryText!, query) - 10);
+            }
+
+            score += document.Kind == SearchResultKind.Todo
+                ? document.TodoIsCompleted ? -20 : 10
+                : document.IsPinned ? 5 : 0;
+            results.Add(new SearchResultItem
+            {
+                Kind = document.Kind,
+                Title = document.Title,
+                Subtitle = document.Subtitle,
+                TodoWidgetId = document.TodoWidgetId,
+                TodoItemId = document.TodoItemId,
+                TodoIsCompleted = document.TodoIsCompleted,
+                QuickCaptureItemId = document.QuickCaptureItemId,
+                Glyph = document.Kind == SearchResultKind.Todo ? "\uE9D5" : "\uE70F",
+                ModifiedAt = document.ModifiedAt,
+                RelevanceScore = Math.Max(1, score)
+            });
+        }
+
+        return results;
     }
 
     private IReadOnlyList<SearchResultItem> SearchActions(string query)
@@ -826,6 +973,19 @@ public sealed class SearchEngineService : IDisposable
             : singleLine[..maxLength] + "...";
     }
 
+    private sealed record DeskBoxSearchDocument(
+        SearchResultKind Kind,
+        string Title,
+        string? BodyText,
+        string? AuxiliaryText,
+        string Subtitle,
+        string? TodoWidgetId,
+        string? TodoItemId,
+        bool TodoIsCompleted,
+        string? QuickCaptureItemId,
+        bool IsPinned,
+        DateTimeOffset ModifiedAt);
+
     public void Dispose()
     {
         if (_isDisposed)
@@ -834,14 +994,13 @@ public sealed class SearchEngineService : IDisposable
         }
 
         _isDisposed = true;
+        _quickCaptureService.Changed -= OnQuickCaptureChanged;
+        _deskBoxContentLifetimeCts.Cancel();
+        _deskBoxContentLifetimeCts.Dispose();
+        Volatile.Write(ref _deskBoxContentSnapshot, []);
+        Volatile.Write(ref _deskBoxContentInitialized, 0);
         _indexService.IndexUpdated -= OnIndexUpdated;
         _indexService.ProgressChanged -= OnIndexProgressChanged;
-        if (_usnIndexService is not null)
-        {
-            _usnIndexService.IndexUpdated -= OnIndexUpdated;
-            _usnIndexService.ProgressChanged -= OnIndexProgressChanged;
-        }
         _indexService.Dispose();
-        _usnIndexService?.Dispose();
     }
 }

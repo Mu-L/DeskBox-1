@@ -145,6 +145,7 @@ public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposabl
                 OnPropertyChanged(nameof(HasCurrentImageContextAction));
                 OnPropertyChanged(nameof(IsCurrentImageOnline));
                 OnPropertyChanged(nameof(HasCurrentImage));
+                OnPropertyChanged(nameof(HasVisibleCurrentImage));
                 OnPropertyChanged(nameof(ShowPhotoControls));
                 OnPropertyChanged(nameof(ShowNonCalendarImageReadability));
                 OnPropertyChanged(nameof(ShowCalendarImageReadability));
@@ -160,6 +161,10 @@ public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposabl
     public bool CanPauseRotation => _settings.RotationIntervalMinutes > 0 && ImageCount > 1;
     public bool IsCurrentImageOnline => CurrentImage?.IsOnline == true;
     public bool HasCurrentImage => CurrentImage is not null;
+    public double BackgroundImageTransparency =>
+        Math.Clamp(_settings.BackgroundImageTransparency, 0.0, 1.0);
+    public double BackgroundImageOpacity => 1.0 - BackgroundImageTransparency;
+    public bool HasVisibleCurrentImage => HasCurrentImage && BackgroundImageOpacity > 0.001;
     public bool HasCurrentImageContextAction => IsCurrentImageOnline ||
         (!string.IsNullOrWhiteSpace(CurrentImagePath) && File.Exists(CurrentImagePath));
 
@@ -179,9 +184,9 @@ public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposabl
     public bool IsCompactCalendarPresentation =>
         IsCalendarLayout && GlanceCalendarLayoutCalculator.IsCompact(_availableHeight);
     public bool IsExpandedCalendarPresentation => IsCalendarLayout && !IsCompactCalendarPresentation;
-    public bool ShowNonCalendarImageReadability => HasCurrentImage && IsNonCalendarForeground;
-    public bool ShowCalendarImageReadability => HasCurrentImage && IsCalendarLayout;
-    public bool ShowExpandedCalendarImageReadability => HasCurrentImage && IsExpandedCalendarPresentation;
+    public bool ShowNonCalendarImageReadability => HasVisibleCurrentImage && IsNonCalendarForeground;
+    public bool ShowCalendarImageReadability => HasVisibleCurrentImage && IsCalendarLayout;
+    public bool ShowExpandedCalendarImageReadability => HasVisibleCurrentImage && IsExpandedCalendarPresentation;
     public double ReadabilityStrengthOpacity => _settings.Readability switch
     {
         GlanceReadabilityMode.None => 0,
@@ -498,6 +503,12 @@ public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposabl
             GlanceWidgetSettingsPolicy.SetLocalImageFiles(settings, imagePaths));
     }
 
+    public Task SetBackgroundImageTransparencyAsync(double transparency)
+    {
+        return _store.UpdateAsync(settings =>
+            settings.BackgroundImageTransparency = Math.Clamp(transparency, 0.0, 1.0));
+    }
+
     public Task SetPhotoPlaybackAsync(
         double rotationIntervalMinutes,
         bool randomOrder,
@@ -706,6 +717,9 @@ public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(ShowCalendar));
         OnPropertyChanged(nameof(ShowPhotoControls));
         OnPropertyChanged(nameof(IsForegroundVisible));
+        OnPropertyChanged(nameof(BackgroundImageTransparency));
+        OnPropertyChanged(nameof(BackgroundImageOpacity));
+        OnPropertyChanged(nameof(HasVisibleCurrentImage));
         OnPropertyChanged(nameof(ReadabilityStrengthOpacity));
         OnPropertyChanged(nameof(ReadabilityOpacity));
         OnPropertyChanged(nameof(TimeFontFamily));

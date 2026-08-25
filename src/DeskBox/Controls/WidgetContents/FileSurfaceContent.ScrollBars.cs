@@ -28,6 +28,10 @@ public sealed partial class FileSurfaceContent
             UIElement.PointerWheelChangedEvent,
             new PointerEventHandler(ItemsView_ScrollBarActivity),
             handledEventsToo: true);
+        itemsView.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(ItemsView_IconSizePointerWheel),
+            handledEventsToo: true);
 
         if (!_scrollBarHideTimer.IsEnabled)
         {

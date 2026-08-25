@@ -116,14 +116,37 @@ $directAuditRoot = if ($Platform -eq "ARM64") {
 else {
     Join-Path $artifactRoot "aot-audit\win-x64"
 }
-$directPublishDirectory = Join-Path $directAuditRoot "publish"
 $directAuditSummaryPath = Join-Path $directAuditRoot "summary.json"
-if (-not (Test-Path -LiteralPath $directAuditSummaryPath -PathType Leaf) -or
-    -not (Test-Path -LiteralPath $directPublishDirectory -PathType Container)) {
-    throw "The retained Direct AOT audit did not produce its expected summary and publish directory."
+if (-not (Test-Path -LiteralPath $directAuditSummaryPath -PathType Leaf)) {
+    throw "The retained Direct AOT smoke audit did not produce its expected summary."
 }
 Copy-Item -LiteralPath $directAuditSummaryPath `
     -Destination (Join-Path $OutputDirectory "direct-aot-audit-summary.json") -Force
+
+$retailPublishScript = Join-Path $PSScriptRoot "publish-aot-retail.ps1"
+$retailPublishArguments = @("-Platform", $Platform)
+if (-not [string]::IsNullOrWhiteSpace($DotNetPath)) {
+    $retailPublishArguments += @("-DotNetPath", [System.IO.Path]::GetFullPath($DotNetPath))
+}
+Write-Host "Publishing the smoke-free Direct Native AOT retail payload for $Platform..." `
+    -ForegroundColor Cyan
+& $retailPublishScript @retailPublishArguments | Out-Host
+
+$directRetailRoot = Join-Path $artifactRoot "aot-retail\$runtimeIdentifier"
+$directPublishDirectory = Join-Path $directRetailRoot "publish"
+$directRetailSummaryPath = Join-Path $directRetailRoot "summary.json"
+if (-not (Test-Path -LiteralPath $directRetailSummaryPath -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $directPublishDirectory -PathType Container)) {
+    throw "The Direct AOT retail publish did not produce its expected summary and publish directory."
+}
+$directRetailSummary = Get-Content -LiteralPath $directRetailSummaryPath -Raw |
+    ConvertFrom-Json
+if ($directRetailSummary.productProfile -ne "retail" -or
+    [bool]$directRetailSummary.smokeHarnessEnabled) {
+    throw "The Direct installer payload is not a smoke-free retail AOT build."
+}
+Copy-Item -LiteralPath $directRetailSummaryPath `
+    -Destination (Join-Path $OutputDirectory "direct-aot-retail-summary.json") -Force
 
 $directFiles = @(
     Get-ChildItem -LiteralPath $directPublishDirectory -Recurse -File |
@@ -335,6 +358,8 @@ $summary = [ordered]@{
     }
     direct = [ordered]@{
         retainedAuditSummary = $directAuditSummaryPath
+        retailPublishSummary = $directRetailSummaryPath
+        smokeHarnessEnabled = $false
         publishDirectory = $directPublishDirectory
         fileCount = $directFiles.Count
         requiredFiles = $directRequiredFiles

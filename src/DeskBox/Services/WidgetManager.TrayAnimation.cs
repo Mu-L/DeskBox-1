@@ -40,7 +40,8 @@ public sealed partial class WidgetManager
         });
     }
 
-    private async Task<bool?> RaiseWidgetsFromTrayCoreAsync()
+    private async Task<bool?> RaiseWidgetsFromTrayCoreAsync(
+        string source = "raise-from-tray")
     {
         using var perfScope = PerformanceLogger.Measure("WidgetManager.RaiseWidgetsFromTray");
         if (WidgetLayerService.UsesDesktopPinnedMode())
@@ -51,9 +52,14 @@ public sealed partial class WidgetManager
         }
 
         var now = DateTime.UtcNow;
+        bool preserveSourceForeground =
+            WidgetLayerService.UsesQuickRevealMode() &&
+            string.Equals(source, "desktop-double-click", StringComparison.Ordinal);
+        IntPtr sourceForeground = Win32Helper.GetForegroundWindow();
         double sinceLastToggleMs = (now - _lastTrayLayerToggleUtc).TotalMilliseconds;
         App.LogVerbose(
-            $"[TrayBatch] Raise requested raised={_widgetsRaisedFromTray} toggling={_isTogglingWidgetsDesktopLayer} " +
+            $"[TrayBatch] Raise requested source={source} preserveSourceForeground={preserveSourceForeground} " +
+            $"raised={_widgetsRaisedFromTray} toggling={_isTogglingWidgetsDesktopLayer} " +
             $"sinceLastMs={sinceLastToggleMs:F0} loadedFile={_fileWidgets.Count} loadedContent={_contentWidgets.Count}");
         // ⭐ 移除 320ms 节流限制，确保即时响应
         if (_isTogglingWidgetsDesktopLayer)
@@ -120,16 +126,39 @@ public sealed partial class WidgetManager
                 }
             }
 
-            _foregroundAtRaiseTime = Win32Helper.GetForegroundWindow();
+            // Keep the foreground that originated the request. Capturing after
+            // showing the windows observes DeskBox's own temporary activation
+            // instead of the desktop/application the user actually invoked it from.
+            _foregroundAtRaiseTime = sourceForeground;
             _suppressTrayLayerRestoreUntilUtc = DateTime.UtcNow.AddMilliseconds(160);
             PlayPreparedTrayShowAnimations(windowsToAnimate);
             SetWidgetsRaisedFromTray(shownWindows.Count > 0);
             // Release the raised group once the foreground leaves DeskBox (e.g. the
             // user clicks another app window). Without the monitor the widgets stay
             // topmost until the next toggle, covering whatever the user clicks.
-            StartTrayLayerRestoreMonitor(shownWindows.Count > 0);
-            QueueTrayRaiseTopMostConfirmation(shownWindows);
-            ActivateIdleHighestWindow(shownWindows);
+            StartTrayLayerRestoreMonitor(
+                shownWindows.Count > 0,
+                preserveSourceForeground);
+            if (WidgetLayerService.UsesQuickRevealMode())
+            {
+                // Activation pulses TOPMOST back into the normal band for the
+                // ordinary dynamic layer. In quick-reveal mode, activate first
+                // and then establish the persistent, non-activating overlay.
+                // A desktop double-click is still being delivered to Explorer;
+                // activating DeskBox here makes that same click look like a later
+                // deskbox-leave transition and immediately dismisses the reveal.
+                if (!preserveSourceForeground)
+                {
+                    ActivateIdleHighestWindow(shownWindows);
+                }
+
+                QueueTrayRaiseTopMostConfirmation(shownWindows);
+            }
+            else
+            {
+                QueueTrayRaiseTopMostConfirmation(shownWindows);
+                ActivateIdleHighestWindow(shownWindows);
+            }
             SaveBatchVisibilityState();
             App.LogVerbose($"[TrayBatch] Raise completed raised={_widgetsRaisedFromTray} prepared={windowsToRaise.Count} shown={shownWindows.Count} animated={windowsToAnimate.Count}");
             return _widgetsRaisedFromTray;
@@ -475,12 +504,23 @@ public sealed partial class WidgetManager
         IReadOnlyList<IDesktopWidgetWindow> visibleWindows =
             GetWindowsInIdleHighestFirstOrder(
                 windows.Where(window => window.Visible));
+        IReadOnlyList<IntPtr> visibleHandles = visibleWindows
+            .Select(window => window.WindowHandle)
+            .ToList();
+        if (WidgetLayerService.UsesQuickRevealMode())
+        {
+            // Quick reveal behaves like a system flyout: it stays above the
+            // newly activated application without taking focus, then releases
+            // TOPMOST only from each window's hide-animation completion path.
+            WidgetLayerService.HoldGroupTopMostWithoutActivation(visibleHandles);
+            return;
+        }
+
         IntPtr activeHandle = visibleWindows.FirstOrDefault()?.WindowHandle ?? IntPtr.Zero;
         WidgetLayerService.BringGroupTemporarilyToFront(
-            visibleWindows.Select(window => window.WindowHandle).ToList(),
+            visibleHandles,
             activeHandle);
-        WidgetLayerService.ApplyPeerOrderHighestToLowest(
-            visibleWindows.Select(window => window.WindowHandle).ToList());
+        WidgetLayerService.ApplyPeerOrderHighestToLowest(visibleHandles);
     }
 
     private void SaveBatchVisibilityState()

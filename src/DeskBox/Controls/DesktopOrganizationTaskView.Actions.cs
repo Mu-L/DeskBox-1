@@ -66,19 +66,52 @@ public sealed partial class DesktopOrganizationTaskView
             });
             DesktopOrganizationExecutionResult result =
                 await CreateCoordinator().ExecuteAsync(plan, progress, cts.Token);
-            _lastHistoryId = result.History.Id;
-            ResultInfo.Severity = InfoBarSeverity.Success;
-            ResultInfo.Title = T("DesktopOrganization.Result.SuccessTitle");
-            ResultInfo.Message = Format(
-                "DesktopOrganization.Result.SuccessBody",
-                result.History.Items.Count,
-                result.History.Targets.Count);
+            int organizedCount = result.History.Items.Count;
+            int retainedCount = plan.ExcludedItems.Count + result.RetainedItems.Count;
+            _runtimeRetainedItems.Clear();
+            _runtimeRetainedItems.AddRange(result.RetainedItems);
+            _lastHistoryId = result.History.CanUndo
+                ? result.History.Id
+                : null;
+            ResultInfo.Severity = retainedCount > 0
+                ? InfoBarSeverity.Warning
+                : InfoBarSeverity.Success;
+            ResultInfo.Title = retainedCount > 0
+                ? T("DesktopOrganization.Result.PartialTitle")
+                : T("DesktopOrganization.Result.SuccessTitle");
+            ResultInfo.Message = retainedCount > 0
+                ? Format(
+                    "DesktopOrganization.Result.PartialBody",
+                    organizedCount,
+                    retainedCount)
+                : Format(
+                    "DesktopOrganization.Result.SuccessBody",
+                    organizedCount,
+                    result.History.Targets.Count);
             ResultInfo.IsOpen = true;
             ExecutionProgressPanel.Visibility = Visibility.Collapsed;
+            RenderExcludedItems(plan);
+            if (organizedCount == 0)
+            {
+                ExecuteButton.IsEnabled = true;
+                return;
+            }
+
+            _hasCompletedExecution = true;
+            _basePlan = new DesktopOrganizationPlan
+            {
+                DesktopPath = plan.DesktopPath,
+                StorageRootPath = plan.StorageRootPath,
+                ExcludedItems = plan.ExcludedItems.ToList()
+            };
+            _optionalIncludedPaths.Clear();
+            RenderExcludedItems(plan);
             RefreshButton.Visibility = Visibility.Collapsed;
             CancelButton.Visibility = Visibility.Collapsed;
             ExecuteButton.Visibility = Visibility.Collapsed;
-            UndoButton.Visibility = Visibility.Visible;
+            UndoButton.Visibility = result.History.CanUndo
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             DoneButton.Visibility = Visibility.Visible;
             OrganizationCompleted?.Invoke(this, EventArgs.Empty);
         }

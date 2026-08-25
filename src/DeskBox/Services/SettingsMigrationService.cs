@@ -20,7 +20,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -32,6 +32,7 @@ public sealed class SettingsMigrationPipeline
         _migrations.Add(new Migration_2_To_3());
         _migrations.Add(new Migration_3_To_4());
         _migrations.Add(new Migration_4_To_5());
+        _migrations.Add(new Migration_5_To_6());
     }
 
     /// <summary>
@@ -202,5 +203,20 @@ internal sealed class Migration_4_To_5 : ISettingsMigration
         {
             settings.SearchMaxResults = 200;
         }
+    }
+}
+
+/// <summary>
+/// Introduces bounded per-display-topology widget layouts. Existing geometry is
+/// intentionally left in place; the first stable startup captures it as the
+/// initial active profile without moving a window.
+/// </summary>
+internal sealed class Migration_5_To_6 : ISettingsMigration
+{
+    public int FromVersion => 5;
+
+    public void Migrate(AppSettings settings)
+    {
+        settings.WidgetTopologyLayouts ??= [];
     }
 }

@@ -18,7 +18,7 @@ internal sealed class WeatherWidgetContentProvider : IWidgetContentProvider
         }
 
         WeatherService? weatherService = null;
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
         weatherService = AotWeatherSurfaceFixture.TryCreateService(config);
 #endif
         return new WeatherWidgetContentAdapter(

@@ -57,20 +57,13 @@ public sealed class SearchHotkeyService : IDisposable
 
         Detach();
         _windowHandle = windowHandle;
-        _isSubclassInstalled = Win32Helper.SetWindowSubclass(
-            _windowHandle, _subclassProc, SubclassId, UIntPtr.Zero);
         RefreshRegistration();
     }
 
     public void Detach()
     {
         Unregister();
-        if (_isSubclassInstalled && _windowHandle != IntPtr.Zero)
-        {
-            Win32Helper.RemoveWindowSubclass(_windowHandle, _subclassProc, SubclassId);
-        }
-
-        _isSubclassInstalled = false;
+        RemoveSubclass();
         _windowHandle = IntPtr.Zero;
     }
 
@@ -80,7 +73,22 @@ public sealed class SearchHotkeyService : IDisposable
 
         if (_windowHandle == IntPtr.Zero || !_settingsService.Settings.SearchHotkeyEnabled)
         {
+            RemoveSubclass();
             return;
+        }
+
+        if (!_isSubclassInstalled)
+        {
+            _isSubclassInstalled = Win32Helper.SetWindowSubclass(
+                _windowHandle,
+                _subclassProc,
+                SubclassId,
+                UIntPtr.Zero);
+            if (!_isSubclassInstalled)
+            {
+                App.Log("[SearchHotkey] Failed to install tray window subclass");
+                return;
+            }
         }
 
         var gesture = CurrentGesture;
@@ -235,6 +243,16 @@ public sealed class SearchHotkeyService : IDisposable
         }
 
         _isRegistered = false;
+    }
+
+    private void RemoveSubclass()
+    {
+        if (_isSubclassInstalled && _windowHandle != IntPtr.Zero)
+        {
+            Win32Helper.RemoveWindowSubclass(_windowHandle, _subclassProc, SubclassId);
+        }
+
+        _isSubclassInstalled = false;
     }
 
     private static bool Register(IntPtr windowHandle, GlobalHotkeyGesture gesture)

@@ -1320,9 +1320,17 @@ public sealed partial class WidgetManager
     {
         FeatureWidgetSettings.SetEnabled(_settingsService.Settings, kind, enabled);
         _lastFeatureWidgetEnabledStates[kind] = enabled;
-        if (kind == WidgetKind.Search)
+        switch (kind)
         {
-            App.Current.SetSearchFeatureEnabled(enabled);
+            case WidgetKind.Search:
+                App.Current.SetSearchFeatureEnabled(enabled);
+                break;
+            case WidgetKind.QuickCapture:
+                App.Current.RefreshQuickCaptureClipboardService();
+                break;
+            case WidgetKind.Todo:
+                App.Current.RefreshTodoReminderService();
+                break;
         }
     }
 

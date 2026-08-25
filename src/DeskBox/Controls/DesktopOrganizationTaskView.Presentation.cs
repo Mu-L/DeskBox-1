@@ -20,6 +20,10 @@ public sealed partial class DesktopOrganizationTaskView
 
     private void RenderPlan(DesktopOrganizationPlan plan)
     {
+        var previousSelections = _targetSelections.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.Ordinal);
         TargetRows.Children.Clear();
         TargetRows.ColumnDefinitions.Clear();
         TargetRows.RowDefinitions.Clear();
@@ -29,7 +33,12 @@ public sealed partial class DesktopOrganizationTaskView
 
         foreach (DesktopOrganizationTargetPlan target in plan.Targets)
         {
-            _targetSelections[target.SourceBucketId] = new DesktopOrganizationTargetSelection
+            DesktopOrganizationTargetSelection selection =
+                previousSelections.TryGetValue(
+                    target.SourceBucketId,
+                    out DesktopOrganizationTargetSelection? previous)
+                    ? previous
+                    : new DesktopOrganizationTargetSelection
             {
                 SourceBucketId = target.SourceBucketId,
                 IsSelected = true,
@@ -38,6 +47,7 @@ public sealed partial class DesktopOrganizationTaskView
                     : DesktopOrganizationDestinationMode.ExistingWidget,
                 ExistingWidgetId = target.CreatesWidget ? null : target.TargetWidgetId
             };
+            _targetSelections[target.SourceBucketId] = selection;
             FrameworkElement card = CreateTargetCard(target);
             _targetCards.Add(card);
             TargetRows.Children.Add(card);
@@ -50,31 +60,52 @@ public sealed partial class DesktopOrganizationTaskView
 
     private void RenderExcludedItems(DesktopOrganizationPlan plan)
     {
-        bool hasExcludedItems = plan.ExcludedItems.Count > 0;
-        ExcludedItemsButton.Visibility = hasExcludedItems
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        if (hasExcludedItems)
+        IReadOnlyList<DesktopOrganizationFileSnapshot> sourceExcluded =
+            _basePlan?.ExcludedItems ?? plan.ExcludedItems;
+        int optionalCount = sourceExcluded.Count(item => item.CanOptIn);
+        int userChoiceCount = sourceExcluded.Count(item =>
+            item.ExclusionReason == DesktopOrganizationExclusionReason.UserChoice);
+        int protectedCount = sourceExcluded.Count(item =>
+            !item.CanOptIn &&
+            item.ExclusionReason != DesktopOrganizationExclusionReason.UserChoice);
+        int retainedCount = plan.ExcludedItems.Count + _runtimeRetainedItems.Count;
+        bool hasRetainedItems = sourceExcluded.Count > 0 ||
+            _runtimeRetainedItems.Count > 0;
+        ExcludedItemsInfo.IsOpen = hasRetainedItems;
+        if (hasRetainedItems)
         {
             ExcludedItemsButton.Content = Format(
                 "DesktopOrganization.Preview.ExcludedHeader",
-                plan.ExcludedItems.Count);
-            ToolTipService.SetToolTip(
-                ExcludedItemsButton,
-                T("DesktopOrganization.Preview.ExcludedDescription"));
+                retainedCount);
+            ExcludedItemsInfo.Title = Format(
+                "DesktopOrganization.Preview.RetainedTitle",
+                retainedCount);
+            ExcludedItemsInfo.Message = _hasCompletedExecution
+                ? T("DesktopOrganization.Result.RetainedHelp")
+                : Format(
+                    "DesktopOrganization.Preview.RetainedDescription",
+                    optionalCount,
+                    _optionalIncludedPaths.Count,
+                    protectedCount,
+                    userChoiceCount);
         }
     }
 
     private async void ExcludedItemsButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_plan is not { ExcludedItems.Count: > 0 } plan || XamlRoot is null)
+        DesktopOrganizationPlan? sourcePlan = _basePlan ?? _plan;
+        if (sourcePlan is null ||
+            sourcePlan.ExcludedItems.Count == 0 && _runtimeRetainedItems.Count == 0 ||
+            XamlRoot is null)
         {
             return;
         }
 
         var rows = new StackPanel { Spacing = 12 };
+        var optionalChecks = new Dictionary<string, CheckBox>(
+            StringComparer.OrdinalIgnoreCase);
         foreach (IGrouping<DesktopOrganizationExclusionReason, DesktopOrganizationFileSnapshot> group in
-                 plan.ExcludedItems.GroupBy(item => item.ExclusionReason).OrderBy(group => group.Key))
+                 sourcePlan.ExcludedItems.GroupBy(item => item.ExclusionReason).OrderBy(group => group.Key))
         {
             var groupRows = new StackPanel { Spacing = 6 };
             groupRows.Children.Add(new TextBlock
@@ -88,8 +119,8 @@ public sealed partial class DesktopOrganizationTaskView
             });
             foreach (DesktopOrganizationFileSnapshot item in group.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
             {
-                var itemRow = new StackPanel { Spacing = 1, Padding = new Thickness(8, 4, 8, 4) };
-                itemRow.Children.Add(new TextBlock
+                var itemDetails = new StackPanel { Spacing = 1 };
+                itemDetails.Children.Add(new TextBlock
                 {
                     Text = item.Name,
                     TextWrapping = TextWrapping.Wrap
@@ -102,11 +133,74 @@ public sealed partial class DesktopOrganizationTaskView
                     TextTrimming = TextTrimming.CharacterEllipsis
                 };
                 ToolTipService.SetToolTip(pathText, item.SourcePath);
-                itemRow.Children.Add(pathText);
-                groupRows.Children.Add(itemRow);
+                itemDetails.Children.Add(pathText);
+                if (item.CanOptIn && !_hasCompletedExecution)
+                {
+                    var checkBox = new CheckBox
+                    {
+                        Content = itemDetails,
+                        IsChecked = _optionalIncludedPaths.Contains(item.SourcePath),
+                        Padding = new Thickness(8, 4, 8, 4),
+                        HorizontalAlignment = HorizontalAlignment.Stretch
+                    };
+                    optionalChecks[item.SourcePath] = checkBox;
+                    groupRows.Children.Add(checkBox);
+                }
+                else
+                {
+                    var itemRow = new Grid
+                    {
+                        ColumnSpacing = 8,
+                        Padding = new Thickness(8, 4, 8, 4)
+                    };
+                    itemRow.ColumnDefinitions.Add(new ColumnDefinition
+                    {
+                        Width = GridLength.Auto
+                    });
+                    itemRow.ColumnDefinitions.Add(new ColumnDefinition
+                    {
+                        Width = new GridLength(1, GridUnitType.Star)
+                    });
+                    itemRow.Children.Add(new FontIcon
+                    {
+                        Glyph = item.CanOptIn ||
+                            item.ExclusionReason == DesktopOrganizationExclusionReason.UserChoice
+                                ? "\uE73A"
+                                : "\uE72E",
+                        FontSize = 13,
+                        VerticalAlignment = VerticalAlignment.Top,
+                        Margin = new Thickness(0, 4, 0, 0)
+                    });
+                    Grid.SetColumn(itemDetails, 1);
+                    itemRow.Children.Add(itemDetails);
+                    groupRows.Children.Add(itemRow);
+                }
             }
 
             rows.Children.Add(groupRows);
+        }
+
+        if (_runtimeRetainedItems.Count > 0)
+        {
+            var runtimeRows = new StackPanel { Spacing = 6 };
+            runtimeRows.Children.Add(new TextBlock
+            {
+                Text = T("DesktopOrganization.Result.RetainedDuringRun"),
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap
+            });
+            foreach (DesktopOrganizationRetainedItem item in _runtimeRetainedItems)
+            {
+                var retainedText = new TextBlock
+                {
+                    Text = $"{item.Name} · {T($"DesktopOrganization.Retention.{item.Reason}")}",
+                    TextWrapping = TextWrapping.Wrap
+                };
+                ToolTipService.SetToolTip(retainedText, item.Detail);
+                runtimeRows.Children.Add(retainedText);
+            }
+
+            rows.Children.Add(runtimeRows);
         }
 
         var dialog = new ContentDialog
@@ -114,7 +208,7 @@ public sealed partial class DesktopOrganizationTaskView
             XamlRoot = XamlRoot,
             Title = Format(
                 "DesktopOrganization.Preview.ExcludedHeader",
-                plan.ExcludedItems.Count),
+                sourcePlan.ExcludedItems.Count + _runtimeRetainedItems.Count),
             Content = new ScrollViewer
             {
                 Content = rows,
@@ -122,9 +216,43 @@ public sealed partial class DesktopOrganizationTaskView
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
             },
-            CloseButtonText = T("DesktopOrganization.Window.Done")
+            PrimaryButtonText = optionalChecks.Count > 0
+                ? T("DesktopOrganization.Preview.ApplyOptionalSelection")
+                : string.Empty,
+            CloseButtonText = T("DesktopOrganization.Window.Done"),
+            DefaultButton = optionalChecks.Count > 0
+                ? ContentDialogButton.Primary
+                : ContentDialogButton.Close
         };
-        await dialog.ShowAsync();
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            _optionalIncludedPaths.Clear();
+            foreach ((string path, CheckBox checkBox) in optionalChecks)
+            {
+                if (checkBox.IsChecked == true)
+                {
+                    _optionalIncludedPaths.Add(path);
+                }
+            }
+
+            try
+            {
+                DesktopOrganizationPlan updated = CreateCoordinator()
+                    .CreatePreviewPlanWithOptionalItems(
+                        sourcePlan,
+                        _optionalIncludedPaths);
+                _plan = updated;
+                RenderPlan(updated);
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[DesktopOrganization] Optional preview failed: {ex}");
+                ResultInfo.Severity = InfoBarSeverity.Error;
+                ResultInfo.Title = T("DesktopOrganization.Result.FailedTitle");
+                ResultInfo.Message = T("DesktopOrganization.Result.FailedBody");
+                ResultInfo.IsOpen = true;
+            }
+        }
     }
 
     private FrameworkElement CreateTargetCard(DesktopOrganizationTargetPlan target)

@@ -193,6 +193,44 @@ public sealed class NativeDropComDataReaderTests
             () => NativeComStreamReader.CopyTo(0, new MemoryStream()));
     }
 
+    [Theory]
+    [InlineData(
+        "OpenAI.Codex_2p2nqsd0c76g0!App",
+        "OpenAI.Codex_2p2nqsd0c76g0!App")]
+    [InlineData(
+        "shell:AppsFolder\\Microsoft.WindowsStore_8wekyb3d8bbwe!App",
+        "Microsoft.WindowsStore_8wekyb3d8bbwe!App")]
+    [InlineData(
+        "shell:::{4234d49b-0245-4df3-b780-3893943456e1}\\Microsoft.WindowsStore_8wekyb3d8bbwe!App",
+        "Microsoft.WindowsStore_8wekyb3d8bbwe!App")]
+    public void PackagedApplicationIds_AcceptAppsFolderParsingNames(
+        string parsingName,
+        string expected)
+    {
+        Assert.True(
+            NativeDropTarget.TryNormalizePackagedApplicationId(
+                parsingName,
+                out string actual));
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("C:\\Program Files\\App.exe")]
+    [InlineData("shell:RecycleBinFolder")]
+    [InlineData("PackageWithoutApplicationSeparator")]
+    [InlineData("Package!App\\child")]
+    [InlineData("Package!App with spaces")]
+    public void PackagedApplicationIds_RejectFilesystemAndOtherShellObjects(
+        string parsingName)
+    {
+        Assert.False(
+            NativeDropTarget.TryNormalizePackagedApplicationId(
+                parsingName,
+                out string actual));
+        Assert.Empty(actual);
+    }
+
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int GetDataCallback(
         nint self,

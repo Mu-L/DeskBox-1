@@ -501,6 +501,7 @@ public partial class SettingsViewModel
     public string HorizontalSpacingValueText => $"{Math.Round(HorizontalSpacingScale * 100):0}%";
     public string VerticalSpacingValueText => $"{Math.Round(VerticalSpacingScale * 100):0}%";
     public string FileNameWidthValueText => $"{Math.Round(FileNameWidthScale * 100):0}%";
+    public string WidgetSnapSpacingText => $"{WidgetSnapSpacing:0.#} px";
     public string DefaultWidthInput
     {
         get => FormatNumber(DefaultWidth, 0);
@@ -590,9 +591,38 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
         : _localizationService.T("Settings.Accent.CustomDescription");
 
     public string GlobalHotkeyDescription => _localizationService.T("Settings.GlobalHotkey.Description");
-    public string GlobalHotkeyWarningText => _localizationService.T("Settings.GlobalHotkey.ReservedWarning");
-    public bool CanShowGlobalHotkeyWarning => GlobalHotkeyEnabled &&
-        GlobalHotkeyService.IsReservedSystemGesture(GetCurrentGlobalHotkeyGesture());
+    public string GlobalHotkeyWarningText
+    {
+        get
+        {
+            GlobalHotkeyActivation activation = GetCurrentGlobalHotkeyActivation();
+            if (activation.Kind == HotkeyActivationKind.WindowsTap)
+            {
+                return _localizationService.T("Settings.GlobalHotkey.WindowsTapWarning");
+            }
+
+            if (activation.Kind == HotkeyActivationKind.Chord &&
+                activation.Gesture.Modifiers == HotkeyModifierKeys.Alt &&
+                activation.Gesture.VirtualKey == (int)Windows.System.VirtualKey.Space)
+            {
+                return _localizationService.T("Settings.GlobalHotkey.AltSpaceWarning");
+            }
+
+            return _localizationService.T("Settings.GlobalHotkey.ReservedWarning");
+        }
+    }
+
+    public bool CanShowGlobalHotkeyWarning
+    {
+        get
+        {
+            GlobalHotkeyActivation activation = GetCurrentGlobalHotkeyActivation();
+            return GlobalHotkeyEnabled &&
+                   (activation.Kind == HotkeyActivationKind.WindowsTap ||
+                    (activation.Kind == HotkeyActivationKind.Chord &&
+                     GlobalHotkeyService.IsReservedSystemGesture(activation.Gesture)));
+        }
+    }
     public IEnumerable<FeatureWidgetEntry> FeatureWidgetEntries
     {
         get
@@ -701,7 +731,7 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
                     _settingsService.Settings.QuickCaptureShowPinnedTab = true;
                     _settingsService.Settings.QuickCaptureShowRecentTab = true;
                     _settingsService.Settings.LastQuickCaptureFileWidgetId = string.Empty;
-                    App.Current?.QuickCaptureClipboardService?.Refresh();
+                    App.Current?.RefreshQuickCaptureClipboardService();
                     RefreshQuickCaptureClipboardDiagnostics();
                     break;
                 case WidgetKind.Todo:
@@ -1000,7 +1030,8 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
     public string[] AvailableWidgetLayerModes { get; } =
     [
         SettingsService.WidgetLayerModeDynamic,
-        SettingsService.WidgetLayerModeDesktopPinned
+        SettingsService.WidgetLayerModeDesktopPinned,
+        SettingsService.WidgetLayerModeQuickReveal
     ];
 
     public string[] AvailableWidgetLayerModeDisplayNames => _cachedWidgetLayerModeDisplayNames ??= AvailableWidgetLayerModes.Select(GetWidgetLayerModeDisplayName).ToArray();

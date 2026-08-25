@@ -57,6 +57,12 @@ public sealed class NativeDropTarget : IDisposable
     private const int S_OK = 0;
     private const int S_FALSE = 1;
     private const uint FILE_ATTRIBUTE_DIRECTORY = 0x10;
+    private const uint SIGDN_NORMALDISPLAY = 0;
+    private const uint SIGDN_DESKTOPABSOLUTEPARSING = 0x80028000;
+    private const int MaxShellApplicationDropItems = 256;
+    private const string AppsFolderPrefix = "shell:AppsFolder\\";
+    private const string AppsFolderClsidPrefix =
+        "shell:::{4234d49b-0245-4df3-b780-3893943456e1}\\";
 
     // ── P/Invoke ──
 
@@ -72,6 +78,9 @@ public sealed class NativeDropTarget : IDisposable
     [DllImport("ole32.dll")]
     private static extern void ReleaseStgMedium(ref NativeStorageMedium medium);
 
+    [DllImport("ole32.dll")]
+    private static extern void CoTaskMemFree(IntPtr value);
+
     [DllImport("kernel32.dll")]
     private static extern IntPtr GlobalLock(IntPtr hMem);
 
@@ -85,15 +94,33 @@ public sealed class NativeDropTarget : IDisposable
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern uint DragQueryFile(IntPtr hDrop, uint fileIndex, System.Text.StringBuilder? fileName, uint bufferSize);
 
+    [DllImport("shell32.dll")]
+    private static extern IntPtr ILCombine(IntPtr parent, IntPtr child);
+
+    [DllImport("shell32.dll")]
+    private static extern void ILFree(IntPtr itemIdList);
+
+    [DllImport("shell32.dll", PreserveSig = true)]
+    private static extern int SHGetNameFromIDList(
+        IntPtr itemIdList,
+        uint displayNameType,
+        out IntPtr displayName);
+
     private const uint CF_HDROP = 15;
     private static readonly ushort s_fileGroupDescriptorFormat;
     private static readonly ushort s_fileContentsFormat;
+    private static readonly ushort s_shellIdListFormat;
 
     // ── State ──
 
     private readonly IntPtr _hwnd;
     private readonly NativeDropTargetComObject _comObject;
+    private readonly Func<bool> _defaultMoveProvider;
     private bool _registered;
+
+    private sealed record ShellApplicationDropItem(
+        string AppUserModelId,
+        string DisplayName);
 
     /// <summary>Fired when a drag enters the window. Provides screen coordinates and whether file data is available.</summary>
     public event Action<int, int, bool>? DragEnterEvent;
@@ -115,12 +142,20 @@ public sealed class NativeDropTarget : IDisposable
 
     public bool HasVirtualFileData { get; private set; }
 
+    /// <summary>
+    /// Whether the current non-filesystem payload can contain an AppsFolder
+    /// Shell object. Physical CF_HDROP payloads always take precedence so this
+    /// state cannot alter their normal move/copy behavior.
+    /// </summary>
+    public bool HasShellApplicationData { get; private set; }
+
     internal bool IsRegistered => _registered;
 
     static NativeDropTarget()
     {
         s_fileGroupDescriptorFormat = (ushort)RegisterClipboardFormatW("FileGroupDescriptorW");
         s_fileContentsFormat = (ushort)RegisterClipboardFormatW("FileContents");
+        s_shellIdListFormat = (ushort)RegisterClipboardFormatW("Shell IDList Array");
 
         // Ensure OLE is initialized (WinUI 3 usually does this, but call
         // again is harmless if already initialized).
@@ -133,9 +168,10 @@ public sealed class NativeDropTarget : IDisposable
         }
     }
 
-    public NativeDropTarget(IntPtr hwnd)
+    public NativeDropTarget(IntPtr hwnd, Func<bool>? defaultMoveProvider = null)
     {
         _hwnd = hwnd;
+        _defaultMoveProvider = defaultMoveProvider ?? (() => true);
         _comObject = new NativeDropTargetComObject(this);
     }
 
@@ -180,7 +216,7 @@ public sealed class NativeDropTarget : IDisposable
         Unregister();
     }
 
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
     internal nint AcquireAotSmokeInterfacePointer()
     {
         return NativeDropTargetComInterop.AcquireInterfacePointer(_comObject);
@@ -194,15 +230,21 @@ public sealed class NativeDropTarget : IDisposable
         ref uint effect)
     {
         uint allowedEffects = effect;
+        bool hasHDropData = TryHasHDropData(dataObject);
         HasVirtualFileData = TryHasVirtualFileData(dataObject);
-        HasFileData = HasVirtualFileData || TryHasHDropData(dataObject);
+        HasShellApplicationData =
+            !hasHDropData && TryHasShellApplicationData(dataObject);
+        HasFileData =
+            hasHDropData || HasVirtualFileData || HasShellApplicationData;
         DragEnterEvent?.Invoke(point.X, point.Y, HasFileData);
 
         effect = NativeDropEffectPolicy.ResolveFeedbackEffect(
             HasFileData,
             HasVirtualFileData,
             keyState,
-            allowedEffects);
+            allowedEffects,
+            HasShellApplicationData,
+            _defaultMoveProvider());
         return S_OK;
     }
 
@@ -218,7 +260,9 @@ public sealed class NativeDropTarget : IDisposable
             HasFileData,
             HasVirtualFileData,
             keyState,
-            allowedEffects);
+            allowedEffects,
+            HasShellApplicationData,
+            _defaultMoveProvider());
         return S_OK;
     }
 
@@ -226,6 +270,7 @@ public sealed class NativeDropTarget : IDisposable
     {
         HasFileData = false;
         HasVirtualFileData = false;
+        HasShellApplicationData = false;
         DragLeaveEvent?.Invoke();
         return S_OK;
     }
@@ -237,19 +282,33 @@ public sealed class NativeDropTarget : IDisposable
         ref uint effect)
     {
         uint allowedEffects = effect;
+        bool shellApplicationDrop = HasShellApplicationData;
         bool copyRequested =
             NativeDropEffectPolicy.ResolveFeedbackEffect(
                 hasFileData: true,
                 HasVirtualFileData,
                 keyState,
-                allowedEffects) != NativeDropEffectPolicy.Move;
-        var (paths, containsTemporaryFiles) = TryExtractFilePaths(dataObject);
+                allowedEffects,
+                shellApplicationDrop,
+                _defaultMoveProvider()) != NativeDropEffectPolicy.Move;
+        IReadOnlyList<string> paths = shellApplicationDrop
+            ? TryExtractShellApplicationShortcuts(dataObject)
+            : [];
+        bool createdShellApplicationLinks = paths.Count > 0;
+        bool containsTemporaryFiles = createdShellApplicationLinks;
+        if (paths.Count == 0)
+        {
+            (paths, containsTemporaryFiles) = TryExtractFilePaths(dataObject);
+        }
         HasFileData = false;
         HasVirtualFileData = false;
+        HasShellApplicationData = false;
 
         // Always log so we can tell whether the native OLE drop target receives
         // CF_HDROP drops (WeChat / Explorer) at all, and what it extracted.
-        App.Log($"[DropTarget] NativeDrop received count={paths.Count} temp={containsTemporaryFiles}");
+        App.Log(
+            $"[DropTarget] NativeDrop received count={paths.Count} " +
+            $"temp={containsTemporaryFiles} shellApps={createdShellApplicationLinks}");
 
         if (paths.Count > 0)
         {
@@ -261,7 +320,8 @@ public sealed class NativeDropTarget : IDisposable
                 copyRequested);
             effect = NativeDropEffectPolicy.ResolveCompletionEffect(
                 hasExtractedPaths: true,
-                allowedEffects);
+                allowedEffects,
+                createdShellApplicationLinks);
         }
         else
         {
@@ -303,6 +363,51 @@ public sealed class NativeDropTarget : IDisposable
     private bool TryHasVirtualFileData(IntPtr pDataObj)
     {
         return TryQueryFormat(pDataObj, s_fileGroupDescriptorFormat, TYMED_HGLOBAL, -1);
+    }
+
+    private static bool TryHasShellApplicationData(IntPtr pDataObj)
+    {
+        if (!TryQueryFormat(
+                pDataObj,
+                s_shellIdListFormat,
+                TYMED_HGLOBAL,
+                -1))
+        {
+            return false;
+        }
+
+        try
+        {
+            var dataObject = new NativeOleDataObject(pDataObj);
+            var format = new NativeFormatEtc
+            {
+                ClipboardFormat = s_shellIdListFormat,
+                TargetDevice = IntPtr.Zero,
+                Aspect = DVASPECT_CONTENT,
+                Index = -1,
+                MediumType = TYMED_HGLOBAL,
+            };
+            if (dataObject.GetData(
+                    ref format,
+                    out NativeStorageMedium medium) != S_OK ||
+                medium.Content == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                return ReadShellApplicationDropItems(medium.Content).Count > 0;
+            }
+            finally
+            {
+                ReleaseStgMedium(ref medium);
+            }
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool TryQueryFormat(IntPtr pDataObj, ushort clipboardFormat, uint tymed, int index)
@@ -375,6 +480,323 @@ public sealed class NativeDropTarget : IDisposable
             App.Log($"[DropTarget] Failed to extract file paths: {ex.Message}");
             return ([], false);
         }
+    }
+
+    private static IReadOnlyList<string> TryExtractShellApplicationShortcuts(
+        IntPtr pDataObj)
+    {
+        if (pDataObj == IntPtr.Zero || s_shellIdListFormat == 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            var dataObject = new NativeOleDataObject(pDataObj);
+            var format = new NativeFormatEtc
+            {
+                ClipboardFormat = s_shellIdListFormat,
+                TargetDevice = IntPtr.Zero,
+                Aspect = DVASPECT_CONTENT,
+                Index = -1,
+                MediumType = TYMED_HGLOBAL,
+            };
+            if (dataObject.GetData(
+                    ref format,
+                    out NativeStorageMedium medium) != S_OK ||
+                medium.Content == IntPtr.Zero)
+            {
+                return [];
+            }
+
+            IReadOnlyList<ShellApplicationDropItem> applications;
+            try
+            {
+                applications = ReadShellApplicationDropItems(medium.Content);
+            }
+            finally
+            {
+                ReleaseStgMedium(ref medium);
+            }
+
+            return MaterializeShellApplicationShortcuts(applications);
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[DropTarget] Failed to extract AppsFolder Shell items: {ex.Message}");
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<ShellApplicationDropItem>
+        ReadShellApplicationDropItems(IntPtr shellIdListHandle)
+    {
+        long bufferSize = GlobalSize(shellIdListHandle).ToInt64();
+        if (bufferSize < sizeof(uint) + (2 * sizeof(uint)) ||
+            bufferSize > int.MaxValue)
+        {
+            return [];
+        }
+
+        IntPtr bufferStart = GlobalLock(shellIdListHandle);
+        if (bufferStart == IntPtr.Zero)
+        {
+            return [];
+        }
+
+        try
+        {
+            uint childCount = unchecked((uint)Marshal.ReadInt32(bufferStart));
+            if (childCount == 0 || childCount > MaxShellApplicationDropItems)
+            {
+                return [];
+            }
+
+            long offsetCount = (long)childCount + 1;
+            long headerSize = sizeof(uint) + (offsetCount * sizeof(uint));
+            if (headerSize > bufferSize)
+            {
+                return [];
+            }
+
+            uint parentOffset = unchecked((uint)Marshal.ReadInt32(
+                bufferStart,
+                sizeof(uint)));
+            if (!TryGetValidatedPidl(
+                    bufferStart,
+                    bufferSize,
+                    headerSize,
+                    parentOffset,
+                    out IntPtr parentPidl))
+            {
+                return [];
+            }
+
+            var applications = new List<ShellApplicationDropItem>();
+            var seenAppIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (uint index = 0; index < childCount; index++)
+            {
+                int offsetPosition = checked(
+                    sizeof(uint) + ((int)index + 1) * sizeof(uint));
+                uint childOffset = unchecked((uint)Marshal.ReadInt32(
+                    bufferStart,
+                    offsetPosition));
+                if (!TryGetValidatedPidl(
+                        bufferStart,
+                        bufferSize,
+                        headerSize,
+                        childOffset,
+                        out IntPtr childPidl))
+                {
+                    continue;
+                }
+
+                IntPtr absolutePidl = ILCombine(parentPidl, childPidl);
+                if (absolutePidl == IntPtr.Zero)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    string parsingName = ReadShellDisplayName(
+                        absolutePidl,
+                        SIGDN_DESKTOPABSOLUTEPARSING);
+                    if (!TryNormalizePackagedApplicationId(
+                            parsingName,
+                            out string appUserModelId) ||
+                        !seenAppIds.Add(appUserModelId))
+                    {
+                        continue;
+                    }
+
+                    string displayName = ReadShellDisplayName(
+                        absolutePidl,
+                        SIGDN_NORMALDISPLAY);
+                    if (string.IsNullOrWhiteSpace(displayName))
+                    {
+                        displayName = appUserModelId[..appUserModelId.IndexOf('!')];
+                    }
+
+                    applications.Add(new ShellApplicationDropItem(
+                        appUserModelId,
+                        displayName));
+                }
+                finally
+                {
+                    ILFree(absolutePidl);
+                }
+            }
+
+            return applications;
+        }
+        finally
+        {
+            _ = GlobalUnlock(shellIdListHandle);
+        }
+    }
+
+    private static bool TryGetValidatedPidl(
+        IntPtr bufferStart,
+        long bufferSize,
+        long headerSize,
+        uint offset,
+        out IntPtr pidl)
+    {
+        pidl = IntPtr.Zero;
+        if (offset < headerSize || offset >= bufferSize)
+        {
+            return false;
+        }
+
+        IntPtr candidate = IntPtr.Add(bufferStart, checked((int)offset));
+        IntPtr bufferEnd = IntPtr.Add(bufferStart, checked((int)bufferSize));
+        if (!IsPidlWithinBuffer(candidate, bufferEnd))
+        {
+            return false;
+        }
+
+        pidl = candidate;
+        return true;
+    }
+
+    private static bool IsPidlWithinBuffer(IntPtr pidl, IntPtr bufferEnd)
+    {
+        long cursor = pidl.ToInt64();
+        long end = bufferEnd.ToInt64();
+        while (cursor <= end - sizeof(ushort))
+        {
+            ushort itemSize = unchecked((ushort)Marshal.ReadInt16(new IntPtr(cursor)));
+            if (itemSize == 0)
+            {
+                return true;
+            }
+
+            if (itemSize < sizeof(ushort) || cursor > end - itemSize)
+            {
+                return false;
+            }
+
+            cursor += itemSize;
+        }
+
+        return false;
+    }
+
+    private static string ReadShellDisplayName(
+        IntPtr itemIdList,
+        uint displayNameType)
+    {
+        IntPtr value = IntPtr.Zero;
+        int hresult = SHGetNameFromIDList(
+            itemIdList,
+            displayNameType,
+            out value);
+        if (hresult < 0 || value == IntPtr.Zero)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return Marshal.PtrToStringUni(value) ?? string.Empty;
+        }
+        finally
+        {
+            CoTaskMemFree(value);
+        }
+    }
+
+    internal static bool TryNormalizePackagedApplicationId(
+        string? parsingName,
+        out string appUserModelId)
+    {
+        appUserModelId = string.Empty;
+        string candidate = parsingName?.Trim() ?? string.Empty;
+        foreach (string prefix in new[]
+                 {
+                     AppsFolderPrefix,
+                     AppsFolderClsidPrefix,
+                     "::{4234d49b-0245-4df3-b780-3893943456e1}\\"
+                 })
+        {
+            if (candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                candidate = candidate[prefix.Length..];
+                break;
+            }
+        }
+
+        int separatorIndex = candidate.IndexOf('!');
+        if (candidate.Length is 0 or > 1024 ||
+            separatorIndex <= 0 ||
+            separatorIndex >= candidate.Length - 1 ||
+            candidate.Contains('\0') ||
+            candidate.Contains('\\') ||
+            candidate.Contains('/') ||
+            candidate.Contains(':') ||
+            candidate.Any(char.IsWhiteSpace))
+        {
+            return false;
+        }
+
+        appUserModelId = candidate;
+        return true;
+    }
+
+    private static IReadOnlyList<string> MaterializeShellApplicationShortcuts(
+        IReadOnlyList<ShellApplicationDropItem> applications)
+    {
+        if (applications.Count == 0)
+        {
+            return [];
+        }
+
+        string temporaryDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "DeskBox",
+            "VirtualDrops",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+        var paths = new List<string>(applications.Count);
+        foreach (ShellApplicationDropItem application in applications)
+        {
+            string fileName = FileService.SanitizeFileSystemName(
+                application.DisplayName);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                fileName = "Application";
+            }
+
+            string shortcutPath = FileService.GetAvailablePath(
+                Path.Combine(temporaryDirectory, $"{fileName}.lnk"));
+            try
+            {
+                ShortcutHelper.CreateShellApplicationShortcut(
+                    shortcutPath,
+                    application.AppUserModelId,
+                    application.DisplayName);
+                paths.Add(shortcutPath);
+                App.Log(
+                    $"[DropTarget] Materialized AppsFolder shortcut " +
+                    $"app='{application.AppUserModelId}' name='{application.DisplayName}'");
+            }
+            catch (Exception ex)
+            {
+                try { File.Delete(shortcutPath); } catch { }
+                App.Log(
+                    $"[DropTarget] Failed to materialize AppsFolder shortcut " +
+                    $"app='{application.AppUserModelId}': {ex.Message}");
+            }
+        }
+
+        if (paths.Count == 0)
+        {
+            try { Directory.Delete(temporaryDirectory, recursive: true); } catch { }
+        }
+
+        return paths;
     }
 
     private static IReadOnlyList<string> GetDroppedFiles(IntPtr hDrop)

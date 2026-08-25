@@ -40,11 +40,16 @@ internal static class SearchResultRanker
         var byIdentity = new Dictionary<string, SearchResultItem>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in results)
         {
-            item.RelevanceScore = AdjustScore(item, query);
+            double adjustedScore = AdjustScore(item, query);
             if (item.RelevanceScore <= 0)
             {
                 continue;
             }
+
+            // No matching item is silently discarded. Noisy paths remain available
+            // at the end of an unlimited, paged result set unless the index exclusion
+            // policy removed them before query time.
+            item.RelevanceScore = Math.Max(1, adjustedScore);
 
             string identity = GetIdentityKey(item);
             if (!byIdentity.TryGetValue(identity, out var existing) || IsBetterDuplicate(item, existing))

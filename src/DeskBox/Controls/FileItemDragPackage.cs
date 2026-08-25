@@ -8,7 +8,7 @@ namespace DeskBox.Controls;
 public readonly record struct FileItemDragPackageResult(
     IReadOnlyList<string> SourcePaths,
     bool HasStorageItems,
-    bool UsesVirtualStorageItems);
+    bool UsesNativeShellDataObject);
 
 /// <summary>
 /// Creates the common file-item drag payload. Hosts remain responsible for
@@ -61,38 +61,61 @@ public static class FileItemDragPackage
             return false;
         }
 
+        // WinRT's StorageFile broker can reject shortcuts carrying Hidden or
+        // System attributes with UNABLE_TO_MASK_PATH. More importantly, this
+        // event is raised on the UI STA, so synchronously waiting for that
+        // broker can deadlock the drag/drop message loop. Wrap a native Shell
+        // IDataObject before attempting that broker so Explorer receives the
+        // original filesystem item and owns its desktop drop position.
+        bool requiresStorageBrokerBypass =
+            NativeShellFileDragProvider.RequiresStorageBrokerBypass(
+                sourcePaths);
+        bool usesNativeShellDataObject =
+            requiresStorageBrokerBypass &&
+            NativeShellFileDragProvider.TryAttach(dataPackage, sourcePaths);
+        IReadOnlyList<IStorageItem> storageItems = [];
+        if (requiresStorageBrokerBypass && !usesNativeShellDataObject)
+        {
+            App.Log(
+                $"[DragStart] Canceled broker-blocked file drag because a " +
+                $"native Shell payload could not be created paths=" +
+                $"{sourcePaths.Length}");
+            return false;
+        }
+
+        if (!usesNativeShellDataObject)
+        {
+            storageItems = getStorageItems(sourcePaths);
+            if (storageItems.Count == sourcePaths.Length)
+            {
+                dataPackage.SetStorageItems(storageItems, readOnly: false);
+            }
+            else
+            {
+                // Never advertise a partial selection or fall back to a
+                // coordinate-free filesystem move after Drop. A native Shell
+                // data object can represent the same existing paths without
+                // involving the StorageItem broker.
+                usesNativeShellDataObject =
+                    NativeShellFileDragProvider.TryAttach(
+                        dataPackage,
+                        sourcePaths);
+                storageItems = [];
+                if (!usesNativeShellDataObject)
+                {
+                    App.Log(
+                        $"[DragStart] Canceled file drag because only a " +
+                        $"partial StorageItems payload was available " +
+                        $"paths={sourcePaths.Length}");
+                    return false;
+                }
+            }
+        }
+
         dataPackage.RequestedOperation =
             DataPackageOperation.Copy |
             DataPackageOperation.Move |
             DataPackageOperation.Link;
-
-        // WinRT's StorageFile broker can reject shortcuts carrying Hidden or
-        // System attributes with UNABLE_TO_MASK_PATH. More importantly, this
-        // event is raised on the UI STA, so synchronously waiting for that
-        // broker can deadlock the drag/drop message loop. Shortcuts already
-        // have a streamed provider that does not need the broker; choose it
-        // before attempting any synchronous StorageItems lookup.
-        bool usesVirtualStorageItems =
-            VirtualShortcutDragProvider.RequiresStorageBrokerBypass(
-                sourcePaths) &&
-            VirtualShortcutDragProvider.TryAttach(
-                dataPackage,
-                sourcePaths);
-        IReadOnlyList<IStorageItem> storageItems = [];
-        if (usesVirtualStorageItems)
-        {
-            App.LogVerbose(
-                $"[DragStart] Bypassed WinRT StorageItems broker for " +
-                $"virtual shortcuts paths={sourcePaths.Length}");
-        }
-        else
-        {
-            storageItems = getStorageItems(sourcePaths);
-            if (storageItems.Count > 0)
-            {
-                dataPackage.SetStorageItems(storageItems, readOnly: false);
-            }
-        }
 
         dataPackage.Properties[DeskBoxDragData.SourceWidgetIdProperty] =
             sourceWidgetId;
@@ -106,8 +129,8 @@ public static class FileItemDragPackage
 
         result = new FileItemDragPackageResult(
             sourcePaths,
-            storageItems.Count > 0,
-            usesVirtualStorageItems);
+            storageItems.Count > 0 || usesNativeShellDataObject,
+            usesNativeShellDataObject);
         return true;
     }
 }

@@ -8,7 +8,7 @@ use windows::{
             CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
             CoUninitialize, IPersistFile, STGM_READ,
         },
-        UI::Shell::{IShellLinkW, ShellLink},
+        UI::Shell::{Common::ITEMIDLIST, ILFree, IShellLinkW, SHParseDisplayName, ShellLink},
     },
     core::{Interface, PCWSTR, PWSTR},
 };
@@ -25,9 +25,10 @@ use crate::{
     DESKBOX_SHORTCUT_PHASE_CREATE_OBJECT, DESKBOX_SHORTCUT_PHASE_LOAD,
     DESKBOX_SHORTCUT_PHASE_RESOLVE, DESKBOX_SHORTCUT_PHASE_SAVE,
     DESKBOX_SHORTCUT_READ_MODE_EFFECTIVE_DIAGNOSTIC, DESKBOX_SHORTCUT_READ_MODE_STORED_RAW,
-    DeskBoxNativeUtf16BufferV1, DeskBoxNativeUtf16StringV1, DeskBoxShortcutReadRequestV2,
-    DeskBoxShortcutReadResultV2, DeskBoxShortcutUiResolveRequestV2,
-    DeskBoxShortcutUiResolveResultV2, DeskBoxShortcutWriteRequestV2, DeskBoxShortcutWriteResultV2,
+    DESKBOX_SHORTCUT_WRITE_FLAG_SHELL_NAMESPACE_TARGET, DeskBoxNativeUtf16BufferV1,
+    DeskBoxNativeUtf16StringV1, DeskBoxShortcutReadRequestV2, DeskBoxShortcutReadResultV2,
+    DeskBoxShortcutUiResolveRequestV2, DeskBoxShortcutUiResolveResultV2,
+    DeskBoxShortcutWriteRequestV2, DeskBoxShortcutWriteResultV2,
 };
 
 const STORED_FIELD_CAPACITY: usize = 260;
@@ -40,6 +41,17 @@ const SLR_OFFER_DELETE_WITHOUT_FILE: u32 = 0x0200;
 
 struct ComUninitializeGuard {
     active: bool,
+}
+
+struct ItemIdListGuard(*mut ITEMIDLIST);
+
+impl Drop for ItemIdListGuard {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            // SAFETY: SHParseDisplayName allocated this PIDL for the caller.
+            unsafe { ILFree(Some(self.0)) };
+        }
+    }
 }
 
 impl Drop for ComUninitializeGuard {
@@ -316,12 +328,43 @@ pub(crate) unsafe fn write_shortcut(
     };
     result.create_hresult = DESKBOX_NATIVE_S_OK;
 
-    // SAFETY: Each UTF-16 value is NUL-terminated and alive for the call.
-    let target_hresult = unsafe {
-        (Interface::vtable(&shell_link).SetPath)(
-            Interface::as_raw(&shell_link),
-            PCWSTR(target_path.as_ptr()),
-        )
+    let shell_namespace_target =
+        request.flags & DESKBOX_SHORTCUT_WRITE_FLAG_SHELL_NAMESPACE_TARGET != 0;
+    let target_hresult = if shell_namespace_target {
+        let mut item_id_list: *mut ITEMIDLIST = std::ptr::null_mut();
+        // SAFETY: The parsing name is NUL-terminated and the output pointer is
+        // valid for the duration of the synchronous Shell call.
+        match unsafe {
+            SHParseDisplayName(
+                PCWSTR(target_path.as_ptr()),
+                None,
+                &mut item_id_list,
+                0,
+                None,
+            )
+        } {
+            Ok(()) if !item_id_list.is_null() => {
+                let _item_id_list_guard = ItemIdListGuard(item_id_list);
+                // SAFETY: The generated vtable signature matches
+                // IShellLinkW::SetIDList and the PIDL remains alive for the call.
+                unsafe {
+                    (Interface::vtable(&shell_link).SetIDList)(
+                        Interface::as_raw(&shell_link),
+                        item_id_list,
+                    )
+                }
+            }
+            Ok(()) => windows::core::HRESULT(DESKBOX_NATIVE_E_INVALIDARG),
+            Err(error) => error.code(),
+        }
+    } else {
+        // SAFETY: The target path is NUL-terminated and alive for the call.
+        unsafe {
+            (Interface::vtable(&shell_link).SetPath)(
+                Interface::as_raw(&shell_link),
+                PCWSTR(target_path.as_ptr()),
+            )
+        }
     };
     if let Err(hresult) = record_write_field(result, ShortcutField::Target, target_hresult.0) {
         return finish_write(result, DESKBOX_NATIVE_STATUS_OPERATION_FAILED, hresult);
@@ -340,43 +383,46 @@ pub(crate) unsafe fn write_shortcut(
         return finish_write(result, DESKBOX_NATIVE_STATUS_OPERATION_FAILED, hresult);
     }
 
-    // SAFETY: Each UTF-16 value is NUL-terminated and alive for the call.
-    let arguments_hresult = unsafe {
-        (Interface::vtable(&shell_link).SetArguments)(
-            Interface::as_raw(&shell_link),
-            PCWSTR(arguments.as_ptr()),
-        )
-    };
-    if let Err(hresult) = record_write_field(result, ShortcutField::Arguments, arguments_hresult.0)
-    {
-        return finish_write(result, DESKBOX_NATIVE_STATUS_OPERATION_FAILED, hresult);
-    }
+    if !shell_namespace_target {
+        // SAFETY: Each UTF-16 value is NUL-terminated and alive for the call.
+        let arguments_hresult = unsafe {
+            (Interface::vtable(&shell_link).SetArguments)(
+                Interface::as_raw(&shell_link),
+                PCWSTR(arguments.as_ptr()),
+            )
+        };
+        if let Err(hresult) =
+            record_write_field(result, ShortcutField::Arguments, arguments_hresult.0)
+        {
+            return finish_write(result, DESKBOX_NATIVE_STATUS_OPERATION_FAILED, hresult);
+        }
 
-    // SAFETY: Each UTF-16 value is NUL-terminated and alive for the call.
-    let working_directory_hresult = unsafe {
-        (Interface::vtable(&shell_link).SetWorkingDirectory)(
-            Interface::as_raw(&shell_link),
-            PCWSTR(working_directory.as_ptr()),
-        )
-    };
-    if let Err(hresult) = record_write_field(
-        result,
-        ShortcutField::WorkingDirectory,
-        working_directory_hresult.0,
-    ) {
-        return finish_write(result, DESKBOX_NATIVE_STATUS_OPERATION_FAILED, hresult);
-    }
+        // SAFETY: Each UTF-16 value is NUL-terminated and alive for the call.
+        let working_directory_hresult = unsafe {
+            (Interface::vtable(&shell_link).SetWorkingDirectory)(
+                Interface::as_raw(&shell_link),
+                PCWSTR(working_directory.as_ptr()),
+            )
+        };
+        if let Err(hresult) = record_write_field(
+            result,
+            ShortcutField::WorkingDirectory,
+            working_directory_hresult.0,
+        ) {
+            return finish_write(result, DESKBOX_NATIVE_STATUS_OPERATION_FAILED, hresult);
+        }
 
-    // SAFETY: Each UTF-16 value is NUL-terminated and alive for the call.
-    let icon_hresult = unsafe {
-        (Interface::vtable(&shell_link).SetIconLocation)(
-            Interface::as_raw(&shell_link),
-            PCWSTR(icon_path.as_ptr()),
-            request.icon_index,
-        )
-    };
-    if let Err(hresult) = record_write_field(result, ShortcutField::Icon, icon_hresult.0) {
-        return finish_write(result, DESKBOX_NATIVE_STATUS_OPERATION_FAILED, hresult);
+        // SAFETY: Each UTF-16 value is NUL-terminated and alive for the call.
+        let icon_hresult = unsafe {
+            (Interface::vtable(&shell_link).SetIconLocation)(
+                Interface::as_raw(&shell_link),
+                PCWSTR(icon_path.as_ptr()),
+                request.icon_index,
+            )
+        };
+        if let Err(hresult) = record_write_field(result, ShortcutField::Icon, icon_hresult.0) {
+            return finish_write(result, DESKBOX_NATIVE_STATUS_OPERATION_FAILED, hresult);
+        }
     }
 
     result.attempted_phases |= DESKBOX_SHORTCUT_PHASE_SAVE;

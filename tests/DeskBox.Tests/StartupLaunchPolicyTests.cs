@@ -30,6 +30,13 @@ public sealed class StartupLaunchPolicyTests
     }
 
     [Fact]
+    public void IsStartupLaunch_AcceptsScheduledTaskCommandLine()
+    {
+        Assert.True(StartupLaunchPolicy.IsStartupLaunch(
+            ["DeskBox.exe", "--startup", "--startup-source=scheduled-task"]));
+    }
+
+    [Fact]
     public void IsStartupLaunch_RejectsOrdinaryLaunch()
     {
         Assert.False(StartupLaunchPolicy.IsStartupLaunch(

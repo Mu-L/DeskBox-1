@@ -44,7 +44,9 @@ public sealed partial class QuickCaptureWidgetWindow
             return;
         }
 
-        if (isLeftButtonPressed && ShouldOpenTitleBarFlyout(e.OriginalSource))
+        if (isLeftButtonPressed &&
+            ShouldOpenTitleBarFlyout(e.OriginalSource) &&
+            !Win32Helper.IsKeyPressed(Windows.System.VirtualKey.Control))
         {
             App.Current.WidgetManager?.ActivateAllVisibleWidgetsFromTitle(_hWnd);
         }

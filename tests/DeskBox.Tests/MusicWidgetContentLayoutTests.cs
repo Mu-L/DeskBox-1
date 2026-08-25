@@ -1,5 +1,6 @@
 using DeskBox.Controls.WidgetContents;
 using DeskBox.Services;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace DeskBox.Tests;
@@ -76,6 +77,137 @@ public sealed class MusicWidgetContentLayoutTests
         bool expected)
     {
         Assert.Equal(expected, MusicWidgetContent.ShouldShowHorizontalPlaybackModeControl(width));
+    }
+
+    [Theory]
+    [InlineData(150, 138)]
+    [InlineData(180, 168)]
+    [InlineData(240, 228)]
+    [InlineData(250, 238)]
+    [InlineData(480, 238)]
+    public void ResolveInlineVolumePanelWidth_StaysInsideEveryWidgetWidth(
+        double width,
+        double expected)
+    {
+        Assert.Equal(expected, MusicWidgetContent.ResolveInlineVolumePanelWidth(width));
+    }
+
+    [Theory]
+    [InlineData(150, 138)]
+    [InlineData(240, 228)]
+    [InlineData(320, 280)]
+    public void ResolveSourceFlyoutMaxWidth_StaysInsideTheWidget(
+        double width,
+        double expected)
+    {
+        Assert.Equal(expected, MusicWidgetContent.ResolveSourceFlyoutMaxWidth(width));
+    }
+
+    [Theory]
+    [InlineData(150, 138)]
+    [InlineData(240, 228)]
+    public void ResolveSourceFlyoutMaxHeight_StaysInsideTheWidget(
+        double height,
+        double expected)
+    {
+        Assert.Equal(expected, MusicWidgetContent.ResolveSourceFlyoutMaxHeight(height));
+    }
+
+    [Fact]
+    public void InlineVolumePanel_UsesTheRootBlankSurfaceAndHandledPointerRoute()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/MusicWidgetContent.xaml"));
+        string code = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/MusicWidgetContent.xaml.cs"));
+
+        Assert.Contains("x:Name=\"RootGrid\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Background=\"Transparent\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "PointerPressed=\"RootGrid_PointerPressed\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains("RootGrid.AddHandler(", code, StringComparison.Ordinal);
+        Assert.Contains("handledEventsToo: true", code, StringComparison.Ordinal);
+        Assert.Contains("RootGrid.RemoveHandler(", code, StringComparison.Ordinal);
+        Assert.Contains("UpdateInlineVolumePanelLayout(width);", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SourcePicker_ExistsInAllFourLayoutsAndUsesAnImmediateNativeMenu()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/MusicWidgetContent.xaml"));
+        string code = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/MusicWidgetContent.xaml.cs"));
+        string icon = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/MusicSourceIcon.xaml"));
+
+        Assert.Contains("x:Name=\"MinimalSourceButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"SourceButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"RecordSourceButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"RecordHorizontalSourceButton\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(4, CountOccurrences(xaml, "Click=\"SourceButton_Click\""));
+        Assert.Equal(4, CountOccurrences(xaml, "<local:MusicSourceIcon"));
+        Assert.DoesNotContain("{Binding SourcePickerTooltip}", xaml, StringComparison.Ordinal);
+
+        Assert.Contains("new RadioMenuFlyoutItem", code, StringComparison.Ordinal);
+        Assert.Contains("MenuFlyoutPresenterStyle = CreateSourceFlyoutPresenterStyle()", code, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetName(button, label);", code, StringComparison.Ordinal);
+        Assert.Contains("ToolTipService.SetToolTip(button, label);", code, StringComparison.Ordinal);
+        Assert.Contains("flyout.Hide();", code, StringComparison.Ordinal);
+        Assert.Contains("++_sourceFlyoutGeneration;", code, StringComparison.Ordinal);
+        Assert.Contains("ResolveSourceFlyoutMaxWidth(width)", code, StringComparison.Ordinal);
+        Assert.Contains("ResolveSourceFlyoutMaxHeight(height)", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("ContentDialog", code, StringComparison.Ordinal);
+
+        Assert.Contains("Fluent System Icons: LiveFilled", icon, StringComparison.Ordinal);
+        Assert.Contains("M4.34239 4.34305", icon, StringComparison.Ordinal);
+        Assert.Contains("Fill=\"{x:Bind Foreground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SourceSelection_PreservesFollowSystemModeUntilTheUserPinsASource()
+    {
+        string mediaInfoCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/ViewModels/MusicWidgetViewModel.MediaInfo.cs"));
+        string playbackCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/ViewModels/MusicWidgetViewModel.Playback.cs"));
+
+        Assert.DoesNotContain("_preferredSessionId ??=", mediaInfoCode, StringComparison.Ordinal);
+        Assert.Contains("SelectSessionAsync(string? sessionId)", playbackCode, StringComparison.Ordinal);
+        Assert.Contains("_preferredSessionId = null;", playbackCode, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SourcePickerLocalization_ExistsInEveryJsonLocale()
+    {
+        string stringsDirectory = TestPaths.FromRepository("src/DeskBox/Strings");
+        string[] localePaths = Directory
+            .EnumerateFiles(stringsDirectory, "*.json", SearchOption.TopDirectoryOnly)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        string[] requiredKeys =
+        [
+            "Music.SwitchSource",
+            "Music.FollowSystemSource",
+            "Music.NoAvailableSources"
+        ];
+
+        Assert.NotEmpty(localePaths);
+        foreach (string localePath in localePaths)
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(localePath));
+            foreach (string key in requiredKeys)
+            {
+                Assert.True(
+                    document.RootElement.TryGetProperty(key, out JsonElement value),
+                    $"{Path.GetFileName(localePath)} is missing {key}.");
+                Assert.False(
+                    string.IsNullOrWhiteSpace(value.GetString()),
+                    $"{Path.GetFileName(localePath)} has an empty {key} value.");
+            }
+        }
     }
 
     [Fact]

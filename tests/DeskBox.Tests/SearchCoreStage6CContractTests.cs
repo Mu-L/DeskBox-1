@@ -31,14 +31,16 @@ public sealed class SearchCoreStage6CContractTests
     }
 
     [Fact]
-    public void ProductPreview_HasOneResidentOwnerAndExplicitManagedFallback()
+    public void ProductRuntime_HasOneResidentOwnerAndExplicitManagedFallback()
     {
         string service = Read("src/DeskBox/Services/SearchIndexService.cs");
         string settings = Read("src/DeskBox/Models/AppSettings.cs");
         string settingsUi = Read("src/DeskBox/Views/SettingsSections/SearchSettingsSection.xaml");
 
         Assert.Contains("SearchRustIndexerPreviewEnabled", settings, StringComparison.Ordinal);
-        Assert.Contains("SearchRustPreviewToggle", settingsUi, StringComparison.Ordinal);
+        Assert.DoesNotContain("SearchRustPreviewToggle", settingsUi, StringComparison.Ordinal);
+        Assert.Contains("SearchSystemNoiseToggle", settingsUi, StringComparison.Ordinal);
+        Assert.Contains("SearchIndexBackendText", settingsUi, StringComparison.Ordinal);
         Assert.Contains("TryActivateNativeLoadedIndex", service, StringComparison.Ordinal);
         Assert.Contains("HasSingleResidentBackend", service, StringComparison.Ordinal);
         Assert.Contains("DisposeNativeIndexLocked", service, StringComparison.Ordinal);
@@ -89,7 +91,7 @@ public sealed class SearchCoreStage6CContractTests
     }
 
     [Fact]
-    public void EveryLocale_ContainsRustPreviewAndBackendStatusKeys()
+    public void EveryLocale_ContainsBackendAndSystemNoiseKeys()
     {
         string stringsDirectory = TestPaths.FromRepository("src/DeskBox/Strings");
         string[] files = Directory.GetFiles(stringsDirectory, "*.json");
@@ -105,7 +107,9 @@ public sealed class SearchCoreStage6CContractTests
                          "Settings.Search.Index.Backend.Managed",
                          "Settings.Search.Index.Backend.Rust",
                          "Settings.Search.Index.Backend.Fallback",
-                         "Settings.Search.Index.Backend.Preparing"
+                         "Settings.Search.Index.Backend.Preparing",
+                         "Settings.Search.Filter.SystemNoise.Title",
+                         "Settings.Search.Filter.SystemNoise.Description"
                      })
             {
                 Assert.Contains($"\"{key}\"", content, StringComparison.Ordinal);

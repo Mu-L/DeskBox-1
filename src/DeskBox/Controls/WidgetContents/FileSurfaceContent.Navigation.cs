@@ -32,7 +32,8 @@ public sealed partial class FileSurfaceContent
 
     private async Task ActivateItemAsync(WidgetItem item)
     {
-        if (!item.IsFolder ||
+        if (IsItemInStackPopover(item) ||
+            !item.IsFolder ||
             !ViewModel.IsEmbeddedFolderNavigationEnabled)
         {
             ViewModel.OpenItem(item, _hostWindowHandle);

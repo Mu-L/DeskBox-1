@@ -21,8 +21,25 @@ using Windows.UI.ViewManagement;
 
 namespace DeskBox.Controls;
 
+public sealed class WidgetMenuRequestedEventArgs : EventArgs
+{
+    public WidgetMenuRequestedEventArgs(
+        FrameworkElement anchor,
+        Windows.Foundation.Point? pointerPosition)
+    {
+        Anchor = anchor ?? throw new ArgumentNullException(nameof(anchor));
+        PointerPosition = pointerPosition;
+    }
+
+    public FrameworkElement Anchor { get; }
+
+    public Windows.Foundation.Point? PointerPosition { get; }
+}
+
 public sealed partial class WidgetShell : UserControl
 {
+    private const double MoreMenuPointerOffsetDips = 4;
+    private const long MoreMenuPointerMaximumAgeMilliseconds = 1000;
     private const double CompactMarqueeGap = 32;
     private const double CompactMarqueeStartDelayMs = 900;
     private const double CompactMarqueeSpeedPixelsPerSecond = 50;
@@ -156,6 +173,7 @@ public sealed partial class WidgetShell : UserControl
     private TextBlock? _compactMarqueeClone;
     private Canvas? _compactMarqueeCanvas;
     private FrameworkElement? _compactMarqueeViewport;
+    private bool _compactMarqueeTextEdgeModeActive;
     private WidgetCompactPresentation? _compactPresentation;
     private WidgetGroupPresentation? _groupPresentation;
     private IWidgetContent? _hostedContent;
@@ -191,6 +209,9 @@ public sealed partial class WidgetShell : UserControl
     private Storyboard? _compactVinylRotationStoryboard;
     private bool _isCompactVinylRotating;
     private bool _isPointerOverDragHandle;
+    private Windows.Foundation.Point? _pendingMoreMenuPointerPosition;
+    private long _pendingMoreMenuPointerCapturedAt;
+    private int _moreMenuPointerCaptureVersion;
     private DragHandleClickAction _pendingDragHandleClickAction;
     private bool _hasDragHandlePressMoved;
     private Windows.Foundation.Point _dragHandlePressPoint;
@@ -214,7 +235,7 @@ public sealed partial class WidgetShell : UserControl
     public event EventHandler<RoutedEventArgs>? AddRequested;
     public event EventHandler<RoutedEventArgs>? PositionLockRequested;
     public event EventHandler<RoutedEventArgs>? SizeLockRequested;
-    public event EventHandler<RoutedEventArgs>? MoreRequested;
+    public event EventHandler<WidgetMenuRequestedEventArgs>? MoreRequested;
     public event EventHandler<RoutedEventArgs>? CloseRequested;
     public event EventHandler<RoutedEventArgs>? CollapseRequested;
     public event EventHandler<RoutedEventArgs>? ExpandRequested;
@@ -283,6 +304,22 @@ public sealed partial class WidgetShell : UserControl
             UIElement.PointerWheelChangedEvent,
             new PointerEventHandler(TitleBarGrid_PointerWheelChanged),
             true);
+        MoreButton.AddHandler(
+            UIElement.PointerPressedEvent,
+            new PointerEventHandler(MoreButton_PointerPressed),
+            true);
+        MoreButton.AddHandler(
+            UIElement.PointerReleasedEvent,
+            new PointerEventHandler(MoreButton_PointerReleased),
+            true);
+        MoreButton.AddHandler(
+            UIElement.PointerCanceledEvent,
+            new PointerEventHandler(MoreButton_PointerCanceled),
+            true);
+        MoreButton.AddHandler(
+            UIElement.KeyDownEvent,
+            new KeyEventHandler(MoreButton_KeyDown),
+            true);
         RightActionButtons.SizeChanged += (_, _) =>
         {
             _rightButtonsTransform = RightActionButtons.RenderTransform as TranslateTransform;
@@ -310,6 +347,7 @@ public sealed partial class WidgetShell : UserControl
             _compactUpdateStoryboard?.Stop();
             StopGroupDropPreviewBreathing();
             EndShellDragSession(notifyCompact: true);
+            ClearPendingMoreMenuPointerPosition();
         };
     }
 
@@ -538,6 +576,26 @@ public sealed partial class WidgetShell : UserControl
     public bool IsOverlayChromeMode => ChromeMode is WidgetChromeMode.Overlay or WidgetChromeMode.Hidden;
 
     public bool IsCollapsed => _isCollapsed;
+
+    /// <summary>
+    /// Keeps the root-level text edge visual aligned with compact text. The
+    /// marquee uses a parent render transform that does not produce per-frame
+    /// layout updates, so its detached shadow cannot reliably follow it.
+    /// </summary>
+    public void SetCompactMarqueeTextEdgeModeActive(bool active)
+    {
+        if (_compactMarqueeTextEdgeModeActive == active)
+        {
+            return;
+        }
+
+        _compactMarqueeTextEdgeModeActive = active;
+        StopCompactMarquee();
+        if (!active)
+        {
+            QueueCompactMarquee(650);
+        }
+    }
 
     public bool IsCompactMoveHandlePress => _isCompactMoveHandlePress;
 
@@ -1356,9 +1414,7 @@ public sealed partial class WidgetShell : UserControl
     {
         double titleHeight = IsOverlayChromeMode
             ? 0
-            : _titleBarRowHeight.GridUnitType == GridUnitType.Pixel
-                ? _titleBarRowHeight.Value
-                : Math.Max(0, TitleBarGrid.ActualHeight);
+            : ResolveTitleBarLayoutHeight();
         _responsiveTargetContentWidth = Math.Max(0, targetWindowWidth);
         _responsiveTargetContentHeight = Math.Max(0, targetWindowHeight - titleHeight);
         _isResponsiveLayoutTransitionActive = true;
@@ -1525,11 +1581,16 @@ public sealed partial class WidgetShell : UserControl
             // body are measured at their real target size behind it. This realizes
             // templates and performs the first expensive XAML layout without moving
             // or resizing the native window.
-            double titleHeight = IsOverlayChromeMode
-                ? 0
-                : _titleBarRowHeight.GridUnitType == GridUnitType.Pixel
-                    ? Math.Max(0, _titleBarRowHeight.Value)
-                    : Math.Max(0, TitleBarGrid.ActualHeight);
+            double titleHeight = 0;
+            if (!IsOverlayChromeMode)
+            {
+                TitleBarGrid.Measure(new Windows.Foundation.Size(
+                    targetWindowWidth,
+                    double.PositiveInfinity));
+                titleHeight = Math.Max(
+                    ResolveTitleBarLayoutHeight(),
+                    TitleBarGrid.DesiredSize.Height);
+            }
             double contentHeight = Math.Max(1, targetWindowHeight - titleHeight);
             var titleSize = new Windows.Foundation.Size(targetWindowWidth, titleHeight);
             var contentSize = new Windows.Foundation.Size(targetWindowWidth, contentHeight);
@@ -1995,6 +2056,9 @@ public sealed partial class WidgetShell : UserControl
 
         bool useFullBleed = presentation.UseFullBleedBackground && presentation.Thumbnail is not null;
         CompactFullBleedBackground.Source = useFullBleed ? presentation.Thumbnail : null;
+        CompactFullBleedClip.Opacity = useFullBleed
+            ? ResolveFullBleedBackgroundOpacity()
+            : 1.0;
         ApplyFullBleedOverlayTheme();
         ApplyFullBleedVisibility(useFullBleed);
 
@@ -2750,6 +2814,11 @@ public sealed partial class WidgetShell : UserControl
         0.0,
         1.0);
 
+    private double ResolveFullBleedBackgroundOpacity() => Math.Clamp(
+        _compactPresentation?.FullBleedBackgroundOpacity ?? 1.0,
+        0.0,
+        1.0);
+
     private static readonly Brush s_fullBleedTitleBrush = new SolidColorBrush(Microsoft.UI.Colors.White);
     private static readonly Brush s_fullBleedSummaryBrush = new SolidColorBrush(
         Windows.UI.Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
@@ -3422,6 +3491,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
+            _compactMarqueeTextEdgeModeActive ||
             _compactPresentation?.EnableMarquee != true ||
             ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
@@ -3456,6 +3526,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
+            _compactMarqueeTextEdgeModeActive ||
             _compactPresentation?.EnableMarquee != true ||
             ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
@@ -3694,6 +3765,14 @@ public sealed partial class WidgetShell : UserControl
         ApplyChromeMode();
     }
 
+    private double ResolveTitleBarMinimumHeight() =>
+        _titleBarRowHeight.GridUnitType == GridUnitType.Pixel
+            ? Math.Max(0, _titleBarRowHeight.Value)
+            : 0;
+
+    private double ResolveTitleBarLayoutHeight() =>
+        Math.Max(ResolveTitleBarMinimumHeight(), Math.Max(0, TitleBarGrid.ActualHeight));
+
     public void SetTitleBarPadding(Thickness padding)
     {
         _titleBarPadding = padding;
@@ -3889,6 +3968,7 @@ public sealed partial class WidgetShell : UserControl
 
         if (_isCollapsed)
         {
+            ShellRoot.RowDefinitions[0].MinHeight = 0;
             ShellRoot.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
             ShellRoot.RowDefinitions[1].Height = new GridLength(0);
             TitleBarGrid.Visibility = Visibility.Collapsed;
@@ -3905,9 +3985,12 @@ public sealed partial class WidgetShell : UserControl
         bool usesOverlay = ChromeMode is WidgetChromeMode.Overlay or WidgetChromeMode.Hidden;
         bool isEditingTitle = TitleEditorContent is not null;
 
+        ShellRoot.RowDefinitions[0].MinHeight = usesOverlay
+            ? 0
+            : ResolveTitleBarMinimumHeight();
         ShellRoot.RowDefinitions[0].Height = usesOverlay
             ? new GridLength(0)
-            : _titleBarRowHeight;
+            : GridLength.Auto;
         BackgroundPlate.Margin = new Thickness(0);
         Grid.SetRow(TitleBarGrid, usesOverlay ? 1 : 0);
         Canvas.SetZIndex(TitleBarGrid, usesOverlay ? 40 : 2);
@@ -4558,7 +4641,80 @@ public sealed partial class WidgetShell : UserControl
 
     private void MoreButton_Click(object sender, RoutedEventArgs e)
     {
-        MoreRequested?.Invoke(this, e);
+        MoreRequested?.Invoke(
+            this,
+            new WidgetMenuRequestedEventArgs(
+                MoreButton,
+                ConsumePendingMoreMenuPointerPosition()));
+    }
+
+    private void MoreButton_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        PointerPoint point = e.GetCurrentPoint(MoreButton);
+        if ((point.PointerDeviceType != PointerDeviceType.Mouse &&
+             point.PointerDeviceType != PointerDeviceType.Touchpad) ||
+            !point.Properties.IsLeftButtonPressed)
+        {
+            ClearPendingMoreMenuPointerPosition();
+            return;
+        }
+
+        _pendingMoreMenuPointerPosition = new Windows.Foundation.Point(
+            point.Position.X + MoreMenuPointerOffsetDips,
+            point.Position.Y + MoreMenuPointerOffsetDips);
+        _pendingMoreMenuPointerCapturedAt = Environment.TickCount64;
+        unchecked
+        {
+            _moreMenuPointerCaptureVersion++;
+        }
+    }
+
+    private void MoreButton_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_pendingMoreMenuPointerPosition is null)
+        {
+            return;
+        }
+
+        int captureVersion = _moreMenuPointerCaptureVersion;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_moreMenuPointerCaptureVersion == captureVersion)
+            {
+                ClearPendingMoreMenuPointerPosition();
+            }
+        });
+    }
+
+    private void MoreButton_PointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        ClearPendingMoreMenuPointerPosition();
+    }
+
+    private void MoreButton_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        ClearPendingMoreMenuPointerPosition();
+    }
+
+    private Windows.Foundation.Point? ConsumePendingMoreMenuPointerPosition()
+    {
+        Windows.Foundation.Point? pointerPosition = _pendingMoreMenuPointerPosition;
+        long capturedAt = _pendingMoreMenuPointerCapturedAt;
+        ClearPendingMoreMenuPointerPosition();
+
+        if (pointerPosition is null ||
+            Environment.TickCount64 - capturedAt > MoreMenuPointerMaximumAgeMilliseconds)
+        {
+            return null;
+        }
+
+        return pointerPosition;
+    }
+
+    private void ClearPendingMoreMenuPointerPosition()
+    {
+        _pendingMoreMenuPointerPosition = null;
+        _pendingMoreMenuPointerCapturedAt = 0;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)

@@ -62,6 +62,8 @@ public sealed class CompactPresentationRefreshTests
     [InlineData(nameof(GlanceWidgetViewModel.WeekdayText))]
     [InlineData(nameof(GlanceWidgetViewModel.TraditionalCalendarTitle))]
     [InlineData(nameof(GlanceWidgetViewModel.CurrentImagePath))]
+    [InlineData(nameof(GlanceWidgetViewModel.BackgroundImageOpacity))]
+    [InlineData(nameof(GlanceWidgetViewModel.HasVisibleCurrentImage))]
     [InlineData(nameof(GlanceWidgetViewModel.ReadabilityOpacity))]
     [InlineData(nameof(GlanceWidgetViewModel.ReadabilityStrengthOpacity))]
     public void GlanceCompactPresentation_RefreshesForVisibleClockAndImageProperties(

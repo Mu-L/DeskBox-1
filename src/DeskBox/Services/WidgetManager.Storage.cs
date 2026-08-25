@@ -386,6 +386,10 @@ public sealed partial class WidgetManager
             await Task.Run(() => Directory.Move(currentFolderPath, destinationFolderPath));
         }
 
+        WidgetFileStackSettings.RebaseManagedFolderPaths(
+            config,
+            currentFolderPath,
+            destinationFolderPath);
         config.ManagedFolderName = desiredFolderName;
         config.MappedFolderPath = destinationFolderPath;
 

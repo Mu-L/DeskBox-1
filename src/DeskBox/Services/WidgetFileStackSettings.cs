@@ -18,10 +18,14 @@ internal sealed partial class WidgetMetadataJsonContext : JsonSerializerContext
 
 public static class WidgetFileStackSettings
 {
+    private const string LooseItemOrderKeyPrefix = "Item:";
+    private const string ManualStackKeyPrefix = "Manual:";
+
     public const string EnabledOverrideMetadataKey = "FileStacksEnabled";
     public const string GroupByOverrideMetadataKey = "FileStackGroupBy";
     public const string ThresholdOverrideMetadataKey = "FileStackThreshold";
     public const string OrderByOverrideMetadataKey = "FileStackOrderBy";
+    public const string OpenModeOverrideMetadataKey = "FileStackOpenMode";
     public const string DisabledStacksMetadataKey = "FileStackDisabledGroups";
     public const string StackNameOverridesMetadataKey = "FileStackNameOverrides";
     public const string StackOrderMetadataKey = "FileStackGroupOrder";
@@ -94,6 +98,25 @@ public static class WidgetFileStackSettings
         return SettingsService.NormalizeFileStackOrderBy(value);
     }
 
+    public static string? GetOpenModeOverride(WidgetConfig config)
+    {
+        if (config.Metadata is null ||
+            !config.Metadata.TryGetValue(OpenModeOverrideMetadataKey, out string? value) ||
+            (!string.Equals(
+                 value,
+                 SettingsService.FileStackOpenModeInline,
+                 StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(
+                 value,
+                 SettingsService.FileStackOpenModePopover,
+                 StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        return SettingsService.NormalizeFileStackOpenMode(value);
+    }
+
     public static bool ResolveEnabled(WidgetConfig config, bool globalDefault) =>
         GetEnabledOverride(config) ?? globalDefault;
 
@@ -106,11 +129,15 @@ public static class WidgetFileStackSettings
     public static string ResolveOrderBy(WidgetConfig config, string? globalDefault) =>
         GetOrderByOverride(config) ?? SettingsService.NormalizeFileStackOrderBy(globalDefault);
 
+    public static string ResolveOpenMode(WidgetConfig config, string? globalDefault) =>
+        GetOpenModeOverride(config) ?? SettingsService.NormalizeFileStackOpenMode(globalDefault);
+
     public static bool FollowsGlobalDefaults(WidgetConfig config) =>
         GetEnabledOverride(config) is null &&
         GetGroupByOverride(config) is null &&
         GetThresholdOverride(config) is null &&
-        GetOrderByOverride(config) is null;
+        GetOrderByOverride(config) is null &&
+        GetOpenModeOverride(config) is null;
 
     public static void SetEnabledOverride(WidgetConfig config, bool? enabled)
     {
@@ -166,12 +193,26 @@ public static class WidgetFileStackSettings
             SettingsService.NormalizeFileStackOrderBy(orderBy);
     }
 
+    public static void SetOpenModeOverride(WidgetConfig config, string? openMode)
+    {
+        config.Metadata ??= [];
+        if (openMode is null)
+        {
+            config.Metadata.Remove(OpenModeOverrideMetadataKey);
+            return;
+        }
+
+        config.Metadata[OpenModeOverrideMetadataKey] =
+            SettingsService.NormalizeFileStackOpenMode(openMode);
+    }
+
     public static void ClearOverrides(WidgetConfig config)
     {
         config.Metadata?.Remove(EnabledOverrideMetadataKey);
         config.Metadata?.Remove(GroupByOverrideMetadataKey);
         config.Metadata?.Remove(ThresholdOverrideMetadataKey);
         config.Metadata?.Remove(OrderByOverrideMetadataKey);
+        config.Metadata?.Remove(OpenModeOverrideMetadataKey);
     }
 
     // ── Stack customizations (rename / unstack / manual group order) ──
@@ -324,6 +365,231 @@ public static class WidgetFileStackSettings
                 WidgetMetadataJsonContext.Default.StringListMap);
     }
 
+    /// <summary>
+    /// Rebases every widget-owned absolute path after its managed root folder is
+    /// renamed. The calculation is completed before the config is mutated so a
+    /// failed directory move never leaves partially migrated stack metadata.
+    /// </summary>
+    public static bool RebaseManagedFolderPaths(
+        WidgetConfig config,
+        string oldRootPath,
+        string newRootPath)
+    {
+        string oldRoot = NormalizeRootPath(oldRootPath);
+        string newRoot = NormalizeRootPath(newRootPath);
+        if (string.Equals(oldRoot, newRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        Dictionary<string, List<string>> currentMembers =
+            GetStackMemberOverrides(config);
+        Dictionary<string, List<string>> rebasedMembers = currentMembers
+            .ToDictionary(
+                entry => entry.Key,
+                entry => entry.Value
+                    .Select(path => RebasePath(path, oldRoot, newRoot))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                StringComparer.Ordinal);
+
+        List<string> currentOrder = GetStackOrder(config);
+        List<string> rebasedOrder = currentOrder
+            .Select(key => RebaseLooseItemOrderKey(key, oldRoot, newRoot))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        Dictionary<string, DateTimeOffset> currentAddedAt =
+            config.FileAddedAtByPath ?? [];
+        var rebasedAddedAt = new Dictionary<string, DateTimeOffset>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach ((string path, DateTimeOffset addedAt) in currentAddedAt)
+        {
+            rebasedAddedAt[RebasePath(path, oldRoot, newRoot)] = addedAt;
+        }
+
+        bool membersChanged = !StringListMapsEqual(
+            currentMembers,
+            rebasedMembers);
+        bool orderChanged = !currentOrder.SequenceEqual(
+            rebasedOrder,
+            StringComparer.Ordinal);
+        bool addedAtChanged = !StringDateMapsEqual(
+            currentAddedAt,
+            rebasedAddedAt);
+        if (!membersChanged && !orderChanged && !addedAtChanged)
+        {
+            return false;
+        }
+
+        if (membersChanged)
+        {
+            SetStackMemberOverrides(config, rebasedMembers);
+        }
+
+        if (orderChanged)
+        {
+            SetStackOrder(config, rebasedOrder);
+        }
+
+        if (addedAtChanged)
+        {
+            config.FileAddedAtByPath = rebasedAddedAt;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Removes display metadata for manual stacks that no longer have enough
+    /// persisted members to exist. Automatic group customizations are retained
+    /// because those groups can legitimately disappear and return later.
+    /// </summary>
+    public static bool PruneOrphanedManualStackMetadata(WidgetConfig config)
+    {
+        Dictionary<string, List<string>> members =
+            GetStackMemberOverrides(config);
+        HashSet<string> activeManualKeys = members
+            .Where(entry =>
+                entry.Key.StartsWith(
+                    ManualStackKeyPrefix,
+                    StringComparison.Ordinal) &&
+                entry.Value.Count >= 2)
+            .Select(entry => entry.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        bool changed = false;
+        string[] incompleteManualKeys = members
+            .Where(entry =>
+                entry.Key.StartsWith(
+                    ManualStackKeyPrefix,
+                    StringComparison.Ordinal) &&
+                !activeManualKeys.Contains(entry.Key))
+            .Select(entry => entry.Key)
+            .ToArray();
+        foreach (string key in incompleteManualKeys)
+        {
+            changed |= members.Remove(key);
+        }
+
+        Dictionary<string, string> names = GetStackNameOverrides(config);
+        foreach (string key in names.Keys
+                     .Where(key => IsOrphanedManualKey(key, activeManualKeys))
+                     .ToArray())
+        {
+            changed |= names.Remove(key);
+        }
+
+        HashSet<string> disabled = GetDisabledStacks(config);
+        changed |= disabled.RemoveWhere(key =>
+            IsOrphanedManualKey(key, activeManualKeys)) > 0;
+
+        List<string> order = GetStackOrder(config);
+        List<string> prunedOrder = order
+            .Where(key => !IsOrphanedManualKey(key, activeManualKeys))
+            .ToList();
+        changed |= prunedOrder.Count != order.Count;
+        if (!changed)
+        {
+            return false;
+        }
+
+        SetStackMemberOverrides(config, members);
+        SetStackNameOverrides(config, names);
+        SetDisabledStacks(config, disabled);
+        SetStackOrder(config, prunedOrder);
+        return true;
+    }
+
+    private static bool IsOrphanedManualKey(
+        string key,
+        IReadOnlySet<string> activeManualKeys) =>
+        key.StartsWith(ManualStackKeyPrefix, StringComparison.Ordinal) &&
+        !activeManualKeys.Contains(key);
+
+    private static string RebaseLooseItemOrderKey(
+        string key,
+        string oldRoot,
+        string newRoot)
+    {
+        if (!key.StartsWith(LooseItemOrderKeyPrefix, StringComparison.Ordinal))
+        {
+            return key;
+        }
+
+        string path = key[LooseItemOrderKeyPrefix.Length..];
+        string rebasedPath = RebasePath(path, oldRoot, newRoot);
+        return string.Equals(path, rebasedPath, StringComparison.OrdinalIgnoreCase)
+            ? key
+            : LooseItemOrderKeyPrefix + rebasedPath.ToUpperInvariant();
+    }
+
+    private static string RebasePath(
+        string path,
+        string oldRoot,
+        string newRoot)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(path);
+        }
+        catch
+        {
+            return path;
+        }
+
+        if (string.Equals(fullPath, oldRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return newRoot;
+        }
+
+        string oldPrefix = oldRoot + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        return Path.Combine(newRoot, fullPath[oldPrefix.Length..]);
+    }
+
+    private static string NormalizeRootPath(string path) =>
+        Path.GetFullPath(path)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    private static bool StringListMapsEqual(
+        IReadOnlyDictionary<string, List<string>> left,
+        IReadOnlyDictionary<string, List<string>> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        return left.All(entry =>
+            right.TryGetValue(entry.Key, out List<string>? values) &&
+            entry.Value.SequenceEqual(values, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static bool StringDateMapsEqual(
+        IReadOnlyDictionary<string, DateTimeOffset> left,
+        IReadOnlyDictionary<string, DateTimeOffset> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        return left.All(entry =>
+            right.TryGetValue(entry.Key, out DateTimeOffset value) &&
+            value == entry.Value);
+    }
+
     private static List<string> ReadStringList(
         WidgetConfig config,
         string key)
@@ -418,6 +684,11 @@ public static class WidgetFileStackSettings
             config,
             OrderByOverrideMetadataKey,
             GetOrderByOverride(config));
+        changed |= NormalizeOverride(
+            config,
+            OpenModeOverrideMetadataKey,
+            GetOpenModeOverride(config));
+        changed |= PruneOrphanedManualStackMetadata(config);
         return changed;
     }
 

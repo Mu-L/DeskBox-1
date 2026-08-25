@@ -28,6 +28,7 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         Assert.Equal(GlanceOnlineImageCategory.Featured, data.OnlineImageCategory);
         Assert.Equal(30d, data.RotationIntervalMinutes);
         Assert.Equal(GlanceTransitionMode.CrossFade, data.Transition);
+        Assert.Equal(0, data.BackgroundImageTransparency);
         Assert.Equal(GlanceCalendarMaterialMode.FollowSystem, data.CalendarMaterialMode);
         Assert.Equal(0.32, data.CalendarImageMaterialTransparency, precision: 2);
         Assert.Equal(GlanceTraditionalCalendarMode.None, data.TraditionalCalendarMode);
@@ -129,6 +130,7 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         await store.SaveAsync(new GlanceWidgetData
         {
             CalendarMaterialMode = GlanceCalendarMaterialMode.FollowImage,
+            BackgroundImageTransparency = 4,
             CalendarImageMaterialTransparency = 4,
             TraditionalCalendarMode = GlanceTraditionalCalendarMode.Hebrew,
             ShowChineseFestivals = false
@@ -137,9 +139,43 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         GlanceWidgetData reloaded = await new GlanceWidgetStore(_tempRoot).LoadAsync();
 
         Assert.Equal(GlanceCalendarMaterialMode.FollowImage, reloaded.CalendarMaterialMode);
+        Assert.Equal(1, reloaded.BackgroundImageTransparency);
         Assert.Equal(1, reloaded.CalendarImageMaterialTransparency);
         Assert.Equal(GlanceTraditionalCalendarMode.Hebrew, reloaded.TraditionalCalendarMode);
         Assert.False(reloaded.ShowChineseFestivals);
+    }
+
+    [Theory]
+    [InlineData(-2, 0)]
+    [InlineData(0, 0)]
+    [InlineData(0.42, 0.42)]
+    [InlineData(1, 1)]
+    [InlineData(3, 1)]
+    public async Task SaveAsync_ClampsBackgroundImageTransparency(
+        double requested,
+        double expected)
+    {
+        var store = new GlanceWidgetStore(_tempRoot);
+        await store.SaveAsync(new GlanceWidgetData
+        {
+            BackgroundImageTransparency = requested
+        });
+
+        GlanceWidgetData reloaded = await new GlanceWidgetStore(_tempRoot).LoadAsync();
+
+        Assert.Equal(expected, reloaded.BackgroundImageTransparency, precision: 6);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ResetsNonFiniteBackgroundImageTransparency()
+    {
+        var store = new GlanceWidgetStore(_tempRoot);
+        await store.UpdateAsync(settings =>
+            settings.BackgroundImageTransparency = double.NaN);
+
+        GlanceWidgetData reloaded = await new GlanceWidgetStore(_tempRoot).LoadAsync();
+
+        Assert.Equal(0, reloaded.BackgroundImageTransparency);
     }
 
     [Fact]
@@ -152,7 +188,8 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         {
             ShowTime = false,
             BackgroundSource = GlanceBackgroundSource.LocalFiles,
-            LocalImagePaths = [@"C:\Pictures\first.jpg"]
+            LocalImagePaths = [@"C:\Pictures\first.jpg"],
+            BackgroundImageTransparency = 0.64
         });
         await second.SaveAsync(new GlanceWidgetData
         {
@@ -170,8 +207,10 @@ public sealed class GlanceWidgetStoreTests : IDisposable
         Assert.NotEqual(first.StorePath, second.StorePath);
         Assert.False(firstReloaded.ShowTime);
         Assert.Single(firstReloaded.LocalImagePaths);
+        Assert.Equal(0.64, firstReloaded.BackgroundImageTransparency, precision: 2);
         Assert.True(secondReloaded.ShowTime);
         Assert.Empty(secondReloaded.LocalImagePaths);
+        Assert.Equal(0, secondReloaded.BackgroundImageTransparency);
     }
 
     public void Dispose()

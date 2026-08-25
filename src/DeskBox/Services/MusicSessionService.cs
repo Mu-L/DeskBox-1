@@ -39,6 +39,13 @@ public sealed record MusicSessionInfo(
     MusicPlaybackMode PlaybackMode,
     IRandomAccessStreamReference? Thumbnail);
 
+public sealed record MusicSessionOption(
+    string SessionId,
+    string SourceAppUserModelId,
+    string SourceDisplayName,
+    MusicPlaybackState PlaybackState,
+    bool IsSystemCurrent);
+
 public sealed record MusicTimelineSnapshot(
     TimeSpan Position,
     TimeSpan Duration);
@@ -89,14 +96,44 @@ public sealed class MusicSessionService : IDisposable
 
     public IReadOnlyList<string> GetSessionIds()
     {
+        return GetSessionOptions()
+            .Select(option => option.SessionId)
+            .ToArray();
+    }
+
+    public IReadOnlyList<MusicSessionOption> GetSessionOptions()
+    {
         if (_isDisposed || _manager is null)
         {
             return [];
         }
 
-        return _manager.GetSessions()
-            .Select(GetSessionId)
-            .ToArray();
+        GlobalSystemMediaTransportControlsSession? systemCurrent = _manager.GetCurrentSession();
+        var options = new List<MusicSessionOption>();
+        foreach (SessionEntry entry in EnumerateSessionEntries())
+        {
+            try
+            {
+                var playbackInfo = entry.Session.GetPlaybackInfo();
+                string sourceApp = entry.Session.SourceAppUserModelId ?? string.Empty;
+                options.Add(new MusicSessionOption(
+                    entry.SessionId,
+                    sourceApp,
+                    GetSourceDisplayName(sourceApp),
+                    MapPlaybackState(playbackInfo.PlaybackStatus),
+                    IsSameSession(entry.Session, systemCurrent)));
+            }
+            catch (Exception ex)
+            {
+                // A source can disappear between GetSessions() and reading its
+                // state. Skip that stale entry; SessionsChanged will repopulate
+                // the picker without turning an ordinary player exit into an
+                // application error.
+                App.LogVerbose($"[MusicSession] Skipped stale source: {ex.Message}");
+            }
+        }
+
+        return options;
     }
 
     public async Task<MusicSessionInfo?> GetCurrentSessionInfoAsync(string? preferredSessionId = null)
@@ -332,8 +369,9 @@ public sealed class MusicSessionService : IDisposable
 
     private GlobalSystemMediaTransportControlsSession? FindSession(string sessionId)
     {
-        return _manager?.GetSessions()
-            .FirstOrDefault(session => string.Equals(GetSessionId(session), sessionId, StringComparison.Ordinal));
+        return EnumerateSessionEntries()
+            .FirstOrDefault(entry => string.Equals(entry.SessionId, sessionId, StringComparison.Ordinal))
+            ?.Session;
     }
 
     private async Task<MusicSessionInfo> CreateInfoAsync(GlobalSystemMediaTransportControlsSession session)
@@ -474,22 +512,151 @@ public sealed class MusicSessionService : IDisposable
         TimelinePropertiesChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private static string GetSessionId(GlobalSystemMediaTransportControlsSession session)
+    private string GetSessionId(GlobalSystemMediaTransportControlsSession session)
     {
-        return session.SourceAppUserModelId ?? string.Empty;
+        IReadOnlyList<SessionEntry> entries = EnumerateSessionEntries();
+        SessionEntry? identityMatch = entries.FirstOrDefault(entry => IsSameSession(entry.Session, session));
+        if (identityMatch is not null)
+        {
+            return identityMatch.SessionId;
+        }
+
+        string sourceApp = session.SourceAppUserModelId ?? string.Empty;
+        SessionEntry[] sourceMatches = entries
+            .Where(entry => string.Equals(
+                entry.Session.SourceAppUserModelId,
+                sourceApp,
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        return sourceMatches.Length == 1
+            ? sourceMatches[0].SessionId
+            : CreateSessionId(sourceApp, 0);
     }
 
-    private static string GetSourceDisplayName(string sourceAppUserModelId)
+    internal static string CreateSessionId(string sourceAppUserModelId, int sourceOrdinal)
+    {
+        return string.Concat(
+            sourceAppUserModelId,
+            "\u001F",
+            Math.Max(0, sourceOrdinal).ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    internal static string GetSourceDisplayName(string sourceAppUserModelId)
     {
         if (string.IsNullOrWhiteSpace(sourceAppUserModelId))
         {
             return string.Empty;
         }
 
-        var firstSegment = sourceAppUserModelId.Split('!')[0];
-        var dottedParts = firstSegment.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        string normalized = sourceAppUserModelId.Trim();
+        string lower = normalized.ToLowerInvariant();
+        if (lower.Contains("qqmusic", StringComparison.Ordinal))
+        {
+            return "QQ音乐";
+        }
+
+        if (lower.Contains("cloudmusic", StringComparison.Ordinal) ||
+            lower.Contains("netease", StringComparison.Ordinal))
+        {
+            return "网易云音乐";
+        }
+
+        if (lower.Contains("msedge", StringComparison.Ordinal))
+        {
+            return "Microsoft Edge";
+        }
+
+        if (lower.Contains("chrome", StringComparison.Ordinal))
+        {
+            return "Google Chrome";
+        }
+
+        if (lower.Contains("firefox", StringComparison.Ordinal))
+        {
+            return "Mozilla Firefox";
+        }
+
+        if (lower.Contains("spotify", StringComparison.Ordinal))
+        {
+            return "Spotify";
+        }
+
+        if (lower.Contains("zunemusic", StringComparison.Ordinal) ||
+            lower.Contains("media.player", StringComparison.Ordinal))
+        {
+            return "Windows Media Player";
+        }
+
+        string firstSegment = normalized.Split('!')[0];
+        if (firstSegment.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return Path.GetFileNameWithoutExtension(firstSegment);
+        }
+
+        string[] dottedParts = firstSegment.Split('.', StringSplitOptions.RemoveEmptyEntries);
         return dottedParts.Length > 0 ? dottedParts[^1] : firstSegment;
     }
+
+    internal static IReadOnlyList<string> DisambiguateSourceDisplayNames(
+        IReadOnlyList<string> displayNames)
+    {
+        var totals = displayNames
+            .GroupBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var result = new string[displayNames.Count];
+
+        for (int index = 0; index < displayNames.Count; index++)
+        {
+            string displayName = displayNames[index];
+            if (totals[displayName] <= 1)
+            {
+                result[index] = displayName;
+                continue;
+            }
+
+            int ordinal = ordinals.TryGetValue(displayName, out int current) ? current + 1 : 1;
+            ordinals[displayName] = ordinal;
+            result[index] = $"{displayName} ({ordinal})";
+        }
+
+        return result;
+    }
+
+    private IReadOnlyList<SessionEntry> EnumerateSessionEntries()
+    {
+        if (_manager is null)
+        {
+            return [];
+        }
+
+        var sourceOrdinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var entries = new List<SessionEntry>();
+        foreach (GlobalSystemMediaTransportControlsSession session in _manager.GetSessions())
+        {
+            string sourceApp = session.SourceAppUserModelId ?? string.Empty;
+            int ordinal = sourceOrdinals.TryGetValue(sourceApp, out int nextOrdinal)
+                ? nextOrdinal
+                : 0;
+            sourceOrdinals[sourceApp] = ordinal + 1;
+            entries.Add(new SessionEntry(CreateSessionId(sourceApp, ordinal), session));
+        }
+
+        return entries;
+    }
+
+    private static bool IsSameSession(
+        GlobalSystemMediaTransportControlsSession? left,
+        GlobalSystemMediaTransportControlsSession? right)
+    {
+        return left is not null &&
+            right is not null &&
+            (ReferenceEquals(left, right) || left.Equals(right));
+    }
+
+    private sealed record SessionEntry(
+        string SessionId,
+        GlobalSystemMediaTransportControlsSession Session);
 
     private static MusicPlaybackState MapPlaybackState(GlobalSystemMediaTransportControlsSessionPlaybackStatus status)
     {

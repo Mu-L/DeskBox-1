@@ -50,6 +50,8 @@ public sealed class AotStage5B4C1B1ContractTests
         string menu = ReadRepositoryFile("src/DeskBox/Controls/FileItemMenuBuilder.cs");
         string surface = ReadRepositoryFile(
             "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.SelectionAndMenus.cs");
+        string surfaceOperations = ReadRepositoryFile(
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs");
         string viewModel = ReadRepositoryFile(
             "src/DeskBox/ViewModels/WidgetViewModel.Operations.cs");
         string fileService = ReadRepositoryFile("src/DeskBox/Services/FileService.cs");
@@ -62,9 +64,10 @@ public sealed class AotStage5B4C1B1ContractTests
             CountOccurrences(menu, "await actions.DeleteItemsAsync(actions.GetSelectedItems())"));
         Assert.Contains("FileItemMenuBuilder.CreateItemFlyout", surface, StringComparison.Ordinal);
         Assert.Contains("FileItemMenuBuilder.CreateMultiSelectionFlyout", surface, StringComparison.Ordinal);
-        Assert.Contains("DeleteItemsAsync,", surface, StringComparison.Ordinal);
-        Assert.Contains("public async Task DeleteItemsAsync", viewModel, StringComparison.Ordinal);
-        Assert.Contains("_fileService.DeleteEntryAsync(item.Path, recycle: true)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("items => DeleteItemsAsync(items)", surface, StringComparison.Ordinal);
+        Assert.Contains("bool permanently = false", surfaceOperations, StringComparison.Ordinal);
+        Assert.Contains("public async Task<FileDeleteBatchResult> DeleteItemsAsync", viewModel, StringComparison.Ordinal);
+        Assert.Contains("_fileService.DeleteEntryAsync(item.Path, recycle)", viewModel, StringComparison.Ordinal);
         Assert.Contains("DeleteEntryToRecycleBin(normalizedPath)", fileService, StringComparison.Ordinal);
         Assert.Contains("SHFileOperation(ref operation)", fileService, StringComparison.Ordinal);
         Assert.Contains("FofAllowUndo", fileService, StringComparison.Ordinal);

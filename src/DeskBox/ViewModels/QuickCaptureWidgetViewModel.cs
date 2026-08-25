@@ -28,6 +28,7 @@ public sealed partial class QuickCaptureWidgetViewModel : ObservableObject, IDis
     private string _searchText = string.Empty;
     private bool _isSearchExpanded;
     private QuickCaptureViewMode _selectedView = QuickCaptureViewMode.Records;
+    private QuickCaptureViewMode? _restoredViewForInitialization;
     private string _tabStyle = SettingsService.WidgetTabStyleButton;
     private bool _showTabBar = true;
     private bool _showRecordsTab = true;

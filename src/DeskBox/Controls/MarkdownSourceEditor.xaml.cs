@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using DeskBox.Helpers;
 using DeskBox.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
@@ -110,6 +111,12 @@ public sealed partial class MarkdownSourceEditor : UserControl
         typeof(MarkdownSourceEditor),
         new PropertyMetadata(SettingsService.EditorEnterBehaviorCtrlEnterSaves));
 
+    public static readonly DependencyProperty EnableCtrlSSaveShortcutProperty = DependencyProperty.Register(
+        nameof(EnableCtrlSSaveShortcut),
+        typeof(bool),
+        typeof(MarkdownSourceEditor),
+        new PropertyMetadata(false));
+
     public string Text
     {
         get => (string)GetValue(TextProperty);
@@ -144,6 +151,12 @@ public sealed partial class MarkdownSourceEditor : UserControl
     {
         get => (string)GetValue(EditorEnterBehaviorProperty);
         set => SetValue(EditorEnterBehaviorProperty, value);
+    }
+
+    public bool EnableCtrlSSaveShortcut
+    {
+        get => (bool)GetValue(EnableCtrlSSaveShortcutProperty);
+        set => SetValue(EnableCtrlSSaveShortcutProperty, value);
     }
 
     public Func<string, string>? TextResolver
@@ -556,6 +569,17 @@ public sealed partial class MarkdownSourceEditor : UserControl
         bool shift = IsKeyDown(VirtualKey.Shift);
         if (_isTextCompositionActive)
         {
+            return;
+        }
+
+        if (EnableCtrlSSaveShortcut &&
+            TextBoxEditorShortcutHelper.IsCtrlSaveShortcut(
+                e.Key,
+                control,
+                shift))
+        {
+            e.Handled = true;
+            CommitRequested?.Invoke(this, EventArgs.Empty);
             return;
         }
 

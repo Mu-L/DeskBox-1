@@ -34,7 +34,13 @@ public sealed partial class WidgetStackItem : WidgetItem
 
     public WidgetItem PreviewThree => Members[Math.Min(2, Members.Count - 1)];
 
+    public WidgetItem PreviewFour => Members[Math.Min(3, Members.Count - 1)];
+
     public Visibility ThirdPreviewVisibility => Members.Count >= 3
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility FourthPreviewVisibility => Members.Count >= 4
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -162,7 +168,9 @@ public sealed partial class WidgetStackItem : WidgetItem
         OnPropertyChanged(nameof(PreviewOne));
         OnPropertyChanged(nameof(PreviewTwo));
         OnPropertyChanged(nameof(PreviewThree));
+        OnPropertyChanged(nameof(PreviewFour));
         OnPropertyChanged(nameof(ThirdPreviewVisibility));
+        OnPropertyChanged(nameof(FourthPreviewVisibility));
         OnPropertyChanged(nameof(CountText));
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(CollapsedPreviewVisibility));

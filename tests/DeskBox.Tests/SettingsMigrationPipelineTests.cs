@@ -93,4 +93,32 @@ public sealed class SettingsMigrationPipelineTests
         Assert.Equal(SettingsMigrationPipeline.CurrentSchemaVersion, settings.SchemaVersion);
         Assert.Equal(expectedLimit, settings.SearchMaxResults);
     }
+
+    [Fact]
+    public void VersionSix_PreservesLegacyGeometryForFirstTopologyCapture()
+    {
+        var widget = new WidgetConfig
+        {
+            X = 420,
+            Y = 260,
+            Width = 640,
+            Height = 520
+        };
+        var settings = new AppSettings
+        {
+            SchemaVersion = 5,
+            Widgets = [widget]
+        };
+
+        Assert.True(new SettingsMigrationPipeline().RunMigrations(settings));
+
+        Assert.Equal(SettingsMigrationPipeline.CurrentSchemaVersion, settings.SchemaVersion);
+        Assert.NotNull(settings.WidgetTopologyLayouts);
+        Assert.Empty(settings.WidgetTopologyLayouts);
+        Assert.Null(settings.ActiveWidgetTopologyKey);
+        Assert.Equal(420, widget.X);
+        Assert.Equal(260, widget.Y);
+        Assert.Equal(640, widget.Width);
+        Assert.Equal(520, widget.Height);
+    }
 }

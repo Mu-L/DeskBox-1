@@ -1,5 +1,6 @@
 using DeskBox.Controls;
 using DeskBox.Helpers;
+using DeskBox.Services;
 using Windows.Graphics;
 
 namespace DeskBox.Views;
@@ -279,7 +280,9 @@ public abstract partial class WidgetWindowBase
 
     protected void SynchronizeWidgetGroupLayout()
     {
-        App.Current?.WidgetManager?.SynchronizeGroupLayoutFromMember(Config);
+        WidgetManager? manager = App.Current?.WidgetManager;
+        manager?.SynchronizeGroupLayoutFromMember(Config);
+        manager?.CaptureCurrentTopologyLayout(Config);
     }
 
     private void WidgetManager_WidgetGroupsChanged()

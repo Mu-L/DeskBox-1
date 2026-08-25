@@ -190,7 +190,7 @@ public sealed class AotStage5B4B1ContractTests
             "ItemsSource=\"{x:Bind ViewModel.FileStackCustomRules, Mode=OneWay}\"",
             xaml,
             StringComparison.Ordinal);
-        Assert.Equal(282, CountOccurrences(bindableViewModel, "nameof("));
+        Assert.Equal(290, CountOccurrences(bindableViewModel, "nameof("));
         Assert.Contains("nameof(SelectedWidgetCapsuleBarPlacement)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(ResetAllCapsuleOverridesCommand)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(ResetCapsuleWidthOverridesCommand)", bindableViewModel, StringComparison.Ordinal);
@@ -335,12 +335,12 @@ public sealed class AotStage5B4B1ContractTests
         Assert.Contains("stage5B4B1RequiredCommandXamlPatterns", audit, StringComparison.Ordinal);
         Assert.Contains("stage5B4B1RequiredCapsuleCommandXamlPatterns", audit, StringComparison.Ordinal);
         Assert.Contains("stage5B4B1RequiredCapsuleCodeBehindPatterns", audit, StringComparison.Ordinal);
-        Assert.Contains("stage5B4B1ExpectedBindableViewModelPropertyCount = 282", audit, StringComparison.Ordinal);
+        Assert.Contains("stage5B4B1ExpectedBindableViewModelPropertyCount = 290", audit, StringComparison.Ordinal);
         Assert.Contains("stage5B4B1RequiredSmokeScriptPatterns", audit, StringComparison.Ordinal);
         Assert.Contains("stage5B4B1MissingRoutePatterns", audit, StringComparison.Ordinal);
         Assert.Contains("stage5B4B1UnsafeMutationPatterns", audit, StringComparison.Ordinal);
         Assert.Contains("stage5B4B1SourceWarningMessages", audit, StringComparison.Ordinal);
-        Assert.Contains("stage5B4B1ExpectedWmc1510Count = 1190", audit, StringComparison.Ordinal);
+        Assert.Contains("stage5B4B1ExpectedWmc1510Count = 1199", audit, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string value, string token)

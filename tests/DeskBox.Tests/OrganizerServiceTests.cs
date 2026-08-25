@@ -180,6 +180,8 @@ public sealed class OrganizerServiceTests : IDisposable
         Assert.False(File.Exists(sourcePath));
         Assert.True(File.Exists(history.Items.Single().DestinationPath));
         Assert.Equal(_desktopRoot, Path.GetDirectoryName(history.Items.Single().DestinationPath));
+        Assert.True(_organizerService.AutoOrganizationSuppressions.TryConsume(
+            history.Items.Single().DestinationPath));
     }
 
     private static WidgetConfig CreateWidget(string folderPath, bool followsDefaultStoragePath = true)

@@ -174,6 +174,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     [ObservableProperty] public partial bool ShowImageFilesAsIcons { get; set; }
     [ObservableProperty] public partial bool ShowHoverButtons { get; set; } = true;
     [ObservableProperty] public partial bool ResizeSnapEnabled { get; set; } = true;
+    [ObservableProperty] public partial double WidgetSnapSpacing { get; set; } = SettingsService.DefaultWidgetSnapSpacing;
     [ObservableProperty] public partial bool KeepWidgetsVisibleOnShowDesktop { get; set; } = true;
     [ObservableProperty] public partial bool ShowHoverActionLockPosition { get; set; }
     [ObservableProperty] public partial bool ShowHoverActionLockSize { get; set; }
@@ -274,6 +275,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         ShowImageFilesAsIcons = settings.ShowImageFilesAsIcons;
         ShowHoverButtons = settings.ShowHoverButtons;
         ResizeSnapEnabled = settings.ResizeSnapEnabled;
+        WidgetSnapSpacing = SettingsService.NormalizeWidgetSnapSpacing(settings.WidgetSnapSpacing);
         KeepWidgetsVisibleOnShowDesktop = settings.KeepWidgetsVisibleOnShowDesktop;
         ApplyHoverButtonActionSelection(settings.WidgetHoverButtonActions);
         ShowListItemDetails = settings.ShowListItemDetails;
@@ -282,6 +284,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         InitializeContentEditorSettings(settings);
         WidgetOpacity = settings.WidgetOpacity;
         WidgetMaterialIntensity = settings.WidgetMaterialIntensity;
+        InitializeWidgetForegroundSettings(settings);
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
             : CornerRound;
@@ -416,11 +419,7 @@ _ = RefreshQuickAccessStateAsync();
         _settingsService.SettingsChanged += OnSettingsChanged;
         _themeService.AppearanceChanged += OnAppearanceChanged;
         _localizationService.LanguageChanged += OnLanguageChanged;
-        if (App.Current?.QuickCaptureClipboardService is { } clipboardService)
-        {
-            clipboardService.DiagnosticsChanged += OnQuickCaptureClipboardDiagnosticsChanged;
-            RefreshQuickCaptureClipboardDiagnostics();
-        }
+        RefreshQuickCaptureClipboardDiagnostics();
     }
 
     [RelayCommand]
@@ -440,10 +439,7 @@ _ = RefreshQuickAccessStateAsync();
         _lifetimeCts.Cancel();
         _updateOperationCts?.Cancel();
         _updateOperationCts?.Dispose();
-        if (App.Current?.QuickCaptureClipboardService is { } clipboardService)
-        {
-            clipboardService.DiagnosticsChanged -= OnQuickCaptureClipboardDiagnosticsChanged;
-        }
+        SetQuickCaptureClipboardDiagnosticsService(null);
 
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _themeService.AppearanceChanged -= OnAppearanceChanged;

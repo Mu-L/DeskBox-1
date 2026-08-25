@@ -126,28 +126,33 @@ public sealed class DesktopOrganizationScanner
         long size = 0;
         DateTime lastWriteTimeUtc = DateTime.MinValue;
         DesktopOrganizationExclusionReason reason;
+        bool isDirectory = false;
 
         try
         {
             FileAttributes attributes = File.GetAttributes(fullPath);
-            bool isDirectory = (attributes & FileAttributes.Directory) != 0;
+            isDirectory = (attributes & FileAttributes.Directory) != 0;
             bool isHiddenOrSystem = (attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0 ||
                                     name.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase);
             bool isTemporary = (attributes & FileAttributes.Temporary) != 0 ||
                                HasTemporarySuffix(name);
 
-            reason = isDirectory
-                ? DesktopOrganizationExclusionReason.Folder
-                : isHiddenOrSystem
-                    ? DesktopOrganizationExclusionReason.HiddenOrSystem
-                    : (attributes & FileAttributes.ReparsePoint) != 0
-                        ? DesktopOrganizationExclusionReason.ReparsePoint
-                        : (attributes & FileAttributes.Offline) != 0
-                            ? DesktopOrganizationExclusionReason.OfflinePlaceholder
-                            : isTemporary
-                                ? DesktopOrganizationExclusionReason.TemporaryOrDownloading
-                                : IsUnderPath(fullPath, publicDesktopPath)
-                                    ? DesktopOrganizationExclusionReason.PublicDesktopItem
+            // Safety classifications take precedence over the optional folder
+            // classification. A junction, hidden system folder, placeholder,
+            // or temporary directory must never become selectable merely
+            // because it also carries the Directory attribute.
+            reason = isHiddenOrSystem
+                ? DesktopOrganizationExclusionReason.HiddenOrSystem
+                : (attributes & FileAttributes.ReparsePoint) != 0
+                    ? DesktopOrganizationExclusionReason.ReparsePoint
+                    : (attributes & FileAttributes.Offline) != 0
+                        ? DesktopOrganizationExclusionReason.OfflinePlaceholder
+                        : isTemporary
+                            ? DesktopOrganizationExclusionReason.TemporaryOrDownloading
+                            : IsUnderPath(fullPath, publicDesktopPath)
+                                ? DesktopOrganizationExclusionReason.PublicDesktopItem
+                                : isDirectory
+                                    ? DesktopOrganizationExclusionReason.Folder
                                     : DesktopOrganizationExclusionReason.None;
 
             if (!isDirectory)
@@ -161,6 +166,10 @@ public sealed class DesktopOrganizationScanner
                 {
                     reason = DesktopOrganizationExclusionReason.SlowItem;
                 }
+            }
+            else
+            {
+                lastWriteTimeUtc = Directory.GetLastWriteTimeUtc(fullPath);
             }
         }
         catch
@@ -176,7 +185,8 @@ public sealed class DesktopOrganizationScanner
             lastWriteTimeUtc,
             classification.CategoryId,
             classification.SubtypeId,
-            reason);
+            reason,
+            isDirectory);
     }
 
     private static bool HasTemporarySuffix(string name) =>

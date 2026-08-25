@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:DeskBox.Controls.WidgetContents"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
 
     <!-- Hallmark · pre-emit critique: P5 H4 E5 S5 R5 V4 -->
@@ -95,6 +96,14 @@
 
         <Style x:Key="MusicSecondaryFontIconStyle" TargetType="FontIcon">
             <Setter Property="FontSize" Value="14" />
+        </Style>
+
+        <Style x:Key="MusicSourceButtonStyle" TargetType="Button" BasedOn="{StaticResource MusicIconButtonStyle}">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
         </Style>
 
         <Style x:Key="MusicPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
@@ -191,7 +200,7 @@
     <Grid
         x:Name="RootGrid"
         Padding="0"
-        PointerPressed="RootGrid_PointerPressed">
+        Background="Transparent">
         <Border
             x:Name="ArtworkBackdrop"
             HorizontalAlignment="Stretch"
@@ -255,6 +264,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" MinWidth="0" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel
                         Grid.Column="0"
@@ -361,6 +371,19 @@
                                 TextWrapping="NoWrap" />
                         </Canvas>
                     </Grid>
+                    <Button
+                        x:Name="MinimalSourceButton"
+                        Grid.Column="2"
+                        Width="28"
+                        Height="28"
+                        MinWidth="28"
+                        MinHeight="28"
+                        Click="SourceButton_Click"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                        Style="{StaticResource MusicSourceButtonStyle}">
+                        <local:MusicSourceIcon
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    </Button>
                 </Grid>
             </Border>
         </Grid>
@@ -517,14 +540,32 @@
                     </Canvas>
                 </Grid>
 
-                <TextBlock
+                <Grid
                     Grid.Row="1"
-                    FontSize="{Binding SecondaryTextSize}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    MaxLines="1"
                     MinWidth="0"
-                    Text="{Binding Artist}"
-                    TextTrimming="CharacterEllipsis" />
+                    ColumnSpacing="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="0" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        FontSize="{Binding SecondaryTextSize}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        MaxLines="1"
+                        MinWidth="0"
+                        Text="{Binding Artist}"
+                        TextTrimming="CharacterEllipsis" />
+                    <Button
+                        x:Name="SourceButton"
+                        Grid.Column="1"
+                        Click="SourceButton_Click"
+                        Style="{StaticResource MusicSourceButtonStyle}">
+                        <local:MusicSourceIcon
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Button>
+                </Grid>
 
                 <TextBlock
                     Grid.Row="2"
@@ -860,14 +901,26 @@
                     FontWeight="SemiBold"
                     Text="{Binding Title}"
                     TextTrimming="CharacterEllipsis" />
-                <TextBlock
-                    x:Name="RecordArtistText"
-                    MaxLines="1"
+                <StackPanel
                     HorizontalAlignment="Center"
-                    FontSize="13"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="{Binding Artist}"
-                    TextTrimming="CharacterEllipsis" />
+                    Orientation="Horizontal"
+                    Spacing="2">
+                    <TextBlock
+                        x:Name="RecordArtistText"
+                        VerticalAlignment="Center"
+                        MaxLines="1"
+                        FontSize="13"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{Binding Artist}"
+                        TextTrimming="CharacterEllipsis" />
+                    <Button
+                        x:Name="RecordSourceButton"
+                        Click="SourceButton_Click"
+                        Style="{StaticResource MusicSourceButtonStyle}">
+                        <local:MusicSourceIcon
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Button>
+                </StackPanel>
             </StackPanel>
 
             <Grid
@@ -1063,13 +1116,29 @@
                         FontWeight="SemiBold"
                         Text="{Binding Title}"
                         TextTrimming="CharacterEllipsis" />
-                    <TextBlock
-                        x:Name="RecordHorizontalArtistText"
-                        MaxLines="1"
-                        FontSize="12"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{Binding Artist}"
-                        TextTrimming="CharacterEllipsis" />
+                    <Grid MinWidth="0" ColumnSpacing="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="0" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            x:Name="RecordHorizontalArtistText"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            MaxLines="1"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding Artist}"
+                            TextTrimming="CharacterEllipsis" />
+                        <Button
+                            x:Name="RecordHorizontalSourceButton"
+                            Grid.Column="1"
+                            Click="SourceButton_Click"
+                            Style="{StaticResource MusicSourceButtonStyle}">
+                            <local:MusicSourceIcon
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Button>
+                    </Grid>
                 </StackPanel>
                 <Grid Grid.Row="1" Margin="0,2,0,0" ColumnSpacing="6">
                     <Grid.ColumnDefinitions>

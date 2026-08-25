@@ -21,6 +21,65 @@ public sealed class SearchPopupVisualContractTests
     }
 
     [Fact]
+    public void ResultInteraction_SelectsOnClickAndOpensOnlyOnDoubleClickOrEnter()
+    {
+        string root = FindRepositoryRoot();
+        string popup = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SearchPopupWindow.xaml.cs"));
+
+        Assert.Contains("var item = ResolveResultItem(source);", popup, StringComparison.Ordinal);
+        Assert.Contains("var item = ResolveResultItem(e.OriginalSource as DependencyObject);", popup, StringComparison.Ordinal);
+        Assert.Contains("FindItemRow(element)?.Item ?? FindDataContext<SearchResultItem>(element)", popup, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReferenceEquals(_pressedItem, releasedItem)", popup, StringComparison.Ordinal);
+        Assert.DoesNotContain("[DIAG] ResultsPanel_DoubleTapped", popup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InstantSearch_UsesShortDebounceWithoutBlockingLoaderAndPagesOnDemand()
+    {
+        string root = FindRepositoryRoot();
+        string popup = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SearchPopupWindow.xaml.cs"));
+        string popupXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SearchPopupWindow.xaml"));
+        string viewModel = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/ViewModels/SearchPopupViewModel.cs"));
+
+        Assert.Contains("TimeSpan.FromMilliseconds(35)", popup, StringComparison.Ordinal);
+        Assert.DoesNotContain("TimeSpan.FromMilliseconds(150)", popup, StringComparison.Ordinal);
+        Assert.Contains("SearchProgressBar.Visibility = Visibility.Collapsed", popup, StringComparison.Ordinal);
+        Assert.Contains("LoadingPanel.Visibility = Visibility.Collapsed", popup, StringComparison.Ordinal);
+        Assert.Contains("ViewChanged=\"ResultsPanel_ViewChanged\"", popupXaml, StringComparison.Ordinal);
+        Assert.Contains("LoadMoreResultsAsync", viewModel, StringComparison.Ordinal);
+        Assert.Contains("LoadMoreAndAdvanceSelectionAsync", viewModel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SearchSettings_ExposeOneIndexWithoutAVisibleResultLimit()
+    {
+        string root = FindRepositoryRoot();
+        string settings = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsSections/SearchSettingsSection.xaml"));
+        string engine = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/SearchEngineService.cs"));
+
+        Assert.Contains("SearchSystemNoiseToggle", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("SearchSystemIndexToggle", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("SearchCustomIndexerToggle", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("SearchRustPreviewToggle", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("SearchMaxResultsComboBox", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("WindowsIndexSearchService", engine, StringComparison.Ordinal);
+        Assert.DoesNotContain("UsnJournalIndexService", engine, StringComparison.Ordinal);
+        Assert.Contains("SearchIndexQueryPage", engine, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FileAndSearchRows_UseCompactNativeAlignedSurfaces()
     {
         string root = FindRepositoryRoot();

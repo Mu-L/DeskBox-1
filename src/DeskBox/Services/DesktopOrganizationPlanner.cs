@@ -40,6 +40,7 @@ public sealed class DesktopOrganizationPlanner
                 if (!targets.TryGetValue(widget.Id, out MutableTarget? existing))
                 {
                     existing = new MutableTarget(
+                        widget.Id,
                         item.CategoryId,
                         widget.Id,
                         widget.Name,
@@ -80,6 +81,7 @@ public sealed class DesktopOrganizationPlanner
                 Path.Combine(normalizedRoot, SanitizeFolderName(displayName)),
                 reservedDirectories);
             var target = new MutableTarget(
+                $"category:{categoryId}",
                 categoryId,
                 Guid.NewGuid().ToString("N"),
                 displayName,
@@ -166,12 +168,14 @@ public sealed class DesktopOrganizationPlanner
     }
 
     private sealed class MutableTarget(
+        string sourceBucketId,
         string categoryId,
         string widgetId,
         string displayName,
         string directoryPath,
         bool createsWidget)
     {
+        public string SourceBucketId { get; } = sourceBucketId;
         public string CategoryId { get; } = categoryId;
         public string WidgetId { get; } = widgetId;
         public string DisplayName { get; } = displayName;
@@ -181,7 +185,7 @@ public sealed class DesktopOrganizationPlanner
 
         public DesktopOrganizationTargetPlan ToPlan() => new()
         {
-            SourceBucketId = WidgetId,
+            SourceBucketId = SourceBucketId,
             CategoryId = CategoryId,
             TargetWidgetId = WidgetId,
             SuggestedDisplayName = DisplayName,

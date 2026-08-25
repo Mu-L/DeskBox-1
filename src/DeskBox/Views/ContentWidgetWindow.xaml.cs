@@ -189,7 +189,9 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
         string summary = string.Join(" · ", summaryParts);
         bool hasText = !string.IsNullOrWhiteSpace(title) || !string.IsNullOrWhiteSpace(summary);
-        ImageSource? backgroundImage = glance.GetCompactBackgroundImage();
+        ImageSource? backgroundImage = viewModel.HasVisibleCurrentImage
+            ? glance.GetCompactBackgroundImage()
+            : null;
         return new WidgetCompactPresentation(
             title,
             summary,
@@ -207,7 +209,8 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
                 viewModel.TraditionalCalendarTitle,
                 viewModel.CurrentImagePath),
             FullBleedOverlayOpacity: hasText ? viewModel.ReadabilityStrengthOpacity : 0,
-            UseUniformFullBleedOverlay: true);
+            UseUniformFullBleedOverlay: true,
+            FullBleedBackgroundOpacity: viewModel.BackgroundImageOpacity);
     }
 
     private WidgetCompactPresentation CreateSearchCompactPresentation(
@@ -546,6 +549,11 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     protected override void UpdateConfigBoundsFromPhysical(
         int x, int y, int width, int height, bool persist)
     {
+        if (persist && !CanPersistBoundsChange(persist))
+        {
+            return;
+        }
+
         if (IsCompactBoundsStateActive)
         {
             if (persist)
@@ -689,6 +697,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         }
 
         ApplyWindowCornerPreference();
+        ApplyWidgetForegroundAppearance();
         ApplyBackdropPreference();
         ContentWidgetShell.ShowHoverButtons = SettingsService.Settings.ShowHoverButtons;
         ApplyTitleBarLayout();
@@ -714,6 +723,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
         TrayAnimation.RestoreVisualState();
         TrayAnimation.RestoreWindowPosition();
         TrayAnimation.RevealWindowForTrayShow();
+        SetTrayHideInputSuppressed(false);
         IsHideAnimationRunning = false;
         _isHidePrepared = false;
         LogTrayWindow($"CancelAnimationAndRestore gen={animationGeneration}");
@@ -721,6 +731,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
 public void PrepareTrayShowAnimation()
 {
+SetTrayHideInputSuppressed(false);
 TrayAnimation.NextGeneration();
 TrayAnimation.StopAndRestoreWindowPosition();
 TrayAnimation.CloakWindowForTrayShow();
@@ -852,6 +863,7 @@ else
 }
 IsHideAnimationRunning = true;
         _isHidePrepared = true;
+        SetTrayHideInputSuppressed(true);
         Visible = false;
         NotifyCompactHostVisibilityChanged(false);
         UpdatePersistedVisibility(isVisible: false, persistVisibility);
@@ -921,6 +933,7 @@ IsHideAnimationRunning = true;
         TrayAnimation.RevealWindowForTrayShow();
         IsHideAnimationRunning = false;
         _isHidePrepared = false;
+        SetTrayHideInputSuppressed(false);
         Visible = false;
         _autoRestoreTimer?.Stop();
         CancelPendingDesktopLayerRestore();
@@ -1158,6 +1171,8 @@ IsHideAnimationRunning = true;
                 nameof(GlanceWidgetViewModel.TraditionalCalendarTitle) or
                 nameof(GlanceWidgetViewModel.HasTraditionalCalendar) or
                 nameof(GlanceWidgetViewModel.CurrentImagePath) or
+                nameof(GlanceWidgetViewModel.BackgroundImageOpacity) or
+                nameof(GlanceWidgetViewModel.HasVisibleCurrentImage) or
                 nameof(GlanceWidgetViewModel.ReadabilityStrengthOpacity) or
                 nameof(GlanceWidgetViewModel.ReadabilityOpacity) or
                 nameof(GlanceWidgetViewModel.ShowTime) or

@@ -60,6 +60,7 @@ pub const DESKBOX_NATIVE_HRESULT_NOT_ATTEMPTED: i32 = 0x8000_000A_u32 as i32;
 
 pub const DESKBOX_SHORTCUT_READ_MODE_STORED_RAW: u32 = 1;
 pub const DESKBOX_SHORTCUT_READ_MODE_EFFECTIVE_DIAGNOSTIC: u32 = 2;
+pub const DESKBOX_SHORTCUT_WRITE_FLAG_SHELL_NAMESPACE_TARGET: u32 = 1 << 0;
 
 pub const DESKBOX_SHORTCUT_FIELD_TARGET_PATH: u32 = 1 << 0;
 pub const DESKBOX_SHORTCUT_FIELD_DESCRIPTION: u32 = 1 << 1;
@@ -721,7 +722,7 @@ unsafe fn validate_write_request(request: *const DeskBoxShortcutWriteRequestV2) 
         return DESKBOX_NATIVE_STATUS_INCOMPATIBLE_STRUCT;
     }
 
-    if request_ref.flags != 0
+    if request_ref.flags & !DESKBOX_SHORTCUT_WRITE_FLAG_SHELL_NAMESPACE_TARGET != 0
         || request_ref.reserved != [0; 4]
         || !is_valid_input_string(&request_ref.shortcut_path, false)
         || !is_valid_input_string(&request_ref.target_path, false)

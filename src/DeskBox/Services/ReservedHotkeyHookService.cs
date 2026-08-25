@@ -6,7 +6,7 @@ using DeskBox.Helpers;
 namespace DeskBox.Services;
 
 /// <summary>
-/// Installs the opt-in Win+Space hook on a dedicated message-pump thread.
+/// Installs the opt-in system-key hook on a dedicated message-pump thread.
 /// The callback only updates a small state machine and posts a window message;
 /// all DeskBox work remains on the normal UI dispatch path.
 /// </summary>
@@ -23,7 +23,9 @@ internal sealed class ReservedHotkeyHookService : IDisposable
     private readonly object _sync = new();
     private readonly object _stateSync = new();
     private readonly Win32Helper.LowLevelKeyboardProc _keyboardHookProc;
-    private readonly WinSpaceHotkeyStateMachine _stateMachine = new();
+    private WinSpaceHotkeyStateMachine _modifierSpaceStateMachine = new();
+    private readonly WindowsTapHotkeyStateMachine _windowsTapStateMachine = new();
+    private readonly DoubleControlHotkeyStateMachine _doubleControlStateMachine = new();
     private Thread? _thread;
     private uint _threadId;
     private IntPtr _hookHandle;
@@ -35,6 +37,7 @@ internal sealed class ReservedHotkeyHookService : IDisposable
     private long _postFailureCount;
     private long _inputFailureCount;
     private long _lifecycleGeneration;
+    private ReservedHotkeyMode _mode = ReservedHotkeyMode.WinSpace;
     private bool _disposed;
 
     public ReservedHotkeyHookService()
@@ -76,6 +79,19 @@ internal sealed class ReservedHotkeyHookService : IDisposable
 
     public bool TryStart(IntPtr notificationWindow, uint notificationMessage, out int errorCode)
     {
+        return TryStart(
+            notificationWindow,
+            notificationMessage,
+            ReservedHotkeyMode.WinSpace,
+            out errorCode);
+    }
+
+    public bool TryStart(
+        IntPtr notificationWindow,
+        uint notificationMessage,
+        ReservedHotkeyMode mode,
+        out int errorCode)
+    {
         errorCode = 0;
         if (notificationWindow == IntPtr.Zero || !Win32Helper.IsWindow(notificationWindow))
         {
@@ -108,7 +124,7 @@ internal sealed class ReservedHotkeyHookService : IDisposable
             _notificationMessage = notificationMessage;
             _startupError = 0;
             Volatile.Write(ref _lastErrorCode, 0);
-            ResetStateMachine();
+            ConfigureStateMachine(mode);
             generation = ++_lifecycleGeneration;
             thread = new Thread(() => HookThreadMain(ready, generation))
             {
@@ -374,16 +390,27 @@ internal sealed class ReservedHotkeyHookService : IDisposable
         }
 
         ReservedHotkeyEventDisposition disposition;
+        ReservedHotkeyMode mode;
         lock (_stateSync)
         {
-            disposition = _stateMachine.Process(data.vkCode, isKeyDown);
+            mode = _mode;
+            disposition = mode switch
+            {
+                ReservedHotkeyMode.DoubleControl =>
+                    _doubleControlStateMachine.Process(data.vkCode, isKeyDown, data.time),
+                ReservedHotkeyMode.WindowsTap =>
+                    _windowsTapStateMachine.Process(data.vkCode, isKeyDown),
+                _ => _modifierSpaceStateMachine.Process(data.vkCode, isKeyDown)
+            };
         }
         if (disposition == ReservedHotkeyEventDisposition.PassThrough)
         {
             return Win32Helper.CallNextHookEx(hookHandle, nCode, wParam, lParam);
         }
 
-        if (disposition == ReservedHotkeyEventDisposition.TriggerAndSuppress)
+        if (disposition is
+            ReservedHotkeyEventDisposition.TriggerAndSuppress or
+            ReservedHotkeyEventDisposition.TriggerAndPassThrough)
         {
             if (notificationWindow == IntPtr.Zero || notificationMessage == 0)
             {
@@ -391,7 +418,12 @@ internal sealed class ReservedHotkeyHookService : IDisposable
                 return Win32Helper.CallNextHookEx(hookHandle, nCode, wParam, lParam);
             }
 
-            if (!Win32Helper.TrySendTaggedKeyPress(
+            bool requiresSystemMask = mode is
+                ReservedHotkeyMode.WinSpace or
+                ReservedHotkeyMode.AltSpace or
+                ReservedHotkeyMode.WindowsTap;
+            if (requiresSystemMask &&
+                !Win32Helper.TrySendTaggedKeyPress(
                     InternalMaskVirtualKey,
                     InjectedEventTag,
                     out int inputError))
@@ -416,6 +448,11 @@ internal sealed class ReservedHotkeyHookService : IDisposable
             }
 
             Interlocked.Increment(ref _triggerCount);
+
+            if (disposition == ReservedHotkeyEventDisposition.TriggerAndPassThrough)
+            {
+                return Win32Helper.CallNextHookEx(hookHandle, nCode, wParam, lParam);
+            }
         }
 
         return (IntPtr)1;
@@ -425,7 +462,23 @@ internal sealed class ReservedHotkeyHookService : IDisposable
     {
         lock (_stateSync)
         {
-            _stateMachine.CancelSuppression();
+            if (_mode is ReservedHotkeyMode.WinSpace or ReservedHotkeyMode.AltSpace)
+            {
+                _modifierSpaceStateMachine.CancelSuppression();
+            }
+        }
+    }
+
+    private void ConfigureStateMachine(ReservedHotkeyMode mode)
+    {
+        lock (_stateSync)
+        {
+            _mode = mode;
+            _modifierSpaceStateMachine = mode == ReservedHotkeyMode.AltSpace
+                ? new WinSpaceHotkeyStateMachine(ReservedHotkeyMode.AltSpace)
+                : new WinSpaceHotkeyStateMachine();
+            _windowsTapStateMachine.Reset();
+            _doubleControlStateMachine.Reset();
         }
     }
 
@@ -433,7 +486,9 @@ internal sealed class ReservedHotkeyHookService : IDisposable
     {
         lock (_stateSync)
         {
-            _stateMachine.Reset();
+            _modifierSpaceStateMachine.Reset();
+            _windowsTapStateMachine.Reset();
+            _doubleControlStateMachine.Reset();
         }
     }
 

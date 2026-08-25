@@ -62,6 +62,7 @@ public sealed partial class MarkdownDocumentView : UserControl
         _scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         ApplyContentHost();
         RegisterPropertyChangedCallback(FontSizeProperty, (_, _) => QueueRender());
+        RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => QueueRender());
         RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => QueueRender());
         ActualThemeChanged += (_, _) => QueueRender();
         SizeChanged += (_, args) =>
@@ -252,14 +253,11 @@ public sealed partial class MarkdownDocumentView : UserControl
 
     private void UpdateForegrounds()
     {
-        // This control is created in code, so an application-level theme brush
-        // can belong to a different resource scope than the hosting widget.
-        // Resolve the readable body foreground from this control's actual theme
-        // instead: Markdown must be black in Light mode and white in Dark mode.
-        // Semantic spans still use the active accent; in Light mode we darken
-        // that accent until it remains legible on light widget materials.
-        _contentForeground = new SolidColorBrush(
-            UsesDarkTheme ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black);
+        // Body text follows the hosting widget's foreground scope instead of
+        // independently choosing black/white from the app theme. Keeping the
+        // shared brush instance also makes custom-color changes update existing
+        // RichTextBlock runs without rebuilding the document.
+        _contentForeground = Foreground ?? BrushResource("TextFillColorPrimaryBrush");
         _semanticForeground = UsesDarkTheme
             ? BrushResource("AccentTextFillColorPrimaryBrush")
             : CreateLightThemeSemanticForeground();
@@ -1017,8 +1015,20 @@ public sealed partial class MarkdownDocumentView : UserControl
         return Uri.TryCreate(source, UriKind.Absolute, out uri);
     }
 
-    private static Brush BrushResource(string key)
+    private Brush BrushResource(string key)
     {
+        for (DependencyObject? current = this;
+             current is not null;
+             current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is FrameworkElement element &&
+                element.Resources.TryGetValue(key, out object? scopedResource) &&
+                scopedResource is Brush scopedBrush)
+            {
+                return scopedBrush;
+            }
+        }
+
         if (Application.Current?.Resources.TryGetValue(key, out object? resource) == true &&
             resource is Brush brush)
         {

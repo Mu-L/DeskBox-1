@@ -149,6 +149,7 @@ internal sealed unsafe partial class ShortcutNativeModule
     internal const ulong ResolveNoUiCapability = 1UL << 2;
     internal const ulong WriteCapability = 1UL << 3;
     internal const ulong ResolveWithUiCapability = 1UL << 4;
+    internal const uint WriteShellNamespaceTargetFlag = 1U << 0;
 
     internal const uint StatusOk = 0;
     internal const uint ModeStoredRaw = 1;
@@ -399,6 +400,31 @@ internal sealed unsafe partial class ShortcutNativeModule
         string shortcutPath,
         ShortcutInfo metadata)
     {
+        return WriteShortcutCore(shortcutPath, metadata, flags: 0);
+    }
+
+    internal ShortcutNativeWriteCallResult WriteShellNamespaceShortcut(
+        string shortcutPath,
+        string parsingName,
+        string description)
+    {
+        return WriteShortcutCore(
+            shortcutPath,
+            new ShortcutInfo(
+                parsingName,
+                description,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                0),
+            WriteShellNamespaceTargetFlag);
+    }
+
+    private ShortcutNativeWriteCallResult WriteShortcutCore(
+        string shortcutPath,
+        ShortcutInfo metadata,
+        uint flags)
+    {
         if ((Capabilities & WriteCapability) == 0)
         {
             return WriteCallFailure(
@@ -429,6 +455,7 @@ internal sealed unsafe partial class ShortcutNativeModule
             {
                 StructSize = (uint)sizeof(NativeWriteRequest),
                 StructVersion = StructVersion,
+                Flags = flags,
                 IconIndex = metadata.IconIndex,
                 ShortcutPath = new NativeUtf16String(shortcutPathPointer, shortcutPath.Length),
                 TargetPath = new NativeUtf16String(targetPointer, metadata.TargetPath.Length),
@@ -1081,6 +1108,38 @@ internal static class ShortcutNativeBackend
         }
 
         return load.Module!.WriteShortcut(shortcutPath, metadata);
+    }
+
+    internal static ShortcutNativeWriteCallResult WriteShellNamespaceShortcut(
+        string shortcutPath,
+        string parsingName,
+        string description)
+    {
+        ShortcutNativeLoadResult load = ShortcutNativeModule.Default;
+        if (!load.Success)
+        {
+            return new ShortcutNativeWriteCallResult(
+                ShortcutNativeCallFailure.ModuleUnavailable,
+                $"{load.Failure}: {load.Detail}",
+                0,
+                0,
+                ShortcutNativeModule.HResultNotAttempted,
+                ShortcutNativeModule.HResultNotAttempted,
+                ShortcutNativeModule.HResultNotAttempted,
+                ShortcutNativeModule.HResultNotAttempted,
+                ShortcutNativeModule.HResultNotAttempted,
+                ShortcutNativeModule.HResultNotAttempted,
+                ShortcutNativeModule.HResultNotAttempted,
+                ShortcutNativeModule.HResultNotAttempted,
+                0,
+                0,
+                0);
+        }
+
+        return load.Module!.WriteShellNamespaceShortcut(
+            shortcutPath,
+            parsingName,
+            description);
     }
 
     private static ShortcutNativeCallResult Invoke(

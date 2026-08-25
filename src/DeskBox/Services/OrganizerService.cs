@@ -7,16 +7,37 @@ public sealed class OrganizerService
     private readonly SettingsService _settingsService;
     private readonly FileService _fileService;
     private readonly Func<string> _desktopPathProvider;
+    private readonly DesktopAutoOrganizationSuppressionRegistry _autoOrganizationSuppressions;
+    private sealed record DropPreparation(
+        string RootPath,
+        IReadOnlyList<string> SourcePaths);
 
     public OrganizerService(
         SettingsService settingsService,
         FileService fileService,
         Func<string>? desktopPathProvider = null)
+        : this(
+            settingsService,
+            fileService,
+            desktopPathProvider,
+            new DesktopAutoOrganizationSuppressionRegistry())
+    {
+    }
+
+    internal OrganizerService(
+        SettingsService settingsService,
+        FileService fileService,
+        Func<string>? desktopPathProvider,
+        DesktopAutoOrganizationSuppressionRegistry autoOrganizationSuppressions)
     {
         _settingsService = settingsService;
         _fileService = fileService;
         _desktopPathProvider = desktopPathProvider ?? GetDefaultDesktopPath;
+        _autoOrganizationSuppressions = autoOrganizationSuppressions;
     }
+
+    internal DesktopAutoOrganizationSuppressionRegistry AutoOrganizationSuppressions =>
+        _autoOrganizationSuppressions;
 
     public IReadOnlyList<OrganizationHistoryEntry> GetRecentHistory(int maxCount = 6)
     {
@@ -50,26 +71,17 @@ public sealed class OrganizerService
             throw new InvalidOperationException("This widget does not have a managed folder path.");
         }
 
-        string mappedRootPath = Path.GetFullPath(widget.MappedFolderPath);
-        string rootPath = string.IsNullOrWhiteSpace(destinationFolderPath)
-            ? mappedRootPath
-            : Path.GetFullPath(destinationFolderPath);
-        if (!Directory.Exists(rootPath) ||
-            !FileService.TryIsPathUnderDirectoryResolved(
-                rootPath,
-                mappedRootPath,
-                out bool isUnderMappedRoot) ||
-            !isUnderMappedRoot)
-        {
-            throw new InvalidOperationException(
-                "The requested destination is outside the widget's mapped folder.");
-        }
-        var normalizedSourcePaths = sourcePaths
+        string[] sourcePathSnapshot = sourcePaths
             .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Where(path => File.Exists(path) || Directory.Exists(path))
-            .ToList();
+            .ToArray();
+        DropPreparation preparation = await Task.Run(
+            () => PrepareDrop(
+                widget.MappedFolderPath,
+                destinationFolderPath,
+                sourcePathSnapshot),
+            cancellationToken);
+        string rootPath = preparation.RootPath;
+        IReadOnlyList<string> normalizedSourcePaths = preparation.SourcePaths;
 
         if (normalizedSourcePaths.Count == 0)
         {
@@ -78,16 +90,9 @@ public sealed class OrganizerService
 
         try
         {
-            var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var plans = normalizedSourcePaths
-                .Select(path =>
-                {
-                    string destinationPath = FileService.GetAvailablePath(
-                        Path.Combine(rootPath, Path.GetFileName(path)),
-                        reservedPaths);
-                    return new FileService.FileTransferPlan(path, destinationPath);
-                })
-                .ToList();
+            IReadOnlyList<FileService.FileTransferPlan> plans = await Task.Run(
+                () => CreateTransferPlans(rootPath, normalizedSourcePaths),
+                cancellationToken);
 
             var results = await _fileService.ExecuteTransferPlanAsync(
                 plans,
@@ -129,6 +134,50 @@ public sealed class OrganizerService
                 ex.Message));
             throw;
         }
+    }
+
+    private static DropPreparation PrepareDrop(
+        string mappedFolderPath,
+        string? destinationFolderPath,
+        IReadOnlyList<string> sourcePaths)
+    {
+        string mappedRootPath = Path.GetFullPath(mappedFolderPath);
+        string rootPath = string.IsNullOrWhiteSpace(destinationFolderPath)
+            ? mappedRootPath
+            : Path.GetFullPath(destinationFolderPath);
+        if (!Directory.Exists(rootPath) ||
+            !FileService.TryIsPathUnderDirectoryResolved(
+                rootPath,
+                mappedRootPath,
+                out bool isUnderMappedRoot) ||
+            !isUnderMappedRoot)
+        {
+            throw new InvalidOperationException(
+                "The requested destination is outside the widget's mapped folder.");
+        }
+
+        string[] normalizedSourcePaths = sourcePaths
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(path => File.Exists(path) || Directory.Exists(path))
+            .ToArray();
+        return new DropPreparation(rootPath, normalizedSourcePaths);
+    }
+
+    private static IReadOnlyList<FileService.FileTransferPlan> CreateTransferPlans(
+        string rootPath,
+        IReadOnlyList<string> sourcePaths)
+    {
+        var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return sourcePaths
+            .Select(path =>
+            {
+                string destinationPath = FileService.GetAvailablePath(
+                    Path.Combine(rootPath, Path.GetFileName(path)),
+                    reservedPaths);
+                return new FileService.FileTransferPlan(path, destinationPath);
+            })
+            .ToArray();
     }
 
     public async Task<OrganizationHistoryEntry> MoveItemBackToDesktopAsync(
@@ -176,6 +225,8 @@ public sealed class OrganizerService
                 sourcePath,
                 FileService.GetAvailablePath(Path.Combine(desktopPath, Path.GetFileName(sourcePath)), reservedPaths)))
             .ToList();
+        string operationId = Guid.NewGuid().ToString("N");
+        _autoOrganizationSuppressions.BeginOperation(operationId, plans);
 
         try
         {
@@ -184,6 +235,9 @@ public sealed class OrganizerService
                 move: true,
                 useShellProgress,
                 ownerWindowHandle);
+            _autoOrganizationSuppressions.CompleteOperation(
+                operationId,
+                results.Select(result => result.DestinationPath));
 
             var historyEntry = CreateHistoryEntry(
                 widget.Id,
@@ -205,6 +259,9 @@ public sealed class OrganizerService
         }
         catch (Exception ex)
         {
+            _autoOrganizationSuppressions.CompleteOperation(
+                operationId,
+                plans.Select(plan => plan.DestinationPath));
             await AddHistoryEntryAsync(CreateFailureEntry(
                 widget.Id,
                 widgetName,
@@ -218,7 +275,7 @@ public sealed class OrganizerService
 
     private static string GetDefaultDesktopPath()
     {
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
         if (AotShellMoveFixture.TryGetOwnedDesktopPath(out string ownedDesktopPath))
         {
             return ownedDesktopPath;
@@ -264,7 +321,23 @@ public sealed class OrganizerService
             plans.Add(new FileService.FileTransferPlan(item.DestinationPath, restorePath));
         }
 
-        await _fileService.ExecuteTransferPlanAsync(plans, move: true);
+        string operationId = Guid.NewGuid().ToString("N");
+        _autoOrganizationSuppressions.BeginOperation(operationId, plans);
+        try
+        {
+            IReadOnlyList<FileService.FileTransferResult> results =
+                await _fileService.ExecuteTransferPlanAsync(plans, move: true);
+            _autoOrganizationSuppressions.CompleteOperation(
+                operationId,
+                results.Select(result => result.DestinationPath));
+        }
+        catch
+        {
+            _autoOrganizationSuppressions.CompleteOperation(
+                operationId,
+                plans.Select(plan => plan.DestinationPath));
+            throw;
+        }
 
         historyEntry.IsUndone = true;
         historyEntry.CanUndo = false;

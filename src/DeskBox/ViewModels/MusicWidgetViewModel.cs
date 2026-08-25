@@ -136,6 +136,10 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<string> SessionIds { get; } = [];
 
+    public bool IsFollowingSystemSession => string.IsNullOrWhiteSpace(_preferredSessionId);
+
+    public string? PreferredSessionId => _preferredSessionId;
+
     public string DisplayName => _config.IsDefaultTitle
         ? _localizationService.T("Music.Title")
         : _config.Name;
@@ -439,6 +443,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     public string NextTooltip => _localizationService.T("Music.Control.Next");
 
+    public string SourcePickerTooltip => _localizationService.T("Music.SwitchSource");
+
+    public string FollowSystemSourceLabel => _localizationService.T("Music.FollowSystemSource");
+
+    public string NoAvailableSourcesLabel => _localizationService.T("Music.NoAvailableSources");
+
     public string PlaybackModeGlyph => PlaybackMode switch
     {
         MusicPlaybackMode.Shuffle => "\uE8B1",
@@ -567,20 +577,47 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         PerformanceLogger.MusicProgressTimerIntervalMs = 0;
     }
 
-    private void RefreshSessionList()
+    private IReadOnlyList<MusicSessionOption> RefreshSessionList()
     {
-        var ids = _musicSessionService.GetSessionIds();
+        IReadOnlyList<MusicSessionOption> rawOptions = _musicSessionService.GetSessionOptions();
+        string unknownSource = _localizationService.T("Music.SourceUnknown");
+        string[] baseDisplayNames = rawOptions
+            .Select(option => string.IsNullOrWhiteSpace(option.SourceDisplayName)
+                ? unknownSource
+                : option.SourceDisplayName)
+            .ToArray();
+        IReadOnlyList<string> displayNames = MusicSessionService.DisambiguateSourceDisplayNames(baseDisplayNames);
+        MusicSessionOption[] options = rawOptions
+            .Select((option, index) => option with { SourceDisplayName = displayNames[index] })
+            .OrderByDescending(option => string.Equals(
+                option.SessionId,
+                _preferredSessionId,
+                StringComparison.Ordinal))
+            .ThenByDescending(option => option.IsSystemCurrent)
+            .ThenByDescending(option => option.PlaybackState == MusicPlaybackState.Playing)
+            .ThenBy(option => option.SourceDisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
         SessionIds.Clear();
         SessionDisplayNames.Clear();
 
-        foreach (var id in ids)
+        foreach (MusicSessionOption option in options)
         {
-            SessionIds.Add(id);
-            SessionDisplayNames.Add(string.IsNullOrWhiteSpace(id) ? _localizationService.T("Music.SourceUnknown") : id);
+            SessionIds.Add(option.SessionId);
+            SessionDisplayNames.Add(option.SourceDisplayName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_preferredSessionId) &&
+            !SessionIds.Contains(_preferredSessionId))
+        {
+            _preferredSessionId = null;
+            OnPropertyChanged(nameof(IsFollowingSystemSession));
+            OnPropertyChanged(nameof(PreferredSessionId));
         }
 
         OnPropertyChanged(nameof(SessionPickerVisibility));
         OnPropertyChanged(nameof(SelectedSessionIndex));
+        return options;
     }
 
     private void AttachServiceEvents()
@@ -820,6 +857,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Artist));
         OnPropertyChanged(nameof(SourceDisplayName));
+        OnPropertyChanged(nameof(SourcePickerTooltip));
         RaiseDisplayPropertiesChanged();
         RefreshSessionList();
     }

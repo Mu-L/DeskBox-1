@@ -143,7 +143,8 @@ public sealed class GlanceWidgetPhotoControlsTests
             host,
             StringComparison.Ordinal);
         Assert.Contains("CreateGlanceCompactPresentation", host, StringComparison.Ordinal);
-        Assert.Contains("ImageSource? backgroundImage = glance.GetCompactBackgroundImage()", host, StringComparison.Ordinal);
+        Assert.Contains("ImageSource? backgroundImage = viewModel.HasVisibleCurrentImage", host, StringComparison.Ordinal);
+        Assert.Contains("glance.GetCompactBackgroundImage()", host, StringComparison.Ordinal);
         Assert.Contains("Thumbnail: backgroundImage", host, StringComparison.Ordinal);
         Assert.Contains("UseFullBleedBackground: backgroundImage is not null", host, StringComparison.Ordinal);
         Assert.Contains(
@@ -151,6 +152,7 @@ public sealed class GlanceWidgetPhotoControlsTests
             host,
             StringComparison.Ordinal);
         Assert.Contains("UseUniformFullBleedOverlay: true", host, StringComparison.Ordinal);
+        Assert.Contains("FullBleedBackgroundOpacity: viewModel.BackgroundImageOpacity", host, StringComparison.Ordinal);
         Assert.Contains("UseStackedText: true", host, StringComparison.Ordinal);
         Assert.Contains("viewModel.TimeText", host, StringComparison.Ordinal);
         Assert.Contains("viewModel.DateText", host, StringComparison.Ordinal);
@@ -158,6 +160,8 @@ public sealed class GlanceWidgetPhotoControlsTests
         Assert.Contains("viewModel.TraditionalCalendarTitle", host, StringComparison.Ordinal);
         Assert.Contains("DecodePixelWidth = 768", adapter, StringComparison.Ordinal);
         Assert.Contains("ResolveFullBleedOverlayOpacity()", shell, StringComparison.Ordinal);
+        Assert.Contains("ResolveFullBleedBackgroundOpacity()", shell, StringComparison.Ordinal);
+        Assert.Contains("CompactFullBleedClip.Opacity = useFullBleed", shell, StringComparison.Ordinal);
         Assert.Contains("UseUniformFullBleedOverlay", shell, StringComparison.Ordinal);
         Assert.Contains(
             "presentation.ShowMediaControls || presentation.ShowVinyl",

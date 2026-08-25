@@ -54,6 +54,8 @@ public sealed partial class FileService
 {
     private const string UnsafeFolderTransferFallbackMessage =
         "A folder cannot be copied or moved into itself or one of its subfolders.";
+    private static readonly TimeSpan ShortcutMetadataTimeout =
+        TimeSpan.FromMilliseconds(1500);
     private readonly LocalizationService? _localizationService;
     private static readonly ConcurrentDictionary<string, string> s_shellKindCache =
         new(StringComparer.OrdinalIgnoreCase);
@@ -312,83 +314,16 @@ public sealed partial class FileService
         bool loadFolderItemCount = true,
         bool loadShortcutTarget = true)
     {
-        using var perfScope = PerformanceLogger.Measure("FileService.CreateWidgetItem", $"path={path}");
-        var item = new WidgetItem
-        {
-            Path = path,
-            Name = GetDisplayName(
-                path,
-                Directory.Exists(path),
-                showFileExtensions,
-                hideShortcutExtensionWhenShowingFileExtensions),
-            IsFolder = Directory.Exists(path),
-            IsShortcut = ShortcutHelper.IsShortcutPath(path)
-        };
-
-        if (item.IsShortcut && loadShortcutTarget)
-        {
-            var info = ShortcutHelper.ReadStoredMetadata(path);
-            if (info is not null)
-            {
-                item.TargetPath = info.TargetPath;
-                item.Name = GetDisplayName(
-                    path,
-                    isFolder: false,
-                    showFileExtensions,
-                    hideShortcutExtensionWhenShowingFileExtensions);
-            }
-        }
-        else if (!item.IsShortcut)
-        {
-            item.TargetPath = path;
-        }
-
-        if (!item.IsFolder && File.Exists(path))
-        {
-            try
-            {
-                var fi = new FileInfo(path);
-                item.FileSize = fi.Length;
-                item.CreatedAt = fi.CreationTime;
-                item.LastModified = fi.LastWriteTime;
-            }
-            catch
-            {
-            }
-        }
-        else if (item.IsFolder)
-        {
-            item.Name = GetDisplayName(
-                path,
-                isFolder: true,
-                showFileExtensions,
-                hideShortcutExtensionWhenShowingFileExtensions);
-            item.IsFolderItemCountLoaded = loadFolderItemCount;
-            if (loadFolderItemCount)
-            {
-                try
-                {
-                    item.FolderItemCount = CountVisibleChildren(path);
-                    item.CreatedAt = Directory.GetCreationTime(path);
-                    item.LastModified = Directory.GetLastWriteTime(path);
-                }
-                catch
-                {
-                    item.FolderItemCount = 0;
-                }
-            }
-            else
-            {
-                TryApplyFolderLastModified(item, path);
-            }
-        }
-
-        if (loadIcon)
-        {
-            item.Icon = await GetIconAsync(path, hideShortcutArrowOverlay, showImageFilesAsIcons);
-        }
-
-        return item;
+        FileSystemEntrySnapshot entry = await Task.Run(
+            () => CaptureEntrySnapshot(path, loadFolderItemCount));
+        return await CreateWidgetItemAsync(
+            entry,
+            hideShortcutArrowOverlay,
+            showImageFilesAsIcons,
+            showFileExtensions,
+            hideShortcutExtensionWhenShowingFileExtensions,
+            loadIcon,
+            loadShortcutTarget);
     }
 
     private async Task<WidgetItem> CreateWidgetItemAsync(
@@ -421,11 +356,7 @@ public sealed partial class FileService
 
         if (item.IsShortcut && loadShortcutTarget)
         {
-            var info = ShortcutHelper.ReadStoredMetadata(entry.Path);
-            if (info is not null)
-            {
-                item.TargetPath = info.TargetPath;
-            }
+            item.TargetPath = await GetStoredShortcutTargetAsync(entry.Path);
         }
 
         if (loadIcon)
@@ -446,19 +377,22 @@ public sealed partial class FileService
         bool loadFolderItemCount = true,
         bool loadShortcutTarget = true)
     {
-        if (!ShouldDisplayEntry(path))
+        FileSystemEntrySnapshot? entry = await Task.Run(() =>
+            ShouldDisplayEntry(path)
+                ? CaptureEntrySnapshot(path, loadFolderItemCount)
+                : null);
+        if (entry is null)
         {
             return null;
         }
 
         return await CreateWidgetItemAsync(
-            path,
+            entry,
             hideShortcutArrowOverlay,
             showImageFilesAsIcons,
             showFileExtensions,
             hideShortcutExtensionWhenShowingFileExtensions,
             loadIcon,
-            loadFolderItemCount,
             loadShortcutTarget);
     }
 
@@ -517,6 +451,13 @@ public sealed partial class FileService
             return null;
         }
 
+        return CaptureEntrySnapshot(path, loadFolderItemCount);
+    }
+
+    private static FileSystemEntrySnapshot CaptureEntrySnapshot(
+        string path,
+        bool loadFolderItemCount)
+    {
         bool isFolder = Directory.Exists(path);
         bool isShortcut = ShortcutHelper.IsShortcutPath(path);
         string name = isFolder
@@ -611,10 +552,33 @@ public sealed partial class FileService
         IconHelper.ClearIconCache(path, hideShortcutArrowOverlay, showImageFilesAsIcons);
     }
 
-    public Task<string> GetStoredShortcutTargetAsync(string shortcutPath)
+    public async Task<string> GetStoredShortcutTargetAsync(string shortcutPath)
     {
-        return Task.Run(() =>
-            ShortcutHelper.ReadStoredMetadata(shortcutPath)?.TargetPath ?? string.Empty);
+        BoundedBackgroundWorkResult<string> result =
+            await BoundedBackgroundWorkScheduler.SharedShell.RunAsync(
+                () => ShortcutHelper.ReadStoredMetadata(shortcutPath)?.TargetPath ??
+                    string.Empty,
+                ShortcutMetadataTimeout);
+        if (result.Status == BoundedBackgroundWorkStatus.Completed)
+        {
+            return result.Value ?? string.Empty;
+        }
+
+        if (result.Status == BoundedBackgroundWorkStatus.ExecutionTimedOut)
+        {
+            App.Log(
+                $"[FileService] Shortcut target read timed out " +
+                $"timeoutMs={ShortcutMetadataTimeout.TotalMilliseconds:0} " +
+                $"path={shortcutPath}");
+        }
+        else if (result.Exception is not null)
+        {
+            App.Log(
+                $"[FileService] Shortcut target read failed " +
+                $"path={shortcutPath}: {result.Exception.Message}");
+        }
+
+        return string.Empty;
     }
 
     public async Task<string> GetShellKindAsync(WidgetItem item)
@@ -627,7 +591,7 @@ public sealed partial class FileService
             return string.Empty;
         }
 
-        if (Directory.Exists(path))
+        if (await Task.Run(() => Directory.Exists(path)))
         {
             return "folder";
         }
@@ -1115,7 +1079,7 @@ public sealed partial class FileService
                 operation.DestinationPath))
             .ToArray();
         TimeSpan recoveryProbeDelay = ShellMoveRecoveryProbeDelay;
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
         recoveryProbeDelay = AotShellMoveFixture.GetRecoveryProbeDelay(
             shellPlans,
             recoveryProbeDelay);
@@ -1127,7 +1091,7 @@ public sealed partial class FileService
         Task shellMoveTask = Task.Run(() =>
         {
             EnsureSafeDirectoryTransfers(operations);
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
             if (AotShellMoveFixture.TryExecute(
                     shellPlans,
                     ownerWindowHandle,
@@ -1149,7 +1113,7 @@ public sealed partial class FileService
         if (ReferenceEquals(firstCompletion, shellMoveTask))
         {
             await shellMoveTask;
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
             AotShellMoveFixture.RecordFileServiceOutcome(
                 shellPlans,
                 AotShellMoveFixture.ReturnedOutcome);
@@ -1175,7 +1139,7 @@ public sealed partial class FileService
                 App.Log(
                     $"[FileTransfer] Shell move recovered from pending call " +
                     $"count={operations.Count} elapsedMs={stopwatch.ElapsedMilliseconds}");
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
                 AotShellMoveFixture.RecordFileServiceOutcome(
                     shellPlans,
                     AotShellMoveFixture.RecoveredPendingOutcome);
@@ -1192,7 +1156,7 @@ public sealed partial class FileService
                     $"elapsedMs={stopwatch.ElapsedMilliseconds} " +
                     $"owner=0x{ownerWindowHandle.ToInt64():X}");
                 await shellMoveTask;
-#if DESKBOX_NATIVE_AOT
+#if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
                 AotShellMoveFixture.RecordFileServiceOutcome(
                     shellPlans,
                     AotShellMoveFixture.ExtendedWaitOutcome);
@@ -1269,8 +1233,14 @@ public sealed partial class FileService
     {
         string normalizedSource = Path.GetFullPath(sourcePath);
         string normalizedDestination = Path.GetFullPath(destinationPath);
-        if (string.Equals(normalizedSource, normalizedDestination, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(normalizedSource, normalizedDestination, StringComparison.Ordinal))
         {
+            return;
+        }
+
+        if (IsCaseOnlyPathChange(normalizedSource, normalizedDestination))
+        {
+            await MoveCaseOnlyEntryAsync(normalizedSource, normalizedDestination);
             return;
         }
 

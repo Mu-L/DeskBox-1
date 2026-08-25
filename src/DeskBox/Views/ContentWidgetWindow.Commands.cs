@@ -200,10 +200,12 @@ public sealed partial class ContentWidgetWindow
         HideWindow();
     }
 
-    private void MoreButton_Click(object sender, RoutedEventArgs e)
+    private void MoreButton_Click(object sender, WidgetMenuRequestedEventArgs e)
     {
-        var target = sender as FrameworkElement ?? ContentWidgetShell.MoreActionButton;
-        ShowFlyoutWithInteraction(CreateMoreFlyout(), target);
+        ShowFlyoutWithInteraction(
+            CreateMoreFlyout(),
+            e.Anchor,
+            e.PointerPosition);
     }
 
     private void PositionLockButton_Click(object sender, RoutedEventArgs e)
@@ -220,6 +222,12 @@ public sealed partial class ContentWidgetWindow
 
     private void TitleBarGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        if (IsTrayHideInputSuppressed || IsHideAnimationRunning)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (ContentWidgetShell.IsCollapsed)
         {
             ShowFlyoutWithInteraction(
@@ -239,6 +247,12 @@ public sealed partial class ContentWidgetWindow
 
     private void ContentWidgetShell_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        if (IsTrayHideInputSuppressed || IsHideAnimationRunning)
+        {
+            e.Handled = true;
+            return;
+        }
+
         // Item-level context menus mark the event handled before it reaches the shell.
         // Any remaining right click is therefore on the content background and should
         // expose the same widget actions as the title bar.
@@ -285,6 +299,7 @@ public sealed partial class ContentWidgetWindow
         };
         bool startRenameWhenClosed = false;
         bool showCloseWhenClosed = false;
+        bool showForegroundColorPickerWhenClosed = false;
         rename.Click += (_, _) => startRenameWhenClosed = true;
         flyout.Closed += (_, _) =>
         {
@@ -296,6 +311,11 @@ public sealed partial class ContentWidgetWindow
             {
                 DispatcherQueue.TryEnqueue(() =>
                     ShowCloseWidgetFlyout(ContentWidgetShell));
+            }
+            else if (showForegroundColorPickerWhenClosed)
+            {
+                DispatcherQueue.TryEnqueue(async () =>
+                    await ShowWidgetForegroundColorPickerAsync());
             }
         };
         flyout.Items.Add(rename);
@@ -318,6 +338,12 @@ public sealed partial class ContentWidgetWindow
             _config.IsSizeLocked,
             SetPositionLocked,
             SetSizeLocked));
+        flyout.Items.Add(WidgetForegroundMenuBuilder.Create(
+            _config,
+            App.Current.LocalizationService,
+            SetWidgetForegroundModeOverride,
+            () => showForegroundColorPickerWhenClosed = true,
+            SetWidgetTextEdgeModeOverride));
 
         if (_config.WidgetKind is WidgetKind.File)
         {

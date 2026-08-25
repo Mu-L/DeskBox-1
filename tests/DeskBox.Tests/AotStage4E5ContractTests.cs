@@ -124,12 +124,13 @@ public sealed class AotStage4E5ContractTests
     }
 
     [Fact]
-    public void ResultsRepeater_PreservesDataContextBasedInteractionLookup()
+    public void ResultsRepeater_UsesTypedRowItemForInteractionLookup()
     {
         string code = ReadRepositoryFile("src/DeskBox/Views/SearchPopupWindow.xaml.cs");
 
         Assert.Contains("FindRowByDataContext(ResultsRepeater, selected)", code, StringComparison.Ordinal);
-        Assert.Contains("FindDataContext<SearchResultItem>", code, StringComparison.Ordinal);
+        Assert.Contains("ResolveResultItem", code, StringComparison.Ordinal);
+        Assert.Contains("FindItemRow(element)?.Item ?? FindDataContext<SearchResultItem>(element)", code, StringComparison.Ordinal);
         Assert.Contains("ReferenceEquals(row.Item, data) || ReferenceEquals(row.DataContext, data)", code, StringComparison.Ordinal);
         Assert.DoesNotContain("ResultsRepeater.DataContext =", code, StringComparison.Ordinal);
     }
@@ -186,7 +187,7 @@ public sealed class AotStage4E5ContractTests
         string project = ReadRepositoryFile("src/DeskBox/DeskBox.csproj");
 
         Assert.Contains("$stage4E4MaximumWmc1510Count = 1224", audit, StringComparison.Ordinal);
-        Assert.Contains("$stage4E5ExpectedWmc1510Count = 1190", audit, StringComparison.Ordinal);
+        Assert.Contains("$stage4E5ExpectedWmc1510Count = 1199", audit, StringComparison.Ordinal);
         Assert.Contains("Stage 4E-5 WMC1510 count changed", audit, StringComparison.Ordinal);
         Assert.Contains("Native AOT stage 5B-4C3B2B1", project, StringComparison.Ordinal);
         Assert.Contains("eight compiled search-result row bindings", project, StringComparison.OrdinalIgnoreCase);

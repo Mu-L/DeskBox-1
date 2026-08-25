@@ -37,6 +37,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem open = actions.CreateMenuItem(
             "Widget.Open",
             "\uE8E5");
+        open.KeyboardAcceleratorTextOverride = "Enter";
         open.Click += async (_, _) =>
         {
             flyout.Hide();
@@ -48,6 +49,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem cut = actions.CreateMenuItem(
             "Common.Cut",
             "\uE8C6");
+        cut.KeyboardAcceleratorTextOverride = "Ctrl+X";
         cut.Click += async (_, _) =>
         {
             flyout.Hide();
@@ -58,6 +60,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem copy = actions.CreateMenuItem(
             "Common.Copy",
             "\uE8C8");
+        copy.KeyboardAcceleratorTextOverride = "Ctrl+C";
         copy.Click += async (_, _) =>
         {
             flyout.Hide();
@@ -68,6 +71,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem rename = actions.CreateMenuItem(
             "Common.Rename",
             "\uE8AC");
+        rename.KeyboardAcceleratorTextOverride = "F2";
         rename.Click += async (_, _) =>
         {
             flyout.Hide();
@@ -79,6 +83,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem copyPath = actions.CreateMenuItem(
             "Widget.CopyPath",
             "\uE8C8");
+        copyPath.KeyboardAcceleratorTextOverride = "Ctrl+Shift+C";
         copyPath.Click += (_, _) =>
         {
             flyout.Hide();
@@ -99,6 +104,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem properties = actions.CreateMenuItem(
             "Common.Properties",
             "\uE946");
+        properties.KeyboardAcceleratorTextOverride = "Alt+Enter";
         properties.Click += (_, _) =>
         {
             flyout.Hide();
@@ -139,6 +145,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem delete = actions.CreateMenuItem(
             "Widget.MoveToRecycleBin",
             "\uE74D");
+        delete.KeyboardAcceleratorTextOverride = "Delete";
         delete.Click += async (_, _) =>
         {
             flyout.Hide();
@@ -172,6 +179,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem cut = actions.CreateMenuItem(
             "Common.Cut",
             "\uE8C6");
+        cut.KeyboardAcceleratorTextOverride = "Ctrl+X";
         cut.Click += async (_, _) =>
         {
             flyout.Hide();
@@ -182,6 +190,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem copy = actions.CreateMenuItem(
             "Common.Copy",
             "\uE8C8");
+        copy.KeyboardAcceleratorTextOverride = "Ctrl+C";
         copy.Click += async (_, _) =>
         {
             flyout.Hide();
@@ -193,6 +202,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem copyPath = actions.CreateMenuItem(
             "Widget.CopyPath",
             "\uE8C8");
+        copyPath.KeyboardAcceleratorTextOverride = "Ctrl+Shift+C";
         copyPath.Click += (_, _) =>
         {
             flyout.Hide();
@@ -218,6 +228,7 @@ public static class FileItemMenuBuilder
         MenuFlyoutItem delete = actions.CreateMenuItem(
             "Widget.MoveToRecycleBin",
             "\uE74D");
+        delete.KeyboardAcceleratorTextOverride = "Delete";
         delete.Click += async (_, _) =>
         {
             flyout.Hide();

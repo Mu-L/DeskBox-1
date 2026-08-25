@@ -57,6 +57,34 @@ public sealed class InstallerUninstallContractTests
         Assert.DoesNotContain("DelTree(GetManagedStorageRootPath", code, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Uninstall_RemovesOnlyTheStartupTaskOwnedByCurrentInstall()
+    {
+        string code = ReadRepositoryFile("installer/DeskBox.Uninstall.iss");
+
+        Assert.Contains(
+            "DeskBoxStartupTaskName = 'DeskBox User Startup'",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains("CreateOleObject('Schedule.Service')", code, StringComparison.Ordinal);
+        Assert.Contains("TaskDefinition.Actions", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "SameInstallPath(ExtractFileDir(ActionPath), ExpandConstant('{app}'))",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CompareText(ExtractFileName(ActionPath), DeskBoxProcessName)",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RootFolder.DeleteTask(DeskBoxStartupTaskName, 0)",
+            code,
+            StringComparison.Ordinal);
+        Assert.True(
+            code.LastIndexOf("RemoveStartupScheduledTask;", StringComparison.Ordinal) <
+            code.LastIndexOf("RemoveStartupRegistryEntry;", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("installer/DeskBox.Installation.iss")]
     [InlineData("installer/DeskBox.Dependencies.iss")]

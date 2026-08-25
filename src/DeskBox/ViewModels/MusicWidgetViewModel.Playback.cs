@@ -111,10 +111,62 @@ public sealed partial class MusicWidgetViewModel
             return;
         }
 
-        _preferredSessionId = SessionIds[index];
-        await _musicSessionService.TrySetPreferredSessionAsync(_preferredSessionId);
-        OnPropertyChanged(nameof(SelectedSessionIndex));
+        await SelectSessionAsync(SessionIds[index]);
+    }
+
+    public async Task<IReadOnlyList<MusicSessionOption>> GetAvailableSessionOptionsAsync()
+    {
+        if (_isDisposed)
+        {
+            return [];
+        }
+
+        await _musicSessionService.InitializeAsync();
+        if (_isDisposed)
+        {
+            return [];
+        }
+
+        return RefreshSessionList();
+    }
+
+    public async Task<bool> SelectSessionAsync(string? sessionId)
+    {
+        if (_isDisposed)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            _preferredSessionId = null;
+            RaiseSelectedSessionChanged();
+            await RefreshAsync();
+            return true;
+        }
+
+        bool selected = await _musicSessionService.TrySetPreferredSessionAsync(sessionId);
+        if (!selected)
+        {
+            // The source may have closed after the picker was populated. Return
+            // to the system session instead of retaining an invalid selection.
+            _preferredSessionId = null;
+            RaiseSelectedSessionChanged();
+            await RefreshAsync();
+            return false;
+        }
+
+        _preferredSessionId = sessionId;
+        RaiseSelectedSessionChanged();
         await RefreshAsync();
+        return true;
+    }
+
+    private void RaiseSelectedSessionChanged()
+    {
+        OnPropertyChanged(nameof(IsFollowingSystemSession));
+        OnPropertyChanged(nameof(PreferredSessionId));
+        OnPropertyChanged(nameof(SelectedSessionIndex));
     }
 
     public async Task TogglePlayPauseAsync()

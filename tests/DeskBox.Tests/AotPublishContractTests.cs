@@ -383,6 +383,8 @@ public sealed class AotPublishContractTests
         Assert.Contains("ShortcutNativeBackend.ReadStoredRaw", helper, StringComparison.Ordinal);
         Assert.Contains("ShortcutNativeBackend.ResolveNoUi", helper, StringComparison.Ordinal);
         Assert.Contains("ShortcutNativeBackend.WriteShortcut", helper, StringComparison.Ordinal);
+        Assert.Contains("ShortcutNativeBackend.WriteShellNamespaceShortcut", helper, StringComparison.Ordinal);
+        Assert.Contains("CreateShellApplicationShortcut", helper, StringComparison.Ordinal);
         Assert.Contains("ShortcutNativeBackend.ResolveWithUi", helper, StringComparison.Ordinal);
         Assert.Contains("Explicit Rust", helper, StringComparison.Ordinal);
         Assert.Contains("ShortcutNativeBackend.ReadEffectiveDiagnostic", dragDrop, StringComparison.Ordinal);
@@ -543,8 +545,8 @@ public sealed class AotPublishContractTests
     }
 
     [Theory]
-    [InlineData("src/DeskBox/ViewModels/SearchPopupViewModel.cs", 12)]
-    [InlineData("src/DeskBox/ViewModels/SettingsViewModel.cs", 67)]
+    [InlineData("src/DeskBox/ViewModels/SearchPopupViewModel.cs", 15)]
+    [InlineData("src/DeskBox/ViewModels/SettingsViewModel.cs", 68)]
     public void AotSensitiveViewModels_UseObservablePartialProperties(
         string relativePath,
         int expectedCount)

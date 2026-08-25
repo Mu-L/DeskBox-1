@@ -41,8 +41,9 @@ public sealed partial class OnboardingWindow
 
     private void SetupTaskStep4()
     {
-        string hotkeyText = GlobalHotkeyService.FormatGesture(
-            GlobalHotkeyService.NormalizeGesture(
+        string hotkeyText = GlobalHotkeyService.FormatActivation(
+            GlobalHotkeyService.NormalizeActivation(
+                _settingsService.Settings.GlobalHotkeyActivationKind,
                 _settingsService.Settings.GlobalHotkeyModifiers,
                 _settingsService.Settings.GlobalHotkeyKey),
             _localizationService);

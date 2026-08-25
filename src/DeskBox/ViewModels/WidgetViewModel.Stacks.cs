@@ -17,6 +17,7 @@ public partial class WidgetViewModel
     private string _fileStackGroupBy = SettingsService.FileStackGroupByKind;
     private int _fileStackThreshold = SettingsService.DefaultFileStackThreshold;
     private string _fileStackOrderBy = SettingsService.FileStackOrderByWidget;
+    private string _fileStackOpenMode = SettingsService.FileStackOpenModeInline;
     private string? _expandedStackKey;
     private bool _stackRebuildQueued;
     private bool _legacyStackMigrationQueued;
@@ -58,6 +59,23 @@ public partial class WidgetViewModel
         private set => SetProperty(ref _fileStackOrderBy, value);
     }
 
+    public string FileStackOpenMode
+    {
+        get => _fileStackOpenMode;
+        private set
+        {
+            if (SetProperty(ref _fileStackOpenMode, value))
+            {
+                OnPropertyChanged(nameof(UsesStackPopover));
+            }
+        }
+    }
+
+    public bool UsesStackPopover => string.Equals(
+        FileStackOpenMode,
+        SettingsService.FileStackOpenModePopover,
+        StringComparison.Ordinal);
+
     public bool IsStackDisabled(string stackKey) => _disabledStacks.Contains(stackKey);
 
     public bool HasDisabledStacks => _disabledStacks.Count > 0;
@@ -72,6 +90,12 @@ public partial class WidgetViewModel
             out WidgetStackItem? stack)
                 ? stack
                 : null;
+
+    public WidgetStackItem? FindStackByKey(string stackKey) =>
+        !string.IsNullOrWhiteSpace(stackKey) &&
+        _stackItems.TryGetValue(stackKey, out WidgetStackItem? stack)
+            ? stack
+            : null;
 
     public bool FileStacksFollowGlobalDefaults =>
         WidgetFileStackSettings.FollowsGlobalDefaults(Config);
@@ -88,8 +112,21 @@ public partial class WidgetViewModel
     public bool FileStackOrderByFollowsGlobal =>
         WidgetFileStackSettings.GetOrderByOverride(Config) is null;
 
+    public bool FileStackOpenModeFollowsGlobal =>
+        WidgetFileStackSettings.GetOpenModeOverride(Config) is null;
+
     public void SetStackExpanded(WidgetStackItem stack, bool expanded)
     {
+        if (UsesStackPopover)
+        {
+            if (_expandedStackKey is not null)
+            {
+                _expandedStackKey = null;
+                RebuildStackDisplayItems();
+            }
+            return;
+        }
+
         _expandedStackKey = expanded ? stack.StackKey : null;
         RebuildStackDisplayItems();
     }
@@ -274,6 +311,113 @@ public partial class WidgetViewModel
         return true;
     }
 
+    internal static bool TryMoveStackMemberOverrides(
+        List<string> paths,
+        IReadOnlyCollection<string> sourcePaths,
+        int insertionIndex)
+    {
+        if (paths.Count == 0 || sourcePaths.Count == 0)
+        {
+            return false;
+        }
+
+        var normalizedSources = sourcePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeStackMemberPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (normalizedSources.Count == 0)
+        {
+            return false;
+        }
+
+        List<string> original = paths.ToList();
+        List<string> moving = paths
+            .Where(path => normalizedSources.Contains(
+                NormalizeStackMemberPath(path)))
+            .ToList();
+        if (moving.Count == 0)
+        {
+            return false;
+        }
+
+        int clampedInsertionIndex = Math.Clamp(
+            insertionIndex,
+            0,
+            paths.Count);
+        int movingBeforeInsertion = paths
+            .Take(clampedInsertionIndex)
+            .Count(path => normalizedSources.Contains(
+                NormalizeStackMemberPath(path)));
+        paths.RemoveAll(path => normalizedSources.Contains(
+            NormalizeStackMemberPath(path)));
+        int adjustedInsertionIndex = Math.Clamp(
+            clampedInsertionIndex - movingBeforeInsertion,
+            0,
+            paths.Count);
+        paths.InsertRange(adjustedInsertionIndex, moving);
+        return !paths.SequenceEqual(
+            original,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    public bool MoveStackMembersForReorder(
+        string stackKey,
+        IEnumerable<WidgetItem> draggedItems,
+        int memberInsertionIndex)
+    {
+        if (!UsesStackProjection ||
+            string.IsNullOrWhiteSpace(stackKey) ||
+            !_stackItems.TryGetValue(
+                stackKey,
+                out WidgetStackItem? stack))
+        {
+            return false;
+        }
+
+        HashSet<string> stackPaths = stack.Members
+            .Select(item => NormalizeStackMemberPath(item.Path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string[] draggedPaths = NormalizeStackMembers(draggedItems)
+            .Select(item => NormalizeStackMemberPath(item.Path))
+            .Where(stackPaths.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (draggedPaths.Length == 0)
+        {
+            return false;
+        }
+
+        List<string> currentPaths = stack.Members
+            .Select(item => NormalizeStackMemberPath(item.Path))
+            .ToList();
+        if (!TryMoveStackMemberOverrides(
+                currentPaths,
+                draggedPaths,
+                memberInsertionIndex))
+        {
+            return false;
+        }
+
+        if (!stack.IsManual)
+        {
+            stack = ConvertStackToManual(stack, []);
+        }
+
+        if (!_stackMemberOverrides.TryGetValue(
+                stack.StackKey,
+                out List<string>? overridePaths) ||
+            !TryMoveStackMemberOverrides(
+                overridePaths,
+                draggedPaths,
+                memberInsertionIndex))
+        {
+            return false;
+        }
+
+        PersistStackCustomizations();
+        return true;
+    }
+
     public bool MoveVisibleItemForReorder(
         WidgetItem item,
         int visibleInsertionIndex)
@@ -371,6 +515,12 @@ public partial class WidgetViewModel
     public void SetFileStackOrderByOverride(string? orderBy)
     {
         WidgetFileStackSettings.SetOrderByOverride(Config, orderBy);
+        PersistStackOverrides();
+    }
+
+    public void SetFileStackOpenModeOverride(string? openMode)
+    {
+        WidgetFileStackSettings.SetOpenModeOverride(Config, openMode);
         PersistStackOverrides();
     }
 
@@ -631,6 +781,85 @@ public partial class WidgetViewModel
 
     public bool CanRemoveItemFromStack(WidgetItem item) =>
         item.IsStackChild && FindContainingStack(item) is not null;
+
+    public bool RemoveItemsFromStack(
+        string stackKey,
+        IEnumerable<WidgetItem> selectedItems)
+    {
+        if (!UsesStackProjection ||
+            string.IsNullOrWhiteSpace(stackKey) ||
+            !_stackItems.TryGetValue(
+                stackKey,
+                out WidgetStackItem? stack))
+        {
+            return false;
+        }
+
+        HashSet<string> stackPaths = stack.Members
+            .Select(item => NormalizeStackMemberPath(item.Path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> removedPaths = NormalizeStackMembers(selectedItems)
+            .Select(item => NormalizeStackMemberPath(item.Path))
+            .Where(stackPaths.Contains)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (removedPaths.Count == 0)
+        {
+            return false;
+        }
+
+        bool projectionWasEnabled = UsesStackProjection;
+        int remainingMemberCount = stack.Members.Count - removedPaths.Count;
+        if (remainingMemberCount < 2)
+        {
+            if (stack.IsManual)
+            {
+                RemoveManualStackCustomization(stack.StackKey);
+            }
+            else
+            {
+                _disabledStacks.Add(stack.StackKey);
+                _expandedStackKey = null;
+            }
+
+            PersistStackCustomizations();
+            if (projectionWasEnabled != UsesStackProjection)
+            {
+                OnPropertyChanged(nameof(VisibleItems));
+            }
+            return true;
+        }
+
+        if (!stack.IsManual)
+        {
+            stack = ConvertStackToManual(stack, []);
+        }
+
+        if (!_stackMemberOverrides.TryGetValue(
+                stack.StackKey,
+                out List<string>? members))
+        {
+            return false;
+        }
+
+        int removed = members.RemoveAll(path => removedPaths.Contains(
+            NormalizeStackMemberPath(path)));
+        if (removed == 0)
+        {
+            return false;
+        }
+
+        if (members.Count < 2)
+        {
+            RemoveManualStackCustomization(stack.StackKey);
+        }
+
+        PersistStackCustomizations();
+        if (projectionWasEnabled != UsesStackProjection)
+        {
+            OnPropertyChanged(nameof(VisibleItems));
+        }
+        return true;
+    }
 
     public bool RemoveItemFromStack(WidgetItem item)
     {
@@ -912,6 +1141,7 @@ public partial class WidgetViewModel
         OnPropertyChanged(nameof(FileStackGroupByFollowsGlobal));
         OnPropertyChanged(nameof(FileStackThresholdFollowsGlobal));
         OnPropertyChanged(nameof(FileStackOrderByFollowsGlobal));
+        OnPropertyChanged(nameof(FileStackOpenModeFollowsGlobal));
     }
 
     private void InitializeStacks()
@@ -928,6 +1158,9 @@ public partial class WidgetViewModel
         _fileStackOrderBy = WidgetFileStackSettings.ResolveOrderBy(
             Config,
             _settingsService.Settings.FileStackOrderBy);
+        _fileStackOpenMode = WidgetFileStackSettings.ResolveOpenMode(
+            Config,
+            _settingsService.Settings.FileStackOpenMode);
         _disabledStacks = WidgetFileStackSettings.GetDisabledStacks(Config);
         _stackNameOverrides = WidgetFileStackSettings.GetStackNameOverrides(Config);
         _stackOrder = WidgetFileStackSettings.GetStackOrder(Config);
@@ -987,6 +1220,9 @@ public partial class WidgetViewModel
         string orderBy = WidgetFileStackSettings.ResolveOrderBy(
             Config,
             _settingsService.Settings.FileStackOrderBy);
+        string openMode = WidgetFileStackSettings.ResolveOpenMode(
+            Config,
+            _settingsService.Settings.FileStackOpenMode);
         var disabledStacks = WidgetFileStackSettings.GetDisabledStacks(Config);
         var nameOverrides = WidgetFileStackSettings.GetStackNameOverrides(Config);
         var stackOrder = WidgetFileStackSettings.GetStackOrder(Config);
@@ -996,10 +1232,15 @@ public partial class WidgetViewModel
         FileStackGroupBy = groupBy;
         FileStackThreshold = threshold;
         FileStackOrderBy = orderBy;
+        FileStackOpenMode = openMode;
         _disabledStacks = disabledStacks;
         _stackNameOverrides = nameOverrides;
         _stackOrder = stackOrder;
         _stackMemberOverrides = stackMemberOverrides;
+        if (UsesStackPopover)
+        {
+            _expandedStackKey = null;
+        }
         bool sourceChanged = projectionWasEnabled != UsesStackProjection;
         if (!UsesStackProjection)
         {
@@ -1018,6 +1259,7 @@ public partial class WidgetViewModel
         OnPropertyChanged(nameof(FileStackGroupByFollowsGlobal));
         OnPropertyChanged(nameof(FileStackThresholdFollowsGlobal));
         OnPropertyChanged(nameof(FileStackOrderByFollowsGlobal));
+        OnPropertyChanged(nameof(FileStackOpenModeFollowsGlobal));
         OnPropertyChanged(nameof(HasDisabledStacks));
     }
 

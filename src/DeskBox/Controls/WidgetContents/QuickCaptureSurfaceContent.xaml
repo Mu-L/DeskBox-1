@@ -8,6 +8,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -76,7 +77,6 @@
                     MinHeight="{Binding SegmentHeight}"
                     FontSize="{Binding SegmentTextSize}"
                     HorizontalAlignment="Stretch"
-                    SelectedIndex="0"
                     SelectionChanged="QuickCaptureViewSegmented_SelectionChanged"
                     SizeChanged="QuickCaptureViewSegmented_SizeChanged"
                     Visibility="Collapsed">
@@ -478,6 +478,7 @@
                                 MinHeight="80"
                                 Margin="8,4,0,6"
                                 FontSize="{Binding TextSize}"
+                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                 TaskToggleRequested="DetailMarkdownView_TaskToggleRequested"
                                 Visibility="Collapsed" />
                             <controls:MarkdownSourceEditor
@@ -486,6 +487,7 @@
                                 MinHeight="80"
                                 EditorFontSize="{Binding TextSize}"
                                 EditorEnterBehavior="{Binding EditorEnterBehavior}"
+                                EnableCtrlSSaveShortcut="True"
                                 PlaceholderText="{Binding DetailBodyPlaceholderText}"
                                 Visibility="Collapsed" />
                         </Grid>

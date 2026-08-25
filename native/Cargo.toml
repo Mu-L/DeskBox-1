@@ -3,6 +3,7 @@ members = [
     "deskbox-native",
     "deskbox-audio-session-fixture",
     "deskbox-search-core",
+    "deskbox-thumbnail-proxy",
 ]
 resolver = "3"
 

@@ -3,6 +3,7 @@ using DeskBox.Services;
 using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.ViewModels;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -169,7 +170,25 @@ public sealed partial class TodoWidgetContent
 
     private void TodoItem_DragOver(object sender, DragEventArgs e)
     {
-        ResetTodoReorderVisualState();
+        if (sender is Border
+            {
+                DataContext: TodoItemViewModel
+            } reorderBorder &&
+            !string.IsNullOrWhiteSpace(_draggedTodoItemId))
+        {
+            bool insertAfter =
+                e.GetPosition(reorderBorder).Y >= reorderBorder.ActualHeight / 2;
+            e.Handled = true;
+            e.AcceptedOperation = DataPackageOperation.Move;
+            e.DragUIOverride.IsGlyphVisible = true;
+            ApplyTodoReorderDropState(
+                reorderBorder,
+                active: true,
+                insertAfter);
+            return;
+        }
+
+        ClearTodoReorderDropState();
 
         if (e.DataView.Contains(DeskBoxDragData.TodoColorMarkerFormat))
         {
@@ -192,6 +211,17 @@ public sealed partial class TodoWidgetContent
 
     private void TodoItem_DragLeave(object sender, DragEventArgs e)
     {
+        if (!string.IsNullOrWhiteSpace(_draggedTodoItemId) &&
+            sender is Border reorderBorder)
+        {
+            e.Handled = true;
+            ApplyTodoReorderDropState(
+                reorderBorder,
+                active: false,
+                insertAfter: false);
+            return;
+        }
+
         if (e.DataView.Contains(DeskBoxDragData.TodoColorMarkerFormat) ||
             DeskBoxDragData.HasDroppedFiles(e.DataView))
         {
@@ -204,17 +234,24 @@ public sealed partial class TodoWidgetContent
 
     private async void TodoItem_Drop(object sender, DragEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: TodoItemViewModel item } || ViewModel is null)
+        if (sender is not Border { DataContext: TodoItemViewModel item } border ||
+            ViewModel is null)
         {
             e.AcceptedOperation = DataPackageOperation.None;
             ResetTodoReorderVisualState();
             return;
         }
 
+        if (!string.IsNullOrWhiteSpace(_draggedTodoItemId))
+        {
+            await DropTodoItemAtRowAsync(border, item, e);
+            return;
+        }
+
         if (e.DataView.Contains(DeskBoxDragData.TodoColorMarkerFormat))
         {
             e.Handled = true;
-            SetTodoItemHoverState(sender as DependencyObject, false);
+            SetTodoItemHoverState(border, false);
             string? colorMarker = TodoItem.NormalizeColorMarker(
                 await DeskBoxDragData.TryGetTodoColorMarkerAsync(e.DataView));
             if (colorMarker is null)
@@ -237,7 +274,7 @@ public sealed partial class TodoWidgetContent
         }
 
         e.Handled = true;
-        SetTodoItemHoverState(sender as DependencyObject, false);
+        SetTodoItemHoverState(border, false);
         var deferral = e.GetDeferral();
         try
         {
@@ -415,17 +452,16 @@ public sealed partial class TodoWidgetContent
         var draggedItem = e.Items.OfType<TodoItemViewModel>().FirstOrDefault();
         var selectedItems = GetSelectedCopyItemsInVisibleOrder();
         _draggedTodoItemIds.Clear();
-        _todoTabDropHandled = false;
         if (draggedItem is not null &&
-            selectedItems.Count > 0 &&
+            selectedItems.Count > 1 &&
             selectedItems.Contains(draggedItem))
         {
             _draggedTodoItemId = null;
             _draggedTodoItemIds.AddRange(selectedItems.Select(item => item.Id));
             TodoListView.CanReorderItems = false;
-            string text = selectedItems.Count == 1
-                ? TodoClipboardFormatter.FormatSingle(selectedItems[0], App.Current.LocalizationService)
-                : TodoClipboardFormatter.FormatBatch(selectedItems, App.Current.LocalizationService);
+            string text = TodoClipboardFormatter.FormatBatch(
+                selectedItems,
+                App.Current.LocalizationService);
             if (string.IsNullOrWhiteSpace(text))
             {
                 _draggedTodoItemIds.Clear();
@@ -449,7 +485,10 @@ public sealed partial class TodoWidgetContent
         if (draggedItem is not null)
         {
             _draggedTodoItemIds.Add(draggedItem.Id);
-            TodoListView.CanReorderItems = true;
+            // VisibleItemsSource is object[] in Native AOT. Keep WinUI's
+            // native reordering disabled and persist the row-drop position in
+            // TodoItem_Drop instead.
+            TodoListView.CanReorderItems = false;
             DeskBoxDragData.SetText(
                 e.Data,
                 TodoClipboardFormatter.FormatSingle(draggedItem, App.Current.LocalizationService),
@@ -501,7 +540,6 @@ public sealed partial class TodoWidgetContent
         }
 
         e.Handled = true;
-        _todoTabDropHandled = true;
         var deferral = e.GetDeferral();
         try
         {
@@ -548,45 +586,128 @@ public sealed partial class TodoWidgetContent
         item.PropertyChanged += TodoItem_PropertyChanged;
         ApplyTodoItemTooltips(sender, item);
         SetTodoItemHoverState(sender, false);
+        if (sender is Border border)
+        {
+            ApplyTodoReorderDropState(
+                border,
+                active: false,
+                insertAfter: false);
+        }
         if (FindVisualChild<CheckBox>(sender, "TodoCompletionCheckBox") is { } checkBox)
         {
             checkBox.IsChecked = item.IsCompleted;
         }
     }
 
-    private async void TodoListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    private async Task DropTodoItemAtRowAsync(
+        Border border,
+        TodoItemViewModel targetItem,
+        DragEventArgs e)
     {
-        bool tabDropHandled = _todoTabDropHandled;
-        _todoTabDropHandled = false;
-        _draggedTodoItemIds.Clear();
-        if (ViewModel is null || string.IsNullOrWhiteSpace(_draggedTodoItemId))
+        string? draggedItemId = _draggedTodoItemId;
+        if (ViewModel is null || string.IsNullOrWhiteSpace(draggedItemId))
         {
-            _draggedTodoItemId = null;
-            ResetTodoReorderVisualState();
+            e.AcceptedOperation = DataPackageOperation.None;
             return;
         }
 
-        if (tabDropHandled)
+        bool insertAfter = e.GetPosition(border).Y >= border.ActualHeight / 2;
+        int targetIndex = TodoDragPackage.ResolveManualDropTargetIndex(
+            ViewModel.VisibleItems,
+            draggedItemId,
+            targetItem.Id,
+            insertAfter);
+        if (targetIndex < 0)
         {
-            _draggedTodoItemId = null;
-            ResetTodoReorderVisualState();
+            e.AcceptedOperation = DataPackageOperation.None;
             return;
         }
 
+        e.Handled = true;
+        ApplyTodoReorderDropState(
+            border,
+            active: false,
+            insertAfter: false);
+        var deferral = e.GetDeferral();
         try
         {
-            var movedItem = ViewModel.VisibleItems.FirstOrDefault(item =>
-                string.Equals(item.Id, _draggedTodoItemId, StringComparison.Ordinal));
-            if (movedItem is not null)
-            {
-                await ViewModel.MoveItemAsync(movedItem.Id, ViewModel.VisibleItems.IndexOf(movedItem));
-            }
+            bool persisted = await ViewModel.MoveItemAsync(
+                draggedItemId,
+                targetIndex);
+            e.AcceptedOperation = persisted
+                ? DataPackageOperation.Move
+                : DataPackageOperation.None;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Todo] Reorder failed: {ex}");
+            e.AcceptedOperation = DataPackageOperation.None;
         }
         finally
         {
-            _draggedTodoItemId = null;
-            ResetTodoReorderVisualState();
+            ApplyTodoReorderDropState(
+                border,
+                active: false,
+                insertAfter: false);
+            deferral.Complete();
         }
+    }
+
+    private void ApplyTodoReorderDropState(
+        Border border,
+        bool active,
+        bool insertAfter)
+    {
+        if (active &&
+            _todoReorderDropTarget is { } previousBorder &&
+            !ReferenceEquals(previousBorder, border))
+        {
+            ResetTodoReorderDropBorder(previousBorder);
+        }
+
+        if (active)
+        {
+            border.BorderBrush = new SolidColorBrush(
+                App.Current.ThemeService?.GetEffectiveAccentColor() ??
+                AccentColorHelper.DefaultAccentColor);
+            border.BorderThickness = insertAfter
+                ? new Thickness(0, 0, 0, 2)
+                : new Thickness(0, 2, 0, 0);
+            _todoReorderDropTarget = border;
+            return;
+        }
+
+        ResetTodoReorderDropBorder(border);
+        if (ReferenceEquals(_todoReorderDropTarget, border))
+        {
+            _todoReorderDropTarget = null;
+        }
+    }
+
+    private void ClearTodoReorderDropState()
+    {
+        if (_todoReorderDropTarget is not { } border)
+        {
+            return;
+        }
+
+        _todoReorderDropTarget = null;
+        ResetTodoReorderDropBorder(border);
+    }
+
+    private static void ResetTodoReorderDropBorder(Border border)
+    {
+        border.BorderBrush = new SolidColorBrush(Colors.Transparent);
+        border.BorderThickness = new Thickness(0);
+    }
+
+    private void TodoListView_DragItemsCompleted(
+        ListViewBase sender,
+        DragItemsCompletedEventArgs args)
+    {
+        _draggedTodoItemId = null;
+        _draggedTodoItemIds.Clear();
+        ResetTodoReorderVisualState();
     }
 
     private void RootGrid_DragOver(object sender, DragEventArgs e)

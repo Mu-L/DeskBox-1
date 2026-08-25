@@ -66,6 +66,30 @@ public partial class SettingsViewModel
         }
     }
 
+    partial void OnWidgetSnapSpacingChanged(double value)
+    {
+        double normalized = SettingsService.NormalizeWidgetSnapSpacing(value);
+        if (!double.IsFinite(value) || Math.Abs(value - normalized) > 0.0001)
+        {
+            WidgetSnapSpacing = normalized;
+            return;
+        }
+
+        OnPropertyChanged(nameof(WidgetSnapSpacingText));
+
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
+        _settingsService.Settings.WidgetSnapSpacing = normalized;
+        _settingsService.SaveDebounced();
+        if (App.Current is { } app)
+        {
+            app.ResizeGuideOverlay.SnapSpacingDips = normalized;
+        }
+    }
+
     partial void OnKeepWidgetsVisibleOnShowDesktopChanged(bool value)
     {
         OnPropertyChanged(nameof(SelectedShowDesktopBehavior));

@@ -4077,7 +4077,7 @@ $settings | ConvertTo-Json -Depth 16 |
     Set-Content -LiteralPath $settingsPath -Encoding UTF8
 if ($scenario -ceq "SearchCorePreviewReadOnly") {
     Write-SearchCoreDbixFixture `
-        -IndexPath (Join-Path $DataRoot "cache\search-index.json") `
+        -IndexPath (Join-Path $DataRoot "cache\search-index-v2.json") `
         -FullPath $searchCoreOwnedFilePath
 }
 

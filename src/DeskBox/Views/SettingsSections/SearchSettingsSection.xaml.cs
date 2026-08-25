@@ -18,6 +18,7 @@ public sealed partial class SearchSettingsSection : UserControl
     private long _lastStorageRefreshMs;
     private string _lastStorageText = string.Empty;
     private bool _isRecordingSearchHotkey;
+    private SearchEngineService? _observedSearchEngine;
 
     public SearchSettingsSection()
     {
@@ -32,23 +33,40 @@ public sealed partial class SearchSettingsSection : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         RefreshFromSettings();
-        // Subscribe to real-time index progress updates.
-        var engine = App.Current.SearchEngineService;
-        if (engine is not null)
-        {
-            engine.IndexProgressChanged += OnIndexProgressChanged;
-            engine.IndexUpdated += OnIndexCompleted;
-        }
+        ObserveSearchEngine(App.Current.SearchEngineService);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        var engine = App.Current.SearchEngineService;
-        if (engine is not null)
+        ObserveSearchEngine(null);
+    }
+
+    private void ObserveSearchEngine(SearchEngineService? engine)
+    {
+        if (ReferenceEquals(_observedSearchEngine, engine))
         {
-            engine.IndexProgressChanged -= OnIndexProgressChanged;
-            engine.IndexUpdated -= OnIndexCompleted;
+            return;
         }
+
+        if (_observedSearchEngine is not null)
+        {
+            _observedSearchEngine.IndexProgressChanged -= OnIndexProgressChanged;
+            _observedSearchEngine.IndexUpdated -= OnIndexCompleted;
+        }
+
+        _observedSearchEngine = engine;
+        if (_observedSearchEngine is not null)
+        {
+            _observedSearchEngine.IndexProgressChanged += OnIndexProgressChanged;
+            _observedSearchEngine.IndexUpdated += OnIndexCompleted;
+        }
+    }
+
+    private SearchEngineService? EnsureSearchEngineForUserAction()
+    {
+        var engine = App.Current.EnsureSearchServicesForUserAction();
+        ObserveSearchEngine(engine);
+        return engine;
     }
 
     /// <summary>
@@ -61,9 +79,7 @@ public sealed partial class SearchSettingsSection : UserControl
         {
             var settings = Settings.Settings;
             SearchDeskBoxContentToggle.IsOn = settings.SearchIncludeDeskBoxContent;
-            SearchSystemIndexToggle.IsOn = settings.SearchIncludeSystemIndex;
-            SearchCustomIndexerToggle.IsOn = settings.SearchCustomIndexerEnabled;
-            SearchRustPreviewToggle.IsOn = settings.SearchRustIndexerPreviewEnabled;
+            SearchSystemNoiseToggle.IsOn = settings.SearchHideSystemNoise;
             SearchRecommendationsToggle.IsOn = settings.SearchShowRecommendations;
             SearchDefaultTabComboBox.SelectedItem = SearchDefaultTabComboBox.Items
                 .OfType<ComboBoxItem>()
@@ -71,12 +87,6 @@ public sealed partial class SearchSettingsSection : UserControl
                     item.Tag as string,
                     settings.SearchDefaultTab,
                     StringComparison.OrdinalIgnoreCase));
-            SearchMaxResultsComboBox.SelectedItem = SearchMaxResultsComboBox.Items
-                .OfType<ComboBoxItem>()
-                .FirstOrDefault(item => string.Equals(
-                    item.Tag as string,
-                    settings.SearchMaxResults.ToString(),
-                    StringComparison.Ordinal));
             SearchIconAnimationComboBox.SelectedItem = SearchIconAnimationComboBox.Items
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(item => string.Equals(
@@ -102,12 +112,22 @@ public sealed partial class SearchSettingsSection : UserControl
 
         var settings = Settings.Settings;
         settings.SearchIncludeDeskBoxContent = SearchDeskBoxContentToggle.IsOn;
-        settings.SearchIncludeSystemIndex = SearchSystemIndexToggle.IsOn;
-        settings.SearchCustomIndexerEnabled = SearchCustomIndexerToggle.IsOn;
         Settings.SaveDebounced();
-        App.Current.SetSearchCustomIndexingEnabled(settings.SearchCustomIndexerEnabled);
+        App.Current.SearchEngineService?.SetDeskBoxContentSearchEnabled(
+            settings.SearchIncludeDeskBoxContent);
+    }
+
+    private void SearchSystemNoiseToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading || !IsLoaded)
+        {
+            return;
+        }
+
+        Settings.Settings.SearchHideSystemNoise = SearchSystemNoiseToggle.IsOn;
+        Settings.SaveDebounced();
+        EnsureSearchEngineForUserAction()?.RebuildIndex();
         RefreshIndexStatus();
-        UpdateDashboardVisibility();
     }
 
     private void SearchRecommendationsToggle_Toggled(object sender, RoutedEventArgs e)
@@ -129,18 +149,6 @@ public sealed partial class SearchSettingsSection : UserControl
         }
 
         Settings.Settings.SearchDefaultTab = tabId;
-        Settings.SaveDebounced();
-    }
-
-    private void SearchMaxResultsComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_isLoading || SearchMaxResultsComboBox.SelectedItem is not ComboBoxItem { Tag: string value } ||
-            !int.TryParse(value, out int maxResults))
-        {
-            return;
-        }
-
-        Settings.Settings.SearchMaxResults = maxResults;
         Settings.SaveDebounced();
     }
 
@@ -301,11 +309,7 @@ public sealed partial class SearchSettingsSection : UserControl
 
     private void UpdateDashboardVisibility()
     {
-        IndexDashboardCard.Visibility = Settings.Settings.SearchCustomIndexerEnabled
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        SearchRustPreviewCard.Visibility = IndexDashboardCard.Visibility;
-        SearchRustPreviewToggle.IsEnabled = Settings.Settings.SearchCustomIndexerEnabled;
+        IndexDashboardCard.Visibility = Visibility.Visible;
     }
 
     private void OnIndexProgressChanged(int count)
@@ -348,34 +352,8 @@ public sealed partial class SearchSettingsSection : UserControl
 
     private void IndexRebuildButton_Click(object sender, RoutedEventArgs e)
     {
-        App.Current.SearchEngineService?.RebuildIndex();
+        EnsureSearchEngineForUserAction()?.RebuildIndex();
         RefreshIndexStatus();
-    }
-
-    private async void SearchRustPreviewToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_isLoading || !IsLoaded)
-        {
-            return;
-        }
-
-        Settings.Settings.SearchRustIndexerPreviewEnabled = SearchRustPreviewToggle.IsOn;
-        Settings.SaveDebounced();
-        try
-        {
-            if (App.Current.SearchEngineService is { } engine)
-            {
-                await engine.ReconfigureCustomIndexBackendAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[SearchSettings] Failed to reconfigure the custom index backend: {ex.Message}");
-        }
-        finally
-        {
-            RefreshIndexStatus();
-        }
     }
 
     private void RefreshSearchHotkeyControls()

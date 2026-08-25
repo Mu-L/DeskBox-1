@@ -550,7 +550,7 @@ public sealed partial class QuickCaptureWidgetWindow
             : null;
     }
 
-    private static void ApplyItemSearchHighlight(DependencyObject itemRoot, QuickCaptureItemViewModel item)
+    private void ApplyItemSearchHighlight(DependencyObject itemRoot, QuickCaptureItemViewModel item)
     {
         if (FindVisualChild<TextBlock>(itemRoot, "ItemTextBlock") is not { } textBlock)
         {
@@ -580,8 +580,18 @@ public sealed partial class QuickCaptureWidgetWindow
         textBlock.TextHighlighters.Add(highlighter);
     }
 
-    private static Brush GetBrushResourceOrFallback(string resourceKey, Windows.UI.Color fallbackColor)
+    private Brush GetBrushResourceOrFallback(string resourceKey, Windows.UI.Color fallbackColor)
     {
+        if (RootGrid.Resources.TryGetValue(resourceKey, out object? scopedResource))
+        {
+            return scopedResource switch
+            {
+                Brush brush => brush,
+                Windows.UI.Color color => new SolidColorBrush(color),
+                _ => new SolidColorBrush(fallbackColor)
+            };
+        }
+
         if (Application.Current.Resources.TryGetValue(resourceKey, out object? resource))
         {
             return resource switch

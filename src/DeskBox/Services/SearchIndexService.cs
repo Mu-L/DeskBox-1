@@ -6,6 +6,14 @@ using DeskBox.Models;
 
 namespace DeskBox.Services;
 
+internal sealed record SearchIndexQueryPage(
+    IReadOnlyList<SearchResultItem> Items,
+    int TotalMatchedCount,
+    int ScannedEntryCount)
+{
+    public static SearchIndexQueryPage Empty { get; } = new([], 0, 0);
+}
+
 /// <summary>
 /// Background file indexer that maintains an in-memory filename index
 /// for fast search across user directories. The index is persisted to disk so
@@ -16,6 +24,7 @@ public sealed partial class SearchIndexService : IDisposable
 {
     /// <summary>Hard cap on in-memory entries to prevent unbounded memory growth.</summary>
     private const int MaxIndexEntries = 300_000;
+    internal const int MaxSearchResultCount = MaxIndexEntries;
 
     /// <summary>Fallback depth for fixed-drive scans when the USN journal is unavailable.</summary>
     private const int DriveRootMaxDepth = 6;
@@ -147,7 +156,10 @@ public sealed partial class SearchIndexService : IDisposable
         Path.Combine(
             DeskBoxDataPathService.Current.RootPath,
             "cache",
-            "search-index.json");
+            // v2 changes the canonical system-noise policy. A new cache name makes
+            // that migration atomic: the old capacity-saturated DBIX is never served
+            // while the filtered catalog is being rebuilt.
+            "search-index-v2.json");
 
     private static string GetDefaultSearchCoreModulePath() =>
         Path.Combine(AppContext.BaseDirectory, SearchCoreNativeBackend.DllName);
@@ -1024,35 +1036,60 @@ public sealed partial class SearchIndexService : IDisposable
         EnsureEmptyResidentIndex();
         int residentCount = GetResidentEntryCount();
         bool watchersAlreadyArmed = false;
-        bool deferFreshReconciliation = false;
+        bool reuseFreshSnapshot = false;
+        bool deferPersistedReconciliation = false;
         if (!_forceFullScan &&
             residentCount > 0 &&
-            TryGetFreshPersistedIndexTime(out DateTime persistedAt))
+            TryGetPersistedIndexTime(out DateTime persistedAt))
         {
             var (userDirs, driveRoots) = GetScanDirectories();
             var currentRoots = userDirs.Concat(driveRoots)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            bool rootsMatch;
+            lock (_scanStateLock)
+            {
+                rootsMatch = _lastScanRoots.Count > 0 &&
+                    _lastScanRoots.SetEquals(currentRoots);
+            }
             RemoveExplicitlyRemovedRoots(currentRoots, epoch, token);
             ClearScanWatcherChanges();
             SetupWatchers(userDirs, epoch, token);
             watchersAlreadyArmed = true;
             _lastScanTime = persistedAt;
             IndexUpdated?.Invoke();
-            deferFreshReconciliation = true;
-            App.Log(
-                $"[SearchIndex] Reusing fresh persisted index with {residentCount} entries; " +
-                $"watchers armed and reconciliation deferred for " +
-                $"{FreshIndexReconciliationDelay.TotalSeconds:0}s " +
-                $"(dynamicFixedDrives={driveRoots.Count}).");
+            TimeSpan persistedAge = DateTime.Now - persistedAt;
+            reuseFreshSnapshot = persistedAge <= PersistedIndexFreshness && rootsMatch;
+            deferPersistedReconciliation = !reuseFreshSnapshot;
+            if (reuseFreshSnapshot)
+            {
+                App.Log(
+                    $"[SearchIndex] Reusing fresh persisted index with {residentCount} entries; " +
+                    $"watchers armed and redundant full reconciliation skipped " +
+                    $"(ageSeconds={Math.Max(0, persistedAge.TotalSeconds):0}, " +
+                    $"dynamicFixedDrives={driveRoots.Count}).");
+            }
+            else
+            {
+                App.Log(
+                    $"[SearchIndex] Reusing persisted index with {residentCount} entries; " +
+                    $"watchers armed and reconciliation deferred for " +
+                    $"{FreshIndexReconciliationDelay.TotalSeconds:0}s " +
+                    $"(ageMinutes={Math.Max(0, persistedAge.TotalMinutes):0.0}, " +
+                    $"rootsChanged={!rootsMatch}, dynamicFixedDrives={driveRoots.Count}).");
+            }
         }
 
         _forceFullScan = false;
-        if (deferFreshReconciliation)
+        if (reuseFreshSnapshot)
+        {
+            _scanTask = Task.CompletedTask;
+        }
+        else if (deferPersistedReconciliation)
         {
             Interlocked.Exchange(ref _isReconciliationPending, 1);
             _scanTask = Task.Run(
-                () => RunDeferredFreshIndexReconciliationAsync(
+                () => RunDeferredPersistedIndexReconciliationAsync(
                     epoch,
                     token,
                     watchersAlreadyArmed),
@@ -1122,7 +1159,7 @@ public sealed partial class SearchIndexService : IDisposable
             $"{staleRevisionCount} stale revisions.");
     }
 
-    private async Task RunDeferredFreshIndexReconciliationAsync(
+    private async Task RunDeferredPersistedIndexReconciliationAsync(
         long epoch,
         CancellationToken token,
         bool watchersAlreadyArmed)
@@ -1437,7 +1474,7 @@ public sealed partial class SearchIndexService : IDisposable
             IOException or
             OverflowException;
 
-    private bool TryGetFreshPersistedIndexTime(out DateTime persistedAt)
+    private bool TryGetPersistedIndexTime(out DateTime persistedAt)
     {
         persistedAt = DateTime.MinValue;
         try
@@ -1449,7 +1486,7 @@ public sealed partial class SearchIndexService : IDisposable
             }
 
             persistedAt = File.GetLastWriteTime(_storePath);
-            return DateTime.Now - persistedAt <= PersistedIndexFreshness;
+            return persistedAt != DateTime.MinValue;
         }
         catch
         {
@@ -1492,16 +1529,22 @@ public sealed partial class SearchIndexService : IDisposable
         string query,
         int maxResults,
         CancellationToken cancellationToken = default)
+        => SearchPage(query, maxResults, cancellationToken).Items;
+
+    internal SearchIndexQueryPage SearchPage(
+        string query,
+        int maxResults,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query) || !IsIndexResident)
         {
-            return [];
+            return SearchIndexQueryPage.Empty;
         }
 
         string normalizedQuery = query.Trim();
         if (maxResults <= 0)
         {
-            return [];
+            return SearchIndexQueryPage.Empty;
         }
 
         for (int attempt = 0; attempt < 2; attempt++)
@@ -1513,7 +1556,7 @@ public sealed partial class SearchIndexService : IDisposable
             {
                 if (_persistedEntryCount == 0)
                 {
-                    return [];
+                    return SearchIndexQueryPage.Empty;
                 }
 
                 if (_nativeIndex is { } nativeBackend)
@@ -1524,7 +1567,7 @@ public sealed partial class SearchIndexService : IDisposable
                             normalizedQuery,
                             maxResults,
                             cancellationToken);
-                        return snapshot.Items
+                        IReadOnlyList<SearchResultItem> items = snapshot.Items
                             .Select(item => new SearchResultItem
                             {
                                 Kind = item.IsDirectory
@@ -1538,6 +1581,10 @@ public sealed partial class SearchIndexService : IDisposable
                                 Glyph = item.IsDirectory ? "\uE8B7" : null
                             })
                             .ToList();
+                        return new SearchIndexQueryPage(
+                            items,
+                            checked((int)snapshot.MatchedEntryCount),
+                            checked((int)snapshot.ScannedEntryCount));
                     }
                     catch (Exception ex) when (IsRecoverableNativeRuntimeFailure(ex))
                     {
@@ -1547,7 +1594,7 @@ public sealed partial class SearchIndexService : IDisposable
                 }
                 else
                 {
-                    return SearchManagedIndexLocked(
+                    return SearchManagedIndexPageLocked(
                         normalizedQuery,
                         maxResults,
                         cancellationToken);
@@ -1574,25 +1621,30 @@ public sealed partial class SearchIndexService : IDisposable
                 nativeFailure);
         }
 
-        return [];
+        return SearchIndexQueryPage.Empty;
     }
 
-    private IReadOnlyList<SearchResultItem> SearchManagedIndexLocked(
+    private SearchIndexQueryPage SearchManagedIndexPageLocked(
         string normalizedQuery,
         int maxResults,
         CancellationToken cancellationToken)
     {
         var topResults = new PriorityQueue<SearchCandidate, (double Score, long ModifiedTicks)>();
         ReadOnlySpan<char> querySpan = normalizedQuery.AsSpan();
+        int matchedCount = 0;
+        int scannedCount = 0;
         foreach (var (fullPath, entry) in _index)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            scannedCount++;
             ReadOnlySpan<char> fileName = fullPath.AsSpan(entry.FileNameStart);
             double score = ComputeRelevance(fileName, querySpan);
             if (score <= 0)
             {
                 continue;
             }
+
+            matchedCount++;
 
             long modifiedTicks = entry.LastModified.ToUniversalTime().Ticks;
             topResults.Enqueue(
@@ -1604,7 +1656,7 @@ public sealed partial class SearchIndexService : IDisposable
             }
         }
 
-        return topResults.UnorderedItems
+        IReadOnlyList<SearchResultItem> items = topResults.UnorderedItems
             .Select(item => item.Element)
             .OrderByDescending(candidate => candidate.Score)
             .ThenByDescending(candidate => candidate.Entry.LastModified)
@@ -1622,6 +1674,7 @@ public sealed partial class SearchIndexService : IDisposable
                 Glyph = candidate.Entry.IsDirectory ? "\uE8B7" : null
             })
             .ToList();
+        return new SearchIndexQueryPage(items, matchedCount, scannedCount);
     }
 
     /// <summary>
@@ -2159,6 +2212,13 @@ public sealed partial class SearchIndexService : IDisposable
             return new RootScanOutcome(rootPath, RootScanStatus.Offline);
         }
 
+        if (SearchIndexPathPolicy.ShouldExcludeFromIndex(
+                rootPath,
+                _settingsService.Settings))
+        {
+            return new RootScanOutcome(rootPath, RootScanStatus.Completed);
+        }
+
         try
         {
             if ((File.GetAttributes(rootPath) & FileAttributes.ReparsePoint) != 0)
@@ -2181,15 +2241,6 @@ public sealed partial class SearchIndexService : IDisposable
         queue.Enqueue((rootPath, 0));
         int progressCounter = 0;
         bool hadErrors = false;
-
-        var skipDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "$Recycle.Bin", "System Volume Information", "node_modules",
-            ".git", "obj", "bin", ".vs", ".artifacts",
-            "Windows", "ProgramData", "Program Files", "Program Files (x86)",
-            "Recovery", "PerfLogs", "Config.Msi", "MSOCache", "WinSxS",
-            "servicing", "assembly", "Intel", "AMD"
-        };
 
         while (queue.Count > 0)
         {
@@ -2276,9 +2327,9 @@ public sealed partial class SearchIndexService : IDisposable
                             continue;
                         }
 
-                        string dirName = Path.GetFileName(dir);
-                        if (skipDirectories.Contains(dirName) ||
-                            (dirName.StartsWith('.') && dirName.Length > 1))
+                        if (SearchIndexPathPolicy.ShouldExcludeFromIndex(
+                                dir,
+                                _settingsService.Settings))
                         {
                             continue;
                         }
@@ -2424,6 +2475,13 @@ public sealed partial class SearchIndexService : IDisposable
             (sessionEpoch is long epoch && !IsCurrentSession(epoch, token)))
         {
             return new IndexEntryResult(IndexEntryStatus.SessionExpired, ResidentMutation: false);
+        }
+
+        if (SearchIndexPathPolicy.ShouldExcludeFromIndex(
+                path,
+                _settingsService.Settings))
+        {
+            return new IndexEntryResult(IndexEntryStatus.Skipped, ResidentMutation: false);
         }
 
         SearchCoreNativeBackend? failedBackend = null;
@@ -3865,6 +3923,7 @@ public sealed partial class SearchIndexService : IDisposable
     private enum IndexEntryStatus
     {
         Added,
+        Skipped,
         Failed,
         CapacityLimited,
         SessionExpired

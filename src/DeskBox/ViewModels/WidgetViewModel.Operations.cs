@@ -250,6 +250,7 @@ public partial class WidgetViewModel
         MappedFolderPath = Config.MappedFolderPath;
         SetCurrentFolderPath(ResolveCurrentFolderForMappedRoot());
         OnPropertyChanged(nameof(FollowsDefaultStoragePath));
+        ApplyStackSettings();
 
         await ConfigureFolderWatchersAsync(CurrentFolderPath);
         await ReloadFolderContentsAsync(
@@ -386,6 +387,8 @@ public partial class WidgetViewModel
             RemoveItemByPath(path);
         }
 
+        RemoveStackMemberOverridePaths(normalizedPaths);
+
         return Task.CompletedTask;
     }
 
@@ -411,48 +414,87 @@ public partial class WidgetViewModel
             ? sanitizedName
             : BuildRenameFileName(sanitizedName, extension);
         string destinationPath = Path.Combine(parentDirectory, destinationName);
-        if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(sourcePath, destinationPath, StringComparison.Ordinal))
         {
             return;
         }
 
-        if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+        bool isCaseOnlyRename = FileService.IsCaseOnlyPathChange(
+            sourcePath,
+            destinationPath);
+        if (!isCaseOnlyRename &&
+            (File.Exists(destinationPath) || Directory.Exists(destinationPath)))
         {
             throw new IOException(_localizationService.T("Widget.Validation.TargetExists"));
         }
 
-        await _fileService.RelocateEntryAsync(sourcePath, destinationPath);
-        TransferFileAddedAt(sourcePath, destinationPath);
-        var refreshedItem = await _fileService.CreateWidgetItemAsync(
-            destinationPath,
-            hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
-            showImageFilesAsIcons: _showImageFilesAsIcons,
-            showFileExtensions: _showFileExtensions,
-            hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
-            loadIcon: false,
-            loadFolderItemCount: false,
-            loadShortcutTarget: false);
-        ApplyRuntimeItemData(item, refreshedItem);
-        UpdateStackMemberOverridePath(
-            sourcePath,
-            destinationPath);
-        StartItemHydration();
-
-        int originalIndex = Items.IndexOf(item);
-        if (originalIndex >= 0)
+        bool refreshGateHeld = false;
+        bool restartWatchers = false;
+        try
         {
-            if (Config.SortMode != WidgetSortMode.Manual)
+            if (isCaseOnlyRename)
             {
-                Items.RemoveAt(originalIndex);
-                Items.Insert(GetSortedInsertIndex(item), item);
+                await _folderRefreshGate.WaitAsync();
+                refreshGateHeld = true;
+                _folderWatcher.Stop();
+                _publicFolderWatcher.Stop();
+                restartWatchers = true;
             }
 
-            NormalizeSortOrder();
-            PersistManualOrderSnapshotIfChanged();
+            await _fileService.RelocateEntryAsync(sourcePath, destinationPath);
+            TransferFileAddedAt(sourcePath, destinationPath);
+            var refreshedItem = await _fileService.CreateWidgetItemAsync(
+                destinationPath,
+                hideShortcutArrowOverlay: _hideShortcutArrowOverlay,
+                showImageFilesAsIcons: _showImageFilesAsIcons,
+                showFileExtensions: _showFileExtensions,
+                hideShortcutExtensionWhenShowingFileExtensions: _hideShortcutExtensionWhenShowingFileExtensions,
+                loadIcon: false,
+                loadFolderItemCount: false,
+                loadShortcutTarget: false);
+            ApplyRuntimeItemData(item, refreshedItem);
+            UpdateStackMemberOverridePath(
+                sourcePath,
+                destinationPath);
+            StartItemHydration();
+
+            int originalIndex = Items.IndexOf(item);
+            if (originalIndex >= 0)
+            {
+                if (Config.SortMode != WidgetSortMode.Manual)
+                {
+                    Items.RemoveAt(originalIndex);
+                    Items.Insert(GetSortedInsertIndex(item), item);
+                }
+
+                NormalizeSortOrder();
+                PersistManualOrderSnapshotIfChanged();
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (restartWatchers &&
+                    !_isDisposed &&
+                    !string.IsNullOrWhiteSpace(CurrentFolderPath))
+                {
+                    await ConfigureFolderWatchersAsync(CurrentFolderPath);
+                }
+            }
+            finally
+            {
+                if (refreshGateHeld)
+                {
+                    _folderRefreshGate.Release();
+                }
+            }
         }
     }
 
-    public async Task DeleteItemsAsync(IEnumerable<WidgetItem> items)
+    public async Task<FileDeleteBatchResult> DeleteItemsAsync(
+        IEnumerable<WidgetItem> items,
+        bool recycle = true)
     {
         var targets = items
             .Where(item => item is not null)
@@ -461,37 +503,47 @@ public partial class WidgetViewModel
 
         if (targets.Count == 0)
         {
-            return;
+            return new FileDeleteBatchResult(0, []);
         }
 
-        var existingTargets = new List<WidgetItem>();
+        int deletedCount = 0;
+        var failures = new List<FileDeleteFailure>();
         foreach (var item in targets)
         {
-            if (File.Exists(item.Path) || Directory.Exists(item.Path))
-            {
-                existingTargets.Add(item);
-            }
-            else
+            if (!File.Exists(item.Path) && !Directory.Exists(item.Path))
             {
                 Items.Remove(item);
                 RemoveFileAddedAt(item.Path);
+                deletedCount++;
+                continue;
             }
-        }
 
-        foreach (var item in existingTargets)
-        {
-            await _fileService.DeleteEntryAsync(item.Path, recycle: true);
-        }
-
-        foreach (var item in existingTargets)
-        {
-            Items.Remove(item);
-            RemoveFileAddedAt(item.Path);
+            try
+            {
+                await _fileService.DeleteEntryAsync(item.Path, recycle);
+                Items.Remove(item);
+                RemoveFileAddedAt(item.Path);
+                deletedCount++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failures.Add(new FileDeleteFailure(
+                    item.Path,
+                    item.Name,
+                    ex.Message));
+            }
         }
 
         NormalizeSortOrder();
         RemoveStackMemberOverridePaths(
-            targets.Select(item => item.Path));
+            targets
+                .Where(item => failures.All(failure =>
+                    !string.Equals(
+                        failure.Path,
+                        item.Path,
+                        StringComparison.OrdinalIgnoreCase)))
+                .Select(item => item.Path));
+        return new FileDeleteBatchResult(deletedCount, failures);
     }
 
     public void UpdateBounds(double x, double y, double width, double height, bool persist)

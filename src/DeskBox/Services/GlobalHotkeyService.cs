@@ -56,11 +56,14 @@ public sealed class GlobalHotkeyService : IDisposable
     public long ReservedHookInputFailureCount => _reservedHotkeyHook.InputFailureCount;
     public string? LastError { get; private set; }
 
-    public GlobalHotkeyGesture CurrentGesture => NormalizeGesture(
+    public GlobalHotkeyActivation CurrentActivation => NormalizeActivation(
+        _settingsService.Settings.GlobalHotkeyActivationKind,
         _settingsService.Settings.GlobalHotkeyModifiers,
         _settingsService.Settings.GlobalHotkeyKey);
 
-    public string CurrentGestureText => FormatGesture(CurrentGesture, _localizationService);
+    public GlobalHotkeyGesture CurrentGesture => CurrentActivation.Gesture;
+
+    public string CurrentGestureText => FormatActivation(CurrentActivation, _localizationService);
 
     public void Attach(IntPtr windowHandle)
     {
@@ -112,10 +115,10 @@ public sealed class GlobalHotkeyService : IDisposable
             return;
         }
 
-        var gesture = CurrentGesture;
-        if (!IsValidGesture(gesture))
+        GlobalHotkeyActivation activation = CurrentActivation;
+        if (!IsValidActivation(activation))
         {
-            App.Log("[GlobalHotkey] RefreshRegistration skipped: invalid gesture");
+            App.Log("[GlobalHotkey] RefreshRegistration skipped: invalid activation");
             LastError = _localizationService.T("Settings.GlobalHotkey.Status.Invalid");
             NotifyRegistrationChanged();
             return;
@@ -129,7 +132,7 @@ public sealed class GlobalHotkeyService : IDisposable
             return;
         }
 
-        if (IsReservedSystemGesture(gesture))
+        if (TryGetReservedHookMode(activation, out ReservedHotkeyMode reservedMode))
         {
             if (IsReservedHookDisabledByEnvironment())
             {
@@ -146,6 +149,7 @@ public sealed class GlobalHotkeyService : IDisposable
                 hookStarted = _reservedHotkeyHook.TryStart(
                     _windowHandle,
                     WmReservedHotkey,
+                    reservedMode,
                     out hookError);
             }
             catch (Exception ex)
@@ -174,7 +178,7 @@ public sealed class GlobalHotkeyService : IDisposable
             return;
         }
 
-        if (Register(_windowHandle, MainHotkeyId, gesture, out int registerError))
+        if (Register(_windowHandle, MainHotkeyId, activation.Gesture, out int registerError))
         {
             _isRegistered = true;
             App.Log($"[GlobalHotkey] Registered gesture={CurrentGestureText} hwnd=0x{_windowHandle.ToInt64():X}");
@@ -189,22 +193,34 @@ public sealed class GlobalHotkeyService : IDisposable
 
     public bool TryApplyGesture(GlobalHotkeyGesture gesture, out string? error)
     {
+        return TryApplyActivation(GlobalHotkeyActivation.FromChord(gesture), out error);
+    }
+
+    public bool TryApplyActivation(GlobalHotkeyActivation activation, out string? error)
+    {
         error = null;
-        gesture = NormalizeGesture((int)gesture.Modifiers, gesture.VirtualKey);
-        if (!IsValidGesture(gesture))
+        activation = NormalizeActivation(
+            activation.Kind,
+            (int)activation.Gesture.Modifiers,
+            activation.Gesture.VirtualKey);
+        if (!IsValidActivation(activation))
         {
             error = _localizationService.T("Settings.GlobalHotkey.Status.Invalid");
             return false;
         }
 
         var settings = _settingsService.Settings;
+        HotkeyActivationKind previousKind = settings.GlobalHotkeyActivationKind;
         int previousModifiers = settings.GlobalHotkeyModifiers;
         int previousVirtualKey = settings.GlobalHotkeyKey;
-        var previousGesture = NormalizeGesture(previousModifiers, previousVirtualKey);
-        bool isCurrentGesture = gesture.Equals(previousGesture);
+        GlobalHotkeyActivation previousActivation = NormalizeActivation(
+            previousKind,
+            previousModifiers,
+            previousVirtualKey);
+        bool isCurrentActivation = activation.Equals(previousActivation);
         bool shouldBeActive = _windowHandle != IntPtr.Zero && settings.GlobalHotkeyEnabled;
 
-        if (isCurrentGesture)
+        if (isCurrentActivation)
         {
             if (shouldBeActive && !IsRegistered)
             {
@@ -219,8 +235,9 @@ public sealed class GlobalHotkeyService : IDisposable
             return true;
         }
 
-        settings.GlobalHotkeyModifiers = (int)gesture.Modifiers;
-        settings.GlobalHotkeyKey = gesture.VirtualKey;
+        settings.GlobalHotkeyActivationKind = activation.Kind;
+        settings.GlobalHotkeyModifiers = (int)activation.Gesture.Modifiers;
+        settings.GlobalHotkeyKey = activation.Gesture.VirtualKey;
 
         if (!shouldBeActive)
         {
@@ -240,14 +257,15 @@ public sealed class GlobalHotkeyService : IDisposable
 
         string registrationError = LastError ??
             _localizationService.T("Settings.GlobalHotkey.Status.Unavailable");
+        settings.GlobalHotkeyActivationKind = previousKind;
         settings.GlobalHotkeyModifiers = previousModifiers;
         settings.GlobalHotkeyKey = previousVirtualKey;
         RefreshRegistration();
         if (!IsRegistered)
         {
             App.Log(
-                $"[GlobalHotkey] Rollback registration failed previousGesture=" +
-                $"{FormatGesture(previousGesture, _localizationService)}");
+                $"[GlobalHotkey] Rollback registration failed previousActivation=" +
+                $"{FormatActivation(previousActivation, _localizationService)}");
         }
 
         error = registrationError;
@@ -268,10 +286,12 @@ public sealed class GlobalHotkeyService : IDisposable
 
     public bool ResetToDefault(out string? error)
     {
-        var gesture = new GlobalHotkeyGesture(
-            (HotkeyModifierKeys)SettingsService.DefaultGlobalHotkeyModifiers,
-            SettingsService.DefaultGlobalHotkeyKey);
-        return TryApplyGesture(gesture, out error);
+        var activation = new GlobalHotkeyActivation(
+            SettingsService.DefaultGlobalHotkeyActivationKind,
+            new GlobalHotkeyGesture(
+                (HotkeyModifierKeys)SettingsService.DefaultGlobalHotkeyModifiers,
+                SettingsService.DefaultGlobalHotkeyKey));
+        return TryApplyActivation(activation, out error);
     }
 
     public void Dispose()
@@ -290,10 +310,36 @@ public sealed class GlobalHotkeyService : IDisposable
         return new GlobalHotkeyGesture(normalizedModifiers, virtualKey);
     }
 
+    public static GlobalHotkeyActivation NormalizeActivation(
+        HotkeyActivationKind kind,
+        int modifiers,
+        int virtualKey)
+    {
+        HotkeyActivationKind normalizedKind = Enum.IsDefined(kind)
+            ? kind
+            : HotkeyActivationKind.Chord;
+        return new GlobalHotkeyActivation(
+            normalizedKind,
+            NormalizeGesture(modifiers, virtualKey));
+    }
+
     public static bool IsReservedSystemGesture(GlobalHotkeyGesture gesture)
     {
-        return gesture.Modifiers == HotkeyModifierKeys.Windows &&
-               gesture.VirtualKey == (int)VirtualKey.Space;
+        return gesture.VirtualKey == (int)VirtualKey.Space &&
+               gesture.Modifiers is
+                   HotkeyModifierKeys.Windows or
+                   HotkeyModifierKeys.Alt;
+    }
+
+    public static bool IsValidActivation(GlobalHotkeyActivation activation)
+    {
+        if (!Enum.IsDefined(activation.Kind))
+        {
+            return false;
+        }
+
+        return activation.Kind != HotkeyActivationKind.Chord ||
+               IsValidGesture(activation.Gesture);
     }
 
     public static bool IsValidGesture(GlobalHotkeyGesture gesture)
@@ -321,6 +367,27 @@ public sealed class GlobalHotkeyService : IDisposable
                    (int)VirtualKey.F5 or
                    (int)VirtualKey.F11 or
                    (int)VirtualKey.F12;
+    }
+
+    public static bool IsRiskyActivation(GlobalHotkeyActivation activation)
+    {
+        return activation.Kind == HotkeyActivationKind.WindowsTap ||
+               (activation.Kind == HotkeyActivationKind.Chord &&
+                IsRiskyGesture(activation.Gesture));
+    }
+
+    public static string FormatActivation(
+        GlobalHotkeyActivation activation,
+        LocalizationService localization)
+    {
+        return activation.Kind switch
+        {
+            HotkeyActivationKind.DoubleControl =>
+                localization.T("Settings.GlobalHotkey.Preset.DoubleControl"),
+            HotkeyActivationKind.WindowsTap =>
+                localization.T("Settings.GlobalHotkey.Preset.WindowsTap"),
+            _ => FormatGesture(activation.Gesture, localization)
+        };
     }
 
     public static string FormatGesture(GlobalHotkeyGesture gesture, LocalizationService localization)
@@ -458,6 +525,42 @@ public sealed class GlobalHotkeyService : IDisposable
             (uint)gesture.VirtualKey);
         errorCode = registered ? 0 : Marshal.GetLastWin32Error();
         return registered;
+    }
+
+    private static bool TryGetReservedHookMode(
+        GlobalHotkeyActivation activation,
+        out ReservedHotkeyMode mode)
+    {
+        if (activation.Kind == HotkeyActivationKind.DoubleControl)
+        {
+            mode = ReservedHotkeyMode.DoubleControl;
+            return true;
+        }
+
+        if (activation.Kind == HotkeyActivationKind.WindowsTap)
+        {
+            mode = ReservedHotkeyMode.WindowsTap;
+            return true;
+        }
+
+        if (activation.Kind == HotkeyActivationKind.Chord &&
+            activation.Gesture.VirtualKey == (int)VirtualKey.Space)
+        {
+            if (activation.Gesture.Modifiers == HotkeyModifierKeys.Windows)
+            {
+                mode = ReservedHotkeyMode.WinSpace;
+                return true;
+            }
+
+            if (activation.Gesture.Modifiers == HotkeyModifierKeys.Alt)
+            {
+                mode = ReservedHotkeyMode.AltSpace;
+                return true;
+            }
+        }
+
+        mode = default;
+        return false;
     }
 
     private static uint ToWin32Modifiers(HotkeyModifierKeys modifiers)

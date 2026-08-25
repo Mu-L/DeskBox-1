@@ -100,13 +100,10 @@ public sealed partial class TodoWidgetContent
         }
 
         var properties = e.GetCurrentPoint(listView).Properties;
-        bool canStartReorder = properties.IsLeftButtonPressed &&
-                               e.OriginalSource is DependencyObject source &&
-                               FindTodoItemContainer(source) is not null &&
-                               !IsInteractiveTodoSource(source) &&
-                               !Win32Helper.IsKeyPressed(VirtualKey.Shift) &&
-                               !Win32Helper.IsKeyPressed(VirtualKey.Control);
-        listView.CanReorderItems = canStartReorder;
+        // VisibleItemsSource is an AOT-safe object[] projection. Native
+        // ListView reordering tries to mutate that fixed-size array, so row
+        // drop handlers own reordering instead.
+        listView.CanReorderItems = false;
 
         if (!properties.IsLeftButtonPressed ||
             Win32Helper.IsKeyPressed(VirtualKey.Shift) ||
@@ -194,29 +191,8 @@ public sealed partial class TodoWidgetContent
 
     private void ResetTodoReorderVisualState()
     {
-        if (!string.IsNullOrWhiteSpace(_draggedTodoItemId))
-        {
-            return;
-        }
-
-        bool wasReorderEnabled = TodoListView.CanReorderItems;
         TodoListView.CanReorderItems = false;
-        if (!wasReorderEnabled)
-        {
-            return;
-        }
-
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (!string.IsNullOrWhiteSpace(_draggedTodoItemId))
-            {
-                return;
-            }
-
-            TodoListView.InvalidateMeasure();
-            TodoListView.InvalidateArrange();
-            TodoListView.UpdateLayout();
-        });
+        ClearTodoReorderDropState();
     }
 
     private void TodoItem_PointerEntered(object sender, PointerRoutedEventArgs e)

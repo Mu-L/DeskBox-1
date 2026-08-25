@@ -49,6 +49,42 @@ public sealed class WidgetCompactTrayVisibilityContractTests
         Assert.True(hiddenIndex >= 0 && hiddenIndex < notifyIndex);
     }
 
+    [Theory]
+    [InlineData(
+        "src/DeskBox/Views/ContentWidgetWindow.Commands.cs",
+        "private void ContentWidgetShell_RightTapped",
+        "private void ContentWidgetShell_TitleDoubleTapped")]
+    [InlineData(
+        "src/DeskBox/Views/QuickCaptureWidgetWindow.Menus.cs",
+        "private void QuickCaptureShell_RightTapped",
+        "private MenuFlyout CreateMoreFlyout")]
+    public void TrayHide_SuppressesNativeAndRoutedPointerInputUntilHwndIsHidden(
+        string relativePath,
+        string rightTappedMarker,
+        string nextMarker)
+    {
+        string source = File.ReadAllText(TestPaths.FromRepository(relativePath));
+        string handler = ExtractSection(
+            source,
+            rightTappedMarker,
+            nextMarker);
+
+        Assert.Contains("IsTrayHideInputSuppressed", handler, StringComparison.Ordinal);
+        Assert.Contains("IsHideAnimationRunning", handler, StringComparison.Ordinal);
+        Assert.Contains("e.Handled = true;", handler, StringComparison.Ordinal);
+
+        string inputSource = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.InputSuppression.cs"));
+        Assert.Contains(
+            "RootElement.IsHitTestVisible = false;",
+            inputSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Win32Helper.WS_EX_TRANSPARENT",
+            inputSource,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SmartEntry_ReconcilesNativePointerAfterFlyoutInteractionActuallyCloses()
     {
