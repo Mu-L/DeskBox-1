@@ -362,6 +362,7 @@ else {
 $requiredFiles = @(
     "DeskBox.exe",
     "DeskBox.Updater.exe",
+    "DeskBox.ThumbnailProxy.exe",
     "DeskBox.pri",
     "deskbox_native.dll",
     "deskbox_search_core.dll"
@@ -372,7 +373,10 @@ foreach ($requiredFile in $requiredFiles) {
     }
 }
 
-foreach ($moduleName in @("deskbox_native.dll", "deskbox_search_core.dll")) {
+foreach ($moduleName in @(
+        "DeskBox.ThumbnailProxy.exe",
+        "deskbox_native.dll",
+        "deskbox_search_core.dll")) {
     $matches = @(Get-ChildItem -LiteralPath $publishDir -Filter $moduleName -File -Recurse)
     $expectedPath = [System.IO.Path]::GetFullPath((Join-Path $publishDir $moduleName))
     if ($matches.Count -ne 1 -or
@@ -414,6 +418,7 @@ $symbolFiles = @(Get-ChildItem -LiteralPath $symbolsDir -Filter "*.pdb" -File -R
 foreach ($requiredSymbol in @(
         "DeskBox.pdb",
         "DeskBox.Updater.pdb",
+        "DeskBox.ThumbnailProxy.pdb",
         "deskbox_native.pdb",
         "deskbox_search_core.pdb")) {
     if (-not ($symbolFiles | Where-Object Name -eq $requiredSymbol)) {
@@ -447,6 +452,7 @@ $peResults = @(
     foreach ($fileName in @(
             "DeskBox.exe",
             "DeskBox.Updater.exe",
+            "DeskBox.ThumbnailProxy.exe",
             "deskbox_native.dll",
             "deskbox_search_core.dll")) {
         $path = Join-Path $publishDir $fileName

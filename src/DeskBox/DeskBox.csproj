@@ -479,6 +479,9 @@
       <AppxPackagePayload Include="$(DeskBoxThumbnailProxyExe)">
         <TargetPath>DeskBox.ThumbnailProxy.exe</TargetPath>
       </AppxPackagePayload>
+      <AppxPackagePayload Include="$(DeskBoxThumbnailProxyPdb)" Condition="Exists('$(DeskBoxThumbnailProxyPdb)')">
+        <TargetPath>DeskBox.ThumbnailProxy.pdb</TargetPath>
+      </AppxPackagePayload>
     </ItemGroup>
   </Target>
 

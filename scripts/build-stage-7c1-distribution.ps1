@@ -161,6 +161,7 @@ $directFiles | Set-Content -LiteralPath (Join-Path $OutputDirectory "direct-publ
 $directRequiredFiles = @(
     "DeskBox.exe",
     "DeskBox.Updater.exe",
+    "DeskBox.ThumbnailProxy.exe",
     "deskbox_native.dll",
     "deskbox_search_core.dll",
     "DeskBox.pri"
@@ -196,7 +197,11 @@ if ($forbiddenDirectFiles.Count -gt 0) {
 
 $deskBoxMachine = Get-PeMachine -Path (Join-Path $directPublishDirectory "DeskBox.exe")
 $updaterMachine = Get-PeMachine -Path (Join-Path $directPublishDirectory "DeskBox.Updater.exe")
-if ($deskBoxMachine -ne $expectedMachine -or $updaterMachine -ne $expectedMachine) {
+$thumbnailProxyMachine = Get-PeMachine -Path (
+    Join-Path $directPublishDirectory "DeskBox.ThumbnailProxy.exe")
+if ($deskBoxMachine -ne $expectedMachine -or
+    $updaterMachine -ne $expectedMachine -or
+    $thumbnailProxyMachine -ne $expectedMachine) {
     throw "The Direct AOT executable architecture does not match $Platform."
 }
 
@@ -367,6 +372,7 @@ $summary = [ordered]@{
         forbiddenFiles = $forbiddenDirectFiles
         executableMachine = "0x$($deskBoxMachine.ToString('X4'))"
         updaterMachine = "0x$($updaterMachine.ToString('X4'))"
+        thumbnailProxyMachine = "0x$($thumbnailProxyMachine.ToString('X4'))"
         rustNative = $nativeContract
         searchCore = $searchContract
         crtLinkage = "Static"

@@ -204,6 +204,7 @@ if ($null -eq $frameworkDependency -or
 
 $requiredFiles = @(
     "DeskBox.exe",
+    "DeskBox.ThumbnailProxy.exe",
     "deskbox_native.dll",
     "resources.pri",
     "Assets/Store/StoreLogo.png",
@@ -245,8 +246,10 @@ foreach ($forbiddenFile in $forbiddenFiles) {
 }
 
 $deskBoxExePath = Join-Path $layoutDirectory "DeskBox.exe"
+$thumbnailProxyPath = Join-Path $layoutDirectory "DeskBox.ThumbnailProxy.exe"
 $nativeDllPath = Join-Path $layoutDirectory "deskbox_native.dll"
 $deskBoxPe = $null
+$thumbnailProxyPe = $null
 $nativeContract = $null
 if (Test-Path -LiteralPath $deskBoxExePath -PathType Leaf) {
     $deskBoxPe = Get-PeFacts -Path $deskBoxExePath
@@ -258,6 +261,16 @@ if (Test-Path -LiteralPath $deskBoxExePath -PathType Leaf) {
     }
     if ($deskBoxPe.Length -lt 10MB) {
         Add-AuditFailure "DeskBox.exe is unexpectedly small for the current Native AOT product image."
+    }
+}
+
+if (Test-Path -LiteralPath $thumbnailProxyPath -PathType Leaf) {
+    $thumbnailProxyPe = Get-PeFacts -Path $thumbnailProxyPath
+    if ($thumbnailProxyPe.Machine -ne $expectedMachine) {
+        Add-AuditFailure "DeskBox.ThumbnailProxy.exe machine '$($thumbnailProxyPe.MachineHex)' does not match $ExpectedPlatform."
+    }
+    if ($thumbnailProxyPe.HasClrHeader) {
+        Add-AuditFailure "DeskBox.ThumbnailProxy.exe unexpectedly contains a CLR header."
     }
 }
 
@@ -292,18 +305,24 @@ $publishHashMatch = $null
 if (-not [string]::IsNullOrWhiteSpace($ExpectedPublishDirectory)) {
     $resolvedPublishDirectory = [System.IO.Path]::GetFullPath($ExpectedPublishDirectory)
     $publishedExe = Join-Path $resolvedPublishDirectory "DeskBox.exe"
+    $publishedThumbnailProxy = Join-Path $resolvedPublishDirectory "DeskBox.ThumbnailProxy.exe"
     $publishedNative = Join-Path $resolvedPublishDirectory "deskbox_native.dll"
     if (-not (Test-Path -LiteralPath $publishedExe -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $publishedNative -PathType Leaf)) {
+        -not (Test-Path -LiteralPath $publishedThumbnailProxy -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $publishedNative -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $deskBoxExePath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $thumbnailProxyPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $nativeDllPath -PathType Leaf)) {
         Add-AuditFailure "The expected Store AOT publish directory is incomplete: '$resolvedPublishDirectory'."
         $publishHashMatch = $false
     }
     else {
         $publishHashMatch =
             (Get-FileSha256 -Path $publishedExe) -eq (Get-FileSha256 -Path $deskBoxExePath) -and
+            (Get-FileSha256 -Path $publishedThumbnailProxy) -eq (Get-FileSha256 -Path $thumbnailProxyPath) -and
             (Get-FileSha256 -Path $publishedNative) -eq (Get-FileSha256 -Path $nativeDllPath)
         if (-not $publishHashMatch) {
-            Add-AuditFailure "The Store package executable or Rust module differs from the audited publish output."
+            Add-AuditFailure "The Store package executable, thumbnail proxy, or Rust module differs from the audited publish output."
         }
     }
 }
@@ -323,7 +342,10 @@ if (-not [string]::IsNullOrWhiteSpace($AppxSymPath)) {
         finally {
             $archive.Dispose()
         }
-        foreach ($requiredSymbol in @("DeskBox.pdb", "deskbox_native.pdb")) {
+        foreach ($requiredSymbol in @(
+                "DeskBox.pdb",
+                "DeskBox.ThumbnailProxy.pdb",
+                "deskbox_native.pdb")) {
             if ($symbolEntries -notcontains $requiredSymbol) {
                 Add-AuditFailure "Required Native AOT symbol is missing from appxsym: '$requiredSymbol'."
             }
@@ -357,6 +379,7 @@ $summary = [ordered]@{
         }
     }
     nativeAotExecutable = $deskBoxPe
+    thumbnailProxy = $thumbnailProxyPe
     rustNative = $nativeContract
     publishPayloadHashesMatch = $publishHashMatch
     requiredFiles = $requiredFiles

@@ -69,5 +69,32 @@ public sealed class ShellThumbnailProxyContractTests
         Assert.Contains("CopyDeskBoxThumbnailProxyToPublish", project, StringComparison.Ordinal);
         Assert.Contains("PrepareDeskBoxStoreThumbnailProxyPayload", project, StringComparison.Ordinal);
         Assert.Contains("DeskBox.ThumbnailProxy.exe", project, StringComparison.Ordinal);
+        Assert.Contains("<TargetPath>DeskBox.ThumbnailProxy.pdb</TargetPath>", project, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ReleaseAudits_RequireProxyPayloadSymbolsAndTargetArchitecture()
+    {
+        string audit = Read("scripts/publish-aot-audit.ps1");
+        string retail = Read("scripts/publish-aot-retail.ps1");
+        string arm64 = Read("scripts/publish-arm64-aot-static-audit.ps1");
+        string distribution = Read("scripts/build-stage-7c1-distribution.ps1");
+        string store = Read("scripts/audit-store-native-aot-package.ps1");
+
+        foreach (string script in new[] { audit, retail, arm64, distribution, store })
+        {
+            Assert.Contains("DeskBox.ThumbnailProxy.exe", script, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("DeskBox.ThumbnailProxy.pdb", audit, StringComparison.Ordinal);
+        Assert.Contains("DeskBox.ThumbnailProxy.pdb", retail, StringComparison.Ordinal);
+        Assert.Contains("DeskBox.ThumbnailProxy.pdb", arm64, StringComparison.Ordinal);
+        Assert.Contains("DeskBox.ThumbnailProxy.pdb", store, StringComparison.Ordinal);
+        Assert.Contains("$thumbnailProxyMachine = Get-PeMachine", distribution, StringComparison.Ordinal);
+        Assert.Contains("$thumbnailProxyPe = Get-PeFacts", store, StringComparison.Ordinal);
+        Assert.Contains("thumbnailProxy = $thumbnailProxyPe", store, StringComparison.Ordinal);
+    }
+
+    private static string Read(string relativePath) =>
+        File.ReadAllText(TestPaths.FromRepository(relativePath));
 }

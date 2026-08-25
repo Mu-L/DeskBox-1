@@ -115,8 +115,8 @@ function Find-BinaryTextTokens {
     @(
         $Tokens |
             Where-Object {
-                $ascii.Contains($_, [System.StringComparison]::Ordinal) -or
-                $unicode.Contains($_, [System.StringComparison]::Ordinal)
+                $ascii.IndexOf($_, [System.StringComparison]::Ordinal) -ge 0 -or
+                $unicode.IndexOf($_, [System.StringComparison]::Ordinal) -ge 0
             } |
             Sort-Object -Unique
     )
@@ -254,6 +254,7 @@ foreach ($pdb in $pdbFiles) {
 $requiredFiles = @(
     "DeskBox.exe",
     "DeskBox.Updater.exe",
+    "DeskBox.ThumbnailProxy.exe",
     "DeskBox.pri",
     "deskbox_native.dll",
     "deskbox_search_core.dll"
@@ -261,6 +262,18 @@ $requiredFiles = @(
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $publishDir $requiredFile) -PathType Leaf)) {
         throw "AOT retail output is missing '$requiredFile'."
+    }
+}
+
+$symbolFiles = @(Get-ChildItem -LiteralPath $symbolsDir -File -Recurse)
+foreach ($requiredSymbolFile in @(
+        "DeskBox.pdb",
+        "DeskBox.Updater.pdb",
+        "DeskBox.ThumbnailProxy.pdb",
+        "deskbox_native.pdb",
+        "deskbox_search_core.pdb")) {
+    if (-not ($symbolFiles | Where-Object Name -eq $requiredSymbolFile)) {
+        throw "AOT retail symbols are missing '$requiredSymbolFile'."
     }
 }
 
@@ -287,6 +300,7 @@ $peResults = @(
     foreach ($fileName in @(
             "DeskBox.exe",
             "DeskBox.Updater.exe",
+            "DeskBox.ThumbnailProxy.exe",
             "deskbox_native.dll",
             "deskbox_search_core.dll")) {
         $path = Join-Path $publishDir $fileName

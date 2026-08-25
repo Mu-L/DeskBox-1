@@ -45,6 +45,30 @@ if ($Platform -eq "ARM64") {
 
 $outputExe = Join-Path $outputRoot "DeskBox.ThumbnailProxy.exe"
 $outputPdb = Join-Path $outputRoot "DeskBox.ThumbnailProxy.pdb"
+
+function Get-PeMachine {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $reader = [System.IO.BinaryReader]::new($stream)
+    try {
+        if ($reader.ReadUInt16() -ne 0x5A4D) {
+            throw "'$Path' is not a PE image."
+        }
+        $stream.Position = 0x3C
+        $peOffset = $reader.ReadInt32()
+        $stream.Position = $peOffset
+        if ($reader.ReadUInt32() -ne 0x00004550) {
+            throw "'$Path' does not contain a PE signature."
+        }
+        return $reader.ReadUInt16()
+    }
+    finally {
+        $reader.Dispose()
+        $stream.Dispose()
+    }
+}
+
 if (-not $ValidateOnly.IsPresent) {
     $cargo = (Get-Command cargo -ErrorAction Stop).Source
     $rustc = (Get-Command rustc -ErrorAction Stop).Source
@@ -132,6 +156,11 @@ if (-not $ValidateOnly.IsPresent) {
 if (-not (Test-Path -LiteralPath $outputExe -PathType Leaf)) {
     throw "Rust thumbnail proxy output is missing '$outputExe'."
 }
+$expectedMachine = if ($Platform -eq "ARM64") { 0xAA64 } else { 0x8664 }
+$machine = Get-PeMachine -Path $outputExe
+if ($machine -ne $expectedMachine) {
+    throw "Unexpected thumbnail proxy PE machine 0x$($machine.ToString('X4')); expected $Platform (0x$($expectedMachine.ToString('X4')))."
+}
 
 [PSCustomObject]@{
     Platform = $Platform
@@ -143,4 +172,6 @@ if (-not (Test-Path -LiteralPath $outputExe -PathType Leaf)) {
     ValidationOnly = $ValidateOnly.IsPresent
     Exe = $outputExe
     Pdb = if (Test-Path -LiteralPath $outputPdb -PathType Leaf) { $outputPdb } else { $null }
+    Machine = $machine
+    MachineHex = "0x$($machine.ToString('X4'))"
 }

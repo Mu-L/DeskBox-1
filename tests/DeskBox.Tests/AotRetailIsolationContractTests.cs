@@ -92,6 +92,14 @@ public sealed class AotRetailIsolationContractTests
         Assert.Contains("productProfile = \"retail\"", retailPublish, StringComparison.Ordinal);
         Assert.Contains("smokeHarnessEnabled = $false", retailPublish, StringComparison.Ordinal);
         Assert.Contains("smokeHarnessBinaryMatches", retailPublish, StringComparison.Ordinal);
+        Assert.Contains(
+            "$ascii.IndexOf($_, [System.StringComparison]::Ordinal) -ge 0",
+            retailPublish,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "$ascii.Contains($_, [System.StringComparison]::Ordinal)",
+            retailPublish,
+            StringComparison.Ordinal);
 
         int retainedAudit = distribution.IndexOf(
             "& $directAuditScript @directAuditArguments",
