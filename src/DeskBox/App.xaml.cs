@@ -31,8 +31,6 @@ public partial class App : Application
     private const double TrayMenuItemWidth = 176;
     private const int TrayContextMenuFallbackOffsetPixels = 24;
     private const int TrayContextMenuEstimatedWidth = (int)TrayMenuItemWidth + 16;
-    private const int BackgroundMemoryCleanupDelaySeconds = 30;
-    private const int BackgroundMemoryDeepCleanupDelaySeconds = 5 * 60;
     private const int VisibleIdleMemoryRequiredSeconds = 30;
     private const int VisibleIdleMemoryCheckIntervalSeconds = 5;
     private const int VisibleIdleMemoryMaintenanceCooldownSeconds = 60;
@@ -2394,6 +2392,7 @@ public partial class App : Application
         {
             _settingsWindow = null;
             ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+            ScheduleBackgroundMemoryCleanup();
         };
         return _settingsWindow;
     }
@@ -2786,6 +2785,21 @@ public partial class App : Application
         NotifyMemoryCleanupActivity();
     }
 
+    internal static void NotifyPerformanceSettingsChanged()
+    {
+        CancelBackgroundMemoryCleanup();
+        App app = Current;
+        if (app.WidgetManager?.HasVisibleWidgets != false ||
+            app._settingsWindow is not null ||
+            app._onboardingWindow is not null ||
+            app._searchPopupWindow?.IsPopupVisible == true)
+        {
+            return;
+        }
+
+        ScheduleBackgroundMemoryCleanup();
+    }
+
     internal static void NotifyMemoryCleanupActivity()
     {
         if (Application.Current is App app)
@@ -2808,21 +2822,35 @@ public partial class App : Application
 
     internal static void ScheduleBackgroundMemoryCleanup()
     {
+        App app = Current;
+        EffectivePerformanceSettings performance =
+            PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings);
         int generation = Interlocked.Increment(ref s_backgroundMemoryCleanupGeneration);
+        if (performance.HiddenCacheCleanupDelaySeconds ==
+            PerformanceSettingsPolicy.CleanupNever)
+        {
+            PerformanceLogger.Mark(
+                "BackgroundMemoryCleanupDisabled",
+                $"mode={performance.Mode}");
+            return;
+        }
+
+        int softDelaySeconds = performance.HiddenCacheCleanupDelaySeconds;
+        int deepDelaySeconds = performance.HiddenDeepCleanupDelaySeconds;
         PerformanceLogger.Mark(
             "BackgroundMemoryCleanupScheduled",
-            $"softDelaySeconds={BackgroundMemoryCleanupDelaySeconds} " +
-            $"deepDelaySeconds={BackgroundMemoryDeepCleanupDelaySeconds}");
+            $"mode={performance.Mode} " +
+            $"softDelaySeconds={softDelaySeconds} " +
+            $"deepDelaySeconds={deepDelaySeconds}");
 
         UiDispatcherQueue?.TryEnqueue(async () =>
         {
-            await Task.Delay(TimeSpan.FromSeconds(BackgroundMemoryCleanupDelaySeconds));
+            await Task.Delay(TimeSpan.FromSeconds(softDelaySeconds));
             if (generation != Volatile.Read(ref s_backgroundMemoryCleanupGeneration))
             {
                 return;
             }
 
-            var app = Current;
             if (!app.CanRunBackgroundMemoryCleanup())
             {
                 PerformanceLogger.Mark("BackgroundMemoryCleanupSkipped", "reason=foreground-active");
@@ -2830,12 +2858,13 @@ public partial class App : Application
             }
 
             PerformanceLogger.Mark("BackgroundMemorySoftCleanupTriggered");
-            await app.RunBackgroundSoftMemoryCleanupAsync(generation);
+            await app.RunBackgroundSoftMemoryCleanupAsync(
+                generation,
+                softDelaySeconds);
 
             int remainingDelaySeconds = Math.Max(
                 1,
-                BackgroundMemoryDeepCleanupDelaySeconds -
-                BackgroundMemoryCleanupDelaySeconds);
+                deepDelaySeconds - softDelaySeconds);
             await Task.Delay(TimeSpan.FromSeconds(remainingDelaySeconds));
             if (generation != Volatile.Read(ref s_backgroundMemoryCleanupGeneration))
             {
@@ -2867,7 +2896,9 @@ public partial class App : Application
         _onboardingWindow is null &&
         _searchPopupWindow?.IsPopupVisible != true;
 
-    private async Task RunBackgroundSoftMemoryCleanupAsync(int generation)
+    private async Task RunBackgroundSoftMemoryCleanupAsync(
+        int generation,
+        int hiddenDelaySeconds)
     {
         if (generation != Volatile.Read(ref s_backgroundMemoryCleanupGeneration) ||
             !CanRunBackgroundMemoryCleanup())
@@ -2925,7 +2956,7 @@ public partial class App : Application
 
         process.Refresh();
         Log(
-            $"[Memory] Background soft cleanup completed hiddenSeconds={BackgroundMemoryCleanupDelaySeconds} " +
+            $"[Memory] Background soft cleanup completed hiddenSeconds={hiddenDelaySeconds} " +
             $"workingSetBeforeMB={workingSetBefore / (1024.0 * 1024):F1} " +
             $"workingSetAfterMB={process.WorkingSet64 / (1024.0 * 1024):F1} " +
             $"privateBeforeMB={privateBytesBefore / (1024.0 * 1024):F1} " +

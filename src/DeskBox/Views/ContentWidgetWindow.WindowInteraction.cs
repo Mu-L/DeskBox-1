@@ -453,11 +453,11 @@ public sealed partial class ContentWidgetWindow
         }
     }
 
-    private void PushToBottom()
+    private void PushToBottom(bool showWindow = true)
     {
         IsRaisedFromManager = false;
         IsAtDesktopLayer = true;
-        WidgetLayerService.MoveToDesktopBottom(HWnd);
+        WidgetLayerService.MoveToDesktopBottom(HWnd, showWindow);
         App.LogVerbose($"[ZOrder] Content PushToBottom hwnd=0x{HWnd.ToInt64():X}");
         App.Current.WidgetManager?.QueueIdleWidgetZOrderNormalization(
             "content-pushed-to-desktop");

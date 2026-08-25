@@ -11,7 +11,6 @@ namespace DeskBox.Views;
 public abstract partial class WidgetWindowBase
 {
     private AccessibilitySettings? _foregroundAccessibilitySettings;
-    private WidgetTextShadowManager? _widgetTextShadowManager;
 
     protected void ApplyWidgetForegroundAppearance()
     {
@@ -30,44 +29,11 @@ public abstract partial class WidgetWindowBase
             highContrast);
 
         ApplyForegroundBrushes(palette);
-
-        string edgeMode = highContrast
-            ? WidgetForegroundSettings.EdgeOff
-            : WidgetForegroundSettings.ResolveEdgeMode(
-                Config,
-                SettingsService.Settings);
-        bool textEdgeActive = !string.Equals(
-                edgeMode,
-                WidgetForegroundSettings.EdgeOff,
-                StringComparison.Ordinal);
-        WidgetShellControl.SetCompactMarqueeTextEdgeModeActive(textEdgeActive);
-        if (!textEdgeActive)
-        {
-            DisposeWidgetTextShadowManager();
-            return;
-        }
-
-        if (RootElement.FindName("WidgetTextShadowHost") is not FrameworkElement shadowHost)
-        {
-            return;
-        }
-
-        _widgetTextShadowManager ??= new WidgetTextShadowManager(
-            RootElement,
-            shadowHost);
-        _widgetTextShadowManager.Apply(edgeMode, palette.Primary);
     }
 
     protected void SetWidgetForegroundModeOverride(string? mode)
     {
         WidgetForegroundSettings.SetModeOverride(Config, mode);
-        SettingsService.UpdateWidget(Config);
-        ApplyWidgetForegroundAppearance();
-    }
-
-    protected void SetWidgetTextEdgeModeOverride(string? mode)
-    {
-        WidgetForegroundSettings.SetEdgeModeOverride(Config, mode);
         SettingsService.UpdateWidget(Config);
         ApplyWidgetForegroundAppearance();
     }
@@ -149,19 +115,12 @@ public abstract partial class WidgetWindowBase
 
     private void CleanupWidgetForegroundAppearance()
     {
-        DisposeWidgetTextShadowManager();
         if (_foregroundAccessibilitySettings is not null)
         {
             _foregroundAccessibilitySettings.HighContrastChanged -=
                 ForegroundAccessibilitySettings_HighContrastChanged;
             _foregroundAccessibilitySettings = null;
         }
-    }
-
-    private void DisposeWidgetTextShadowManager()
-    {
-        _widgetTextShadowManager?.Dispose();
-        _widgetTextShadowManager = null;
     }
 
     private void ApplyForegroundBrushes(WidgetForegroundPalette palette)

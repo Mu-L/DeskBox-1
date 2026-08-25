@@ -89,6 +89,7 @@ public sealed partial class SettingsWindow : Window
         new Dictionary<string, SettingsSectionRoute>(StringComparer.Ordinal)
         {
             ["General"] = new("General", "Settings.Section.General", null, "General"),
+            ["PerformanceSettings"] = new("PerformanceSettings", "Settings.Performance.Title", "General", "General"),
             ["Appearance"] = new("Appearance", "Settings.Section.Appearance", null, "Appearance"),
             ["CapsuleMode"] = new("CapsuleMode", "Settings.Section.CapsuleMode", "Appearance", "Appearance"),
             ["WidgetGroups"] = new("WidgetGroups", "Settings.Section.WidgetGroups", "Appearance", "Appearance"),

@@ -23,6 +23,14 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
     private readonly Window _window;
     private readonly AppWindow _appWindow;
     private readonly IntPtr _hWnd;
+    private readonly Border _surfaceBorder;
+    private readonly Border _badgeBorder;
+    private readonly TextBlock _captionTextBlock;
+    private RectInt32 _lastBounds;
+    private byte _opacity = TrackingOpacity;
+    private int _animationGeneration;
+    private bool _hasBounds;
+    private bool _visible;
     private bool _closed;
 
     public WidgetDetachPlacementPreviewWindow(string caption, double cornerRadius)
@@ -30,7 +38,7 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
         Color accent = ResolveAccentColor();
         double surfaceRadius = Math.Clamp(cornerRadius, 0, 32);
         var root = new Grid();
-        root.Children.Add(new Border
+        _surfaceBorder = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(
                 0x18,
@@ -47,8 +55,19 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
             // warning/error state and competed with the corner badge.
             BorderThickness = new Thickness(0, 0, 0, 2),
             CornerRadius = new CornerRadius(surfaceRadius)
-        });
-        root.Children.Add(new Border
+        };
+        _captionTextBlock = new TextBlock
+        {
+            Text = caption,
+            MaxWidth = 260,
+            Foreground = new SolidColorBrush(Colors.White),
+            FontSize = 12,
+            FontWeight = Microsoft.UI.Text.FontWeights.Normal,
+            MaxLines = 1,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _badgeBorder = new Border
         {
             Margin = new Thickness(10, 0, 10, 8),
             Padding = new Thickness(8, 3, 8, 4),
@@ -62,18 +81,10 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
                 accent.B)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(Math.Clamp(surfaceRadius * 0.45, 2, 4)),
-            Child = new TextBlock
-            {
-                Text = caption,
-                MaxWidth = 260,
-                Foreground = new SolidColorBrush(Colors.White),
-                FontSize = 12,
-                FontWeight = Microsoft.UI.Text.FontWeights.Normal,
-                MaxLines = 1,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        });
+            Child = _captionTextBlock
+        };
+        root.Children.Add(_surfaceBorder);
+        root.Children.Add(_badgeBorder);
         _window = new Window
         {
             Content = root
@@ -126,6 +137,23 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
             ref cornerPreference);
     }
 
+    public void BeginTracking(string caption, double cornerRadius)
+    {
+        lock (_gate)
+        {
+            if (_closed)
+            {
+                return;
+            }
+
+            _animationGeneration++;
+            ApplyAppearanceNoLock(caption, cornerRadius);
+            SetOpacityNoLock(TrackingOpacity);
+            HideNoLock();
+            _hasBounds = false;
+        }
+    }
+
     public void Update(RectInt32 bounds, bool visible)
     {
         lock (_gate)
@@ -135,21 +163,16 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
                 return;
             }
 
+            RectInt32 normalized = NormalizeBounds(bounds);
             if (!visible)
             {
-                _ = Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
+                _lastBounds = normalized;
+                _hasBounds = true;
+                HideNoLock();
                 return;
             }
 
-            _ = Win32Helper.SetWindowPos(
-                _hWnd,
-                Win32Helper.HWND_TOPMOST,
-                bounds.X,
-                bounds.Y,
-                Math.Max(1, bounds.Width),
-                Math.Max(1, bounds.Height),
-                Win32Helper.SWP_NOACTIVATE |
-                Win32Helper.SWP_SHOWWINDOW);
+            MoveAndShowNoLock(normalized);
         }
     }
 
@@ -162,45 +185,64 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
                 return;
             }
 
-            _ = Win32Helper.SetLayeredWindowAttributes(
-                _hWnd,
-                0,
-                CommittedOpacity,
-                Win32Helper.LWA_ALPHA);
-            _ = Win32Helper.SetWindowPos(
-                _hWnd,
-                Win32Helper.HWND_TOPMOST,
+            SetOpacityNoLock(CommittedOpacity);
+            MoveAndShowNoLock(NormalizeBounds(new RectInt32(
                 bounds.X - 2,
                 bounds.Y - 2,
-                Math.Max(1, bounds.Width + 4),
-                Math.Max(1, bounds.Height + 4),
-                Win32Helper.SWP_NOACTIVATE |
-                Win32Helper.SWP_SHOWWINDOW);
+                bounds.Width + 4,
+                bounds.Height + 4)));
         }
     }
 
-    public async Task FadeOutAndCloseAsync()
+    public async Task FadeOutAndHideAsync()
     {
+        int generation;
+        lock (_gate)
+        {
+            if (_closed)
+            {
+                return;
+            }
+
+            generation = ++_animationGeneration;
+        }
+
         foreach (byte opacity in new byte[] { 176, 118, 58, 16 })
         {
             lock (_gate)
             {
-                if (_closed)
+                if (_closed || generation != _animationGeneration)
                 {
                     return;
                 }
 
-                _ = Win32Helper.SetLayeredWindowAttributes(
-                    _hWnd,
-                    0,
-                    opacity,
-                    Win32Helper.LWA_ALPHA);
+                SetOpacityNoLock(opacity);
             }
 
             await Task.Delay(28);
         }
 
-        Dispose();
+        lock (_gate)
+        {
+            if (!_closed && generation == _animationGeneration)
+            {
+                HideNoLock();
+            }
+        }
+    }
+
+    public void Hide()
+    {
+        lock (_gate)
+        {
+            if (_closed)
+            {
+                return;
+            }
+
+            _animationGeneration++;
+            HideNoLock();
+        }
     }
 
     public void Dispose()
@@ -213,10 +255,119 @@ internal sealed class WidgetDetachPlacementPreviewWindow : IDisposable
             }
 
             _closed = true;
-            _ = Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
+            _animationGeneration++;
+            HideNoLock();
         }
 
         _window.Close();
+    }
+
+    private void MoveAndShowNoLock(RectInt32 bounds)
+    {
+        bool boundsChanged = !_hasBounds || !AreEqual(_lastBounds, bounds);
+        _lastBounds = bounds;
+        _hasBounds = true;
+
+        if (!_visible)
+        {
+            _ = Win32Helper.SetWindowPos(
+                _hWnd,
+                Win32Helper.HWND_TOPMOST,
+                bounds.X,
+                bounds.Y,
+                bounds.Width,
+                bounds.Height,
+                Win32Helper.SWP_NOACTIVATE |
+                Win32Helper.SWP_SHOWWINDOW);
+            _visible = true;
+            return;
+        }
+
+        if (!boundsChanged)
+        {
+            return;
+        }
+
+        // WS_EX_TOPMOST is established on the hidden -> visible transition.
+        // Tracking frames only move the silhouette; they must not rebuild the
+        // global Z-order or issue another show request on every poll.
+        _ = Win32Helper.SetWindowPos(
+            _hWnd,
+            IntPtr.Zero,
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            Win32Helper.SWP_NOACTIVATE |
+            Win32Helper.SWP_NOZORDER);
+    }
+
+    private void HideNoLock()
+    {
+        if (!_visible)
+        {
+            return;
+        }
+
+        _ = Win32Helper.ShowWindow(_hWnd, Win32Helper.SW_HIDE);
+        _visible = false;
+    }
+
+    private void SetOpacityNoLock(byte opacity)
+    {
+        if (_opacity == opacity)
+        {
+            return;
+        }
+
+        _ = Win32Helper.SetLayeredWindowAttributes(
+            _hWnd,
+            0,
+            opacity,
+            Win32Helper.LWA_ALPHA);
+        _opacity = opacity;
+    }
+
+    private void ApplyAppearanceNoLock(string caption, double cornerRadius)
+    {
+        Color accent = ResolveAccentColor();
+        double surfaceRadius = Math.Clamp(cornerRadius, 0, 32);
+        _captionTextBlock.Text = caption;
+        _surfaceBorder.Background = new SolidColorBrush(Color.FromArgb(
+            0x18,
+            accent.R,
+            accent.G,
+            accent.B));
+        _surfaceBorder.BorderBrush = new SolidColorBrush(Color.FromArgb(
+            0xD8,
+            accent.R,
+            accent.G,
+            accent.B));
+        _surfaceBorder.CornerRadius = new CornerRadius(surfaceRadius);
+        _badgeBorder.BorderBrush = new SolidColorBrush(Color.FromArgb(
+            0xE8,
+            accent.R,
+            accent.G,
+            accent.B));
+        _badgeBorder.CornerRadius = new CornerRadius(
+            Math.Clamp(surfaceRadius * 0.45, 2, 4));
+    }
+
+    private static RectInt32 NormalizeBounds(RectInt32 bounds)
+    {
+        return new RectInt32(
+            bounds.X,
+            bounds.Y,
+            Math.Max(1, bounds.Width),
+            Math.Max(1, bounds.Height));
+    }
+
+    private static bool AreEqual(RectInt32 left, RectInt32 right)
+    {
+        return left.X == right.X &&
+               left.Y == right.Y &&
+               left.Width == right.Width &&
+               left.Height == right.Height;
     }
 
     private static Color ResolveAccentColor()

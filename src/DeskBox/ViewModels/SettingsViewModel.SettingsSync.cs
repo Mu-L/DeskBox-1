@@ -142,6 +142,7 @@ public partial class SettingsViewModel
             QuickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
             QuickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
             SelectedAttachmentStorageMode = SettingsService.NormalizeAttachmentStorageMode(settings.AttachmentStorageMode);
+            ApplyPerformanceSettingsSnapshot(settings);
             SelectedManagedDropAction = settings.ManagedDropAction == SettingsService.ManagedDropActionMove
                 ? SettingsService.ManagedDropActionMove
                 : SettingsService.ManagedDropActionCopy;
@@ -373,6 +374,7 @@ RefreshWeatherCityPopularCities();
         }
 
         RefreshWidgetForegroundSelectionProperties(refreshLocalizedOptions);
+        RefreshPerformanceSelectionProperties(refreshLocalizedOptions);
 
         OnPropertyChanged(nameof(IsOpacitySliderEnabled));
         OnPropertyChanged(nameof(WidgetOpacityVisibility));

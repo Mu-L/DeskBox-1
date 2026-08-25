@@ -34,7 +34,8 @@ public sealed partial class SettingsWindow
             "CapsuleOverridesSettings",
             "BackupRestoreSettings",
             "DataHealthSettings",
-            "CompatibilityDiagnosticsSettings"
+            "CompatibilityDiagnosticsSettings",
+            "PerformanceSettings"
         ];
 
         string searchQuery = _localizationService.T("Settings.DataBackup.Title");

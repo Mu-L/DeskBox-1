@@ -16,6 +16,7 @@ public sealed class WidgetTitleButtonMenuTests
         Assert.Contains("TryUpdateWidgetHoverButtonAction", builder, StringComparison.Ordinal);
         Assert.Contains("settingsService.Settings.ShowHoverButtons = true", builder, StringComparison.Ordinal);
         Assert.Contains("settingsService.SaveDebounced()", builder, StringComparison.Ordinal);
+
     }
 
     private static string FindRepositoryRoot()

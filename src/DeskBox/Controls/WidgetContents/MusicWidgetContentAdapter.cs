@@ -6,7 +6,11 @@ using Microsoft.UI.Xaml;
 
 namespace DeskBox.Controls.WidgetContents;
 
-public sealed class MusicWidgetContentAdapter : IWidgetContent, IWidgetResponsiveLayoutContent, IDisposable
+public sealed class MusicWidgetContentAdapter :
+    IWidgetContent,
+    IWidgetResponsiveLayoutContent,
+    IWidgetPerformanceAwareContent,
+    IDisposable
 {
     private readonly Func<MusicWidgetViewModel, FrameworkElement> _viewFactory;
     private FrameworkElement? _view;
@@ -98,6 +102,14 @@ public sealed class MusicWidgetContentAdapter : IWidgetContent, IWidgetResponsiv
         if (_view is MusicWidgetContent content)
         {
             content.OnCompactStateChanged(collapsed);
+        }
+    }
+
+    public void ApplyPerformanceSettings()
+    {
+        if (_view is MusicWidgetContent content)
+        {
+            content.ApplyPerformanceSettings();
         }
     }
 

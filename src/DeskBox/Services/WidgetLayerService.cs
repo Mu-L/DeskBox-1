@@ -15,14 +15,18 @@ public static class WidgetLayerService
     private static readonly Dictionary<IntPtr, DesktopLayerAttachment> s_desktopLayerAttachments = [];
     private static IntPtr s_cachedDesktopIconView;
 
-    public static void MoveToDesktopBottom(IntPtr windowHandle)
+    public static void MoveToDesktopBottom(
+        IntPtr windowHandle,
+        bool showWindow = true)
     {
         ApplyDesktopPinnedActivationStyle(windowHandle);
 
         // Desktop-pinned mode always rests inside Explorer. Dynamic mode uses
         // the same owner only when the user wants widgets to survive Win+D.
         if (ShouldAttachRestingWindowToDesktop() &&
-            TryAttachToDesktopIconLayer(windowHandle))
+            TryAttachToDesktopIconLayer(
+                windowHandle,
+                showWindow: showWindow))
         {
             return;
         }
@@ -194,22 +198,26 @@ public static class WidgetLayerService
         MoveToDesktopBottom(windowHandle);
     }
 
-    public static void HoldTemporaryTopMost(IntPtr windowHandle)
+    public static void HoldTemporaryTopMost(
+        IntPtr windowHandle,
+        bool showWindow = true)
     {
         ApplyDesktopPinnedActivationStyle(windowHandle);
 
         if (UsesDesktopPinnedMode())
         {
-            if (!TryAttachToDesktopIconLayer(windowHandle))
+            if (!TryAttachToDesktopIconLayer(
+                    windowHandle,
+                    showWindow: showWindow))
             {
-                MoveToDynamicDesktopBottom(windowHandle);
+                MoveToDynamicDesktopBottom(windowHandle, showWindow);
             }
 
             return;
         }
 
         DetachFromDesktopIconLayerIfNeeded(windowHandle);
-        Win32Helper.BringWindowTemporarilyToFront(windowHandle);
+        Win32Helper.BringWindowTemporarilyToFront(windowHandle, showWindow);
     }
 
     /// <summary>
@@ -785,7 +793,8 @@ public static class WidgetLayerService
 
     private static bool TryAttachToDesktopIconLayer(
         IntPtr windowHandle,
-        bool placeAtBottom = true)
+        bool placeAtBottom = true,
+        bool showWindow = true)
     {
         if (windowHandle == IntPtr.Zero || !Win32Helper.IsWindow(windowHandle))
         {
@@ -829,6 +838,14 @@ public static class WidgetLayerService
             Win32Helper.ClearWindowTopMost(windowHandle);
             if (placeAtBottom)
             {
+                uint flags = Win32Helper.SWP_NOMOVE |
+                    Win32Helper.SWP_NOSIZE |
+                    Win32Helper.SWP_NOACTIVATE;
+                if (showWindow)
+                {
+                    flags |= Win32Helper.SWP_SHOWWINDOW;
+                }
+
                 Win32Helper.SetWindowPos(
                     windowHandle,
                     Win32Helper.HWND_BOTTOM,
@@ -836,10 +853,7 @@ public static class WidgetLayerService
                     0,
                     0,
                     0,
-                    Win32Helper.SWP_NOMOVE |
-                    Win32Helper.SWP_NOSIZE |
-                    Win32Helper.SWP_NOACTIVATE |
-                    Win32Helper.SWP_SHOWWINDOW);
+                    flags);
             }
 
             App.LogVerbose(
@@ -862,11 +876,15 @@ public static class WidgetLayerService
         }
     }
 
-    private static void MoveToDynamicDesktopBottom(IntPtr windowHandle)
+    private static void MoveToDynamicDesktopBottom(
+        IntPtr windowHandle,
+        bool showWindow = true)
     {
         // Try to attach to desktop icon layer to prevent Win+D from hiding the window
         // while maintaining dynamic layer behavior (can be raised on interaction)
-        if (TryAttachToDesktopIconLayer(windowHandle))
+        if (TryAttachToDesktopIconLayer(
+                windowHandle,
+                showWindow: showWindow))
         {
             return;
         }

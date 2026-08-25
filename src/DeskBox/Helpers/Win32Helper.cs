@@ -994,10 +994,29 @@ public static partial class Win32Helper
     /// </summary>
     public static void BringWindowTemporarilyToFront(IntPtr hWnd)
     {
+        BringWindowTemporarilyToFront(hWnd, showWindow: true);
+    }
+
+    /// <summary>
+    /// Raise a window without optionally issuing another show request. Initial
+    /// presentation already shows the HWND while it is DWM-cloaked, so its
+    /// Z-order transaction must not generate two extra visible SHOWWINDOW
+    /// transitions before the cloak is removed.
+    /// </summary>
+    public static void BringWindowTemporarilyToFront(
+        IntPtr hWnd,
+        bool showWindow)
+    {
+        uint flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+        if (showWindow)
+        {
+            flags |= SWP_SHOWWINDOW;
+        }
+
         SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            flags);
         SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            flags);
     }
 
     /// <summary>

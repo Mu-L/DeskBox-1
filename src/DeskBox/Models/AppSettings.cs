@@ -40,6 +40,15 @@ public class AppSettings
     /// <summary>Whether DeskBox should launch automatically at Windows startup.</summary>
     public bool AutoStart { get; set; } = true;
 
+    /// <summary>Performance preset. Valid values: <c>BestVisual</c>, <c>Balanced</c>, <c>ResourceSaver</c>, <c>Custom</c>.</summary>
+    public string PerformanceMode { get; set; } = "Balanced";
+
+    /// <summary>Delay before releasing idle caches after every widget is fully hidden. <c>-1</c> disables hidden-state cleanup.</summary>
+    public int HiddenCacheCleanupDelaySeconds { get; set; } = 30;
+
+    /// <summary>Whether continuous decorative effects such as marquees, vinyl rotation, glow, and particles may run.</summary>
+    public bool EnableContinuousDecorativeAnimations { get; set; } = true;
+
     /// <summary>Whether DeskBox should check for updates in the background.</summary>
     public bool AutoCheckForUpdates { get; set; } = true;
 
@@ -228,12 +237,6 @@ public class AppSettings
 
     /// <summary>Custom widget foreground color in <c>#RRGGBB</c> form.</summary>
     public string WidgetForegroundColor { get; set; } = "#F5F5F5";
-
-    /// <summary>
-    /// Optional tight contrast edge for widget text.
-    /// Valid values: <c>"Off"</c>, <c>"Soft"</c>, <c>"Strong"</c>.
-    /// </summary>
-    public string WidgetTextEdgeMode { get; set; } = "Off";
 
     /// <summary>
     /// Border color mode for widget windows.

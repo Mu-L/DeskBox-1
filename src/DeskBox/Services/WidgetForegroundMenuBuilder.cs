@@ -9,11 +9,9 @@ internal static class WidgetForegroundMenuBuilder
         WidgetConfig config,
         LocalizationService localizationService,
         Action<string?> applyModeOverride,
-        Action chooseCustomColor,
-        Action<string?> applyEdgeOverride)
+        Action chooseCustomColor)
     {
         string? modeOverride = WidgetForegroundSettings.GetModeOverride(config);
-        string? edgeOverride = WidgetForegroundSettings.GetEdgeModeOverride(config);
         var menu = new MenuFlyoutSubItem
         {
             Text = localizationService.T("Widget.Foreground.Menu"),
@@ -41,30 +39,6 @@ internal static class WidgetForegroundMenuBuilder
             localizationService.T("Widget.Foreground.CustomColor"),
             modeOverride == WidgetForegroundSettings.ModeCustom,
             chooseCustomColor));
-        menu.Items.Add(new MenuFlyoutSeparator());
-
-        var edgeMenu = new MenuFlyoutSubItem
-        {
-            Text = localizationService.T("Widget.TextEdge.Menu")
-        };
-        edgeMenu.Items.Add(CreateChoice(
-            localizationService.T("Widget.Foreground.UseGlobal"),
-            edgeOverride is null,
-            () => applyEdgeOverride(null)));
-        edgeMenu.Items.Add(new MenuFlyoutSeparator());
-        edgeMenu.Items.Add(CreateChoice(
-            localizationService.T("Settings.WidgetTextEdge.Off"),
-            edgeOverride == WidgetForegroundSettings.EdgeOff,
-            () => applyEdgeOverride(WidgetForegroundSettings.EdgeOff)));
-        edgeMenu.Items.Add(CreateChoice(
-            localizationService.T("Settings.WidgetTextEdge.Soft"),
-            edgeOverride == WidgetForegroundSettings.EdgeSoft,
-            () => applyEdgeOverride(WidgetForegroundSettings.EdgeSoft)));
-        edgeMenu.Items.Add(CreateChoice(
-            localizationService.T("Settings.WidgetTextEdge.Strong"),
-            edgeOverride == WidgetForegroundSettings.EdgeStrong,
-            () => applyEdgeOverride(WidgetForegroundSettings.EdgeStrong)));
-        menu.Items.Add(edgeMenu);
 
         return menu;
     }

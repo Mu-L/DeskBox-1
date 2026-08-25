@@ -125,8 +125,7 @@ public sealed partial class QuickCaptureWidgetWindow
             ViewModel.Config,
             _localizationService,
             SetWidgetForegroundModeOverride,
-            () => showForegroundColorPickerWhenClosed = true,
-            SetWidgetTextEdgeModeOverride));
+            () => showForegroundColorPickerWhenClosed = true));
 
         WidgetGroupMenuBuilder.Append(
             flyout,

@@ -62,6 +62,7 @@ internal interface IDesktopWidgetWindow
     Windows.Foundation.Rect AnimationBounds { get; }
     Windows.Foundation.Rect RestingAnimationBounds { get; }
     void ApplyAppearancePreview();
+    void ApplyPerformanceSettings();
     void BeginDisplayTopologyTransition(long generation);
     void EndDisplayTopologyTransition(long generation);
     void RestoreBoundsForCurrentTopology();
@@ -128,6 +129,7 @@ public sealed partial class WidgetManager
     private readonly SemaphoreSlim _widgetRenameGate = new(1, 1);
     private readonly SemaphoreSlim _trayVisibilityOperationGate = new(1, 1);
     private readonly TrayToggleRequestQueue _trayToggleRequestQueue;
+    private EffectivePerformanceSettings _lastPerformanceSettings;
 
     internal IReadOnlyDictionary<string, ContentWidgetWindow> ContentWidgets => _contentWidgets;
 
@@ -392,6 +394,8 @@ public sealed partial class WidgetManager
             _lastFeatureWidgetEnabledStates[kind] = FeatureWidgetSettings.IsEnabled(_settingsService.Settings, kind);
         }
         _lastWidgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(_settingsService.Settings.WidgetLayerMode);
+        _lastPerformanceSettings =
+            PerformanceSettingsPolicy.Resolve(_settingsService.Settings);
         InitializeWidgetGroupPresentationDefaults();
         _settingsService.SettingsChanged += OnSettingsChanged;
         _settingsService.AppearancePreviewChanged += ApplyAppearancePreview;
@@ -525,6 +529,32 @@ public sealed partial class WidgetManager
         }
 
         RefreshWidgetGroupPresentationDefaultsIfChanged();
+        ApplyPerformanceSettingsIfChanged();
+    }
+
+    private void ApplyPerformanceSettingsIfChanged()
+    {
+        if (!HasUiThreadAccess())
+        {
+            App.UiDispatcherQueue?.TryEnqueue(
+                ApplyPerformanceSettingsIfChanged);
+            return;
+        }
+
+        EffectivePerformanceSettings current =
+            PerformanceSettingsPolicy.Resolve(_settingsService.Settings);
+        if (current == _lastPerformanceSettings)
+        {
+            return;
+        }
+
+        _lastPerformanceSettings = current;
+        foreach (IDesktopWidgetWindow window in GetLoadedDesktopWindows())
+        {
+            window.ApplyPerformanceSettings();
+        }
+
+        App.NotifyPerformanceSettingsChanged();
     }
 
     private void ApplyWidgetLayerModeIfChanged()
@@ -1731,6 +1761,7 @@ public sealed partial class WidgetManager
     {
         CancelAllWidgetSurfaceSwitches();
         StopTrayLayerRestoreMonitor();
+        DisposeWidgetDetachPlacementPreview();
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _settingsService.AppearancePreviewChanged -= ApplyAppearancePreview;
         _themeService.AppearanceChanged -= ApplyAppearancePreview;
@@ -2074,16 +2105,19 @@ public sealed partial class WidgetManager
             await window.ContentReadyTask.WaitAsync(cancellationToken);
             RestoreWidgetGroupTransientState(config.Id);
             window.PrepareTrayShowAnimation();
-            if (!keepPreparedForAnimation)
+            if (revealAfterCreate)
+            {
+                // A newly-created window has exactly one first-presentation
+                // path. Showing it at the desktop layer first and immediately
+                // raising it detached/re-attached the Explorer owner while the
+                // HWND was already visible, which could flash the whole desktop.
+                window.ShowPreparedRaisedFromTray();
+                window.PlayTrayShowAnimation();
+            }
+            else if (!keepPreparedForAnimation)
             {
                 window.ShowPreparedAtDesktopLayer();
                 window.CompleteTrayShowWithoutAnimation();
-            }
-
-            if (revealAfterCreate)
-            {
-                window.ShowPreparedRaisedFromTray();
-                window.PlayTrayShowAnimation();
             }
         }
         catch

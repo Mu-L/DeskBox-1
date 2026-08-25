@@ -77,4 +77,5 @@ internal static class WidgetCollapseMenuBuilder
             _ => "Widget.CollapseBehavior.Click"
         };
     }
+
 }

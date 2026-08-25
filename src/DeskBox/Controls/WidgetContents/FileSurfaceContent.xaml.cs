@@ -40,6 +40,7 @@ public sealed partial class FileSurfaceContent :
     private readonly LocalizationService _localizationService;
     private readonly FileService _fileService;
     private readonly SettingsService _settingsService;
+    private readonly StackInputActivationArbiter _stackInputActivation = new();
     private static readonly QuickLookPreviewService s_quickLookService =
         new();
     private string[] _cutClipboardPaths = [];
@@ -350,10 +351,15 @@ public sealed partial class FileSurfaceContent :
 
     public void OnActivated()
     {
-        if (IsLoaded)
+        bool pointerActivation = Win32Helper.IsAnyMouseButtonDown();
+        if (IsLoaded && !pointerActivation)
         {
             Root.Focus(FocusState.Programmatic);
         }
+        App.LogVerbose(
+            $"[FileStack] Surface activated widget={WidgetId} " +
+            $"pointerActivation={pointerActivation} " +
+            $"focusedRoot={IsLoaded && !pointerActivation}");
 
         if (_isWindowRevealCompleted)
         {
@@ -447,6 +453,16 @@ public sealed partial class FileSurfaceContent :
             {
                 try
                 {
+                    // A desktop-pinned window can receive Activated while the
+                    // mouse button which activated it is still held down.  A
+                    // refresh at that point rebuilds the ItemsSource and
+                    // unloads the pressed stack container before PointerReleased
+                    // (and therefore ItemClick) can be delivered.  Keep the
+                    // projection stable until the native pointer sequence has
+                    // completed, then perform the same reconciliation.
+                    await WaitForPointerSequenceToFinishAsync(
+                        _lifetimeCancellation.Token);
+
                     if (_isDisposed || !_isWindowVisible || !_isWindowRevealCompleted)
                     {
                         return;
@@ -471,6 +487,19 @@ public sealed partial class FileSurfaceContent :
         {
             Interlocked.Exchange(ref _diskReconciliationQueued, 0);
         }
+    }
+
+    private static async Task WaitForPointerSequenceToFinishAsync(
+        CancellationToken cancellationToken)
+    {
+        while (Win32Helper.IsAnyMouseButtonDown())
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(16), cancellationToken);
+        }
+
+        // Let the matching PointerReleased/ItemClick routed events drain before
+        // a refresh is allowed to recycle the item containers.
+        await Task.Delay(TimeSpan.FromMilliseconds(48), cancellationToken);
     }
 
     public Task AddFromTitleButtonAsync() => RunAsync(PickAndImportFilesAsync);
@@ -573,7 +602,16 @@ public sealed partial class FileSurfaceContent :
     {
         if (e.ClickedItem is WidgetStackItem stack)
         {
-            ToggleStackFromInput(stack);
+            bool shouldActivate =
+                _stackInputActivation.ShouldActivateFromItemClick(
+                    stack.StackKey);
+            App.LogVerbose(
+                $"[FileStack] ItemClick widget={WidgetId} " +
+                $"stack={stack.StackKey} activate={shouldActivate}");
+            if (shouldActivate)
+            {
+                ToggleStackFromInput(stack);
+            }
             return;
         }
 
@@ -907,6 +945,7 @@ public sealed partial class FileSurfaceContent :
         {
             _pressedStack = null;
             _stackPointerDragStarted = false;
+            _stackInputActivation.CancelPointer();
             ClearFolderDropTarget();
             ClearStackMemberDropTarget();
             if (!fromStackPopover &&

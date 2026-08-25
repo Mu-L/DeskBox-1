@@ -27,6 +27,7 @@ public sealed partial class WidgetManager
     private string? _groupDragSourceId;
     private string? _groupDragTargetId;
     private bool _groupDragDropReady;
+    private WidgetDetachPlacementPreviewWindow? _widgetDetachPlacementPreview;
     private readonly Dictionary<string, WidgetGroupTransientState> _widgetGroupTransientStates = [];
     private string _lastWidgetGroupDefaultNavigationStyle =
         WidgetGroupNavigationStyles.Auto;
@@ -34,6 +35,47 @@ public sealed partial class WidgetManager
         WidgetGroupTitleDisplayModes.IconAndText;
     private bool _lastWidgetGroupWheelSwitchEnabled = true;
     private bool _lastWidgetGroupHoverSwitchEnabled;
+
+    internal void PrewarmWidgetDetachPlacementPreview(
+        string caption,
+        double cornerRadius)
+    {
+        if (_widgetDetachPlacementPreview is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            _widgetDetachPlacementPreview =
+                new WidgetDetachPlacementPreviewWindow(caption, cornerRadius);
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[WidgetGroup] Failed to prewarm detach preview: {ex}");
+        }
+    }
+
+    internal WidgetDetachPlacementPreviewWindow AcquireWidgetDetachPlacementPreview(
+        string caption,
+        double cornerRadius)
+    {
+        PrewarmWidgetDetachPlacementPreview(caption, cornerRadius);
+        WidgetDetachPlacementPreviewWindow preview =
+            _widgetDetachPlacementPreview ??
+            throw new InvalidOperationException(
+                "The widget detach placement preview could not be created.");
+        preview.BeginTracking(caption, cornerRadius);
+        return preview;
+    }
+
+    private void DisposeWidgetDetachPlacementPreview()
+    {
+        WidgetDetachPlacementPreviewWindow? preview =
+            _widgetDetachPlacementPreview;
+        _widgetDetachPlacementPreview = null;
+        preview?.Dispose();
+    }
 
     public event Action? WidgetGroupsChanged;
 
@@ -1251,10 +1293,17 @@ public sealed partial class WidgetManager
                 return false;
             }
 
+            var detachCommitStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            string previousActiveId = group.ActiveMemberId;
             bool preserveRaisedLayer =
-                ShouldPreserveRaisedWidgetLayer(group.ActiveMemberId);
+                ShouldPreserveRaisedWidgetLayer(previousActiveId);
             bool raiseTransitionWindows =
                 detachedPosition.HasValue || preserveRaisedLayer;
+            ContentWidgetWindow? reusableDetachedHost =
+                detachedPosition.HasValue &&
+                string.Equals(previousActiveId, widgetId, StringComparison.Ordinal)
+                    ? GetLoadedWindow(previousActiveId) as ContentWidgetWindow
+                    : null;
 
             WidgetGroupMutationSnapshot rollbackSnapshot =
                 WidgetGroupMutationSnapshot.Capture(this, group);
@@ -1304,6 +1353,7 @@ public sealed partial class WidgetManager
             }
 
             bool persisted;
+            var persistenceStopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 persisted = await _settingsService.SaveCheckedAsync();
@@ -1313,6 +1363,7 @@ public sealed partial class WidgetManager
                 rollbackSnapshot.Restore(this);
                 throw;
             }
+            double persistenceElapsedMs = persistenceStopwatch.Elapsed.TotalMilliseconds;
 
             if (!persisted)
             {
@@ -1325,43 +1376,63 @@ public sealed partial class WidgetManager
                 return false;
             }
 
-            foreach (string memberId in previousMembers)
+            WidgetGroupDetachSurfaceReuseResult reuseResult =
+                await TryCompleteDetachedActiveSurfaceReuseAsync(
+                    group,
+                    survivingGroup,
+                    removedConfig,
+                    reusableDetachedHost,
+                    rollbackSnapshot,
+                    raiseTransitionWindows);
+            if (reuseResult == WidgetGroupDetachSurfaceReuseResult.Failed)
             {
-                RetireLoadedWindowForGroup(
-                    memberId,
-                    keepConfigVisible: FindConfig(memberId)?.IsVisible == true);
+                return false;
             }
 
-            if (survivingGroup is not null && survivingGroup.IsVisible)
+            bool reusedSurface =
+                reuseResult == WidgetGroupDetachSurfaceReuseResult.Completed;
+            if (!reusedSurface)
             {
-                await ShowGroupActiveWindowAsync(survivingGroup);
-            }
-            else if (survivingGroup is null && group.IsVisible)
-            {
-                foreach (string remainingId in group.MemberIds)
+                foreach (string memberId in previousMembers)
                 {
-                    if (FindConfig(remainingId) is { IsVisible: true } remainingConfig)
+                    RetireLoadedWindowForGroup(
+                        memberId,
+                        keepConfigVisible: FindConfig(memberId)?.IsVisible == true);
+                }
+
+                if (survivingGroup is not null && survivingGroup.IsVisible)
+                {
+                    await ShowGroupActiveWindowAsync(
+                        survivingGroup,
+                        raiseTransitionWindows);
+                }
+                else if (survivingGroup is null && group.IsVisible)
+                {
+                    foreach (string remainingId in group.MemberIds)
                     {
-                        await ShowStandaloneWindowAsync(remainingConfig);
+                        if (FindConfig(remainingId) is { IsVisible: true } remainingConfig)
+                        {
+                            await ShowStandaloneWindowAsync(
+                                remainingConfig,
+                                raiseTransitionWindows);
+                        }
                     }
                 }
-            }
 
-            if (removedConfig.IsVisible)
-            {
-                await ShowStandaloneWindowAsync(removedConfig);
-            }
-
-            if (raiseTransitionWindows)
-            {
-                RaiseVisibleWidgetTransitionWindows(
-                    group.MemberIds.Append(removedConfig.Id),
-                    detachedPosition.HasValue ? "group-detach" : "group-remove");
+                if (removedConfig.IsVisible)
+                {
+                    await ShowStandaloneWindowAsync(
+                        removedConfig,
+                        raiseTransitionWindows);
+                }
             }
 
             App.Log(
                 $"[WidgetGroup] Removed member={widgetId} group={group.Id} " +
-                $"remaining={group.MemberIds.Count} reveal={revealStandalone}");
+                $"remaining={group.MemberIds.Count} reveal={revealStandalone} " +
+                $"reusedSurface={reusedSurface} " +
+                $"persistMs={persistenceElapsedMs:F1} " +
+                $"totalMs={detachCommitStopwatch.Elapsed.TotalMilliseconds:F1}");
             RaiseWidgetGroupsChanged();
             ApplyCapsuleArrangementIfChanged(force: true);
             return true;
@@ -1860,23 +1931,188 @@ public sealed partial class WidgetManager
         member.CompactPlacement = null;
     }
 
-    private async Task ShowGroupActiveWindowAsync(WidgetGroupConfig group)
+    private async Task<WidgetGroupDetachSurfaceReuseResult>
+        TryCompleteDetachedActiveSurfaceReuseAsync(
+            WidgetGroupConfig originalGroup,
+            WidgetGroupConfig? survivingGroup,
+            WidgetConfig removedConfig,
+            ContentWidgetWindow? detachedHost,
+            WidgetGroupMutationSnapshot rollbackSnapshot,
+            bool showRaised)
+    {
+        if (detachedHost is null ||
+            detachedHost.WindowHandle == IntPtr.Zero ||
+            !detachedHost.Visible ||
+            !_widgetSurfaces.TryGet(originalGroup.SurfaceId, out var session) ||
+            session is null ||
+            !ReferenceEquals(session.Host, detachedHost))
+        {
+            return WidgetGroupDetachSurfaceReuseResult.NotApplicable;
+        }
+
+        IDesktopWidgetWindow? replacementHost = null;
+        try
+        {
+            // The visible group HWND already contains the member being dragged.
+            // Give that physical Surface the member's new standalone identity,
+            // and create only the remaining side of the split.
+            _widgetSurfaces.RemoveSurface(originalGroup.SurfaceId);
+            _widgetSurfaces.RegisterActive(
+                CreateSurfaceDefinition(removedConfig),
+                detachedHost);
+            RegisterStandaloneUnifiedFileSessionIfNeeded(
+                removedConfig,
+                detachedHost,
+                detachedHost.CurrentContent);
+
+            if (survivingGroup is { IsVisible: true })
+            {
+                replacementHost = await ShowGroupActiveWindowAsync(
+                    survivingGroup,
+                    showRaised) ??
+                    throw new InvalidOperationException(
+                        "The surviving widget-group surface could not be created.");
+            }
+            else if (survivingGroup is null && originalGroup.IsVisible)
+            {
+                string remainingId = originalGroup.MemberIds.FirstOrDefault() ??
+                    throw new InvalidOperationException(
+                        "A detached group must retain at least one member.");
+                WidgetConfig remainingConfig = FindConfig(remainingId) ??
+                    throw new InvalidOperationException(
+                        $"The remaining widget '{remainingId}' is unavailable.");
+                if (remainingConfig.IsVisible)
+                {
+                    replacementHost = await ShowStandaloneWindowAsync(
+                        remainingConfig,
+                        showRaised);
+                }
+            }
+
+            if (replacementHost is ContentWidgetWindow replacementContent)
+            {
+                using var frameTimeout = new CancellationTokenSource(
+                    WidgetGroupFirstFrameTimeout);
+                await replacementContent.WaitForFirstPresentedFrameAsync(
+                    frameTimeout.Token);
+            }
+
+            if (removedConfig.IsVisible)
+            {
+                // Keep the old group visible until its replacement has a frame,
+                // then cloak, move and reveal the same HWND at the drop target.
+                if (!detachedHost.PrepareTrayShowAnimationForCurrentTopology())
+                {
+                    throw new InvalidOperationException(
+                        "The detached widget Surface could not be moved to its standalone bounds.");
+                }
+                if (_widgetsRaisedFromTray || showRaised)
+                {
+                    detachedHost.ShowPreparedRaisedFromTray(
+                        persistVisibility: false);
+                }
+                else
+                {
+                    detachedHost.ShowPreparedAtDesktopLayer(
+                        persistVisibility: false);
+                }
+                detachedHost.CompleteTrayShowWithoutAnimation();
+                if (showRaised && !_widgetsRaisedFromTray)
+                {
+                    detachedHost.AdoptManagerRaisedStateAfterPreparedShow();
+                }
+            }
+            else
+            {
+                detachedHost.HideWindow();
+            }
+
+            App.Log(
+                $"[WidgetGroup] Reused active Surface for detach " +
+                $"group={originalGroup.Id} member={removedConfig.Id} " +
+                $"detachedHwnd=0x{detachedHost.WindowHandle.ToInt64():X} " +
+                $"replacementHwnd=0x{replacementHost?.WindowHandle.ToInt64() ?? 0:X}");
+            return WidgetGroupDetachSurfaceReuseResult.Completed;
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[WidgetGroup] Detach Surface reuse failed; rolling back " +
+                $"group={originalGroup.Id} member={removedConfig.Id}: {ex}");
+
+            if (replacementHost is not null &&
+                !ReferenceEquals(replacementHost, detachedHost))
+            {
+                RetireSpecificLoadedWindowForGroup(
+                    replacementHost.Config.Id,
+                    replacementHost,
+                    keepConfigVisible: true);
+            }
+
+            rollbackSnapshot.Restore(this);
+            bool rollbackSaved = false;
+            try
+            {
+                rollbackSaved = await _settingsService.SaveCheckedAsync();
+            }
+            catch (Exception rollbackSaveException)
+            {
+                App.Log(
+                    $"[WidgetGroup] Detach Surface rollback save failed " +
+                    $"group={originalGroup.Id}: {rollbackSaveException}");
+            }
+
+            _widgetSurfaces.UnregisterHost(detachedHost);
+            CommitSurfaceHost(originalGroup, detachedHost);
+            bool rollbackBoundsRestored =
+                detachedHost.PrepareTrayShowAnimationForCurrentTopology();
+            if (_widgetsRaisedFromTray || showRaised)
+            {
+                detachedHost.ShowPreparedRaisedFromTray(
+                    persistVisibility: false);
+            }
+            else
+            {
+                detachedHost.ShowPreparedAtDesktopLayer(
+                    persistVisibility: false);
+            }
+            detachedHost.CompleteTrayShowWithoutAnimation();
+            if (showRaised && !_widgetsRaisedFromTray)
+            {
+                detachedHost.AdoptManagerRaisedStateAfterPreparedShow();
+            }
+
+            App.Log(
+                $"[WidgetGroup] Detach Surface rollback completed " +
+                $"group={originalGroup.Id} saved={rollbackSaved} " +
+                $"boundsRestored={rollbackBoundsRestored}");
+            RaiseWidgetGroupsChanged();
+            ApplyCapsuleArrangementIfChanged(force: true);
+            return WidgetGroupDetachSurfaceReuseResult.Failed;
+        }
+    }
+
+    private async Task<IDesktopWidgetWindow?> ShowGroupActiveWindowAsync(
+        WidgetGroupConfig group,
+        bool showRaised = false)
     {
         if (FindConfig(group.ActiveMemberId) is not { } config)
         {
-            return;
+            return null;
         }
 
         ApplyGroupLayoutToMember(group, config);
-        await ShowStandaloneWindowAsync(config);
+        return await ShowStandaloneWindowAsync(config, showRaised);
     }
 
-    private async Task ShowStandaloneWindowAsync(WidgetConfig config)
+    private async Task<IDesktopWidgetWindow> ShowStandaloneWindowAsync(
+        WidgetConfig config,
+        bool showRaised = false)
     {
         IDesktopWidgetWindow window = await CreateRegisteredWidgetFromConfigAsync(
             config,
             keepPreparedForAnimation: true);
-        if (_widgetsRaisedFromTray)
+        if (_widgetsRaisedFromTray || showRaised)
         {
             window.ShowPreparedRaisedFromTray(persistVisibility: false);
         }
@@ -1885,6 +2121,20 @@ public sealed partial class WidgetManager
             window.ShowPreparedAtDesktopLayer(persistVisibility: false);
         }
         window.CompleteTrayShowWithoutAnimation();
+        if (showRaised &&
+            !_widgetsRaisedFromTray &&
+            window is WidgetWindowBase widgetWindow)
+        {
+            widgetWindow.AdoptManagerRaisedStateAfterPreparedShow();
+        }
+        return window;
+    }
+
+    private enum WidgetGroupDetachSurfaceReuseResult
+    {
+        NotApplicable,
+        Completed,
+        Failed
     }
 
     private IDesktopWidgetWindow? GetLoadedWindow(string widgetId)

@@ -36,6 +36,7 @@ public sealed partial class SettingsWindow
         _settingsSectionElements = new Dictionary<string, FrameworkElement>(StringComparer.Ordinal)
         {
             ["General"] = GeneralSection,
+            ["PerformanceSettings"] = PerformanceSettingsSection,
             ["Appearance"] = AppearanceSection,
             ["AppearanceMaterialSettings"] = AppearanceMaterialSettingsSection,
             ["AppearanceDensitySettings"] = AppearanceDensitySettingsSection,

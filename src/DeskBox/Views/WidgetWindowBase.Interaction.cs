@@ -33,7 +33,7 @@ public abstract partial class WidgetWindowBase
         OnElevated();
     }
 
-    protected void HoldTemporaryTopMost()
+    protected void HoldTemporaryTopMost(bool showWindow = true)
     {
         if (WidgetLayerService.UsesDesktopPinnedMode())
         {
@@ -41,7 +41,7 @@ public abstract partial class WidgetWindowBase
             IsRaisedFromManager = false;
             KeepRaisedUntilDeactivate = false;
             RestoreDesktopLayerWhenIdle = false;
-            WidgetLayerService.MoveToDesktopBottom(HWnd);
+            WidgetLayerService.MoveToDesktopBottom(HWnd, showWindow);
             App.LogVerbose($"[ZOrder] {LogPrefix} HoldTemporaryTopMost skipped pinned hwnd=0x{HWnd.ToInt64():X}");
             return;
         }
@@ -49,7 +49,7 @@ public abstract partial class WidgetWindowBase
         IsAtDesktopLayer = false;
         KeepRaisedUntilDeactivate = true;
         RestoreDesktopLayerWhenIdle = false;
-        WidgetLayerService.HoldTemporaryTopMost(HWnd);
+        WidgetLayerService.HoldTemporaryTopMost(HWnd, showWindow);
         App.LogVerbose($"[ZOrder] {LogPrefix} HoldTemporaryTopMost hwnd=0x{HWnd.ToInt64():X}");
         StartTopMostSafetyTimer();
     }
@@ -63,6 +63,20 @@ public abstract partial class WidgetWindowBase
 
         LastElevateForInteractionUtc = DateTime.UtcNow;
         HoldTemporaryTopMost();
+        IsRaisedFromManager = !IsAtDesktopLayer;
+    }
+
+    internal void AdoptManagerRaisedStateAfterPreparedShow()
+    {
+        if (!Visible || IsClosing)
+        {
+            return;
+        }
+
+        // ShowPreparedRaisedFromTray already settled the native Z-order while
+        // the HWND was cloaked. Preserve the manager-owned raised lifetime
+        // without issuing a second visible Z-order transaction.
+        LastElevateForInteractionUtc = DateTime.UtcNow;
         IsRaisedFromManager = !IsAtDesktopLayer;
     }
 

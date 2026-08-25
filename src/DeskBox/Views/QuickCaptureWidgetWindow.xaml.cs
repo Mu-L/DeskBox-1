@@ -382,10 +382,10 @@ public sealed partial class QuickCaptureWidgetWindow :
         });
     }
 
-    public void PushToBottom()
+    public void PushToBottom(bool showWindow = true)
     {
         _isAtDesktopLayer = true;
-        WidgetLayerService.MoveToDesktopBottom(_hWnd);
+        WidgetLayerService.MoveToDesktopBottom(_hWnd, showWindow);
         App.LogVerbose($"[ZOrder] QuickCapture PushToBottom hwnd=0x{_hWnd.ToInt64():X}");
         App.Current.WidgetManager?.QueueIdleWidgetZOrderNormalization(
             "quick-capture-pushed-to-desktop");
@@ -407,8 +407,8 @@ public sealed partial class QuickCaptureWidgetWindow :
 
         NotifyCompactHostVisibilityChanged(true);
         QueueVisibleContentResume();
+        PushToBottom(showWindow: false);
         _trayAnimation.RevealWindowForTrayShow();
-        PushToBottom();
     }
 
     public void SetTrayAnimationOffsetOverride(double? offsetX, double? offsetY)
@@ -451,8 +451,8 @@ public sealed partial class QuickCaptureWidgetWindow :
 
         NotifyCompactHostVisibilityChanged(true);
         QueueVisibleContentResume();
+        HoldTemporaryTopMost(showWindow: false);
         _trayAnimation.RevealWindowForTrayShow();
-        HoldTemporaryTopMost();
 
         DispatcherQueue.TryEnqueue(async () =>
         {

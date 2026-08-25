@@ -19,6 +19,7 @@ public sealed partial class FileSurfaceContent
     private Popup? _stackPopoverPopup;
     private ListViewBase? _stackPopoverItemsView;
     private Border? _stackPopoverSurface;
+    private Grid? _stackPopoverTitleHost;
     private TextBlock? _stackPopoverTitleText;
     private TextBox? _stackPopoverTitleEditor;
     private StackPopoverInlineRenameWindow? _stackPopoverTitleEditorWindow;
@@ -37,6 +38,8 @@ public sealed partial class FileSurfaceContent
     private bool _stackPopoverContextMenuOpen;
     private bool _stackPopoverDragActive;
     private bool _stackPopoverCleanupPending;
+    private long _stackPopoverShowGeneration;
+    private string? _pendingStackPopoverKey;
     private KeyEventHandler? _stackPopoverPreviewKeyHandler;
     private PointerEventHandler? _stackPopoverSelectionPointerPressedHandler;
     private PointerEventHandler? _stackPopoverSelectionPointerMovedHandler;
@@ -339,19 +342,52 @@ public sealed partial class FileSurfaceContent
                 return;
             }
 
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (!_isDisposed &&
-                    ViewModel.UsesStackPopover &&
-                    ViewModel.FindStackByKey(stackKey) is { } current)
-                {
-                    ShowStackPopover(current);
-                }
-            });
+            QueueStackPopoverShow(stackKey);
             return;
         }
 
-        ShowStackPopover(stack);
+        if (string.Equals(
+                _pendingStackPopoverKey,
+                stackKey,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        QueueStackPopoverShow(stackKey);
+    }
+
+    private void QueueStackPopoverShow(string stackKey)
+    {
+        long generation = ++_stackPopoverShowGeneration;
+        _pendingStackPopoverKey = stackKey;
+        App.LogVerbose(
+            $"[FileStack] Popover show queued widget={WidgetId} " +
+            $"stack={stackKey} generation={generation}");
+        bool queued = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (generation != _stackPopoverShowGeneration ||
+                !string.Equals(
+                    _pendingStackPopoverKey,
+                    stackKey,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _pendingStackPopoverKey = null;
+            if (!_isDisposed &&
+                _stackPopoverPopup is null &&
+                ViewModel.UsesStackPopover &&
+                ViewModel.FindStackByKey(stackKey) is { } current)
+            {
+                ShowStackPopover(current);
+            }
+        });
+        if (!queued && generation == _stackPopoverShowGeneration)
+        {
+            _pendingStackPopoverKey = null;
+        }
     }
 
     private void ShowStackPopover(WidgetStackItem stack)
@@ -549,15 +585,27 @@ public sealed partial class FileSurfaceContent
         });
         var titleHost = new Grid
         {
-            Height = 24,
-            Margin = new Thickness(0, 0, 0, 6),
+            Height = StackPopoverLayoutCalculator.TitleHeight,
+            Margin = new Thickness(
+                0,
+                0,
+                0,
+                StackPopoverLayoutCalculator.TitleBottomSpacing),
             Background = new SolidColorBrush(
                 Windows.UI.Color.FromArgb(0, 0, 0, 0))
         };
+        double titleMaximumWidth = Math.Max(
+            StackPopoverLayoutCalculator.TitleMinimumWidth,
+            layout.Width -
+                (StackPopoverLayoutCalculator.SurfacePadding * 2));
         var title = new TextBlock
         {
             Text = stack.Name,
-            MaxWidth = Math.Max(60, layout.Width - 24),
+            MinWidth = Math.Min(
+                StackPopoverLayoutCalculator.TitleMinimumWidth,
+                titleMaximumWidth),
+            MaxWidth = titleMaximumWidth,
+            Height = StackPopoverLayoutCalculator.TitleHeight,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             TextAlignment = TextAlignment.Center,
@@ -565,8 +613,9 @@ public sealed partial class FileSurfaceContent
             FontSize = 13,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
         };
-        title.DoubleTapped += StackPopoverTitle_DoubleTapped;
+        titleHost.DoubleTapped += StackPopoverTitle_DoubleTapped;
         AutomationProperties.SetName(title, stack.Name);
+        _stackPopoverTitleHost = titleHost;
         _stackPopoverTitleText = title;
         titleHost.Children.Add(title);
         content.Children.Add(titleHost);
@@ -680,7 +729,8 @@ public sealed partial class FileSurfaceContent
         {
             Width = layout.Width,
             Height = layout.Height,
-            Padding = new Thickness(12),
+            Padding = new Thickness(
+                StackPopoverLayoutCalculator.SurfacePadding),
             CornerRadius = new CornerRadius(cornerRadius),
             Background = CreateStackPopoverTintBrush(),
             BorderBrush = new SolidColorBrush(borderVisuals.BorderColor),
@@ -702,7 +752,7 @@ public sealed partial class FileSurfaceContent
         object sender,
         DoubleTappedRoutedEventArgs e)
     {
-        if (sender is TextBlock title)
+        if (_stackPopoverTitleText is { } title)
         {
             BeginStackPopoverTitleRename(title);
         }
@@ -719,13 +769,15 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
-        const double editorHeight = 20;
+        const double editorHeight =
+            StackPopoverLayoutCalculator.TitleEditorHeight;
         double maximumWidth = Math.Max(
-            60,
-            (_stackPopoverSurface?.ActualWidth ?? 0) - 24);
+            StackPopoverLayoutCalculator.TitleMinimumWidth,
+            (_stackPopoverSurface?.ActualWidth ?? 0) -
+                (StackPopoverLayoutCalculator.SurfacePadding * 2));
         double editorWidth = Math.Clamp(
             Math.Max(title.ActualWidth, title.DesiredSize.Width) + 6,
-            60,
+            StackPopoverLayoutCalculator.TitleMinimumWidth,
             maximumWidth);
         Style? inlineRenameStyle =
             Application.Current.Resources.TryGetValue(
@@ -784,7 +836,8 @@ public sealed partial class FileSurfaceContent
                 ((surface.ActualWidth - editorWidth) / 2);
             double top = popup.VerticalOffset +
                 surface.Padding.Top +
-                ((24 - editorHeight) / 2);
+                ((StackPopoverLayoutCalculator.TitleHeight -
+                    editorHeight) / 2);
             return new Windows.Graphics.RectInt32(
                 hostBounds.Left + (int)Math.Round(left * scale),
                 hostBounds.Top + (int)Math.Round(top * scale),
@@ -1144,6 +1197,9 @@ public sealed partial class FileSurfaceContent
 
         _stackPopoverPopupOpen = true;
         _stackPopoverCleanupPending = false;
+        App.LogVerbose(
+            $"[FileStack] Popover opened widget={WidgetId} " +
+            $"stack={_stackPopoverKey}");
         _stackPopoverItemsView?.Focus(FocusState.Programmatic);
     }
 
@@ -1160,6 +1216,9 @@ public sealed partial class FileSurfaceContent
         CommitStackPopoverTitleRename();
         _stackPopoverPopupOpen = false;
         _stackPopoverCleanupPending = true;
+        App.LogVerbose(
+            $"[FileStack] Popover closed widget={WidgetId} " +
+            $"stack={_stackPopoverKey}");
         if (!_stackPopoverContextMenuOpen &&
             !_stackPopoverDragActive)
         {
@@ -1169,6 +1228,8 @@ public sealed partial class FileSurfaceContent
 
     private void CloseStackPopover(bool releaseImmediately = false)
     {
+        _stackPopoverShowGeneration++;
+        _pendingStackPopoverKey = null;
         if (_stackPopoverPopup is not { } popup)
         {
             return;
@@ -1221,9 +1282,9 @@ public sealed partial class FileSurfaceContent
                 StackPopoverFilter_TextChanged;
         }
 
-        if (_stackPopoverTitleText is not null)
+        if (_stackPopoverTitleHost is not null)
         {
-            _stackPopoverTitleText.DoubleTapped -=
+            _stackPopoverTitleHost.DoubleTapped -=
                 StackPopoverTitle_DoubleTapped;
         }
         if (_stackPopoverTitleEditor is not null)
@@ -1315,6 +1376,7 @@ public sealed partial class FileSurfaceContent
         _stackPopoverPopup = null;
         _stackPopoverItemsView = null;
         _stackPopoverSurface = null;
+        _stackPopoverTitleHost = null;
         _stackPopoverTitleText = null;
         _stackPopoverTitleEditor = null;
         _stackPopoverTitleEditorWindow = null;
@@ -1343,6 +1405,7 @@ public sealed partial class FileSurfaceContent
         _stackPopoverContextMenuOpen = false;
         _stackPopoverDragActive = false;
         _stackPopoverCleanupPending = false;
+        _pendingStackPopoverKey = null;
         UpdateSelectionCommandBar();
         UpdateItemSurfaceVisuals();
     }
@@ -1777,9 +1840,15 @@ public sealed partial class FileSurfaceContent
         itemsView.MaxHeight = layout.ItemsHeight;
         surface.Width = layout.Width;
         surface.Height = layout.Height;
-        double titleMaxWidth = Math.Max(60, layout.Width - 24);
+        double titleMaxWidth = Math.Max(
+            StackPopoverLayoutCalculator.TitleMinimumWidth,
+            layout.Width -
+                (StackPopoverLayoutCalculator.SurfacePadding * 2));
         if (_stackPopoverTitleText is { } title)
         {
+            title.MinWidth = Math.Min(
+                StackPopoverLayoutCalculator.TitleMinimumWidth,
+                titleMaxWidth);
             title.MaxWidth = titleMaxWidth;
         }
         if (_stackPopoverFilterBox is { } filter)

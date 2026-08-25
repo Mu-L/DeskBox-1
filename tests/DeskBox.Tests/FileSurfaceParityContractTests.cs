@@ -161,6 +161,39 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
+    public void ActivationReconciliation_WaitsForPointerSequenceBeforeRefreshing()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        string reconciliation = ReadPrivateMethod(
+            source,
+            "private void QueueDiskReconciliationIfStale");
+
+        Assert.Contains(
+            "WaitForPointerSequenceToFinishAsync",
+            reconciliation,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_lifetimeCancellation.Token",
+            reconciliation,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "private static async Task WaitForPointerSequenceToFinishAsync",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Win32Helper.IsAnyMouseButtonDown()",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Task.Delay(TimeSpan.FromMilliseconds(48)",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ImportCancellation_AcknowledgesImmediatelyAndIgnoresStaleProgress()
     {
         string root = FindRepositoryRoot();
@@ -544,6 +577,26 @@ public sealed class FileSurfaceParityContractTests
         Assert.Contains("DispatcherQueuePriority.Low", menus, StringComparison.Ordinal);
         Assert.Contains("ViewModel.UsesStackPopover", source, StringComparison.Ordinal);
         Assert.Contains("ToggleStackPopover(stack)", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "bool pointerActivation = Win32Helper.IsAnyMouseButtonDown();",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (IsLoaded && !pointerActivation)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackInputActivation.ShouldActivateFromItemClick(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackInputActivation.ShouldActivateFromPointerRelease(",
+            itemVisuals,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "QueueStackPopoverShow(stackKey)",
+            stackPopover,
+            StringComparison.Ordinal);
         Assert.Contains("RequestStackState(", source, StringComparison.Ordinal);
         Assert.Contains(
             "SystemBackdrop = new DesktopAcrylicBackdrop()",
@@ -641,6 +694,22 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "var title = new TextBlock",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "titleHost.DoubleTapped += StackPopoverTitle_DoubleTapped",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Height = StackPopoverLayoutCalculator.TitleHeight",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverLayoutCalculator.TitleMinimumWidth",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StackPopoverLayoutCalculator.SurfacePadding",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(

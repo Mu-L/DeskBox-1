@@ -93,6 +93,15 @@ public interface IWidgetHostViewportContent
 }
 
 /// <summary>
+/// Optional contract for content that owns continuous decorative effects and
+/// can apply performance-setting changes without rebuilding the content view.
+/// </summary>
+public interface IWidgetPerformanceAwareContent
+{
+    void ApplyPerformanceSettings();
+}
+
+/// <summary>
 /// Optional lifecycle for a live user resize. Expensive readers and adaptive
 /// measurements can stay frozen while the HWND follows the pointer, then run
 /// once against the committed size.

@@ -342,8 +342,7 @@ public sealed partial class ContentWidgetWindow
             _config,
             App.Current.LocalizationService,
             SetWidgetForegroundModeOverride,
-            () => showForegroundColorPickerWhenClosed = true,
-            SetWidgetTextEdgeModeOverride));
+            () => showForegroundColorPickerWhenClosed = true));
 
         if (_config.WidgetKind is WidgetKind.File)
         {
