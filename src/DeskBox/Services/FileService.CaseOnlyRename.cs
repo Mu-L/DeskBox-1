@@ -33,11 +33,11 @@ public sealed partial class FileService
 
         string temporaryPath = CreateCaseOnlyRenameTemporaryPath(
             sourcePath);
-        await MoveEntryAsync(sourcePath, temporaryPath);
+        await MoveEntryAtomicallyAsync(sourcePath, temporaryPath);
 
         try
         {
-            await MoveEntryAsync(temporaryPath, destinationPath);
+            await MoveEntryAtomicallyAsync(temporaryPath, destinationPath);
         }
         catch (Exception renameException)
         {
@@ -48,7 +48,7 @@ public sealed partial class FileService
                     !File.Exists(sourcePath) &&
                     !Directory.Exists(sourcePath))
                 {
-                    await MoveEntryAsync(temporaryPath, sourcePath);
+                    await MoveEntryAtomicallyAsync(temporaryPath, sourcePath);
                 }
             }
             catch (Exception rollbackException)
@@ -63,6 +63,27 @@ public sealed partial class FileService
 
             throw;
         }
+    }
+
+    private static async Task MoveEntryAtomicallyAsync(
+        string sourcePath,
+        string destinationPath)
+    {
+        if (File.Exists(sourcePath))
+        {
+            await Task.Run(() => File.Move(sourcePath, destinationPath));
+            return;
+        }
+
+        if (Directory.Exists(sourcePath))
+        {
+            await Task.Run(() => Directory.Move(sourcePath, destinationPath));
+            return;
+        }
+
+        throw new FileNotFoundException(
+            "The file or folder to rename no longer exists.",
+            sourcePath);
     }
 
     private static void ThrowIfExactDestinationEntryExists(

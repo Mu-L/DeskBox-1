@@ -336,6 +336,34 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
+    public void InlineRenameFailure_ClosesEditorInsteadOfResubmittingOnFocusChanges()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        int methodStart = source.IndexOf(
+            "private async Task CommitItemRenameAsync()",
+            StringComparison.Ordinal);
+        int methodEnd = source.IndexOf(
+            "private void CancelItemRename()",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(methodStart >= 0);
+        Assert.True(methodEnd > methodStart);
+
+        string method = source[methodStart..methodEnd];
+        int catchStart = method.IndexOf(
+            "catch (Exception ex)",
+            StringComparison.Ordinal);
+        Assert.True(catchStart >= 0);
+        string failurePath = method[catchStart..];
+
+        Assert.Contains("CompleteItemRename();", failurePath, StringComparison.Ordinal);
+        Assert.DoesNotContain("ItemRenameTextBox.Focus", failurePath, StringComparison.Ordinal);
+        Assert.DoesNotContain("ItemRenameTextBox.SelectAll", failurePath, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FileStacks_UseInlineRenameAndStableProjectionTransitions()
     {
         string root = FindRepositoryRoot();

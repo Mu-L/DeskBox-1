@@ -1286,8 +1286,10 @@ public sealed partial class FileSurfaceContent :
                 _localizationService.T("Widget.RenameFailed"),
                 WidgetFeedbackSeverity.Error,
                 "file-rename-error"));
-            ItemRenameTextBox.Focus(FocusState.Programmatic);
-            ItemRenameTextBox.SelectAll();
+            // End the failed edit instead of restoring focus to the editor.
+            // Restoring focus can raise LostFocus again and resubmit the same
+            // blocked rename while another application still owns a file.
+            CompleteItemRename();
         }
         finally
         {

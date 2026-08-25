@@ -86,14 +86,14 @@ public sealed class FileServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RelocateEntryAsync_RenamesFileWhenOnlyCasingChanges()
+    public async Task RenameEntryAsync_RenamesFileWhenOnlyCasingChanges()
     {
         var service = new FileService();
         string sourcePath = Path.Combine(_tempRoot, "report.txt");
         string destinationPath = Path.Combine(_tempRoot, "REPORT.txt");
         await File.WriteAllTextAsync(sourcePath, "preserved");
 
-        await service.RelocateEntryAsync(sourcePath, destinationPath);
+        await service.RenameEntryAsync(sourcePath, destinationPath);
 
         string actualPath = Assert.Single(
             Directory.EnumerateFiles(_tempRoot));
@@ -107,7 +107,7 @@ public sealed class FileServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RelocateEntryAsync_RenamesFolderWhenOnlyCasingChanges()
+    public async Task RenameEntryAsync_RenamesFolderWhenOnlyCasingChanges()
     {
         var service = new FileService();
         string sourcePath = Directory.CreateDirectory(
@@ -117,7 +117,7 @@ public sealed class FileServiceTests : IDisposable
             Path.Combine(sourcePath, "content.txt"),
             "preserved");
 
-        await service.RelocateEntryAsync(sourcePath, destinationPath);
+        await service.RenameEntryAsync(sourcePath, destinationPath);
 
         string actualPath = Assert.Single(
             Directory.EnumerateDirectories(_tempRoot));
@@ -131,6 +131,51 @@ public sealed class FileServiceTests : IDisposable
             path => Path.GetFileName(path).StartsWith(
                 ".deskbox-case-rename-",
                 StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RenameEntryAsync_LockedChildFailsWithoutCreatingDestinationOrMovingSiblings()
+    {
+        var service = new FileService();
+        string sourcePath = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "source-folder")).FullName;
+        string destinationPath = Path.Combine(_tempRoot, "renamed-folder");
+        string siblingPath = Path.Combine(sourcePath, "sibling.txt");
+        string lockedPath = Path.Combine(sourcePath, "open.docx");
+        await File.WriteAllTextAsync(siblingPath, "preserved sibling");
+        await File.WriteAllTextAsync(lockedPath, "open document");
+
+        Exception? renameError;
+        using (FileStream lockedStream = File.Open(
+                   lockedPath,
+                   FileMode.Open,
+                   FileAccess.ReadWrite,
+                   FileShare.Read))
+        {
+            renameError = await Record.ExceptionAsync(() =>
+                service.RenameEntryAsync(sourcePath, destinationPath));
+
+            Assert.True(
+                renameError is IOException or UnauthorizedAccessException,
+                $"Expected a locked-entry rename failure, got: {renameError}");
+            Assert.True(Directory.Exists(sourcePath));
+            Assert.False(Directory.Exists(destinationPath));
+            Assert.Equal("preserved sibling", await File.ReadAllTextAsync(siblingPath));
+            Assert.True(File.Exists(lockedPath));
+            Assert.Equal("open document".Length, lockedStream.Length);
+            Assert.Equal(2, Directory.EnumerateFileSystemEntries(sourcePath).Count());
+        }
+
+        await service.RenameEntryAsync(sourcePath, destinationPath);
+
+        Assert.False(Directory.Exists(sourcePath));
+        Assert.True(Directory.Exists(destinationPath));
+        Assert.Equal(
+            "preserved sibling",
+            await File.ReadAllTextAsync(Path.Combine(destinationPath, "sibling.txt")));
+        Assert.Equal(
+            "open document",
+            await File.ReadAllTextAsync(Path.Combine(destinationPath, "open.docx")));
     }
 
     [Fact]
