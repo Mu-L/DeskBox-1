@@ -172,7 +172,7 @@ Direct 版继续走现有 Inno 链路。
 
 - `DeskBoxDistribution` 保持默认 `Direct`。
 - 需要构建并复制 `DeskBox.Updater.exe`。
-- 安装器需要检测 `.NET 10` 和 Windows App Runtime 2.2。
+- 安装器需要检测 `.NET 10` 和 Windows App Runtime 2.4。
 - 应用内更新 manifest 指向 Direct 安装包。
 - 关于页保留官网、GitHub、捐赠等入口。
 

@@ -377,7 +377,7 @@
 
             <!--
                 Shared visual template for Toolkit GridSplitter. Toolkit 8.2
-                projects SizerBase as Control under Windows App SDK 2.2, so the
+                projects SizerBase as Control, so the
                 keyed base-Control template keeps the native resize behavior
                 while avoiding the incompatible implicit style.
             -->
