@@ -81,4 +81,34 @@ public class IconHelperTests
             source,
             StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void PidlShortcutIconResolution_UsesIsolatedIconOnlyModeAndRejectsBlankIcons()
+    {
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Helpers/IconHelper.cs"));
+        string proxy = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Helpers/ShellThumbnailProxy.cs"));
+
+        Assert.Contains(
+            "return new IconSource(path, UsesShellItemIcon: true);",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ShellThumbnailProxy.TryLoadIconAsync(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "iconSource.UsesShellItemIcon",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EncodeVisibleBitmapAsPng(bitmap)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IsVisibleBitmapPayload(output)",
+            proxy,
+            StringComparison.Ordinal);
+    }
 }

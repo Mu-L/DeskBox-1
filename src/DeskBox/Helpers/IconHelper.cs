@@ -64,7 +64,11 @@ public static class IconHelper
     private static readonly ConcurrentDictionary<string, long> s_iconBytesTimeouts =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private sealed record IconSource(string Path, int IconIndex = 0, bool UsesExplicitIconIndex = false);
+    private sealed record IconSource(
+        string Path,
+        int IconIndex = 0,
+        bool UsesExplicitIconIndex = false,
+        bool UsesShellItemIcon = false);
     private sealed record ResolvedIconSource(IconSource Source, string CacheKey);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -858,7 +862,19 @@ public static class IconHelper
     {
         if (!s_iconBytesCache.TryGetValue(iconBytesCacheKey, out var bytes))
         {
-            if (!IsRecentTimeout(s_iconBytesTimeouts, iconBytesCacheKey))
+            if (iconSource.UsesShellItemIcon)
+            {
+                // PIDL/AppUserModelID shortcuts can have no filesystem target or
+                // explicit icon resource. Ask the Shell item itself for ICONONLY
+                // in the isolated proxy so the main DeskBox process never loads
+                // third-party Shell code.
+                bytes = await ShellThumbnailProxy.TryLoadIconAsync(
+                    iconSource.Path,
+                    requestedSize: 256);
+            }
+
+            if (bytes is not { Length: > 0 } &&
+                !IsRecentTimeout(s_iconBytesTimeouts, iconBytesCacheKey))
             {
                 BoundedBackgroundWorkResult<byte[]?> loadResult =
                     await BoundedBackgroundWorkScheduler.SharedShell.RunAsync(
@@ -872,11 +888,6 @@ public static class IconHelper
                 {
                     bytes = loadResult.Value;
                     s_iconBytesTimeouts.TryRemove(iconBytesCacheKey, out _);
-                    if (bytes is { Length: > 0 })
-                    {
-                        s_iconBytesCache[iconBytesCacheKey] = bytes;
-                        EvictIconCachesIfNeeded();
-                    }
                 }
                 else if (loadResult.Status == BoundedBackgroundWorkStatus.ExecutionTimedOut)
                 {
@@ -899,6 +910,12 @@ public static class IconHelper
                         $"[IconHelper] Icon byte load failed " +
                         $"path={iconSource.Path}: {loadResult.Exception.Message}");
                 }
+            }
+
+            if (bytes is { Length: > 0 })
+            {
+                s_iconBytesCache[iconBytesCacheKey] = bytes;
+                EvictIconCachesIfNeeded();
             }
         }
 
@@ -1011,9 +1028,7 @@ public static class IconHelper
 
             using var icon = Icon.FromHandle(iconHandle);
             using var bitmap = icon.ToBitmap();
-            using var ms = new MemoryStream();
-            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-            return ms.ToArray();
+            return EncodeVisibleBitmapAsPng(bitmap);
         }
         catch
         {
@@ -1052,9 +1067,7 @@ public static class IconHelper
         {
             using var icon = Icon.FromHandle(shinfo.hIcon);
             using var bitmap = icon.ToBitmap();
-            using var ms = new MemoryStream();
-            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-            return ms.ToArray();
+            return EncodeVisibleBitmapAsPng(bitmap);
         }
         finally
         {
@@ -1101,9 +1114,7 @@ public static class IconHelper
         {
             using var icon = Icon.FromHandle(iconHandle);
             using var bitmap = icon.ToBitmap();
-            using var ms = new MemoryStream();
-            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-            return ms.ToArray();
+            return EncodeVisibleBitmapAsPng(bitmap);
         }
         finally
         {
@@ -1136,9 +1147,7 @@ public static class IconHelper
 
             using var icon = Icon.FromHandle(hLarge);
             using var bitmap = icon.ToBitmap();
-            using var ms = new MemoryStream();
-            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-            return ms.ToArray();
+            return EncodeVisibleBitmapAsPng(bitmap);
         }
         catch
         {
@@ -1316,6 +1325,47 @@ public static class IconHelper
         }
     }
 
+    private static byte[]? EncodeVisibleBitmapAsPng(Bitmap bitmap)
+    {
+        if (!HasVisiblePixels(bitmap))
+        {
+            return null;
+        }
+
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+        return stream.ToArray();
+    }
+
+    private static unsafe bool HasVisiblePixels(Bitmap bitmap)
+    {
+        var bounds = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+        System.Drawing.Imaging.BitmapData data = bitmap.LockBits(
+            bounds,
+            System.Drawing.Imaging.ImageLockMode.ReadOnly,
+            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        try
+        {
+            for (int y = 0; y < bitmap.Height; y++)
+            {
+                byte* row = (byte*)data.Scan0 + (y * data.Stride);
+                for (int x = 0; x < bitmap.Width; x++)
+                {
+                    if (row[(x * 4) + 3] != 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+    }
+
     private static IconSource ResolveIconSource(string path, bool hideShortcutArrowOverlay)
     {
         if (!ShortcutHelper.IsShortcutPath(path))
@@ -1332,7 +1382,7 @@ public static class IconHelper
 
         if (shortcut is null)
         {
-            return new IconSource(path);
+            return new IconSource(path, UsesShellItemIcon: true);
         }
 
         // Parse icon location — may contain a comma-separated index (e.g. "steam.exe,0")
@@ -1376,7 +1426,7 @@ public static class IconHelper
             return new IconSource(shortcut.TargetPath);
         }
 
-        return new IconSource(path);
+        return new IconSource(path, UsesShellItemIcon: true);
     }
 
     /// <summary>
@@ -1568,7 +1618,7 @@ public static class IconHelper
             string sourceVersion = ShortcutHelper.IsShortcutPath(sourcePath)
                 ? GetFileIconVersion(sourcePath)
                 : "source";
-            return $"{sourceCachePrefix}path:{resolvedPath}:{iconSource.IconIndex}:{iconSource.UsesExplicitIconIndex}:{GetFileIconVersion(resolvedPath)}:{sourceVersion}";
+            return $"{sourceCachePrefix}path:{resolvedPath}:{iconSource.IconIndex}:{iconSource.UsesExplicitIconIndex}:{iconSource.UsesShellItemIcon}:{GetFileIconVersion(resolvedPath)}:{sourceVersion}";
         }
 
         // Generic file-type icons remain shared across every file with the same

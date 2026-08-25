@@ -23,7 +23,7 @@ mod windows_proxy {
             System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize},
             UI::Shell::{
                 IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK,
-                SIIGBF_SCALEUP, SIIGBF_THUMBNAILONLY,
+                SIIGBF_ICONONLY, SIIGBF_SCALEUP, SIIGBF_THUMBNAILONLY,
             },
         },
         core::PCWSTR,
@@ -37,6 +37,12 @@ mod windows_proxy {
     const BI_BITFIELDS: u32 = 3;
     const LCS_SRGB: u32 = 0x7352_4742;
     const LCS_GM_IMAGES: u32 = 4;
+
+    #[derive(Clone, Copy)]
+    enum ExtractionMode {
+        Thumbnail,
+        Icon,
+    }
 
     struct ComGuard;
 
@@ -61,7 +67,7 @@ mod windows_proxy {
     pub fn run() -> Result<(), String> {
         let mut arguments = std::env::args_os();
         let _executable = arguments.next();
-        let first = arguments
+        let mut first = arguments
             .next()
             .ok_or_else(|| "missing path argument".to_string())?;
         if first == "--self-test" {
@@ -71,6 +77,15 @@ mod windows_proxy {
             ];
             return write_stdout(&encode_bgra_as_bitmap_v5(2, 2, pixels)?);
         }
+
+        let mode = if first == "--icon-only" {
+            first = arguments
+                .next()
+                .ok_or_else(|| "missing icon path argument".to_string())?;
+            ExtractionMode::Icon
+        } else {
+            ExtractionMode::Thumbnail
+        };
 
         let size = arguments
             .next()
@@ -83,7 +98,7 @@ mod windows_proxy {
 
         let path = Path::new(&first);
         if !path.is_file() {
-            return Err("thumbnail source is not a file".to_string());
+            return Err("Shell image source is not a file".to_string());
         }
 
         // SAFETY: COM is balanced by ComGuard and all Shell interfaces stay on
@@ -103,13 +118,21 @@ mod windows_proxy {
         let factory: IShellItemImageFactory =
             unsafe { SHCreateItemFromParsingName(PCWSTR(parsing_name.as_ptr()), None) }
                 .map_err(|error| format!("Shell item creation failed: {error}"))?;
-        // THUMBNAILONLY is important: returning an icon here would make a
-        // missing third-party thumbnail indistinguishable from a real preview.
-        let flags = SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP;
+        let flags = match mode {
+            // THUMBNAILONLY is important: returning an icon here would make a
+            // missing third-party thumbnail indistinguishable from a real preview.
+            ExtractionMode::Thumbnail => {
+                SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP
+            }
+            // ICONONLY asks the Shell item itself to resolve PIDL/AppUserModelID
+            // shortcuts. ADDOVERLAYS is deliberately omitted so DeskBox's
+            // "hide shortcut arrows" setting remains effective.
+            ExtractionMode::Icon => SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP,
+        };
         // SAFETY: The returned bitmap is owned by the caller and released by
         // BitmapGuard after its pixels have been copied.
         let bitmap = unsafe { factory.GetImage(SIZE { cx: size, cy: size }, flags) }
-            .map_err(|error| format!("Shell thumbnail extraction failed: {error}"))?;
+            .map_err(|error| format!("Shell image extraction failed: {error}"))?;
         let bitmap_guard = BitmapGuard(bitmap);
         let bytes = bitmap_to_bmp_bytes(bitmap_guard.0)?;
         write_stdout(&bytes)
@@ -128,7 +151,7 @@ mod windows_proxy {
         };
         if object_size != size_of::<BITMAP>() as i32 || bitmap.bmWidth <= 0 || bitmap.bmHeight == 0
         {
-            return Err("Shell returned an invalid thumbnail bitmap".to_string());
+            return Err("Shell returned an invalid image bitmap".to_string());
         }
 
         let width = bitmap.bmWidth;
@@ -169,7 +192,7 @@ mod windows_proxy {
             let _ = ReleaseDC(None, device_context);
         }
         if copied_rows != height {
-            return Err("unable to copy Shell thumbnail pixels".to_string());
+            return Err("unable to copy Shell image pixels".to_string());
         }
 
         encode_bgra_as_bitmap_v5(width, height, pixels)
@@ -184,10 +207,18 @@ mod windows_proxy {
             return Err("invalid BGRA thumbnail payload".to_string());
         }
 
-        // Several legacy thumbnail handlers return an opaque DDB with every
-        // alpha byte cleared. Treat that specific shape as fully opaque while
-        // retaining real per-pixel alpha from modern handlers.
+        // Several legacy Shell handlers return an opaque DDB with every alpha
+        // byte cleared. Preserve that compatibility only when color data is
+        // actually present; an all-zero bitmap is a blank result and must not
+        // be promoted to an opaque black image or cached by DeskBox.
         if pixels.chunks_exact(4).all(|pixel| pixel[3] == 0) {
+            if !pixels
+                .chunks_exact(4)
+                .any(|pixel| pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0)
+            {
+                return Err("Shell returned an empty transparent bitmap".to_string());
+            }
+
             for pixel in pixels.chunks_exact_mut(4) {
                 pixel[3] = 0xFF;
             }
@@ -272,6 +303,14 @@ mod windows_proxy {
                 0x00FF_0000,
             );
             assert_eq!(payload[BITMAP_PIXEL_OFFSET + 3], 0xFF);
+        }
+
+        #[test]
+        fn bitmap_v5_payload_rejects_empty_transparent_result() {
+            let error = encode_bgra_as_bitmap_v5(1, 1, vec![0x00, 0x00, 0x00, 0x00])
+                .expect_err("empty transparent bitmap must be rejected");
+
+            assert!(error.contains("empty transparent bitmap"));
         }
     }
 }
