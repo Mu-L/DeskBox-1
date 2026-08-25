@@ -893,6 +893,7 @@
             x:Name="LoadingOverlay"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
             CornerRadius="{StaticResource WidgetCornerRadiusLarge}"
+            IsHitTestVisible="False"
             Visibility="{Binding LoadingVisibility}">
             <StackPanel
                 HorizontalAlignment="Center"

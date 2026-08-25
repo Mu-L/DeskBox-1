@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Globalization;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeskBox.Helpers;
@@ -27,9 +28,12 @@ public sealed class WeatherService : IDisposable
 
     private static readonly HttpClient s_httpClient = new()
     {
-        Timeout = TimeSpan.FromSeconds(8)
+        Timeout = TimeSpan.FromSeconds(6)
     };
 
+    private readonly WeatherCacheStore _cacheStore;
+    private readonly object _cacheLoadSync = new();
+    private Task<WeatherCacheState>? _cacheLoadTask;
     private WeatherData? _cachedData;
     private DateTimeOffset _cacheTimestamp;
     private string _cacheLocationKey = string.Empty;
@@ -40,11 +44,18 @@ public sealed class WeatherService : IDisposable
 #endif
 
     public WeatherService()
+        : this(WeatherCacheStore.Current)
     {
+    }
+
+    internal WeatherService(WeatherCacheStore cacheStore)
+    {
+        _cacheStore = cacheStore ?? throw new ArgumentNullException(nameof(cacheStore));
     }
 
 #if DESKBOX_NATIVE_AOT
     internal WeatherService(Func<double, double, string, WeatherData> weatherDataFactory)
+        : this(WeatherCacheStore.Current)
     {
         _aotWeatherDataFactory = weatherDataFactory ??
             throw new ArgumentNullException(nameof(weatherDataFactory));
@@ -95,7 +106,8 @@ public sealed class WeatherService : IDisposable
         string locationName = "",
         bool forceRefresh = false,
         TimeSpan? cacheDuration = null,
-        string? dataSource = null)
+        string? dataSource = null,
+        CancellationToken cancellationToken = default)
     {
 #if DESKBOX_NATIVE_AOT
         if (_aotWeatherDataFactory is not null)
@@ -115,7 +127,15 @@ public sealed class WeatherService : IDisposable
         }
 #endif
 
-        string cacheKey = FormattableString.Invariant($"{latitude:F4},{longitude:F4}");
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(WeatherService));
+        }
+
+        await LoadCacheStateAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string cacheKey = GetLocationKey(latitude, longitude);
         string sourceKey = dataSource ?? GetCurrentDataSource();
         TimeSpan effectiveCacheDuration = cacheDuration.GetValueOrDefault(DefaultCacheDuration);
         if (effectiveCacheDuration < TimeSpan.Zero)
@@ -133,15 +153,28 @@ public sealed class WeatherService : IDisposable
             return _cachedData;
         }
 
-        // Try preferred source first, then fallback.
-        WeatherData? data = await FetchFromSourceAsync(sourceKey, latitude, longitude);
+        // Try preferred source first, then fallback. Requests stay asynchronous
+        // and each source has a six-second ceiling so an unreachable network
+        // cannot hold a refresh cycle for the old 16-second weather budget.
+        var stopwatch = Stopwatch.StartNew();
+        string actualSource = sourceKey;
+        WeatherData? data = await FetchFromSourceAsync(
+            sourceKey,
+            latitude,
+            longitude,
+            cancellationToken);
         if (data is null)
         {
             string fallbackSource = sourceKey == SettingsService.WeatherDataSourceMsn
                 ? SettingsService.WeatherDataSourceOpenMeteo
                 : SettingsService.WeatherDataSourceMsn;
             App.Log($"[WeatherService] Primary source '{sourceKey}' failed, trying fallback '{fallbackSource}'");
-            data = await FetchFromSourceAsync(fallbackSource, latitude, longitude);
+            actualSource = fallbackSource;
+            data = await FetchFromSourceAsync(
+                fallbackSource,
+                latitude,
+                longitude,
+                cancellationToken);
             if (data is not null)
             {
                 data.IsFallback = true;
@@ -156,6 +189,19 @@ public sealed class WeatherService : IDisposable
             _cacheTimestamp = DateTimeOffset.UtcNow;
             _cacheLocationKey = cacheKey;
             _cacheSourceKey = sourceKey;
+            await _cacheStore.SaveForecastAsync(new WeatherCachedForecast
+            {
+                Latitude = latitude,
+                Longitude = longitude,
+                LocationName = locationName,
+                RequestedSource = sourceKey,
+                ActualSource = actualSource,
+                FetchedAtUtc = _cacheTimestamp,
+                Data = data
+            });
+            App.Log(
+                $"[WeatherService] Fetch succeeded source={actualSource} " +
+                $"fallback={data.IsFallback} elapsedMs={stopwatch.ElapsedMilliseconds}");
         }
         else
         {
@@ -170,6 +216,63 @@ public sealed class WeatherService : IDisposable
 
         return data;
     }
+
+    internal Task<WeatherCacheState> LoadCacheStateAsync()
+    {
+#if DESKBOX_NATIVE_AOT
+        if (_aotWeatherDataFactory is not null)
+        {
+            return Task.FromResult(new WeatherCacheState());
+        }
+#endif
+
+        lock (_cacheLoadSync)
+        {
+            return _cacheLoadTask ??= LoadAndHydrateCacheAsync();
+        }
+    }
+
+    internal Task<bool> SaveResolvedLocationAsync(
+        double latitude,
+        double longitude,
+        string name,
+        DateTimeOffset resolvedAtUtc)
+    {
+        return _cacheStore.SaveLocationAsync(new WeatherCachedLocation
+        {
+            Latitude = latitude,
+            Longitude = longitude,
+            Name = name,
+            ResolvedAtUtc = resolvedAtUtc
+        });
+    }
+
+    private async Task<WeatherCacheState> LoadAndHydrateCacheAsync()
+    {
+        WeatherCacheState state = await _cacheStore.LoadAsync();
+        WeatherCachedForecast? forecast = state.LastForecast;
+        if (forecast?.IsValid == true && forecast.Data is not null)
+        {
+            _cachedData = forecast.Data;
+            _cachedData.LocationName = forecast.LocationName;
+            _cachedData.IsStale = false;
+            _cachedData.IsFallback = !string.Equals(
+                forecast.RequestedSource,
+                forecast.ActualSource,
+                StringComparison.Ordinal);
+            _cacheTimestamp = forecast.FetchedAtUtc;
+            _cacheLocationKey = GetLocationKey(forecast.Latitude, forecast.Longitude);
+            _cacheSourceKey = forecast.RequestedSource;
+            App.Log(
+                $"[WeatherCache] Loaded forecast location='{forecast.LocationName}' " +
+                $"ageMinutes={Math.Max(0, (DateTimeOffset.UtcNow - forecast.FetchedAtUtc).TotalMinutes):F1}");
+        }
+
+        return state;
+    }
+
+    private static string GetLocationKey(double latitude, double longitude) =>
+        FormattableString.Invariant($"{latitude:F4},{longitude:F4}");
 
     /// <summary>
     /// Try to resolve a city name to coordinates via geocoding.
@@ -216,6 +319,12 @@ public sealed class WeatherService : IDisposable
     internal static MsnWeatherResponse? DeserializeMsnResponse(string json) =>
         JsonSerializer.Deserialize(json, WeatherJsonContext.Default.MsnWeather);
 
+    internal static WeatherCacheState? DeserializeCacheState(string json) =>
+        JsonSerializer.Deserialize(json, WeatherJsonContext.Default.CacheState);
+
+    internal static string SerializeCacheState(WeatherCacheState state) =>
+        JsonSerializer.Serialize(state, WeatherJsonContext.Default.CacheState);
+
     private static string GetCurrentDataSource()
     {
         try
@@ -232,13 +341,21 @@ public sealed class WeatherService : IDisposable
 
     // ── Source dispatch ──
 
-    private static async Task<WeatherData?> FetchFromSourceAsync(string source, double lat, double lon)
+    private static async Task<WeatherData?> FetchFromSourceAsync(
+        string source,
+        double lat,
+        double lon,
+        CancellationToken cancellationToken)
     {
         try
         {
             return source == SettingsService.WeatherDataSourceMsn
-                ? await FetchMsnWeatherAsync(lat, lon)
-                : await FetchOpenMeteoWeatherAsync(lat, lon);
+                ? await FetchMsnWeatherAsync(lat, lon, cancellationToken)
+                : await FetchOpenMeteoWeatherAsync(lat, lon, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -249,10 +366,13 @@ public sealed class WeatherService : IDisposable
 
     // ── Open-Meteo ──
 
-    private static async Task<WeatherData?> FetchOpenMeteoWeatherAsync(double lat, double lon)
+    private static async Task<WeatherData?> FetchOpenMeteoWeatherAsync(
+        double lat,
+        double lon,
+        CancellationToken cancellationToken)
     {
         string url = BuildOpenMeteoForecastUrl(lat, lon);
-        string json = await s_httpClient.GetStringAsync(url);
+        string json = await s_httpClient.GetStringAsync(url, cancellationToken);
         return DeserializeOpenMeteoResponse(json);
     }
 
@@ -273,12 +393,15 @@ public sealed class WeatherService : IDisposable
 
     // ── MSN Weather ──
 
-    private static async Task<WeatherData?> FetchMsnWeatherAsync(double lat, double lon)
+    private static async Task<WeatherData?> FetchMsnWeatherAsync(
+        double lat,
+        double lon,
+        CancellationToken cancellationToken)
     {
         string url = $"{MsnWeatherUrl}?apikey={MsnApiKey}" +
                      $"&lat={lat.ToString("F4", CultureInfo.InvariantCulture)}" +
                      $"&lon={lon.ToString("F4", CultureInfo.InvariantCulture)}&units=C";
-        string json = await s_httpClient.GetStringAsync(url);
+        string json = await s_httpClient.GetStringAsync(url, cancellationToken);
         var msnResponse = DeserializeMsnResponse(json);
 
         var msnWeather = msnResponse?.Value?.FirstOrDefault()?.Responses?.FirstOrDefault()?.Weather?.FirstOrDefault();
@@ -439,6 +562,7 @@ public sealed class WeatherService : IDisposable
 [JsonSerializable(typeof(WeatherGeocodingResult), TypeInfoPropertyName = "GeocodingResult")]
 [JsonSerializable(typeof(WeatherData), TypeInfoPropertyName = "OpenMeteoWeather")]
 [JsonSerializable(typeof(MsnWeatherResponse), TypeInfoPropertyName = "MsnWeather")]
+[JsonSerializable(typeof(WeatherCacheState), TypeInfoPropertyName = "CacheState")]
 internal sealed partial class WeatherJsonContext : JsonSerializerContext
 {
 }

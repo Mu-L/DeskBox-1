@@ -18,7 +18,10 @@ public sealed partial class WeatherWidgetViewModel
             return;
         }
 
-        await RefreshAsync();
+        // Loading the local snapshot is the only work allowed to delay widget
+        // construction. Network location and forecast requests start after the
+        // host has been revealed so startup remains responsive when offline.
+        await LoadCachedWeatherAsync();
         if (_isDisposed)
         {
             return;
@@ -27,6 +30,7 @@ public sealed partial class WeatherWidgetViewModel
         if (_isWindowRevealCompleted)
         {
             _refreshTimer?.Start();
+            _ = RefreshAsync();
         }
     }
 
@@ -37,17 +41,36 @@ public sealed partial class WeatherWidgetViewModel
             return;
         }
 
-        int requestVersion = Interlocked.Increment(ref _refreshRequestVersion);
         if (_isRefreshing)
         {
-            _refreshPending = true;
-            _pendingForceRefresh |= forceRefresh || userTriggered;
-            _pendingUserTriggeredRefresh |= userTriggered;
+            // Ordinary activation/timer requests are already satisfied by the
+            // in-flight operation. Preserve one explicit user/settings request.
+            if (userTriggered || forceRefresh)
+            {
+                Interlocked.Increment(ref _refreshRequestVersion);
+                _refreshPending = true;
+                _pendingForceRefresh |= forceRefresh || userTriggered;
+                _pendingUserTriggeredRefresh |= userTriggered;
+            }
             return;
         }
 
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        if (!WeatherRefreshBackoffPolicy.CanAttempt(
+                now,
+                _automaticRefreshNotBeforeUtc,
+                userTriggered,
+                forceRefresh))
+        {
+            App.LogVerbose(
+                $"[WeatherWidget] Refresh deferred until=" +
+                $"{_automaticRefreshNotBeforeUtc:O} failures={_consecutiveRefreshFailures}");
+            return;
+        }
+
+        int requestVersion = Interlocked.Increment(ref _refreshRequestVersion);
+
         _refreshWasUserTriggered = userTriggered;
-        _isRefreshing = true;
         IsRefreshing = true;
         bool refreshSucceeded = false;
         try
@@ -58,13 +81,7 @@ public sealed partial class WeatherWidgetViewModel
                 return;
             }
 
-            TimeSpan cacheDuration = TimeSpan.FromMinutes(
-                _settingsService is null
-                    ? 30
-                    : Math.Clamp(
-                        _settingsService.Settings.WeatherRefreshIntervalMinutes,
-                        SettingsService.WeatherRefreshMinMinutes,
-                        SettingsService.WeatherRefreshMaxMinutes));
+            TimeSpan cacheDuration = GetConfiguredRefreshInterval();
             _weatherData = await _weatherService.GetWeatherAsync(
                 _latitude,
                 _longitude,
@@ -81,26 +98,34 @@ public sealed partial class WeatherWidgetViewModel
                 ApplyWeatherData(_weatherData);
                 HasData = true;
                 refreshSucceeded = !_weatherData.IsStale;
+                if (refreshSucceeded)
+                {
+                    RegisterRefreshSuccess(cacheDuration);
+                }
+                else
+                {
+                    RegisterRefreshFailure();
+                }
             }
             else
             {
                 // API failed and no cached data for this location.
                 // Clear the display so we don't show a previous city's weather.
                 HasData = false;
+                RegisterRefreshFailure();
             }
         }
         catch (Exception ex)
         {
             App.Log($"[WeatherWidget] Refresh failed: {ex.Message}");
+            RegisterRefreshFailure();
         }
         finally
         {
-            _isRefreshing = false;
             IsRefreshing = false;
 
             // Only show the toast for user-triggered refreshes (not auto-timer)
             if (_refreshWasUserTriggered &&
-                HasData &&
                 requestVersion == Volatile.Read(ref _refreshRequestVersion))
             {
                 ShowRefreshStatusToast(refreshSucceeded);
@@ -117,6 +142,23 @@ public sealed partial class WeatherWidgetViewModel
                 _ = RefreshAsync(pendingUserTriggered, pendingForceRefresh);
             }
         }
+    }
+
+    private void RegisterRefreshSuccess(TimeSpan refreshInterval)
+    {
+        _consecutiveRefreshFailures = 0;
+        _automaticRefreshNotBeforeUtc = DateTimeOffset.UtcNow + refreshInterval;
+    }
+
+    private void RegisterRefreshFailure()
+    {
+        _consecutiveRefreshFailures++;
+        TimeSpan delay = WeatherRefreshBackoffPolicy.GetFailureDelay(
+            _consecutiveRefreshFailures);
+        _automaticRefreshNotBeforeUtc = DateTimeOffset.UtcNow + delay;
+        App.Log(
+            $"[WeatherWidget] Refresh backoff failures={_consecutiveRefreshFailures} " +
+            $"delayMinutes={delay.TotalMinutes:0}");
     }
 
     public void ApplyAppearance()
