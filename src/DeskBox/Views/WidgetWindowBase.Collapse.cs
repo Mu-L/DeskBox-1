@@ -2567,6 +2567,15 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
+        if (collapsed && !_targetCollapsed)
+        {
+            // A shrinking/moving HWND can pass beneath a stationary pointer.
+            // Block routed hover expansion until that pointer physically exits
+            // the settled capsule, otherwise collapse can reverse mid-flight.
+            _suppressSmartExpansionUntilPointerExit = true;
+            CancelTimer(ref _collapseHoverTimer);
+        }
+
         if (collapsed)
         {
             CancelPendingCompactExpansion();
@@ -3055,12 +3064,10 @@ public abstract partial class WidgetWindowBase
 
     protected bool CanResizeCurrentWidgetState(string? direction)
     {
-        if (_isCollapseAnimationRendering)
-        {
-            return false;
-        }
-
-        return !IsCompactBoundsStateActive || direction is "Left" or "Right";
+        return WidgetCompactInteractionPolicy.CanResize(
+            _isCollapseAnimationRendering,
+            IsCompactBoundsStateActive,
+            direction);
     }
 
     protected (int MinWidth, int MaxWidth) GetCompactPhysicalWidthLimits()

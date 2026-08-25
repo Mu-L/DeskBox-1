@@ -1608,10 +1608,26 @@ public sealed partial class FileSurfaceContent :
 
     private void Root_DragOver(object sender, DragEventArgs e)
     {
+        ApplySurfaceDragOverFeedback(
+            e,
+            allowInternalReorderPreview: true);
+    }
+
+    internal void ApplyHostEdgeDragOverFeedback(DragEventArgs e)
+    {
+        ApplySurfaceDragOverFeedback(
+            e,
+            allowInternalReorderPreview: false);
+    }
+
+    private void ApplySurfaceDragOverFeedback(
+        DragEventArgs e,
+        bool allowInternalReorderPreview)
+    {
         e.Handled = true;
         // Child folder/stack targets mark their own DragOver handled. Reaching
-        // the root therefore means the pointer is no longer over either target,
-        // even when WinUI suppressed the corresponding child DragLeave.
+        // either the file root or the host's transparent resize edge therefore
+        // means the pointer is no longer over either explicit child target.
         ClearFolderDropTarget();
         ClearStackMemberDropTarget();
         if (_isImportBusy)
@@ -1650,40 +1666,45 @@ public sealed partial class FileSurfaceContent :
             e.DragUIOverride.IsGlyphVisible = false;
             e.DragUIOverride.IsCaptionVisible = false;
             ApplyDropVisual(FileDropVisualState.None);
-            HandleSurfaceRealTimeReorder(
-                payload,
-                e.GetPosition(GetActiveItemsView()));
+            if (allowInternalReorderPreview)
+            {
+                HandleSurfaceRealTimeReorder(
+                    payload,
+                    e.GetPosition(GetActiveItemsView()));
+            }
             return;
         }
 
         if (payload.HasSurfacePathData)
         {
+            SuppressExternalDragOperationBadge(e);
             if (IsUnsafeFolderDrop(payload.Paths, ViewModel.CurrentFolderPath))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
-                e.DragUIOverride.IsGlyphVisible = false;
-                e.DragUIOverride.IsCaptionVisible = true;
-                e.DragUIOverride.Caption = T("Widget.Error.UnsafeFolderTransfer");
                 ApplyDropVisual(FileDropVisualState.None);
                 return;
             }
 
+            // External shell drags keep their source-provided compact visual.
+            // Setting DragUIOverride here replaces it with WinUI's larger card.
             e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);
-            e.DragUIOverride.IsGlyphVisible =
-                e.AcceptedOperation != DataPackageOperation.None;
-            e.DragUIOverride.IsCaptionVisible =
-                e.AcceptedOperation != DataPackageOperation.None;
-            e.DragUIOverride.Caption =
-                GetSurfaceDropCaption(e.AcceptedOperation);
             ApplyDropVisual(FileDropVisualState.None);
         }
         else
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            e.DragUIOverride.IsGlyphVisible = false;
-            e.DragUIOverride.IsCaptionVisible = false;
             ApplyDropVisual(FileDropVisualState.None);
         }
+    }
+
+    private static void SuppressExternalDragOperationBadge(DragEventArgs e)
+    {
+        // Do not let XAML replace Explorer's source-sized drag image with its
+        // larger content preview. The native OLE drop target and Shell drag
+        // image manager own the icon, operation glyph, and target description.
+        e.DragUIOverride.IsContentVisible = false;
+        e.DragUIOverride.IsGlyphVisible = false;
+        e.DragUIOverride.IsCaptionVisible = false;
     }
 
     private bool IsUnsafeFolderDrop(
@@ -1965,6 +1986,11 @@ public sealed partial class FileSurfaceContent :
         }
     }
 
+    internal void HandleHostEdgeDrop(DragEventArgs e)
+    {
+        Root_Drop(Root, e);
+    }
+
     private void SetImportBusy(bool isBusy)
     {
         SetBusyOverlay(
@@ -2111,6 +2137,9 @@ public sealed partial class FileSurfaceContent :
 
     internal bool HasActiveChildDropTargetVisual =>
         _folderDropTarget is not null || _stackMemberDropTarget is not null;
+
+    internal bool SuppressesNativeShellDragVisual =>
+        _dragPayloadSnapshot?.IsInternalReorder == true;
 
     /// <summary>
     /// Uses the OLE IDropTarget screen coordinate as a fallback for routed
@@ -2340,25 +2369,6 @@ public sealed partial class FileSurfaceContent :
             FileDropIntent.Reference => DataPackageOperation.Link,
             _ => DataPackageOperation.None
         };
-    }
-
-    private string GetSurfaceDropCaption(
-        DataPackageOperation operation)
-    {
-        if (string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
-        {
-            return T("Widget.DragCaption.Reference");
-        }
-
-        string operationText = T(
-            operation == DataPackageOperation.Copy
-                ? "Common.Copy"
-                : "Common.Move");
-        return _localizationService.Format(
-            ViewModel.FollowsDefaultStoragePath
-                ? "Widget.DragCaption.Managed"
-                : "Widget.DragCaption.Mapped",
-            operationText);
     }
 
     private static async Task<DroppedFileBatch> GetSurfaceDropFilesAsync(

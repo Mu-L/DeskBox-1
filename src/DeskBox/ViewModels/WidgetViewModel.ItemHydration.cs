@@ -166,7 +166,10 @@ public partial class WidgetViewModel
                 {
                     if (existingByPath.TryGetValue(refreshedItem.Path, out WidgetItem? existingItem))
                     {
-                        ApplyRuntimeItemData(existingItem, refreshedItem);
+                        ApplyRuntimeItemData(
+                            existingItem,
+                            refreshedItem,
+                            preserveExistingIconWhenMissing: true);
                         return existingItem;
                     }
 
@@ -202,7 +205,10 @@ public partial class WidgetViewModel
                 continue;
             }
 
-            ApplyRuntimeItemData(existingItem, refreshedItem);
+            ApplyRuntimeItemData(
+                existingItem,
+                refreshedItem,
+                preserveExistingIconWhenMissing: true);
             int currentIndex = Items.IndexOf(existingItem);
             if (currentIndex < 0)
             {

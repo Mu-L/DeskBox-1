@@ -664,6 +664,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     protected override void OnRootElementLoaded()
     {
         RootGrid.Focus(FocusState.Programmatic);
+        QueueNativeFileDropTargetRegistration();
     }
 
     // ── IDesktopWidgetWindow implementation ────────────────────

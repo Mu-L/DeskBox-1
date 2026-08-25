@@ -322,6 +322,15 @@ public abstract partial class WidgetWindowBase
             return new IntPtr(Win32Helper.MA_NOACTIVATE);
         }
 
+        if (message == Win32Helper.WM_MOUSEACTIVATE &&
+            WidgetLayerService.ShouldPreserveQuickRevealActivatingClick())
+        {
+            // Quick Reveal activates only the highest widget. Explicitly keep
+            // the activating mouse message for every other revealed HWND so a
+            // stack, button, or item responds to the first click.
+            return new IntPtr(Win32Helper.MA_ACTIVATE);
+        }
+
         return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
     }
 

@@ -167,11 +167,14 @@ public sealed partial class FileSurfaceContent
         }
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
+        if (!payload.IsInternalReorder && payload.HasSurfacePathData)
+        {
+            SuppressExternalDragOperationBadge(e);
+        }
+
         if (_isImportBusy || !payload.HasSurfacePathData)
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            e.DragUIOverride.IsGlyphVisible = false;
-            e.DragUIOverride.IsCaptionVisible = false;
             ClearFolderDropTarget();
             return;
         }
@@ -179,17 +182,18 @@ public sealed partial class FileSurfaceContent
         if (IsUnsafeFolderDrop(payload.Paths, targetFolder.Path))
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            e.DragUIOverride.IsGlyphVisible = false;
-            e.DragUIOverride.IsCaptionVisible = true;
-            e.DragUIOverride.Caption = T("Widget.CannotMoveToFolder");
+            if (payload.IsInternalReorder)
+            {
+                e.DragUIOverride.IsGlyphVisible = false;
+                e.DragUIOverride.IsCaptionVisible = true;
+                e.DragUIOverride.Caption = T("Widget.CannotMoveToFolder");
+            }
             ClearFolderDropTarget();
             return;
         }
 
         DataPackageOperation operation = ResolveFolderDropOperation(payload.DataView);
         e.AcceptedOperation = operation;
-        e.DragUIOverride.IsGlyphVisible = operation != DataPackageOperation.None;
-        e.DragUIOverride.IsCaptionVisible = operation != DataPackageOperation.None;
         if (operation == DataPackageOperation.None)
         {
             ClearFolderDropTarget();
@@ -197,11 +201,16 @@ public sealed partial class FileSurfaceContent
         }
 
         SetFolderDropTarget(border);
-        e.DragUIOverride.Caption = _localizationService.Format(
-            operation == DataPackageOperation.Copy
-                ? "Widget.CopyToFolder"
-                : "Widget.MoveToFolder",
-            targetFolder.Name);
+        if (payload.IsInternalReorder)
+        {
+            e.DragUIOverride.IsGlyphVisible = true;
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.DragUIOverride.Caption = _localizationService.Format(
+                operation == DataPackageOperation.Copy
+                    ? "Widget.CopyToFolder"
+                    : "Widget.MoveToFolder",
+                targetFolder.Name);
+        }
     }
 
     private void ItemSurface_DragLeave(
@@ -623,12 +632,16 @@ public sealed partial class FileSurfaceContent
             } border)
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            e.DragUIOverride.IsGlyphVisible = false;
             ClearStackMemberDropTarget();
             return;
         }
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
+        if (!payload.IsInternalReorder && payload.HasSurfacePathData)
+        {
+            SuppressExternalDragOperationBadge(e);
+        }
+
         if (payload.IsStackPopoverMemberDrag &&
             string.Equals(
                 payload.SourceStackKey,
@@ -651,19 +664,21 @@ public sealed partial class FileSurfaceContent
         {
             SetStackMemberDropTarget(border);
             e.AcceptedOperation = DataPackageOperation.Link;
-            e.DragUIOverride.IsGlyphVisible = true;
-            e.DragUIOverride.IsCaptionVisible = true;
-            e.DragUIOverride.Caption =
-                _localizationService.Format(
-                    "Widget.Stack.DragCaption.Add",
-                    stack.Name);
+            if (payload.IsInternalReorder)
+            {
+                e.DragUIOverride.IsGlyphVisible = true;
+                e.DragUIOverride.IsCaptionVisible = true;
+                e.DragUIOverride.Caption =
+                    _localizationService.Format(
+                        "Widget.Stack.DragCaption.Add",
+                        stack.Name);
+            }
             return;
         }
 
         if (!payload.HasSurfacePathData || _isImportBusy)
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            e.DragUIOverride.IsGlyphVisible = false;
             ClearStackMemberDropTarget();
             return;
         }
@@ -673,22 +688,19 @@ public sealed partial class FileSurfaceContent
                 ViewModel.CurrentFolderPath))
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            e.DragUIOverride.IsGlyphVisible = false;
-            e.DragUIOverride.IsCaptionVisible = true;
-            e.DragUIOverride.Caption =
-                T("Widget.Error.UnsafeFolderTransfer");
+            if (payload.IsInternalReorder)
+            {
+                e.DragUIOverride.IsGlyphVisible = false;
+                e.DragUIOverride.IsCaptionVisible = true;
+                e.DragUIOverride.Caption =
+                    T("Widget.Error.UnsafeFolderTransfer");
+            }
             ClearStackMemberDropTarget();
             return;
         }
 
         SetStackMemberDropTarget(border);
         e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);
-        e.DragUIOverride.IsGlyphVisible = true;
-        e.DragUIOverride.IsCaptionVisible = true;
-        e.DragUIOverride.Caption =
-            _localizationService.Format(
-                "Widget.Stack.DragCaption.Import",
-                stack.Name);
     }
 
     private void StackSurface_DragLeave(

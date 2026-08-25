@@ -116,6 +116,14 @@ public sealed class NativeDropTarget : IDisposable
     private readonly IntPtr _hwnd;
     private readonly NativeDropTargetComObject _comObject;
     private readonly Func<bool> _defaultMoveProvider;
+    private readonly Func<uint, NativeDropDescriptionText?>? _dropDescriptionProvider;
+    private readonly Func<bool>? _useShellVisualProvider;
+    private readonly NativeDropImageManager? _dropImageManager;
+    private nint _activeDataObject;
+    private bool _hasDropDescriptionAttempt;
+    private uint _lastDropDescriptionEffect;
+    private NativeDropDescriptionText? _lastDropDescriptionText;
+    private bool _shellVisualActive;
     private bool _registered;
 
     private sealed record ShellApplicationDropItem(
@@ -169,10 +177,33 @@ public sealed class NativeDropTarget : IDisposable
     }
 
     public NativeDropTarget(IntPtr hwnd, Func<bool>? defaultMoveProvider = null)
+        : this(
+            hwnd,
+            defaultMoveProvider,
+            dropDescriptionProvider: null,
+            useShellVisualProvider: null)
+    {
+    }
+
+    internal NativeDropTarget(
+        IntPtr hwnd,
+        Func<bool>? defaultMoveProvider,
+        Func<uint, NativeDropDescriptionText?>? dropDescriptionProvider,
+        Func<bool>? useShellVisualProvider = null)
     {
         _hwnd = hwnd;
         _defaultMoveProvider = defaultMoveProvider ?? (() => true);
+        _dropDescriptionProvider = dropDescriptionProvider;
+        _useShellVisualProvider = useShellVisualProvider;
         _comObject = new NativeDropTargetComObject(this);
+        try
+        {
+            _dropImageManager = NativeDropImageManager.TryCreate();
+        }
+        catch
+        {
+            _dropImageManager = null;
+        }
     }
 
     public void Register()
@@ -186,7 +217,9 @@ public sealed class NativeDropTarget : IDisposable
         {
             NativeDropTargetComInterop.Register(_hwnd, _comObject);
             _registered = true;
-            App.Log($"[DropTarget] Registered IDropTarget for hwnd=0x{_hwnd.ToInt64():X}");
+            App.Log(
+                $"[DropTarget] Registered IDropTarget for hwnd=0x{_hwnd.ToInt64():X} " +
+                $"shellImageHelper={_dropImageManager is not null}");
         }
         catch (Exception ex)
         {
@@ -196,6 +229,7 @@ public sealed class NativeDropTarget : IDisposable
 
     public void Unregister()
     {
+        EndNativeDragVisual();
         if (!_registered)
         {
             return;
@@ -214,6 +248,7 @@ public sealed class NativeDropTarget : IDisposable
     public void Dispose()
     {
         Unregister();
+        _dropImageManager?.Dispose();
     }
 
 #if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
@@ -229,13 +264,9 @@ public sealed class NativeDropTarget : IDisposable
         POINT point,
         ref uint effect)
     {
+        EndNativeDragVisual();
         uint allowedEffects = effect;
-        bool hasHDropData = TryHasHDropData(dataObject);
-        HasVirtualFileData = TryHasVirtualFileData(dataObject);
-        HasShellApplicationData =
-            !hasHDropData && TryHasShellApplicationData(dataObject);
-        HasFileData =
-            hasHDropData || HasVirtualFileData || HasShellApplicationData;
+        InspectDragData(dataObject);
         DragEnterEvent?.Invoke(point.X, point.Y, HasFileData);
 
         effect = NativeDropEffectPolicy.ResolveFeedbackEffect(
@@ -245,6 +276,11 @@ public sealed class NativeDropTarget : IDisposable
             allowedEffects,
             HasShellApplicationData,
             _defaultMoveProvider());
+        if (HasFileData)
+        {
+            RetainActiveDataObject(dataObject);
+            UpdateShellVisual(point, effect);
+        }
         return S_OK;
     }
 
@@ -263,14 +299,14 @@ public sealed class NativeDropTarget : IDisposable
             allowedEffects,
             HasShellApplicationData,
             _defaultMoveProvider());
+        UpdateShellVisual(point, effect);
         return S_OK;
     }
 
     internal int OnDragLeave()
     {
-        HasFileData = false;
-        HasVirtualFileData = false;
-        HasShellApplicationData = false;
+        EndNativeDragVisual();
+        ResetDragDataState();
         DragLeaveEvent?.Invoke();
         return S_OK;
     }
@@ -283,14 +319,14 @@ public sealed class NativeDropTarget : IDisposable
     {
         uint allowedEffects = effect;
         bool shellApplicationDrop = HasShellApplicationData;
-        bool copyRequested =
-            NativeDropEffectPolicy.ResolveFeedbackEffect(
-                hasFileData: true,
-                HasVirtualFileData,
-                keyState,
-                allowedEffects,
-                shellApplicationDrop,
-                _defaultMoveProvider()) != NativeDropEffectPolicy.Move;
+        uint feedbackEffect = NativeDropEffectPolicy.ResolveFeedbackEffect(
+            hasFileData: true,
+            HasVirtualFileData,
+            keyState,
+            allowedEffects,
+            shellApplicationDrop,
+            _defaultMoveProvider());
+        bool copyRequested = feedbackEffect != NativeDropEffectPolicy.Move;
         IReadOnlyList<string> paths = shellApplicationDrop
             ? TryExtractShellApplicationShortcuts(dataObject)
             : [];
@@ -300,9 +336,16 @@ public sealed class NativeDropTarget : IDisposable
         {
             (paths, containsTemporaryFiles) = TryExtractFilePaths(dataObject);
         }
-        HasFileData = false;
-        HasVirtualFileData = false;
-        HasShellApplicationData = false;
+        if (_shellVisualActive)
+        {
+            _dropImageManager?.Drop(
+                dataObject,
+                point,
+                feedbackEffect);
+        }
+        ClearActiveDropDescriptionAndReleaseDataObject();
+        _shellVisualActive = false;
+        ResetDragDataState();
 
         // Always log so we can tell whether the native OLE drop target receives
         // CF_HDROP drops (WeChat / Explorer) at all, and what it extracted.
@@ -329,6 +372,175 @@ public sealed class NativeDropTarget : IDisposable
         }
 
         return S_OK;
+    }
+
+    private void InspectDragData(nint dataObject)
+    {
+        bool hasHDropData = TryHasHDropData(dataObject);
+        HasVirtualFileData = TryHasVirtualFileData(dataObject);
+        HasShellApplicationData =
+            !hasHDropData && TryHasShellApplicationData(dataObject);
+        HasFileData =
+            hasHDropData || HasVirtualFileData || HasShellApplicationData;
+    }
+
+    private void ResetDragDataState()
+    {
+        HasFileData = false;
+        HasVirtualFileData = false;
+        HasShellApplicationData = false;
+    }
+
+    private bool ShouldUseShellVisual()
+    {
+        if (!HasFileData)
+        {
+            return false;
+        }
+
+        try
+        {
+            return _useShellVisualProvider?.Invoke() ?? true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void UpdateShellVisual(POINT point, uint effect)
+    {
+        if (!ShouldUseShellVisual())
+        {
+            if (_shellVisualActive)
+            {
+                _dropImageManager?.DragLeave();
+                _shellVisualActive = false;
+                ClearActiveDropDescription();
+            }
+            return;
+        }
+
+        UpdateActiveDropDescription(effect);
+        if (!_shellVisualActive)
+        {
+            _dropImageManager?.DragEnter(
+                _hwnd,
+                _activeDataObject,
+                point,
+                effect);
+            _shellVisualActive =
+                _dropImageManager?.IsDragActive == true;
+        }
+        else
+        {
+            _dropImageManager?.DragOver(point, effect);
+        }
+
+        _dropImageManager?.Show(visible: true);
+    }
+
+    private void RetainActiveDataObject(nint dataObject)
+    {
+        if (dataObject == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Marshal.AddRef(dataObject);
+            _activeDataObject = dataObject;
+            _hasDropDescriptionAttempt = false;
+            _lastDropDescriptionEffect = NativeDropEffectPolicy.None;
+            _lastDropDescriptionText = null;
+        }
+        catch
+        {
+            _activeDataObject = 0;
+        }
+    }
+
+    private void UpdateActiveDropDescription(uint effect)
+    {
+        if (_activeDataObject == 0 || _dropDescriptionProvider is null)
+        {
+            return;
+        }
+
+        NativeDropDescriptionText? text;
+        try
+        {
+            text = _dropDescriptionProvider(effect);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (_hasDropDescriptionAttempt &&
+            _lastDropDescriptionEffect == effect &&
+            _lastDropDescriptionText == text)
+        {
+            return;
+        }
+
+        bool hadCustomDescription = _lastDropDescriptionText.HasValue;
+        _hasDropDescriptionAttempt = true;
+        _lastDropDescriptionEffect = effect;
+        _lastDropDescriptionText = text;
+        if (text is { } value)
+        {
+            bool applied = NativeDropDescriptionWriter.TryApply(
+                _activeDataObject,
+                effect,
+                value);
+            App.LogVerbose(
+                $"[DropTarget] Shell description effect={effect} " +
+                $"applied={applied} target={value.Insert}");
+        }
+        else if (hadCustomDescription)
+        {
+            _ = NativeDropDescriptionWriter.TryClear(_activeDataObject);
+        }
+    }
+
+    private void EndNativeDragVisual()
+    {
+        ClearActiveDropDescriptionAndReleaseDataObject();
+        _dropImageManager?.DragLeave();
+        _shellVisualActive = false;
+    }
+
+    private void ClearActiveDropDescription()
+    {
+        _hasDropDescriptionAttempt = false;
+        _lastDropDescriptionEffect = NativeDropEffectPolicy.None;
+        _lastDropDescriptionText = null;
+        if (_activeDataObject != 0)
+        {
+            _ = NativeDropDescriptionWriter.TryClear(_activeDataObject);
+        }
+    }
+
+    private void ClearActiveDropDescriptionAndReleaseDataObject()
+    {
+        nint dataObject = _activeDataObject;
+        _activeDataObject = 0;
+        ClearActiveDropDescription();
+        if (dataObject == 0)
+        {
+            return;
+        }
+
+        _ = NativeDropDescriptionWriter.TryClear(dataObject);
+        try
+        {
+            Marshal.Release(dataObject);
+        }
+        catch
+        {
+        }
     }
 
     // ── Data extraction helpers ──

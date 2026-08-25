@@ -29,6 +29,7 @@ internal readonly unsafe struct NativeOleDataObject
 {
     private const int GetDataVtableSlot = 3;
     private const int QueryGetDataVtableSlot = 5;
+    private const int SetDataVtableSlot = 7;
 
     private readonly nint _pointer;
 
@@ -69,6 +70,29 @@ internal readonly unsafe struct NativeOleDataObject
         fixed (NativeFormatEtc* formatPointer = &format)
         {
             return queryGetData(_pointer, formatPointer);
+        }
+    }
+
+    public int SetData(
+        ref NativeFormatEtc format,
+        ref NativeStorageMedium medium,
+        bool release)
+    {
+        var setData = (delegate* unmanaged[Stdcall]<
+            nint,
+            NativeFormatEtc*,
+            NativeStorageMedium*,
+            int,
+            int>)GetVtableEntry(SetDataVtableSlot);
+
+        fixed (NativeFormatEtc* formatPointer = &format)
+        fixed (NativeStorageMedium* mediumPointer = &medium)
+        {
+            return setData(
+                _pointer,
+                formatPointer,
+                mediumPointer,
+                release ? 1 : 0);
         }
     }
 

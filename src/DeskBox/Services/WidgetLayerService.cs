@@ -667,6 +667,19 @@ public static class WidgetLayerService
     }
 
     /// <summary>
+    /// Keeps the activating mouse message when a user clicks a widget that was
+    /// shown by Quick Reveal. Only one window in the revealed group can be the
+    /// foreground window, so every other widget must explicitly opt out of the
+    /// default activate-and-eat behavior for its first click.
+    /// </summary>
+    public static bool ShouldPreserveQuickRevealActivatingClick()
+    {
+        return WidgetLayerPointerActivationPolicy.ShouldPreserveActivatingClick(
+            UsesQuickRevealMode(),
+            App.Current?.WidgetManager?.WidgetsRaisedFromTray == true);
+    }
+
+    /// <summary>
     /// Allows a desktop-pinned widget to become active only when the current
     /// foreground belongs to the desktop shell or another widget. The
     /// WS_EX_NOACTIVATE resting style makes this decision before the routed
@@ -1019,5 +1032,12 @@ internal static class WidgetLayerPointerActivationPolicy
             hasForegroundWindow &&
             !foregroundIsDesktopShell &&
             !foregroundIsWidget;
+    }
+
+    public static bool ShouldPreserveActivatingClick(
+        bool usesQuickRevealMode,
+        bool widgetsRaisedFromTray)
+    {
+        return usesQuickRevealMode && widgetsRaisedFromTray;
     }
 }

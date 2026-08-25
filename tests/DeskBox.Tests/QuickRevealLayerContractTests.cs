@@ -66,4 +66,20 @@ public sealed class QuickRevealLayerContractTests
         Assert.Contains("WidgetLayerService.ClearTopMost(HWnd)", contentWindow, StringComparison.Ordinal);
         Assert.Contains("WidgetLayerService.ClearTopMost(_hWnd)", quickCaptureWindow, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void QuickReveal_InactiveWidgetKeepsItsFirstActivatingClick()
+    {
+        string bounds = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.Bounds.cs"));
+        string helper = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Helpers/Win32Helper.cs"));
+
+        Assert.Contains(
+            "WidgetLayerService.ShouldPreserveQuickRevealActivatingClick()",
+            bounds,
+            StringComparison.Ordinal);
+        Assert.Contains("Win32Helper.MA_ACTIVATE", bounds, StringComparison.Ordinal);
+        Assert.Contains("public const int MA_ACTIVATE = 1;", helper, StringComparison.Ordinal);
+    }
 }

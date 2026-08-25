@@ -164,6 +164,49 @@ public sealed class WidgetCompactInteractionPolicyTests
                 allowInteractionRegionDwell));
     }
 
+    [Theory]
+    [InlineData(false, "TopLeft", "TopLeft")]
+    [InlineData(true, "Left", "Left")]
+    [InlineData(true, "TopLeft", "Left")]
+    [InlineData(true, "BottomLeft", "Left")]
+    [InlineData(true, "Right", "Right")]
+    [InlineData(true, "TopRight", "Right")]
+    [InlineData(true, "BottomRight", "Right")]
+    [InlineData(true, "Top", "")]
+    [InlineData(true, "Bottom", "")]
+    public void ResolveResizeDirection_MapsTheWholeCapsuleEndCapToHorizontalResize(
+        bool compact,
+        string direction,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            WidgetCompactInteractionPolicy.ResolveResizeDirection(
+                compact,
+                direction));
+    }
+
+    [Fact]
+    public void CanResize_CapsuleAllowsOnlyHorizontalEndsWhenTransitionIsSettled()
+    {
+        Assert.True(WidgetCompactInteractionPolicy.CanResize(
+            isCompactTransitionActive: false,
+            isCompactBoundsStateActive: true,
+            direction: "TopLeft"));
+        Assert.False(WidgetCompactInteractionPolicy.CanResize(
+            isCompactTransitionActive: false,
+            isCompactBoundsStateActive: true,
+            direction: "Top"));
+        Assert.False(WidgetCompactInteractionPolicy.CanResize(
+            isCompactTransitionActive: true,
+            isCompactBoundsStateActive: true,
+            direction: "Left"));
+        Assert.True(WidgetCompactInteractionPolicy.CanResize(
+            isCompactTransitionActive: false,
+            isCompactBoundsStateActive: false,
+            direction: "Top"));
+    }
+
     [Fact]
     public void CanAutoCollapse_RequiresPointerAndInteractionToBeClear()
     {

@@ -223,6 +223,116 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void HostResizeEdge_ReusesTheFileSurfaceDropFeedback()
+    {
+        string root = FindRepositoryRoot();
+        string surface = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        string host = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/ContentWidgetWindow.WindowInteraction.cs"));
+
+        Assert.Contains(
+            "file.ApplyHostEdgeDragOverFeedback(e);",
+            host,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "file.HandleHostEdgeDrop(e);",
+            host,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "private void ApplySurfaceDragOverFeedback(",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "allowInternalReorderPreview: true",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "allowInternalReorderPreview: false",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "internal void HandleHostEdgeDrop(DragEventArgs e)",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains("Root_Drop(Root, e);", surface, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExternalSurfaceDrop_HidesTheWinUiReplacementVisual()
+    {
+        string root = FindRepositoryRoot();
+        string surface = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        string itemVisuals = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs"));
+        string feedback = ReadPrivateMethod(
+            surface,
+            "private void ApplySurfaceDragOverFeedback(");
+        int externalStart = feedback.IndexOf(
+            "if (payload.HasSurfacePathData)",
+            StringComparison.Ordinal);
+        Assert.True(externalStart >= 0);
+        int externalEnd = feedback.IndexOf(
+            "\n        else",
+            externalStart,
+            StringComparison.Ordinal);
+
+        Assert.True(externalEnd > externalStart);
+        string externalFeedback = feedback[externalStart..externalEnd];
+        Assert.Contains(
+            "e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);",
+            externalFeedback,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SuppressExternalDragOperationBadge(e);",
+            externalFeedback,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "private static void SuppressExternalDragOperationBadge(DragEventArgs e)",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.DragUIOverride.IsGlyphVisible = false;",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.DragUIOverride.IsCaptionVisible = false;",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.DragUIOverride.IsContentVisible = false;",
+            surface,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("GetSurfaceDropCaption", surface, StringComparison.Ordinal);
+        Assert.DoesNotContain("HideExternalDragContent", surface, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (payload.IsInternalReorder)",
+            itemVisuals,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (!payload.IsInternalReorder && payload.HasSurfacePathData)",
+            itemVisuals,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SuppressExternalDragOperationBadge(e);",
+            itemVisuals,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Widget.Stack.DragCaption.Import",
+            itemVisuals,
+            StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("PasteFromClipboardAsync")]
     [InlineData("PickAndImportFilesAsync")]

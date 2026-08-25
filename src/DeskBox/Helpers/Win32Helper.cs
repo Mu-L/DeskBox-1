@@ -256,6 +256,13 @@ public static partial class Win32Helper
     public static partial bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
     [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool EnumChildWindows(
+        IntPtr hWndParent,
+        EnumWindowsProc lpEnumFunc,
+        IntPtr lParam);
+
+    [LibraryImport("user32.dll")]
     public static partial uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -676,6 +683,7 @@ public static partial class Win32Helper
     public const int WM_NCHITTEST = 0x0084;
     public const int WM_NCLBUTTONDBLCLK = 0x00A3;
     public const int WM_EXITSIZEMOVE = 0x0232;
+    public const int MA_ACTIVATE = 1;
     public const int MA_NOACTIVATE = 3;
 
     public const int HTCLIENT = 1;
