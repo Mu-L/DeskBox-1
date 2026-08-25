@@ -9,7 +9,7 @@
 - Restored settings values and interaction paths for Glance, Music, file stacks, Quick Capture, and Todo in Native AOT builds.
 - Multiple Glance widgets can now be switched safely in Settings, and a newly created Glance widget can be closed from its context menu.
 - Quick Capture and Todo now retain their projected lists in Native AOT. Image attachments use typed thumbnail bindings in both compact and full views.
-- The retained Native AOT audit now records 1,190 `WMC1510` warnings after ten runtime bindings were replaced with compiled or generated bindings.
+- The final retained Native AOT audit baseline for 1.4.5 is 1,213 `WMC1510` warnings, synchronized across every audit and smoke-test consumer.
 
 #### Persistence reliability
 
@@ -23,7 +23,7 @@
 - 修复 Native AOT 版本中时光、音乐、文件叠放、随记和待办的设置显示与交互路径。
 - 设置中可以安全切换多个时光格子，新建的时光格子也可以通过右键菜单正常关闭。
 - 随记和待办在 Native AOT 下会保留列表投影，紧凑视图与完整视图中的图片附件均改用类型化缩略图绑定。
-- 用编译绑定或生成绑定替换十处运行时绑定后，保留的 Native AOT 审计基线降至 1,190 条 `WMC1510` 警告。
+- 1.4.5 最终保留的 Native AOT 审计基线为 1,213 条 `WMC1510` 警告，并已同步到全部审计与冒烟测试消费者。
 
 #### 数据保存可靠性
 
