@@ -130,6 +130,73 @@ public sealed class WidgetCompactTrayVisibilityContractTests
     }
 
     [Fact]
+    public void CloseConfirmation_HoldsSmartCapsuleAcrossEveryFlyoutHandoff()
+    {
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/ContentWidgetWindow.Commands.cs"));
+        string moreMenu = ExtractSection(
+            source,
+            "private MenuFlyout CreateMoreFlyout()",
+            "private void SetFileWidgetFolderOpenBehaviorOverride(");
+        string contentMenu = ExtractSection(
+            source,
+            "private void ProvideWidgetActionsForContentMenu(",
+            "private string GetFeatureWidgetCloseMenuText()");
+        string closeHandoff = ExtractSection(
+            source,
+            "private void QueueCloseWidgetFlyoutAfterMenuClosed(",
+            "private void ShowCloseWidgetFlyout(FrameworkElement target)");
+        string fileCloseMenu = ExtractSection(
+            source,
+            "private MenuFlyout CreateFileWidgetCloseFlyout(",
+            "private MenuFlyoutItem CreateFileWidgetCloseAction(");
+        string folderRecycleHandoff = ExtractSection(
+            source,
+            "private void QueueDeleteManagedFolderConfirmationAfterMenuClosed(",
+            "private async Task ShowDeleteManagedFolderConfirmationAsync()");
+
+        foreach (string firstMenu in new[] { moreMenu, contentMenu })
+        {
+            Assert.Contains("AcquireCompactInteraction(", firstMenu, StringComparison.Ordinal);
+            Assert.Contains(
+                "\"content-close-confirmation-handoff\"",
+                firstMenu,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "QueueCloseWidgetFlyoutAfterMenuClosed(handoffInteraction);",
+                firstMenu,
+                StringComparison.Ordinal);
+        }
+        Assert.Contains("AcquireCompactInteraction(", fileCloseMenu, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"managed-folder-recycle-confirmation-handoff\"",
+            fileCloseMenu,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "QueueDeleteManagedFolderConfirmationAfterMenuClosed(",
+            fileCloseMenu,
+            StringComparison.Ordinal);
+
+        int closeShowIndex = closeHandoff.IndexOf(
+            "ShowCloseWidgetFlyout(ContentWidgetShell);",
+            StringComparison.Ordinal);
+        int closeReleaseIndex = closeHandoff.IndexOf(
+            "handoffInteraction?.Dispose();",
+            closeShowIndex,
+            StringComparison.Ordinal);
+        Assert.True(closeShowIndex >= 0 && closeShowIndex < closeReleaseIndex);
+
+        int recycleShowIndex = folderRecycleHandoff.IndexOf(
+            "await ShowDeleteManagedFolderConfirmationAsync();",
+            StringComparison.Ordinal);
+        int recycleReleaseIndex = folderRecycleHandoff.IndexOf(
+            "handoffInteraction?.Dispose();",
+            recycleShowIndex,
+            StringComparison.Ordinal);
+        Assert.True(recycleShowIndex >= 0 && recycleShowIndex < recycleReleaseIndex);
+    }
+
+    [Fact]
     public void HostVisibilityReset_ClearsShellHoverVisualsBeforeRebuildingNativePointerState()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(

@@ -300,6 +300,7 @@ public sealed partial class ContentWidgetWindow
         bool startRenameWhenClosed = false;
         bool showCloseWhenClosed = false;
         bool showForegroundColorPickerWhenClosed = false;
+        IDisposable? closeConfirmationHandoff = null;
         rename.Click += (_, _) => startRenameWhenClosed = true;
         flyout.Closed += (_, _) =>
         {
@@ -309,8 +310,9 @@ public sealed partial class ContentWidgetWindow
             }
             else if (showCloseWhenClosed)
             {
-                DispatcherQueue.TryEnqueue(() =>
-                    ShowCloseWidgetFlyout(ContentWidgetShell));
+                IDisposable? handoffInteraction = closeConfirmationHandoff;
+                closeConfirmationHandoff = null;
+                QueueCloseWidgetFlyoutAfterMenuClosed(handoffInteraction);
             }
             else if (showForegroundColorPickerWhenClosed)
             {
@@ -329,8 +331,10 @@ public sealed partial class ContentWidgetWindow
         flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
             _config,
             SettingsService.Settings.WidgetCollapseBehavior,
+            SettingsService.Settings.WidgetCompactExpansionDirection,
             App.Current.LocalizationService,
             SetCollapseBehaviorOverride,
+            SetCompactExpansionDirectionOverride,
             ResetCompactWidthOverride));
         flyout.Items.Add(WidgetLockMenuBuilder.Create(
             App.Current.LocalizationService,
@@ -373,7 +377,12 @@ public sealed partial class ContentWidgetWindow
             Icon = new FontIcon { Glyph = "\uE7E8" }
         };
         WidgetDangerActionStyle.Apply(disableWidget);
-        disableWidget.Click += (_, _) => showCloseWhenClosed = true;
+        disableWidget.Click += (_, _) =>
+        {
+            showCloseWhenClosed = true;
+            closeConfirmationHandoff ??= AcquireCompactInteraction(
+                "content-close-confirmation-handoff");
+        };
         flyout.Items.Add(disableWidget);
 
         return flyout;
@@ -403,19 +412,26 @@ public sealed partial class ContentWidgetWindow
             SetChromeModeOverride);
 
         bool showCloseWhenClosed = false;
+        IDisposable? closeConfirmationHandoff = null;
         var closeWidget = new MenuFlyoutItem
         {
             Text = GetFeatureWidgetCloseMenuText(),
             Icon = new FontIcon { Glyph = "\uE7E8" }
         };
         WidgetDangerActionStyle.Apply(closeWidget);
-        closeWidget.Click += (_, _) => showCloseWhenClosed = true;
+        closeWidget.Click += (_, _) =>
+        {
+            showCloseWhenClosed = true;
+            closeConfirmationHandoff ??= AcquireCompactInteraction(
+                "content-close-confirmation-handoff");
+        };
         e.Menu.Closed += (_, _) =>
         {
             if (showCloseWhenClosed)
             {
-                DispatcherQueue.TryEnqueue(() =>
-                    ShowCloseWidgetFlyout(ContentWidgetShell));
+                IDisposable? handoffInteraction = closeConfirmationHandoff;
+                closeConfirmationHandoff = null;
+                QueueCloseWidgetFlyoutAfterMenuClosed(handoffInteraction);
             }
         };
         e.CloseWidgetItem = closeWidget;
@@ -434,6 +450,27 @@ public sealed partial class ContentWidgetWindow
     private void ShowCloseWidgetFlyout()
     {
         ShowCloseWidgetFlyout(ContentWidgetShell.MoreActionButton);
+    }
+
+    private void QueueCloseWidgetFlyoutAfterMenuClosed(
+        IDisposable? handoffInteraction)
+    {
+        // A smart capsule must stay expanded during the dispatcher turn between
+        // the source menu closing and the confirmation flyout taking over.
+        if (!DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    ShowCloseWidgetFlyout(ContentWidgetShell);
+                }
+                finally
+                {
+                    handoffInteraction?.Dispose();
+                }
+            }))
+        {
+            handoffInteraction?.Dispose();
+        }
     }
 
     private void ShowCloseWidgetFlyout(FrameworkElement target)
@@ -547,6 +584,7 @@ public sealed partial class ContentWidgetWindow
             "\uE8CA",
             isDanger: false));
         bool confirmFolderRecycleWhenClosed = false;
+        IDisposable? folderRecycleConfirmationHandoff = null;
         var recycleFolder = new MenuFlyoutItem
         {
             Text = localization.T("Widget.DeleteFolderToRecycleBin"),
@@ -554,14 +592,21 @@ public sealed partial class ContentWidgetWindow
         };
         WidgetDangerActionStyle.Apply(recycleFolder);
         recycleFolder.Click += (_, _) =>
+        {
             confirmFolderRecycleWhenClosed = true;
+            folderRecycleConfirmationHandoff ??= AcquireCompactInteraction(
+                "managed-folder-recycle-confirmation-handoff");
+        };
         flyout.Items.Add(recycleFolder);
         flyout.Closed += (_, _) =>
         {
             if (confirmFolderRecycleWhenClosed)
             {
-                DispatcherQueue.TryEnqueue(async () =>
-                    await ShowDeleteManagedFolderConfirmationAsync());
+                IDisposable? handoffInteraction =
+                    folderRecycleConfirmationHandoff;
+                folderRecycleConfirmationHandoff = null;
+                QueueDeleteManagedFolderConfirmationAfterMenuClosed(
+                    handoffInteraction);
             }
         };
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -588,6 +633,25 @@ public sealed partial class ContentWidgetWindow
         item.Click += async (_, _) =>
             await ExecuteFileWidgetCloseActionAsync(removalAction);
         return item;
+    }
+
+    private void QueueDeleteManagedFolderConfirmationAfterMenuClosed(
+        IDisposable? handoffInteraction)
+    {
+        if (!DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    await ShowDeleteManagedFolderConfirmationAsync();
+                }
+                finally
+                {
+                    handoffInteraction?.Dispose();
+                }
+            }))
+        {
+            handoffInteraction?.Dispose();
+        }
     }
 
     private async Task ShowDeleteManagedFolderConfirmationAsync()

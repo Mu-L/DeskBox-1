@@ -8,8 +8,10 @@ internal static class WidgetCollapseMenuBuilder
     public static MenuFlyoutSubItem Create(
         WidgetConfig config,
         string defaultBehavior,
+        string defaultExpansionDirection,
         LocalizationService localizationService,
         Action<WidgetCollapseBehavior> applyBehavior,
+        Action<string?> applyExpansionDirection,
         Action resetCompactWidth)
     {
         WidgetCollapseBehavior selectedBehavior = WidgetCollapseBehaviorNames.GetOverride(config);
@@ -37,14 +39,57 @@ internal static class WidgetCollapseMenuBuilder
         }
 
         subItem.Items.Add(new MenuFlyoutSeparator());
+        subItem.Items.Add(CreateExpansionDirectionSubItem(
+            config,
+            defaultExpansionDirection,
+            localizationService,
+            applyExpansionDirection));
+        subItem.Items.Add(new MenuFlyoutSeparator());
         var resetWidthItem = new MenuFlyoutItem
         {
             Text = localizationService.T("Widget.Compact.RestoreAutomaticWidth"),
-            Icon = new FontIcon { Glyph = "\uE8A7" },
             IsEnabled = config.CompactWidth is not null
         };
         resetWidthItem.Click += (_, _) => resetCompactWidth();
         subItem.Items.Add(resetWidthItem);
+
+        return subItem;
+    }
+
+    private static MenuFlyoutSubItem CreateExpansionDirectionSubItem(
+        WidgetConfig config,
+        string defaultExpansionDirection,
+        LocalizationService localizationService,
+        Action<string?> applyExpansionDirection)
+    {
+        string? selectedDirection = WidgetCompactExpansionDirectionSettings.GetOverride(config);
+        string normalizedDefault = SettingsService.NormalizeWidgetCompactExpansionDirection(
+            defaultExpansionDirection);
+        var subItem = new MenuFlyoutSubItem
+        {
+            Text = localizationService.T("Settings.Capsule.ExpansionDirection.Title")
+        };
+
+        foreach (string? direction in new string?[]
+                 {
+                     null,
+                     SettingsService.WidgetCompactExpansionDirectionAuto,
+                     SettingsService.WidgetCompactExpansionDirectionDown,
+                     SettingsService.WidgetCompactExpansionDirectionUp
+                 })
+        {
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = direction is null
+                    ? localizationService.Format(
+                        "Widget.CollapseBehavior.SystemWithDefault",
+                        localizationService.T(GetExpansionDirectionTextKey(normalizedDefault)))
+                    : localizationService.T(GetExpansionDirectionTextKey(direction)),
+                IsChecked = string.Equals(selectedDirection, direction, StringComparison.Ordinal)
+            };
+            item.Click += (_, _) => applyExpansionDirection(direction);
+            subItem.Items.Add(item);
+        }
 
         return subItem;
     }
@@ -75,6 +120,18 @@ internal static class WidgetCollapseMenuBuilder
             WidgetCollapseBehavior.Expanded => "Widget.CollapseBehavior.Expanded",
             WidgetCollapseBehavior.Smart => "Widget.CollapseBehavior.Smart",
             _ => "Widget.CollapseBehavior.Click"
+        };
+    }
+
+    private static string GetExpansionDirectionTextKey(string direction)
+    {
+        return SettingsService.NormalizeWidgetCompactExpansionDirection(direction) switch
+        {
+            SettingsService.WidgetCompactExpansionDirectionAuto =>
+                "Settings.Capsule.ExpansionDirection.Auto",
+            SettingsService.WidgetCompactExpansionDirectionUp =>
+                "Settings.Capsule.ExpansionDirection.Up",
+            _ => "Settings.Capsule.ExpansionDirection.Down"
         };
     }
 }

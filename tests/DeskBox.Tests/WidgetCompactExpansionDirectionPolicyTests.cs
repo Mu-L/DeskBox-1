@@ -1,9 +1,64 @@
+using DeskBox.Models;
 using DeskBox.Services;
 
 namespace DeskBox.Tests;
 
 public sealed class WidgetCompactExpansionDirectionPolicyTests
 {
+    [Fact]
+    public void PerWidgetOverride_ResolvesBeforeDefaultAndCanFollowDefaultAgain()
+    {
+        var config = new WidgetConfig();
+
+        Assert.Equal(
+            SettingsService.WidgetCompactExpansionDirectionDown,
+            WidgetCompactExpansionDirectionSettings.Resolve(
+                config,
+                SettingsService.WidgetCompactExpansionDirectionDown));
+
+        WidgetCompactExpansionDirectionSettings.SetOverride(
+            config,
+            SettingsService.WidgetCompactExpansionDirectionAuto);
+        Assert.Equal(
+            SettingsService.WidgetCompactExpansionDirectionAuto,
+            WidgetCompactExpansionDirectionSettings.Resolve(
+                config,
+                SettingsService.WidgetCompactExpansionDirectionDown));
+
+        WidgetCompactExpansionDirectionSettings.SetOverride(config, null);
+        Assert.Equal(
+            SettingsService.WidgetCompactExpansionDirectionDown,
+            WidgetCompactExpansionDirectionSettings.Resolve(
+                config,
+                SettingsService.WidgetCompactExpansionDirectionDown));
+        Assert.DoesNotContain(
+            WidgetCompactExpansionDirectionSettings.MetadataKey,
+            config.Metadata);
+    }
+
+    [Fact]
+    public void PerWidgetOverride_NormalizesKnownValuesAndRemovesInvalidValues()
+    {
+        var config = new WidgetConfig
+        {
+            Metadata = new Dictionary<string, string>
+            {
+                [WidgetCompactExpansionDirectionSettings.MetadataKey] = "up"
+            }
+        };
+
+        Assert.True(WidgetCompactExpansionDirectionSettings.NormalizeOverride(config));
+        Assert.Equal(
+            SettingsService.WidgetCompactExpansionDirectionUp,
+            config.Metadata[WidgetCompactExpansionDirectionSettings.MetadataKey]);
+
+        config.Metadata[WidgetCompactExpansionDirectionSettings.MetadataKey] = "sideways";
+        Assert.True(WidgetCompactExpansionDirectionSettings.NormalizeOverride(config));
+        Assert.DoesNotContain(
+            WidgetCompactExpansionDirectionSettings.MetadataKey,
+            config.Metadata);
+    }
+
     [Fact]
     public void Auto_PreservesAutomaticAnchorOrder()
     {

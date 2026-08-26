@@ -112,8 +112,10 @@ public sealed partial class QuickCaptureWidgetWindow
         flyout.Items.Add(WidgetCollapseMenuBuilder.Create(
             ViewModel.Config,
             SettingsService.Settings.WidgetCollapseBehavior,
+            SettingsService.Settings.WidgetCompactExpansionDirection,
             _localizationService,
             SetCollapseBehaviorOverride,
+            SetCompactExpansionDirectionOverride,
             ResetCompactWidthOverride));
         flyout.Items.Add(WidgetLockMenuBuilder.Create(
             _localizationService,

@@ -1068,7 +1068,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(SettingsService.WidgetCompactWidthModeAligned, newUserDefaults.WidgetCompactWidthMode);
         Assert.Equal(newUserDefaults.WidgetCompactWidthMode, restoredDefaults.WidgetCompactWidthMode);
         Assert.Equal(
-            SettingsService.WidgetCompactExpansionDirectionAuto,
+            SettingsService.WidgetCompactExpansionDirectionDown,
             newUserDefaults.WidgetCompactExpansionDirection);
         Assert.Equal(
             newUserDefaults.WidgetCompactExpansionDirection,

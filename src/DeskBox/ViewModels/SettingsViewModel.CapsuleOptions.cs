@@ -9,7 +9,7 @@ public partial class SettingsViewModel
 {
     private string _selectedWidgetCompactWidthMode = SettingsService.WidgetCompactWidthModeAligned;
     private string _selectedWidgetCompactExpansionDirection =
-        SettingsService.WidgetCompactExpansionDirectionAuto;
+        SettingsService.WidgetCompactExpansionDirectionDown;
     private string _selectedWidgetCapsuleArrangementMode = SettingsService.WidgetCapsuleArrangementFree;
     private double _widgetCapsuleBarSpacing = SettingsService.DefaultWidgetCapsuleBarSpacing;
     private string _selectedWidgetCapsuleBarPlacement = SettingsService.WidgetCapsuleBarPlacementFloating;
@@ -602,7 +602,8 @@ public partial class SettingsViewModel
 
     public int CapsuleCustomRuleCount =>
         _settingsService.Settings.Widgets.Count(widget =>
-            widget.Metadata?.ContainsKey(WidgetCollapseBehaviorNames.MetadataKey) == true) +
+            widget.Metadata?.ContainsKey(WidgetCollapseBehaviorNames.MetadataKey) == true ||
+            widget.Metadata?.ContainsKey(WidgetCompactExpansionDirectionSettings.MetadataKey) == true) +
         _settingsService.Settings.WidgetGroups.Count(group =>
             !string.Equals(
                 group.CollapseBehavior,
@@ -662,7 +663,11 @@ public partial class SettingsViewModel
         int changed = 0;
         foreach (var widget in _settingsService.Settings.Widgets)
         {
-            if (widget.Metadata?.Remove(WidgetCollapseBehaviorNames.MetadataKey) == true)
+            bool widgetChanged =
+                widget.Metadata?.Remove(WidgetCollapseBehaviorNames.MetadataKey) == true;
+            widgetChanged |=
+                widget.Metadata?.Remove(WidgetCompactExpansionDirectionSettings.MetadataKey) == true;
+            if (widgetChanged)
             {
                 changed++;
             }
@@ -782,12 +787,14 @@ public partial class SettingsViewModel
 
     private static bool HasCapsuleOverride(WidgetConfig widget) =>
         widget.Metadata?.ContainsKey(WidgetCollapseBehaviorNames.MetadataKey) == true ||
+        widget.Metadata?.ContainsKey(WidgetCompactExpansionDirectionSettings.MetadataKey) == true ||
         widget.CompactWidth is not null ||
         widget.CompactPlacement is not null;
 
     private static bool ClearCapsuleOverrides(WidgetConfig widget)
     {
         bool changed = widget.Metadata?.Remove(WidgetCollapseBehaviorNames.MetadataKey) == true;
+        changed |= widget.Metadata?.Remove(WidgetCompactExpansionDirectionSettings.MetadataKey) == true;
         if (widget.CompactWidth is not null)
         {
             widget.CompactWidth = null;
@@ -855,13 +862,23 @@ public partial class SettingsViewModel
 
     private CapsuleOverrideSettingsItem CreateCapsuleOverrideSettingsItem(WidgetConfig widget)
     {
-        var details = new List<string>(3);
+        var details = new List<string>(4);
         if (widget.Metadata is not null &&
             widget.Metadata.TryGetValue(WidgetCollapseBehaviorNames.MetadataKey, out string? behavior))
         {
             details.Add(_localizationService.Format(
                 "Settings.Capsule.Overrides.Item.Behavior",
                 GetWidgetCollapseBehaviorDisplayName(behavior)));
+        }
+
+        if (widget.Metadata is not null &&
+            widget.Metadata.TryGetValue(
+                WidgetCompactExpansionDirectionSettings.MetadataKey,
+                out string? expansionDirection))
+        {
+            details.Add(_localizationService.Format(
+                "Settings.Capsule.Overrides.Item.Direction",
+                GetWidgetCompactExpansionDirectionDisplayName(expansionDirection)));
         }
 
         if (widget.CompactWidth is { } width)

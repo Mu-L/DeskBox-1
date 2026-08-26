@@ -16,6 +16,19 @@ public sealed class WidgetTitleButtonMenuTests
         Assert.Contains("TryUpdateWidgetHoverButtonAction", builder, StringComparison.Ordinal);
         Assert.Contains("settingsService.Settings.ShowHoverButtons = true", builder, StringComparison.Ordinal);
         Assert.Contains("settingsService.SaveDebounced()", builder, StringComparison.Ordinal);
+
+        int submenuStart = builder.IndexOf(
+            "private static MenuFlyoutSubItem CreateTitleButtonsSubItem",
+            StringComparison.Ordinal);
+        int submenuEnd = builder.IndexOf(
+            "private static void RefreshTitleButtonItems",
+            submenuStart,
+            StringComparison.Ordinal);
+        Assert.True(submenuStart >= 0 && submenuEnd > submenuStart);
+        Assert.DoesNotContain(
+            "Icon =",
+            builder[submenuStart..submenuEnd],
+            StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

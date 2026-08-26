@@ -330,7 +330,7 @@ public class AppSettings
     /// Vertical direction used when a compact widget expands.
     /// Valid values: <c>"Auto"</c>, <c>"Down"</c>, <c>"Up"</c>.
     /// </summary>
-    public string WidgetCompactExpansionDirection { get; set; } = "Auto";
+    public string WidgetCompactExpansionDirection { get; set; } = "Down";
 
     /// <summary>
     /// How compact widgets are arranged on the desktop.

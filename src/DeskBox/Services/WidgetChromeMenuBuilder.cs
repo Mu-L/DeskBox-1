@@ -86,8 +86,7 @@ internal static class WidgetChromeMenuBuilder
     {
         var subItem = new MenuFlyoutSubItem
         {
-            Text = localizationService.T("Widget.TitleButtons.Title"),
-            Icon = new FontIcon { Glyph = "\uE7C9" }
+            Text = localizationService.T("Widget.TitleButtons.Title")
         };
         var items = new List<(string Action, ToggleMenuFlyoutItem Item)>();
 

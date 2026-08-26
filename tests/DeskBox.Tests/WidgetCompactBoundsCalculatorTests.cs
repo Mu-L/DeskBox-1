@@ -303,8 +303,8 @@ public sealed class WidgetCompactBoundsCalculatorTests
     }
 
     [Theory]
-    [InlineData(null, SettingsService.WidgetCompactExpansionDirectionAuto)]
-    [InlineData("unexpected", SettingsService.WidgetCompactExpansionDirectionAuto)]
+    [InlineData(null, SettingsService.WidgetCompactExpansionDirectionDown)]
+    [InlineData("unexpected", SettingsService.WidgetCompactExpansionDirectionDown)]
     [InlineData("auto", SettingsService.WidgetCompactExpansionDirectionAuto)]
     [InlineData("down", SettingsService.WidgetCompactExpansionDirectionDown)]
     [InlineData("up", SettingsService.WidgetCompactExpansionDirectionUp)]

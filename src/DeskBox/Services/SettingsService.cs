@@ -420,7 +420,7 @@ public const int DefaultSearchMaxResults = 100;
         settings.WidgetGroupsEnabled = true;
         settings.WidgetCapsuleModeEnabled = false;
         settings.WidgetCompactWidthMode = WidgetCompactWidthModeAligned;
-        settings.WidgetCompactExpansionDirection = WidgetCompactExpansionDirectionAuto;
+        settings.WidgetCompactExpansionDirection = WidgetCompactExpansionDirectionDown;
         settings.WidgetCapsuleArrangementMode = WidgetCapsuleArrangementFree;
         settings.WidgetCapsuleBarSpacing = DefaultWidgetCapsuleBarSpacing;
         settings.WidgetCapsuleBarPlacement = WidgetCapsuleBarPlacementFloating;
@@ -1755,6 +1755,14 @@ settings.FocusClickedWidgetOnRaise = false;
     {
         if (string.Equals(
                 value,
+                WidgetCompactExpansionDirectionAuto,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return WidgetCompactExpansionDirectionAuto;
+        }
+
+        if (string.Equals(
+                value,
                 WidgetCompactExpansionDirectionDown,
                 StringComparison.OrdinalIgnoreCase))
         {
@@ -1766,7 +1774,7 @@ settings.FocusClickedWidgetOnRaise = false;
                 WidgetCompactExpansionDirectionUp,
                 StringComparison.OrdinalIgnoreCase)
             ? WidgetCompactExpansionDirectionUp
-            : WidgetCompactExpansionDirectionAuto;
+            : WidgetCompactExpansionDirectionDown;
     }
 
     public static string NormalizeWidgetCapsuleArrangementMode(string? value)
@@ -2159,6 +2167,11 @@ settings.FocusClickedWidgetOnRaise = false;
                         changed = true;
                     }
                 }
+            }
+
+            if (WidgetCompactExpansionDirectionSettings.NormalizeOverride(widget))
+            {
+                changed = true;
             }
 
             if (WidgetFileStackSettings.NormalizeOverrides(widget))

@@ -78,7 +78,7 @@ public abstract partial class WidgetWindowBase
     private double? _observedCompactWidth;
     private WidgetCompactPlacement? _observedCompactPlacement;
     private string _observedCompactExpansionDirection =
-        SettingsService.WidgetCompactExpansionDirectionAuto;
+        SettingsService.WidgetCompactExpansionDirectionDown;
     private long _collapseAnimationStarted;
     private int _collapseAnimationDurationMs;
     private long _collapseAnimationGeneration;
@@ -272,6 +272,11 @@ public abstract partial class WidgetWindowBase
             Config,
             SettingsService.Settings.WidgetCollapseBehavior);
 
+    protected string EffectiveCompactExpansionDirection =>
+        WidgetCompactExpansionDirectionSettings.Resolve(
+            Config,
+            SettingsService.Settings.WidgetCompactExpansionDirection);
+
     protected virtual bool SupportsCompactDropExpansion =>
         Config.WidgetKind is WidgetKind.File or WidgetKind.Todo or WidgetKind.QuickCapture;
 
@@ -442,6 +447,15 @@ public abstract partial class WidgetWindowBase
         App.Current?.WidgetManager?.RefreshCapsuleBarLayout();
     }
 
+    protected void SetCompactExpansionDirectionOverride(string? direction)
+    {
+        WidgetCompactExpansionDirectionSettings.SetOverride(Config, direction);
+        SettingsService.UpdateWidget(Config, notifySubscribers: false);
+        SettingsService.SaveDebounced(notifySubscribers: false);
+        CollapseSettingsChanged();
+        App.Current?.WidgetManager?.RefreshCapsuleBarLayout();
+    }
+
     /// <summary>
     /// Rebuilds the compact bounds from the currently visible expanded panel.
     /// Fixed Down keeps the panel's top/title edge; fixed Up keeps its bottom
@@ -461,7 +475,7 @@ public abstract partial class WidgetWindowBase
             WidgetCompactExpansionAnchor.LeftTop;
         WidgetCompactExpansionAnchor anchor =
             WidgetCompactExpansionDirectionPolicy.Apply(
-                SettingsService.Settings.WidgetCompactExpansionDirection,
+                EffectiveCompactExpansionDirection,
                 [automaticAnchor])[0];
 
         Config.CompactPlacement = null;
@@ -479,8 +493,7 @@ public abstract partial class WidgetWindowBase
 
     private bool CompactPlacementNeedsDirectionRepair()
     {
-        string direction = SettingsService.NormalizeWidgetCompactExpansionDirection(
-            SettingsService.Settings.WidgetCompactExpansionDirection);
+        string direction = EffectiveCompactExpansionDirection;
         if (direction == SettingsService.WidgetCompactExpansionDirectionAuto)
         {
             return false;
@@ -1668,9 +1681,7 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
-        string compactExpansionDirection =
-            SettingsService.NormalizeWidgetCompactExpansionDirection(
-                SettingsService.Settings.WidgetCompactExpansionDirection);
+        string compactExpansionDirection = EffectiveCompactExpansionDirection;
         bool compactExpansionDirectionChanged = !string.Equals(
             _observedCompactExpansionDirection,
             compactExpansionDirection,
@@ -2343,7 +2354,7 @@ public abstract partial class WidgetWindowBase
                 : ResolveCompactExpansionAnchorOrder(compactBounds, workArea);
         IReadOnlyList<WidgetCompactExpansionAnchor> anchors =
             WidgetCompactExpansionDirectionPolicy.Apply(
-                SettingsService.Settings.WidgetCompactExpansionDirection,
+                EffectiveCompactExpansionDirection,
                 automaticAnchors);
         return WidgetCompactExpansionCalculator.Resolve(
             compactBounds,
@@ -3472,7 +3483,7 @@ public abstract partial class WidgetWindowBase
         WidgetCompactBoundsCalculator.CapturePlacement(
             Config,
             bounds,
-            SettingsService.Settings.WidgetCompactExpansionDirection);
+            EffectiveCompactExpansionDirection);
         ObserveCompactOverrides();
         if (!persist)
         {
@@ -3488,9 +3499,7 @@ public abstract partial class WidgetWindowBase
     {
         _observedCompactWidth = Config.CompactWidth;
         _observedCompactPlacement = Config.CompactPlacement;
-        _observedCompactExpansionDirection =
-            SettingsService.NormalizeWidgetCompactExpansionDirection(
-                SettingsService.Settings.WidgetCompactExpansionDirection);
+        _observedCompactExpansionDirection = EffectiveCompactExpansionDirection;
     }
 
     private RectInt32 GetCurrentWindowBounds()
