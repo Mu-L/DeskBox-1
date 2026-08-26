@@ -1281,7 +1281,7 @@ public sealed partial class FileSurfaceContent
                     appearance.SurfaceOpacity);
         }
 
-        return new SolidColorBrush(surfaceColor);
+        return SharedBrushCache.GetOrCreate(surfaceColor);
     }
 
     private double ResolveStackPopoverCornerRadius() =>
@@ -1328,7 +1328,7 @@ public sealed partial class FileSurfaceContent
         _stackPopoverSurface.Background = background;
         _stackPopoverSurface.CornerRadius = new CornerRadius(cornerRadius);
         _stackPopoverSurface.BorderBrush =
-            new SolidColorBrush(borderVisuals.BorderColor);
+            SharedBrushCache.GetOrCreate(borderVisuals.BorderColor);
         _stackPopoverSurface.BorderThickness =
             new Thickness(borderVisuals.Thickness);
 
@@ -1359,7 +1359,7 @@ public sealed partial class FileSurfaceContent
         if (_stackPopoverReorderIndicator is not null)
         {
             _stackPopoverReorderIndicator.Background =
-                new SolidColorBrush(materialAppearance.AccentColor);
+                SharedBrushCache.GetOrCreate(materialAppearance.AccentColor);
         }
 
         if (_stackPopoverPopup is { } popup)
@@ -1417,7 +1417,7 @@ public sealed partial class FileSurfaceContent
 
     private static SolidColorBrush CreateStackPopoverNeutralBrush(
         bool isDark) =>
-        new(isDark
+        SharedBrushCache.GetOrCreate(isDark
             ? Windows.UI.Color.FromArgb(0x42, 0x18, 0x18, 0x1B)
             : Windows.UI.Color.FromArgb(0x58, 0xF8, 0xF8, 0xFA));
 

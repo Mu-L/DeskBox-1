@@ -349,11 +349,11 @@ public sealed partial class FileSurfaceContent :
         var accent = App.Current.ThemeService?.GetEffectiveAccentColor()
             ?? AccentColorHelper.DefaultAccentColor;
         ReorderInsertionAccentStop.Color = accent;
-        ReorderInsertionLine.Background = new SolidColorBrush(accent);
-        ImportProgressBar.Foreground = new SolidColorBrush(accent);
+        ReorderInsertionLine.Background = SharedBrushCache.GetOrCreate(accent);
+        ImportProgressBar.Foreground = SharedBrushCache.GetOrCreate(accent);
         if (_activeImportVisualState is not ImportCompletionState.Failed)
         {
-            ImportStateIcon.Foreground = new SolidColorBrush(accent);
+            ImportStateIcon.Foreground = SharedBrushCache.GetOrCreate(accent);
         }
     }
 

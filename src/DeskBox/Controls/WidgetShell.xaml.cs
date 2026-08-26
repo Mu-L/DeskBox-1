@@ -764,7 +764,7 @@ public sealed partial class WidgetShell : UserControl
             WidgetGroupNavigationInteractionPolicy.ResolvePositionRailSlots(
                 activeIndex,
                 presentation.Members.Count);
-        var accentBrush = new SolidColorBrush(TitleIconAccentColor);
+        var accentBrush = SharedBrushCache.GetOrCreate(TitleIconAccentColor);
         foreach (WidgetGroupPositionRailSlot slot in slots)
         {
             bool active = slot.IsActive;
@@ -859,22 +859,21 @@ public sealed partial class WidgetShell : UserControl
             App.Current?.ThemeService?.GetEffectiveAccentColor() ??
             AccentColorHelper.DefaultAccentColor;
         byte borderAlpha = ready ? (byte)0xF0 : blocked ? (byte)0xA8 : (byte)0xD0;
-        GroupDropPreview.Background = new SolidColorBrush(Colors.Transparent);
-        GroupDropPreview.BorderBrush = new SolidColorBrush(Color.FromArgb(
+        GroupDropPreview.Background = SharedBrushCache.GetOrCreate(Colors.Transparent);
+        GroupDropPreview.BorderBrush = SharedBrushCache.GetOrCreate(Color.FromArgb(
             borderAlpha,
             accent.R,
             accent.G,
             accent.B));
-        var foreground = new SolidColorBrush(Color.FromArgb(
+        GroupDropPreviewIcon.Foreground = SharedBrushCache.GetOrCreate(Color.FromArgb(
             0xFF,
             accent.R,
             accent.G,
             accent.B));
-        GroupDropPreviewIcon.Foreground = foreground;
 
         if (WindowsCompatibilityService.IsHighContrast)
         {
-            GroupDropPreview.Background = new SolidColorBrush(Colors.Transparent);
+            GroupDropPreview.Background = SharedBrushCache.GetOrCreate(Colors.Transparent);
         }
     }
 
@@ -2996,7 +2995,7 @@ public sealed partial class WidgetShell : UserControl
             channel);
 
         // Paused dim overlay: darken in dark theme, lighten (brighten) in light theme.
-        CompactPausedDim.Background = new SolidColorBrush(isDark
+        CompactPausedDim.Background = SharedBrushCache.GetOrCreate(isDark
             ? Color.FromArgb(0x1A, 0x00, 0x00, 0x00)
             : Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
     }
@@ -4795,7 +4794,7 @@ public sealed partial class WidgetShell : UserControl
     {
         bool isDark = ActualTheme == ElementTheme.Dark ||
             ActualTheme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark;
-        return new SolidColorBrush(isDark
+        return SharedBrushCache.GetOrCreate(isDark
             ? Color.FromArgb(0xFF, 0x2C, 0x2F, 0x36)
             : Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
     }
@@ -4804,7 +4803,7 @@ public sealed partial class WidgetShell : UserControl
     {
         bool isDark = ActualTheme == ElementTheme.Dark ||
             ActualTheme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark;
-        return new SolidColorBrush(isDark
+        return SharedBrushCache.GetOrCreate(isDark
             ? Color.FromArgb(0x52, 0xFF, 0xFF, 0xFF)
             : Color.FromArgb(0x2E, 0x00, 0x00, 0x00));
     }
