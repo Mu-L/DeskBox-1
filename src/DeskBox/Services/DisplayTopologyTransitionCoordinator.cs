@@ -10,34 +10,28 @@ internal sealed class DisplayTopologyTransitionCoordinator : IDisposable
 {
     internal static readonly TimeSpan ObservationInterval = TimeSpan.FromMilliseconds(180);
     internal static readonly TimeSpan VerificationDelay = TimeSpan.FromMilliseconds(140);
-    internal static readonly TimeSpan SnapshotTimeout = TimeSpan.FromMilliseconds(1500);
     private const int MaxRestoreRetryCount = 8;
-    private const int MaxSnapshotRetryCount = 4;
 
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly DispatcherQueueTimer _timer;
-    private readonly Func<Task<DisplayTopologySnapshot>> _snapshotProvider;
-    private readonly Func<long, string, DisplayTopologySnapshot, Task<bool>> _restoreAction;
+    private readonly Func<string> _signatureProvider;
+    private readonly Func<long, string, Task<bool>> _restoreAction;
     private readonly DisplayTopologyStabilityTracker _stabilityTracker = new(requiredObservations: 2);
 
     private long _generation;
     private string _pendingReasons = string.Empty;
     private int _restoreRetryCount;
-    private int _snapshotRetryCount;
-    private string? _lastAppliedSignature;
-    private DateTimeOffset _lastAppliedAtUtc;
-    private string? _verificationSignature;
     private bool _verificationPending;
     private bool _isExecuting;
     private bool _isDisposed;
 
     public DisplayTopologyTransitionCoordinator(
         DispatcherQueue dispatcherQueue,
-        Func<Task<DisplayTopologySnapshot>> snapshotProvider,
-        Func<long, string, DisplayTopologySnapshot, Task<bool>> restoreAction)
+        Func<string> signatureProvider,
+        Func<long, string, Task<bool>> restoreAction)
     {
         _dispatcherQueue = dispatcherQueue;
-        _snapshotProvider = snapshotProvider;
+        _signatureProvider = signatureProvider;
         _restoreAction = restoreAction;
         _timer = dispatcherQueue.CreateTimer();
         _timer.IsRepeating = false;
@@ -60,9 +54,7 @@ internal sealed class DisplayTopologyTransitionCoordinator : IDisposable
         _generation++;
         _pendingReasons = CombineReasons(_pendingReasons, reason);
         _restoreRetryCount = 0;
-        _snapshotRetryCount = 0;
         _verificationPending = false;
-        _verificationSignature = null;
         _stabilityTracker.Reset();
         Schedule(ObservationInterval);
     }
@@ -81,183 +73,82 @@ internal sealed class DisplayTopologyTransitionCoordinator : IDisposable
             return;
         }
 
-        _isExecuting = true;
         long generation = _generation;
+        string signature = CaptureSignature();
+        bool signatureChanged = !string.Equals(
+            signature,
+            _stabilityTracker.LastSignature,
+            StringComparison.Ordinal);
+        if (signatureChanged && _verificationPending)
+        {
+            // The topology moved again after the first apply. Treat the new
+            // stable signature as a fresh apply before scheduling verification.
+            _verificationPending = false;
+        }
+
+        if (!_stabilityTracker.Observe(signature))
+        {
+            Schedule(ObservationInterval);
+            return;
+        }
+
+        bool isVerification = _verificationPending;
+        bool completed = true;
+        _isExecuting = true;
         try
         {
-            DisplayTopologySnapshot snapshot = await CaptureSnapshotAsync();
-            if (_isDisposed || generation != _generation)
-            {
-                return;
-            }
-
-            if (!snapshot.IsValid)
-            {
-                RetryOrAbandonUnavailableSnapshot(generation, snapshot.FailureReason);
-                return;
-            }
-
-            _snapshotRetryCount = 0;
-            string signature = snapshot.SemanticSignature;
-            if (_verificationPending)
-            {
-                if (string.Equals(
-                        signature,
-                        _verificationSignature,
-                        StringComparison.Ordinal))
-                {
-                    CompleteSuccessfulRestore(generation, signature);
-                    return;
-                }
-
-                App.Log(
-                    $"[DisplayTopology] Topology changed during verification " +
-                    $"generation={generation}; observing the new snapshot");
-                _verificationPending = false;
-                _verificationSignature = null;
-                _restoreRetryCount = 0;
-                _stabilityTracker.Reset();
-            }
-
-            if (!_stabilityTracker.Observe(signature))
-            {
-                Schedule(ObservationInterval);
-                return;
-            }
-
-            bool forceUnchangedRestore =
-                RequiresRestoreWhenSignatureUnchanged(_pendingReasons);
-            bool signatureAlreadyApplied = string.Equals(
-                signature,
-                _lastAppliedSignature,
-                StringComparison.Ordinal);
-            bool recentlyApplied =
-                signatureAlreadyApplied &&
-                DateTimeOffset.UtcNow - _lastAppliedAtUtc <= TimeSpan.FromSeconds(2);
-            if (signatureAlreadyApplied &&
-                (!forceUnchangedRestore || recentlyApplied))
-            {
-                App.LogVerbose(
-                    $"[DisplayTopology] Restore skipped generation={generation} " +
-                    $"reasons={_pendingReasons} signature={signature} " +
-                    $"reason={(recentlyApplied ? "recently-applied" : "unchanged")}");
-                ClearPendingState();
-                return;
-            }
-
-            bool completed;
-            try
-            {
-                completed = await _restoreAction(generation, _pendingReasons, snapshot);
-            }
-            catch (Exception ex)
-            {
-                completed = false;
-                App.Log($"[DisplayTopology] Restore generation={generation} failed: {ex}");
-            }
-
-            if (completed)
-            {
-                // Record the successful apply before checking the generation.
-                // Window/DPI messages raised by this apply may already own a
-                // newer generation; that generation can now skip the same work.
-                _lastAppliedSignature = signature;
-                _lastAppliedAtUtc = DateTimeOffset.UtcNow;
-            }
-
-            // A newer native or polling signal owns the next pass. RequestRestore
-            // has already reset the tracker and scheduled its observation timer.
-            if (_isDisposed || generation != _generation)
-            {
-                return;
-            }
-
-            if (!completed)
-            {
-                if (_restoreRetryCount < MaxRestoreRetryCount)
-                {
-                    _restoreRetryCount++;
-                    Schedule(ObservationInterval);
-                    return;
-                }
-
-                App.Log(
-                    $"[DisplayTopology] Restore abandoned generation={generation} " +
-                    $"reasons={_pendingReasons} retries={_restoreRetryCount}");
-                ClearPendingState();
-                return;
-            }
-
-            // Remember the applied semantic topology immediately. If another
-            // per-window message arrives before verification, it will not cause
-            // the same full restore to run again.
-            _verificationPending = true;
-            _verificationSignature = signature;
-            _restoreRetryCount = 0;
-            _stabilityTracker.Reset();
-            Schedule(VerificationDelay);
+            completed = await _restoreAction(generation, _pendingReasons);
         }
         catch (Exception ex)
         {
-            App.Log($"[DisplayTopology] Coordinator generation={generation} failed: {ex}");
-            ClearPendingState();
+            completed = false;
+            App.Log($"[DisplayTopology] Restore generation={generation} failed: {ex}");
         }
         finally
         {
             _isExecuting = false;
         }
-    }
 
-    private async Task<DisplayTopologySnapshot> CaptureSnapshotAsync()
-    {
-        try
+        // A newer native or polling signal owns the next pass. RequestRestore
+        // has already reset the tracker and scheduled its observation timer.
+        if (_isDisposed || generation != _generation)
         {
-            return await _snapshotProvider().WaitAsync(SnapshotTimeout) ??
-                DisplayTopologySnapshot.Invalid("null-snapshot");
+            return;
         }
-        catch (TimeoutException)
-        {
-            return DisplayTopologySnapshot.Invalid("timeout");
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[DisplayTopology] Snapshot capture failed: {ex.Message}");
-            return DisplayTopologySnapshot.Invalid(ex.GetType().Name);
-        }
-    }
 
-    private void RetryOrAbandonUnavailableSnapshot(long generation, string reason)
-    {
-        if (_snapshotRetryCount < MaxSnapshotRetryCount)
+        if (!completed && _restoreRetryCount < MaxRestoreRetryCount)
         {
-            _snapshotRetryCount++;
+            _restoreRetryCount++;
             Schedule(ObservationInterval);
             return;
         }
 
-        App.Log(
-            $"[DisplayTopology] Snapshot unavailable; restore skipped " +
-            $"generation={generation} reasons={_pendingReasons} " +
-            $"retries={_snapshotRetryCount} reason={reason}");
-        ClearPendingState();
-    }
+        if (!isVerification)
+        {
+            _verificationPending = true;
+            Schedule(VerificationDelay);
+            return;
+        }
 
-    private void CompleteSuccessfulRestore(long generation, string signature)
-    {
         App.Log(
             $"[DisplayTopology] Restore completed generation={generation} " +
             $"reasons={_pendingReasons} signature={signature}");
-        ClearPendingState();
-    }
-
-    private void ClearPendingState()
-    {
         _pendingReasons = string.Empty;
         _verificationPending = false;
-        _verificationSignature = null;
         _restoreRetryCount = 0;
-        _snapshotRetryCount = 0;
-        _stabilityTracker.Reset();
+    }
+
+    private string CaptureSignature()
+    {
+        try
+        {
+            return _signatureProvider() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[DisplayTopology] Signature capture failed: {ex.Message}");
+            return string.Empty;
+        }
     }
 
     private void Schedule(TimeSpan delay)
@@ -284,21 +175,6 @@ internal sealed class DisplayTopologyTransitionCoordinator : IDisposable
             .Contains(normalized, StringComparer.Ordinal)
                 ? current
                 : current + "," + normalized;
-    }
-
-    internal static bool RequiresRestoreWhenSignatureUnchanged(string? reasons)
-    {
-        if (string.IsNullOrWhiteSpace(reasons))
-        {
-            return false;
-        }
-
-        return reasons
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(reason =>
-                reason.Equals("lifecycle-resume", StringComparison.Ordinal) ||
-                reason.StartsWith("lifecycle-session-", StringComparison.Ordinal) ||
-                reason.Contains("explorer-restart", StringComparison.Ordinal));
     }
 
     public void Dispose()

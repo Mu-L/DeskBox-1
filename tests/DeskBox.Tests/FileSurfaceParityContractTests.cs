@@ -573,9 +573,6 @@ public sealed class FileSurfaceParityContractTests
         string stackPopoverRenameWindow = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Views/StackPopoverInlineRenameWindow.cs"));
-        string widgetMaterialBackdrop = File.ReadAllText(Path.Combine(
-            root,
-            "src/DeskBox/Services/WidgetMaterialSystemBackdrop.cs"));
         string navigation = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.Navigation.cs"));
@@ -641,36 +638,12 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
         Assert.Contains("RequestStackState(", source, StringComparison.Ordinal);
         Assert.Contains(
-            "ResolveStackPopoverMaterialAppearance()",
+            "SystemBackdrop = new DesktopAcrylicBackdrop()",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
-            "CreateStackPopoverSurfaceBrush(",
+            "CreateStackPopoverTintBrush()",
             stackPopover,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "_stackPopoverMaterialBackdrop.UpdateAppearance(",
-            stackPopover,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "ApplyStackPopoverForegroundResources(content)",
-            stackPopover,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "class WidgetMaterialSystemBackdrop : SystemBackdrop",
-            widgetMaterialBackdrop,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "GetDefaultSystemBackdropConfiguration(",
-            widgetMaterialBackdrop,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "WidgetMaterialVisualCalculator.CalculateMica(",
-            widgetMaterialBackdrop,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "WidgetMaterialVisualCalculator.CalculateAcrylic(",
-            widgetMaterialBackdrop,
             StringComparison.Ordinal);
         Assert.Contains(
             "view.Width = layout.ItemsWidth",
@@ -840,14 +813,6 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "Editor.SelectAll()",
-            stackPopoverRenameWindow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "WidgetMaterialSystemBackdrop",
-            stackPopoverRenameWindow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Editor.Foreground = foreground",
             stackPopoverRenameWindow,
             StringComparison.Ordinal);
         Assert.Contains(

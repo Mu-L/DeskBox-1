@@ -6,17 +6,6 @@ namespace DeskBox.Tests;
 public sealed class WidgetTopologyLayoutServiceTests
 {
     [Fact]
-    public void TopologyKey_IgnoresTransientDeviceAliasForTheSameStableMonitor()
-    {
-        WidgetDisplayTopologySnapshot first = WidgetTopologyLayoutService.CreateSnapshotForTest(
-            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
-        WidgetDisplayTopologySnapshot reEnumerated = WidgetTopologyLayoutService.CreateSnapshotForTest(
-            Monitor("panel", @"\\.\DISPLAY5", true, 0, 0, 1920, 1040, 1));
-
-        Assert.Equal(first.Key, reEnumerated.Key);
-    }
-
-    [Fact]
     public void FirstActivation_CapturesExistingGeometryWithoutChangingIt()
     {
         var widget = CreateWidget();
