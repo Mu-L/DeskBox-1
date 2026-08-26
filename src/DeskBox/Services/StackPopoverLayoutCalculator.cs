@@ -9,7 +9,6 @@ internal readonly record struct StackPopoverLayout(
     double CellHeight,
     int Columns,
     int VisibleRows,
-    bool ShowFilter,
     bool HasVerticalOverflow);
 
 internal readonly record struct StackFolderPreviewMetrics(
@@ -164,7 +163,6 @@ internal static class StackPopoverLayoutCalculator
     // Surface padding plus the enlarged title row and its bottom gap.
     private const double BaseChromeHeight =
         (SurfacePadding * 2) + TitleHeight + TitleBottomSpacing;
-    private const double FilterAdditionalHeight = 38;
     private const double IconHorizontalSpacing = 8;
     private const double IconVerticalSpacing = 4;
 
@@ -180,9 +178,7 @@ internal static class StackPopoverLayoutCalculator
         int count = Math.Max(1, itemCount);
         double availableWidth = Math.Max(180, workAreaWidth - WorkAreaMargin);
         double availableHeight = Math.Max(160, workAreaHeight - WorkAreaMargin);
-        bool showFilter = itemCount >= 12;
-        double chromeHeight = BaseChromeHeight +
-            (showFilter ? FilterAdditionalHeight : 0);
+        double chromeHeight = BaseChromeHeight;
 
         return isListMode
             ? CalculateList(
@@ -191,8 +187,7 @@ internal static class StackPopoverLayoutCalculator
                 availableWidth,
                 availableHeight,
                 itemHeight,
-                chromeHeight,
-                showFilter)
+                chromeHeight)
             : CalculateIcons(
                 count,
                 widgetWidth,
@@ -200,8 +195,7 @@ internal static class StackPopoverLayoutCalculator
                 availableHeight,
                 itemWidth,
                 itemHeight,
-                chromeHeight,
-                showFilter);
+                chromeHeight);
     }
 
     private static StackPopoverLayout CalculateIcons(
@@ -211,8 +205,7 @@ internal static class StackPopoverLayoutCalculator
         double availableHeight,
         double itemWidth,
         double itemHeight,
-        double chromeHeight,
-        bool showFilter)
+        double chromeHeight)
     {
         double cellWidth =
             Math.Clamp(itemWidth, 64, 196) + IconHorizontalSpacing;
@@ -268,7 +261,6 @@ internal static class StackPopoverLayoutCalculator
             cellHeight,
             columns,
             visibleRows,
-            showFilter,
             totalRows > visibleRows);
     }
 
@@ -278,8 +270,7 @@ internal static class StackPopoverLayoutCalculator
         double availableWidth,
         double availableHeight,
         double itemHeight,
-        double chromeHeight,
-        bool showFilter)
+        double chromeHeight)
     {
         double rowHeight = Math.Clamp(itemHeight, 40, 96);
         double maximumWidth = Math.Min(560, availableWidth);
@@ -312,7 +303,6 @@ internal static class StackPopoverLayoutCalculator
             rowHeight,
             1,
             visibleRows,
-            showFilter,
             count > visibleRows);
     }
 

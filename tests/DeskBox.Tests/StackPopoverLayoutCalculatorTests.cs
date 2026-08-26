@@ -166,7 +166,6 @@ public sealed class StackPopoverLayoutCalculatorTests
         Assert.InRange(layout.Width, 280, 720);
         Assert.InRange(layout.Columns, 2, 6);
         Assert.InRange(layout.VisibleRows, 1, 5);
-        Assert.True(layout.ShowFilter);
         Assert.True(layout.Height <= 736);
     }
 
@@ -205,7 +204,6 @@ public sealed class StackPopoverLayoutCalculatorTests
         Assert.Equal(258, layout.ItemsHeight);
         Assert.Equal(256, layout.Width);
         Assert.Equal(310, layout.Height);
-        Assert.False(layout.ShowFilter);
     }
 
     [Fact]
@@ -294,7 +292,6 @@ public sealed class StackPopoverLayoutCalculatorTests
         Assert.Equal(1, layout.Columns);
         Assert.Equal(8, layout.VisibleRows);
         Assert.InRange(layout.Width, 280, 560);
-        Assert.True(layout.ShowFilter);
         Assert.True(layout.HasVerticalOverflow);
     }
 
@@ -309,25 +306,6 @@ public sealed class StackPopoverLayoutCalculatorTests
             true, itemCount, 420, 1920, 1080, 100, 52);
 
         Assert.Equal(expectedOverflow, layout.HasVerticalOverflow);
-    }
-
-    [Theory]
-    [InlineData(11, false)]
-    [InlineData(12, true)]
-    public void Filter_IsCreatedOnlyForLargerStacks(
-        int itemCount,
-        bool expected)
-    {
-        StackPopoverLayout layout = StackPopoverLayoutCalculator.Calculate(
-            isListMode: false,
-            itemCount,
-            widgetWidth: 420,
-            workAreaWidth: 1920,
-            workAreaHeight: 1080,
-            itemWidth: 96,
-            itemHeight: 112);
-
-        Assert.Equal(expected, layout.ShowFilter);
     }
 
     [Fact]
