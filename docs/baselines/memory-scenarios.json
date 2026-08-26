@@ -78,5 +78,21 @@
         "privEndMb":  246.6,
         "privAfterIdleMb":  246.6,
         "csv":  "D:\\project\\wingezi\\artifacts\\memory-scenarios\\stack-toggle-20260827-025510\\samples.csv"
+    },
+    {
+        "scenario":  "stack-toggle",
+        "timestamp":  "2026-08-27 03:02:43",
+        "commit":  "5f3880f",
+        "cycles":  20,
+        "degraded":  false,
+        "wsStartMb":  367.8,
+        "wsPeakMb":  377.1,
+        "wsEndMb":  82.4,
+        "wsAfterIdleMb":  82.4,
+        "privStartMb":  254,
+        "privPeakMb":  261.6,
+        "privEndMb":  257.1,
+        "privAfterIdleMb":  257.1,
+        "csv":  "D:\\project\\wingezi\\artifacts\\memory-scenarios\\stack-toggle-20260827-030028\\samples.csv"
     }
 ]

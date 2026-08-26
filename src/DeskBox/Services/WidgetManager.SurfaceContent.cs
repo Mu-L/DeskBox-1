@@ -8,6 +8,11 @@ namespace DeskBox.Services;
 
 public sealed partial class WidgetManager
 {
+    // Both factories are immutable after construction (the provider map is
+    // static and every delegate captures stable services), so one instance
+    // serves every surface/group switch instead of being rebuilt per call.
+    private ContentWidgetWindowFactory? _surfaceContentWindowFactory;
+
     /// <summary>
     /// Creates content plans for every member kind already migrated off a
     /// top-level, type-specific host. Quick Capture is injected here because
@@ -15,11 +20,17 @@ public sealed partial class WidgetManager
     /// </summary>
     private ContentWidgetWindowFactory CreateSurfaceContentWindowFactory()
     {
-        return new ContentWidgetWindowFactory(
+        if (_surfaceContentWindowFactory is not null)
+        {
+            return _surfaceContentWindowFactory;
+        }
+
+        _surfaceContentWindowFactory = new ContentWidgetWindowFactory(
             new WidgetContentFactory(_localizationService),
             _settingsService,
             quickCaptureContentFactory: CreateQuickCaptureSurfaceContent,
             fileContentFactory: CreateFileSurfaceContent);
+        return _surfaceContentWindowFactory;
     }
 
     private IWidgetContent CreateQuickCaptureSurfaceContent(WidgetConfig config)
