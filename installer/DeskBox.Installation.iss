@@ -4,8 +4,6 @@ const
   DeskBoxLegacyExeName = 'DeskBox.exe';
   DeskBoxUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{5E052824-3456-427E-9759-3BCAE078A1D3}_is1';
   DeskBoxWowUninstallKey = 'Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{5E052824-3456-427E-9759-3BCAE078A1D3}_is1';
-  DeskBoxLegacyUninstallKey = DeskBoxUninstallKey;
-  DeskBoxLegacyWowUninstallKey = DeskBoxWowUninstallKey;
   DeskBoxInstallStateKey = 'Software\DeskBox\DirectInstall';
 
 var
@@ -72,21 +70,6 @@ begin
     (IsDeskBoxInstallPath(NormalizedPath) or
      FileExists(AddBackslash(NormalizedPath) + 'DeskBox.Updater.exe') or
      FileExists(AddBackslash(NormalizedPath) + 'DeskBox.runtimeconfig.json'));
-end;
-
-function IsDefaultProgramFilesDeskBoxPath(Path: string): Boolean;
-var
-  NormalizedPath: string;
-begin
-  NormalizedPath := NormalizeDirPath(Path);
-  Result :=
-    SameInstallPath(NormalizedPath, ExpandConstant('{pf}\DeskBox')) or
-    SameInstallPath(NormalizedPath, ExpandConstant('{pf32}\DeskBox'));
-end;
-
-function IsLegacyInstallPath(Path: string): Boolean;
-begin
-  Result := IsDefaultProgramFilesDeskBoxPath(Path) and IsDeskBoxInstallPath(Path);
 end;
 
 function InstallCandidateListContains(Path: string): Boolean;
@@ -191,12 +174,13 @@ begin
   AddRegistryInstallCandidate(HKEY_CURRENT_USER, DeskBoxWowUninstallKey, 'HKCU 32-bit uninstall');
   AddRegistryInstallCandidate(HKEY_LOCAL_MACHINE, DeskBoxUninstallKey, 'HKLM uninstall');
   AddRegistryInstallCandidate(HKEY_LOCAL_MACHINE, DeskBoxWowUninstallKey, 'HKLM 32-bit uninstall');
-  AddRegistryInstallCandidate(HKEY_CURRENT_USER, DeskBoxInstallStateKey, 'DeskBox install state');
+  AddRegistryInstallCandidate(HKEY_CURRENT_USER, DeskBoxInstallStateKey, 'HKCU DeskBox install state');
+  AddRegistryInstallCandidate(HKEY_LOCAL_MACHINE, DeskBoxInstallStateKey, 'HKLM DeskBox install state');
 
   AddInstallCandidate(ExpandConstant('{localappdata}\Programs\DeskBox'), 'current default path', True);
   AddInstallCandidate(ExpandConstant('{localappdata}\DeskBox'), 'legacy user path', True);
-  AddInstallCandidate(ExpandConstant('{pf}\DeskBox'), 'default Program Files path', True);
-  AddInstallCandidate(ExpandConstant('{pf32}\DeskBox'), 'default Program Files (x86) path', True);
+  AddInstallCandidate(ExpandConstant('{commonpf}\DeskBox'), 'default Program Files path', True);
+  AddInstallCandidate(ExpandConstant('{commonpf32}\DeskBox'), 'default Program Files (x86) path', True);
 
   AddShortcutInstallCandidate(ExpandConstant('{userprograms}\DeskBox.lnk'));
   AddShortcutInstallCandidate(ExpandConstant('{commonprograms}\DeskBox.lnk'));
@@ -240,7 +224,15 @@ begin
   if DirectInstallUpgrade and (ExistingInstallPath <> '') then
     Result := ExistingInstallPath
   else
-    Result := ExpandConstant('{localappdata}\Programs\DeskBox');
+    Result := ExpandConstant('{autopf}\DeskBox');
+end;
+
+function GetInstallScopeName(Param: string): string;
+begin
+  if IsAdminInstallMode then
+    Result := 'all-users'
+  else
+    Result := 'current-user';
 end;
 
 function BuildInstallCandidateList: string;

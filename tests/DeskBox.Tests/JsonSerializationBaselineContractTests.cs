@@ -13,7 +13,7 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
         Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public void ProductionInventory_IsFrozenAtTwentyNineFilesAndSixtyFiveCalls()
+    public void ProductionInventory_IsFrozenAtTwentyEightFilesAndSixtyTwoCalls()
     {
         var expected = new Dictionary<string, int>(StringComparer.Ordinal)
         {
@@ -41,7 +41,6 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
             ["src/DeskBox/Services/NativeNotificationActivationEnvelopeStore.cs"] = 2,
             ["src/DeskBox/Services/QuickCaptureStore.cs"] = 2,
             ["src/DeskBox/Services/SearchHistoryService.cs"] = 2,
-            ["src/DeskBox/Services/SearchIndexService.cs"] = 3,
             ["src/DeskBox/Services/SettingsService.cs"] = 2,
             ["src/DeskBox/Services/TodoWidgetStore.cs"] = 2,
             ["src/DeskBox/Services/WeatherService.cs"] = 3,
@@ -65,8 +64,8 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
             Assert.Equal(expectedCount, actual[path]);
         }
 
-        Assert.Equal(29, actual.Count);
-        Assert.Equal(65, actual.Values.Sum());
+        Assert.Equal(28, actual.Count);
+        Assert.Equal(62, actual.Values.Sum());
 
         string[] expectedContextOwners =
         [
@@ -92,7 +91,6 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
             "src/DeskBox/Services/NativeNotificationActivationEnvelopeStore.cs",
             "src/DeskBox/Services/QuickCaptureStore.cs",
             "src/DeskBox/Services/SearchHistoryService.cs",
-            "src/DeskBox/Services/SearchIndexService.cs",
             "src/DeskBox/Services/SettingsService.cs",
             "src/DeskBox/Services/TodoWidgetStore.cs",
             "src/DeskBox/Services/WeatherService.cs",
@@ -106,7 +104,7 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
             .Order()
             .ToArray();
 
-        Assert.Equal(27, actualContextOwners.Length);
+        Assert.Equal(26, actualContextOwners.Length);
         Assert.Equal(expectedContextOwners, actualContextOwners);
     }
 
@@ -254,20 +252,16 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
     public void PhaseThreeASearchAndRecoveryCalls_UseSourceGeneratedTypeInfoAndPreserveOptionProfiles()
     {
         string searchHistory = ReadSource("src/DeskBox/Services/SearchHistoryService.cs");
-        string searchIndex = ReadSource("src/DeskBox/Services/SearchIndexService.cs");
         string desktopRecovery = ReadSource(
             "src/DeskBox/Services/DesktopOrganizationRecoveryStore.cs");
         string allPhaseThreeASources = string.Join(
             Environment.NewLine,
             searchHistory,
-            searchIndex,
             desktopRecovery);
 
         var expectedTypeInfoReferences = new Dictionary<string, int>(StringComparer.Ordinal)
         {
             ["SearchHistoryJsonContext.Default.PersistedData"] = 2,
-            ["SearchIndexJsonContext.Default.LegacyPersistedIndex"] = 1,
-            ["SearchIndexJsonContext.Default.RootManifest"] = 2,
             ["DesktopRecoveryJsonContext.Default.RecoveryJournal"] = 2
         };
         foreach ((string reference, int expectedCount) in expectedTypeInfoReferences)
@@ -279,11 +273,11 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
                     Regex.Escape(reference) + @"\b").Count);
         }
 
-        Assert.Equal(7, expectedTypeInfoReferences.Values.Sum());
+        Assert.Equal(4, expectedTypeInfoReferences.Values.Sum());
         Assert.DoesNotContain("JsonSerializerOptions", allPhaseThreeASources, StringComparison.Ordinal);
         Assert.DoesNotContain("JsonStringEnumConverter", allPhaseThreeASources, StringComparison.Ordinal);
 
-        foreach (string camelCaseSource in new[] { searchHistory, searchIndex, desktopRecovery })
+        foreach (string camelCaseSource in new[] { searchHistory, desktopRecovery })
         {
             Assert.Contains(
                 "PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase",
@@ -296,10 +290,8 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
         }
 
         Assert.Contains("WriteIndented = true", searchHistory, StringComparison.Ordinal);
-        Assert.Contains("WriteIndented = false", searchIndex, StringComparison.Ordinal);
         Assert.Contains("WriteIndented = true", desktopRecovery, StringComparison.Ordinal);
         Assert.DoesNotContain("UseStringEnumConverter", searchHistory, StringComparison.Ordinal);
-        Assert.DoesNotContain("UseStringEnumConverter", searchIndex, StringComparison.Ordinal);
         Assert.DoesNotContain("UseStringEnumConverter", desktopRecovery, StringComparison.Ordinal);
     }
 

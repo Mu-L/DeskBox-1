@@ -93,15 +93,14 @@ public partial class App : Application
     private NativeAppNotificationService? _nativeNotificationService;
     private TodoReminderService? _todoReminderService;
     private DisplayAreaWatcherService? _displayAreaWatcher;
+    private DisplayTopologySnapshotProvider? _displayTopologySnapshotProvider;
     private DisplayTopologyTransitionCoordinator? _displayTopologyTransitionCoordinator;
     private AppLifecycleRecoveryWatcher? _lifecycleRecoveryWatcher;
-    private SearchIndexService? _searchIndexService;
+    private EverythingSearchService? _everythingSearchService;
     private SearchEngineService? _searchEngineService;
     private FileMetaService? _fileMetaService;
     private SearchHotkeyService? _searchHotkeyService;
     private SearchPopupWindow? _searchPopupWindow;
-    private CancellationTokenSource? _searchIndexLifecycleCts;
-    private Task<bool>? _searchIndexPreloadTask;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _visibleIdleMemoryMaintenanceTimer;
     private long _lastVisibleIdleCollectionAllocatedBytes;
     private bool _hasCompletedVisibleIdleCollection;
@@ -144,13 +143,14 @@ public partial class App : Application
     public DesktopDoubleClickActivationService? DesktopDoubleClickActivationService { get; private set; }
     public SearchHotkeyService? SearchHotkeyService => _searchHotkeyService;
     public SearchEngineService? SearchEngineService => _searchEngineService;
-    public SearchIndexService? SearchIndexService => _searchIndexService;
+    public EverythingSearchService? EverythingSearchService => _everythingSearchService;
     public AppDiagnosticsService? DiagnosticsService => _diagnosticsService;
     internal SearchHistoryService? SearchHistoryService => _searchHistoryService;
     public SearchResultActionService? SearchActionService => _searchActionService;
     internal bool IsSearchPopupCreated => _searchPopupWindow is not null;
     internal bool IsSearchPopupVisible => _searchPopupWindow?.IsPopupVisible == true;
-    internal bool IsSearchIndexResident => _searchEngineService?.IsCustomIndexResident == true;
+    internal bool IsEverythingSearchConnected =>
+        _everythingSearchService?.CurrentSnapshot.State == EverythingConnectionState.Connected;
     internal int SearchMetaCacheCount => _fileMetaService?.CachedIconCount ?? 0;
     public WidgetManager? WidgetManager { get; private set; }
     public ResizeGuideOverlayService ResizeGuideOverlay { get; private set; } = null!;
@@ -233,6 +233,7 @@ public partial class App : Application
 
         SettingsService = Services.GetRequiredService<SettingsService>();
         SettingsService.PersistenceFailed += OnSettingsPersistenceFailed;
+        _ = LegacySearchIndexCleanupService.TryCleanup();
         DataBackupService = Services.GetRequiredService<DeskBoxDataBackupService>();
         AttachmentHealthService = Services.GetRequiredService<DeskBoxAttachmentHealthService>();
         DiagnosticsBundleService = Services.GetRequiredService<DeskBoxDiagnosticsBundleService>();
@@ -951,12 +952,9 @@ public partial class App : Application
 
             if (FeatureWidgetSettings.IsEnabled(SettingsService.Settings, WidgetKind.Search))
             {
-                // Everything-style latency requires the compact filename catalog to be
-                // ready before the first keystroke. Create the single search runtime now
-                // and restore its persisted Rust index in the background; the popup XAML
-                // surface remains lazy until the user invokes search.
+                // The search shell is lightweight. Everything owns the filename index;
+                // DeskBox does not scan, preload, or watch the filesystem at startup.
                 EnsureSearchServices();
-                BeginSearchIndexPreload();
             }
             else
             {
@@ -969,12 +967,16 @@ public partial class App : Application
                 SettingsService,
                 ToggleWidgetsFromDesktopDoubleClickAsync);
             DesktopDoubleClickActivationService.RefreshRegistration();
+            _displayTopologySnapshotProvider = new DisplayTopologySnapshotProvider();
             _displayTopologyTransitionCoordinator = new DisplayTopologyTransitionCoordinator(
                 UiDispatcherQueue,
-                DisplayAreaWatcherService.CaptureCurrentSignature,
-                async (generation, reasons) =>
+                _displayTopologySnapshotProvider.CaptureAsync,
+                async (generation, reasons, snapshot) =>
                     WidgetManager is null ||
-                    await WidgetManager.RestoreWidgetPositionsAsync(generation, reasons));
+                    await WidgetManager.RestoreWidgetPositionsAsync(
+                        generation,
+                        reasons,
+                        snapshot));
 
             // Phase 3: Restore widgets
             int recoveredDesktopItems = await new DesktopOrganizationTransaction(
@@ -1015,7 +1017,9 @@ public partial class App : Application
             _diagnosticsService.StartAll();
 
             // Start display area watcher for hot-plug detection
-            _displayAreaWatcher = new DisplayAreaWatcherService(UiDispatcherQueue);
+            _displayAreaWatcher = new DisplayAreaWatcherService(
+                UiDispatcherQueue,
+                _displayTopologySnapshotProvider);
             _displayAreaWatcher.DisplaysChanged += OnDisplaysChanged;
             _displayAreaWatcher.Start();
 
@@ -1119,7 +1123,7 @@ public partial class App : Application
     private void OnLifecycleRecoveryRequested(string reason)
     {
         Log($"[Lifecycle] Recovery signal received: {reason}");
-        _diagnosticsService?.RecordLifecycleEvent(reason, _searchIndexService);
+        _diagnosticsService?.RecordLifecycleEvent(reason);
         WidgetLayerService.InvalidateDesktopIconViewCache();
         _displayAreaWatcher?.RefreshNow();
         RequestDisplayTopologyRestore("lifecycle-" + reason);
@@ -1141,7 +1145,11 @@ public partial class App : Application
             }
 
             ScheduleExternalStateRecovery();
-            _searchIndexService?.RecoverAfterLifecycleChange(reason);
+            if (_everythingSearchService is not null &&
+                SettingsService.Settings.SearchEverythingEnabled)
+            {
+                _ = _everythingSearchService.RefreshConnectionAsync();
+            }
         }
     }
 
@@ -2365,7 +2373,11 @@ public partial class App : Application
     {
         await RecoverExternalStateAsync();
         _displayAreaWatcher?.RefreshNow();
-        _searchIndexService?.RecoverAfterLifecycleChange("manual");
+        if (_everythingSearchService is not null &&
+            SettingsService.Settings.SearchEverythingEnabled)
+        {
+            await _everythingSearchService.RefreshConnectionAsync();
+        }
     }
 
     private void OnLanguageChanged()
@@ -2646,10 +2658,8 @@ public partial class App : Application
             }
 
             var activity = CaptureMemoryCleanupActivity();
-            bool isSearchIndexing = _searchEngineService?.IsCustomIndexing == true;
             bool isVisibleIdleCandidate =
-                MemoryCleanupPolicy.IsVisibleIdleCandidate(activity) &&
-                !isSearchIndexing;
+                MemoryCleanupPolicy.IsVisibleIdleCandidate(activity);
             if (!_visibleIdleMemoryTracker.Observe(
                     DateTimeOffset.UtcNow,
                     isVisibleIdleCandidate))
@@ -2675,7 +2685,6 @@ public partial class App : Application
             bool shouldCollectManagedMemory =
                 MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
                     activity,
-                    isSearchIndexing,
                     managedHeapBytes,
                     process.WorkingSet64,
                     process.PrivateMemorySize64,
@@ -2778,29 +2787,6 @@ public partial class App : Application
             IsPointerOverDeskBox: isPointerOverDeskBox);
     }
 
-    private Task<bool> CanRunDeferredSearchIndexReconciliationAsync(
-        CancellationToken cancellationToken)
-    {
-        if (UiDispatcherQueue.HasThreadAccess)
-        {
-            return Task.FromResult(
-                MemoryCleanupPolicy.CanRunSearchIndexReconciliation(
-                    CaptureMemoryCleanupActivity()));
-        }
-
-        var completion = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!UiDispatcherQueue.TryEnqueue(() =>
-            completion.TrySetResult(
-                MemoryCleanupPolicy.CanRunSearchIndexReconciliation(
-                    CaptureMemoryCleanupActivity()))))
-        {
-            completion.TrySetResult(true);
-        }
-
-        return completion.Task.WaitAsync(cancellationToken);
-    }
-
     internal static void CancelBackgroundMemoryCleanup()
     {
         Interlocked.Increment(ref s_backgroundMemoryCleanupGeneration);
@@ -2844,13 +2830,6 @@ public partial class App : Application
             }
 
             var app = Current;
-            if (app._searchEngineService?.IsCustomIndexing == true)
-            {
-                PerformanceLogger.Mark("BackgroundMemoryCleanupDeferred", "reason=search-indexing");
-                ScheduleBackgroundMemoryCleanup();
-                return;
-            }
-
             if (!app.CanRunBackgroundMemoryCleanup())
             {
                 PerformanceLogger.Mark("BackgroundMemoryCleanupSkipped", "reason=foreground-active");
@@ -2867,15 +2846,6 @@ public partial class App : Application
             await Task.Delay(TimeSpan.FromSeconds(remainingDelaySeconds));
             if (generation != Volatile.Read(ref s_backgroundMemoryCleanupGeneration))
             {
-                return;
-            }
-
-            if (app._searchEngineService?.IsCustomIndexing == true)
-            {
-                PerformanceLogger.Mark(
-                    "BackgroundMemoryDeepCleanupDeferred",
-                    "reason=search-indexing");
-                ScheduleBackgroundMemoryCleanup();
                 return;
             }
 
@@ -2953,7 +2923,6 @@ public partial class App : Application
         process.Refresh();
         bool workingSetTrimmed = MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
             CaptureMemoryCleanupActivity(),
-            _searchEngineService?.IsCustomIndexing == true,
             process.WorkingSet64);
         if (workingSetTrimmed)
         {
@@ -3174,6 +3143,7 @@ public partial class App : Application
         _displayAreaWatcher = null;
         _displayTopologyTransitionCoordinator?.Dispose();
         _displayTopologyTransitionCoordinator = null;
+        _displayTopologySnapshotProvider = null;
         _lifecycleRecoveryWatcher?.Dispose();
         _lifecycleRecoveryWatcher = null;
 
@@ -3299,18 +3269,15 @@ public partial class App : Application
 
         try
         {
-            _searchIndexService = new SearchIndexService(
-                SettingsService,
-                CanRunDeferredSearchIndexReconciliationAsync);
+            _everythingSearchService = new EverythingSearchService(SettingsService);
             _searchEngineService = new SearchEngineService(
                 SettingsService,
                 LocalizationService,
-                _searchIndexService,
+                _everythingSearchService,
                 QuickCaptureService);
-            _searchEngineService.IndexUpdated += OnSearchIndexUpdated;
             _searchActionService = new SearchResultActionService(SettingsService);
 
-            Log("[Search] Single SearchCore runtime initialized");
+            Log("[Search] Everything IPC provider initialized without a DeskBox file index");
         }
         catch (Exception ex)
         {
@@ -3334,11 +3301,6 @@ public partial class App : Application
         }
 
         EnsureSearchServices();
-        if (_searchEngineService is not null)
-        {
-            BeginSearchIndexPreload();
-        }
-
         return _searchEngineService;
     }
 
@@ -3352,10 +3314,7 @@ public partial class App : Application
 
         if (enabled)
         {
-            SettingsService.Settings.SearchCustomIndexerEnabled = true;
-            SettingsService.Settings.SearchIncludeSystemIndex = false;
             EnsureSearchServices();
-            BeginSearchIndexPreload();
             PerformanceLogger.SampleMemory("search-enabled");
             return;
         }
@@ -3364,46 +3323,8 @@ public partial class App : Application
         PerformanceLogger.SampleMemory("search-disabled");
     }
 
-    internal void SetSearchCustomIndexingEnabled(bool enabled)
-    {
-        if (!UiDispatcherQueue.HasThreadAccess)
-        {
-            UiDispatcherQueue.TryEnqueue(() => SetSearchCustomIndexingEnabled(enabled));
-            return;
-        }
-
-        if (enabled && _searchEngineService is null)
-        {
-            EnsureSearchServices();
-        }
-
-        if (_searchEngineService is not { } engine)
-        {
-            Log($"[Search] Custom index {(enabled ? "enable" : "disable")} deferred; heavy runtime is not active");
-            return;
-        }
-
-        if (enabled)
-        {
-            BeginSearchIndexPreload();
-        }
-        else
-        {
-            engine.SetCustomIndexingEnabled(false);
-            // Disabling the custom index releases its resident graph. Keep this
-            // on the normal delayed path; routine index content notifications
-            // must never promote themselves into compacting Gen2 collections.
-            ScheduleLightMemoryCleanup();
-        }
-    }
-
     private void DisposeSearchServices()
     {
-        _searchIndexLifecycleCts?.Cancel();
-        _searchIndexLifecycleCts?.Dispose();
-        _searchIndexLifecycleCts = null;
-        _searchIndexPreloadTask = null;
-
         var popup = _searchPopupWindow;
         _searchPopupWindow = null;
         if (popup is not null)
@@ -3422,28 +3343,13 @@ public partial class App : Application
         _fileMetaService = null;
         _searchHotkeyService?.Dispose();
         _searchHotkeyService = null;
-        if (_searchEngineService is not null)
-        {
-            _searchEngineService.IndexUpdated -= OnSearchIndexUpdated;
-            _searchEngineService.Dispose();
-        }
+        _searchEngineService?.Dispose();
         _searchEngineService = null;
-        _searchIndexService = null;
+        _everythingSearchService = null;
         _searchHistoryService = null;
         _searchActionService = null;
         Log("[Search] Services disposed");
         ScheduleLightMemoryCleanup(completedHeavyOperation: true);
-    }
-
-    private void OnSearchIndexUpdated()
-    {
-        UiDispatcherQueue.TryEnqueue(() =>
-        {
-            PerformanceLogger.SampleMemory("search-index-updated");
-            PerformanceLogger.Mark(
-                "SearchIndexUpdated",
-                "cleanup=none reason=content-update");
-        });
     }
 
     private Task ToggleSearchPopupAsync()
@@ -3531,7 +3437,7 @@ public partial class App : Application
         PerformanceLogger.Mark(
             "SearchPopupOpenRequested",
             $"shellReady=true visible={popup.IsPopupVisible} " +
-            $"indexResident={_searchEngineService.IsCustomIndexResident}");
+            $"everythingState={_everythingSearchService?.CurrentSnapshot.State}");
 
         if (string.IsNullOrWhiteSpace(initialQuery))
         {
@@ -3542,8 +3448,7 @@ public partial class App : Application
             popup.ShowPopupWithQuery(initialQuery);
         }
 
-        // The resident catalog was preloaded when search was enabled. The query path
-        // still awaits the same task defensively if search is invoked during startup.
+        // Everything is queried only after the user types and has explicitly enabled it.
     }
 
     private void CreateSearchPopupWindow()
@@ -3594,58 +3499,6 @@ public partial class App : Application
         stopwatch.Stop();
         Log($"[Search] Popup shell created in {stopwatch.ElapsedMilliseconds} ms");
         PerformanceLogger.SampleMemory("search-popup-created");
-    }
-
-    private void BeginSearchIndexPreload()
-    {
-        if (_searchEngineService is not { } engine ||
-            !SettingsService.Settings.SearchCustomIndexerEnabled ||
-            _searchIndexPreloadTask is { IsCompleted: false })
-        {
-            return;
-        }
-
-        if (_searchIndexLifecycleCts is null ||
-            _searchIndexLifecycleCts.IsCancellationRequested)
-        {
-            _searchIndexLifecycleCts?.Dispose();
-            _searchIndexLifecycleCts = new CancellationTokenSource();
-        }
-
-        CancellationToken cancellationToken = _searchIndexLifecycleCts.Token;
-        _searchIndexPreloadTask = PreloadSearchIndexAsync(engine, cancellationToken);
-    }
-
-    private static async Task<bool> PreloadSearchIndexAsync(
-        SearchEngineService engine,
-        CancellationToken cancellationToken)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        try
-        {
-            await engine
-                .StartCustomIndexingAsync(cancellationToken)
-                .ConfigureAwait(false);
-            bool loaded = engine.IsCustomIndexResident;
-            stopwatch.Stop();
-            if (loaded && stopwatch.ElapsedMilliseconds >= 25)
-            {
-                Log(
-                    $"[SearchIndex] On-demand startup completed in " +
-                    $"{stopwatch.ElapsedMilliseconds} ms.");
-            }
-
-            return loaded;
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
-        catch (Exception ex)
-        {
-            Log($"[SearchIndex] On-demand startup failed: {ex.Message}");
-            return false;
-        }
     }
 
     private void OnSearchActionRequested(object? sender, string actionId)

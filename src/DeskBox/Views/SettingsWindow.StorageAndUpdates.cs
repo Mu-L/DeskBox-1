@@ -222,6 +222,20 @@ public sealed partial class SettingsWindow
         Win32Helper.OpenFile(ViewModel.OfficialWebsiteLink);
     }
 
+    private async void ShowStoreSupportDialogButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.XamlRoot is null ||
+            ViewModel.StoreSupportCardVisibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        SupportDeskBoxDialog.XamlRoot = SettingsRoot.XamlRoot;
+        SupportDeskBoxDialog.Title = _localizationService.T("Settings.About.StoreSupportTitle");
+        SupportDeskBoxDialog.CloseButtonText = _localizationService.T("Settings.Dialog.SupportClose");
+        await SupportDeskBoxDialog.ShowAsync();
+    }
+
     private async void OpenMicrosoftStoreButton_Click(object sender, RoutedEventArgs e)
     {
         try

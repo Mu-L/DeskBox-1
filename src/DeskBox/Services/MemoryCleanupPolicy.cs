@@ -39,30 +39,16 @@ internal static class MemoryCleanupPolicy
             !snapshot.IsPointerOverDeskBox;
     }
 
-    public static bool CanRunSearchIndexReconciliation(
-        MemoryCleanupActivitySnapshot snapshot)
-    {
-        return !snapshot.IsWidgetInteractionActive &&
-            !snapshot.IsSettingsOpen &&
-            !snapshot.IsOnboardingOpen &&
-            !snapshot.IsSearchPopupVisible &&
-            !snapshot.IsDeskBoxForeground &&
-            !snapshot.IsPointerOverDeskBox;
-    }
-
     public static bool ShouldTrimHiddenIdleWorkingSet(
         MemoryCleanupActivitySnapshot snapshot,
-        bool isSearchIndexing,
         long workingSetBytes)
     {
         return CanTrimWorkingSet(snapshot) &&
-            !isSearchIndexing &&
             workingSetBytes >= HiddenIdleWorkingSetTrimThresholdBytes;
     }
 
     public static bool ShouldCollectVisibleIdleManagedMemory(
         MemoryCleanupActivitySnapshot snapshot,
-        bool isSearchIndexing,
         long managedHeapBytes,
         long workingSetBytes,
         long privateBytes,
@@ -74,8 +60,7 @@ internal static class MemoryCleanupPolicy
             snapshot.IsOnboardingOpen ||
             snapshot.IsSearchPopupVisible ||
             snapshot.IsDeskBoxForeground ||
-            snapshot.IsPointerOverDeskBox ||
-            isSearchIndexing)
+            snapshot.IsPointerOverDeskBox)
         {
             return false;
         }

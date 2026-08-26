@@ -278,7 +278,6 @@ for ($sampleIndex = 0; $sampleIndex -lt $SampleCount; $sampleIndex++) {
         TopLevelWindowCount = [DeskBox.MemoryMeasurement.NativeMethods]::CountTopLevelWindows([uint32]$ProcessId, $false)
         VisibleTopLevelWindowCount = [DeskBox.MemoryMeasurement.NativeMethods]::CountTopLevelWindows([uint32]$ProcessId, $true)
         NormalizedCpuPercent = $normalizedCpuPercent
-        SearchCoreModuleLoaded = $moduleNames -contains "deskbox_search_core.dll"
         DeskBoxNativeModuleLoaded = $moduleNames -contains "deskbox_native.dll"
     })
 
@@ -336,7 +335,6 @@ $summary = [PSCustomObject]@{
     }
     GpuBefore = $gpuBefore
     GpuAfter = $gpuAfter
-    SearchCoreLoadedInAnySample = @($measurements | Where-Object SearchCoreModuleLoaded).Count -gt 0
     WindowInventory = @([DeskBox.MemoryMeasurement.NativeMethods]::CaptureTopLevelWindows([uint32]$ProcessId))
     Measurements = @($measurements)
 }
@@ -359,7 +357,6 @@ $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $outputPath -Enco
     HandlesMedian = [Math]::Round($handleDistribution.Median, 0)
     ThreadsMedian = [Math]::Round($threadDistribution.Median, 0)
     CpuMedianPercent = [Math]::Round($cpuDistribution.Median, 4)
-    SearchCoreLoaded = $summary.SearchCoreLoadedInAnySample
     GpuTotalCommittedAfterMiB = if ($gpuAfter.Available) {
         [Math]::Round($gpuAfter.TotalCommittedBytes / 1MB, 2)
     }

@@ -691,6 +691,16 @@ public static class WidgetLayerService
         return true;
     }
 
+    /// <summary>
+    /// Temporarily removes the desktop-pinned no-activate style for an explicit
+    /// keyboard-input interaction. The caller must restore the resting desktop
+    /// layer immediately after activating the window.
+    /// </summary>
+    public static void PrepareForDesktopPinnedKeyboardInput(IntPtr windowHandle)
+    {
+        SetWindowNoActivate(windowHandle, enabled: false);
+    }
+
     public static bool IsWindowNoActivate(IntPtr windowHandle)
     {
         return windowHandle != IntPtr.Zero &&

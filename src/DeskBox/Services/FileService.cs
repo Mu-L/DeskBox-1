@@ -1229,7 +1229,12 @@ public sealed partial class FileService
         await TransferItemsAsync(sourcePaths, destinationFolder, move: false);
     }
 
-    public async Task RelocateEntryAsync(string sourcePath, string destinationPath)
+    /// <summary>
+    /// Renames one file-system entry without falling back to a copy or a
+    /// child-by-child move. A rename must either complete atomically or leave
+    /// the source and destination untouched.
+    /// </summary>
+    public async Task RenameEntryAsync(string sourcePath, string destinationPath)
     {
         string normalizedSource = Path.GetFullPath(sourcePath);
         string normalizedDestination = Path.GetFullPath(destinationPath);
@@ -1246,7 +1251,7 @@ public sealed partial class FileService
 
         EnsureSafeDirectoryTransfers([new TransferOperation(normalizedSource, normalizedDestination)]);
 
-        await MoveEntryAsync(normalizedSource, normalizedDestination);
+        await MoveEntryAtomicallyAsync(normalizedSource, normalizedDestination);
     }
 
     public async Task DeleteEntryAsync(string path, bool recycle = true)

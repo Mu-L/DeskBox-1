@@ -4,6 +4,9 @@ using DeskBox.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Windows.Storage.Pickers;
+using Windows.System;
+using WinRT.Interop;
 
 namespace DeskBox.Views.SettingsSections;
 
@@ -14,11 +17,9 @@ namespace DeskBox.Views.SettingsSections;
 public sealed partial class SearchSettingsSection : UserControl
 {
     private bool _isLoading;
-    private long _lastProgressRefreshMs;
-    private long _lastStorageRefreshMs;
-    private string _lastStorageText = string.Empty;
     private bool _isRecordingSearchHotkey;
-    private SearchEngineService? _observedSearchEngine;
+    private EverythingSearchService? _observedEverythingProvider;
+    private CancellationTokenSource? _everythingRefreshCts;
 
     public SearchSettingsSection()
     {
@@ -33,40 +34,41 @@ public sealed partial class SearchSettingsSection : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         RefreshFromSettings();
-        ObserveSearchEngine(App.Current.SearchEngineService);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        ObserveSearchEngine(null);
+        _everythingRefreshCts?.Cancel();
+        _everythingRefreshCts?.Dispose();
+        _everythingRefreshCts = null;
+        ObserveEverythingProvider(null);
     }
 
-    private void ObserveSearchEngine(SearchEngineService? engine)
+    private void ObserveEverythingProvider(EverythingSearchService? provider)
     {
-        if (ReferenceEquals(_observedSearchEngine, engine))
+        if (ReferenceEquals(_observedEverythingProvider, provider))
         {
             return;
         }
 
-        if (_observedSearchEngine is not null)
+        if (_observedEverythingProvider is not null)
         {
-            _observedSearchEngine.IndexProgressChanged -= OnIndexProgressChanged;
-            _observedSearchEngine.IndexUpdated -= OnIndexCompleted;
+            _observedEverythingProvider.ConnectionChanged -= OnEverythingConnectionChanged;
         }
 
-        _observedSearchEngine = engine;
-        if (_observedSearchEngine is not null)
+        _observedEverythingProvider = provider;
+        if (_observedEverythingProvider is not null)
         {
-            _observedSearchEngine.IndexProgressChanged += OnIndexProgressChanged;
-            _observedSearchEngine.IndexUpdated += OnIndexCompleted;
+            _observedEverythingProvider.ConnectionChanged += OnEverythingConnectionChanged;
         }
     }
 
-    private SearchEngineService? EnsureSearchEngineForUserAction()
+    private EverythingSearchService? EnsureEverythingProviderForUserAction()
     {
         var engine = App.Current.EnsureSearchServicesForUserAction();
-        ObserveSearchEngine(engine);
-        return engine;
+        EverythingSearchService? provider = engine?.EverythingProvider;
+        ObserveEverythingProvider(provider);
+        return provider;
     }
 
     /// <summary>
@@ -78,8 +80,11 @@ public sealed partial class SearchSettingsSection : UserControl
         try
         {
             var settings = Settings.Settings;
+            EverythingConsentCheckBox.IsChecked = settings.SearchEverythingEnabled;
+            EverythingAdvancedSyntaxToggle.IsOn =
+                settings.SearchEverythingAdvancedSyntaxEnabled;
+            EverythingAdvancedSyntaxToggle.IsEnabled = settings.SearchEverythingEnabled;
             SearchDeskBoxContentToggle.IsOn = settings.SearchIncludeDeskBoxContent;
-            SearchSystemNoiseToggle.IsOn = settings.SearchHideSystemNoise;
             SearchRecommendationsToggle.IsOn = settings.SearchShowRecommendations;
             SearchDefaultTabComboBox.SelectedItem = SearchDefaultTabComboBox.Items
                 .OfType<ComboBoxItem>()
@@ -100,7 +105,15 @@ public sealed partial class SearchSettingsSection : UserControl
             _isLoading = false;
         }
 
-        RefreshIndexStatus();
+        EverythingSearchService? provider = EnsureEverythingProviderForUserAction();
+        if (provider is not null)
+        {
+            UpdateEverythingDashboard(provider.CurrentSnapshot);
+            if (IsLoaded && Visibility == Visibility.Visible)
+            {
+                QueueEverythingRefresh();
+            }
+        }
     }
 
     private void SearchScopeToggle_Toggled(object sender, RoutedEventArgs e)
@@ -115,19 +128,6 @@ public sealed partial class SearchSettingsSection : UserControl
         Settings.SaveDebounced();
         App.Current.SearchEngineService?.SetDeskBoxContentSearchEnabled(
             settings.SearchIncludeDeskBoxContent);
-    }
-
-    private void SearchSystemNoiseToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_isLoading || !IsLoaded)
-        {
-            return;
-        }
-
-        Settings.Settings.SearchHideSystemNoise = SearchSystemNoiseToggle.IsOn;
-        Settings.SaveDebounced();
-        EnsureSearchEngineForUserAction()?.RebuildIndex();
-        RefreshIndexStatus();
     }
 
     private void SearchRecommendationsToggle_Toggled(object sender, RoutedEventArgs e)
@@ -164,196 +164,216 @@ public sealed partial class SearchSettingsSection : UserControl
         Settings.SaveDebounced();
     }
 
-    private void ClearSearchActivityButton_Click(object sender, RoutedEventArgs e)
+    private void QueueEverythingRefresh()
     {
-        App.Current.SearchHistoryService?.ClearAllHistory();
-    }
-
-    private void RefreshIndexStatus()
-    {
-        if (!Settings.Settings.SearchCustomIndexerEnabled)
-        {
-            SearchIndexStatusText.Text = Localization.T("Settings.Search.Index.Status.Disabled");
-            SearchIndexCountText.Text = string.Empty;
-            SearchIndexStorageText.Text = string.Empty;
-            SearchIndexBackendText.Text = string.Empty;
-            HideProgressBar();
-            IndexPauseResumeButton.IsEnabled = false;
-            UpdateDashboardVisibility();
-            return;
-        }
-
-        var engine = App.Current.SearchEngineService;
-        bool isScanning = engine is { IsCustomIndexing: true };
-        bool isPaused = engine is { IsIndexPaused: true };
-
-        // Status text
-        if (isPaused)
-        {
-            SearchIndexStatusText.Text = Localization.T("Settings.Search.Index.Status.Paused");
-        }
-        else if (isScanning)
-        {
-            SearchIndexStatusText.Text = Localization.T("Settings.Search.Index.Status.Scanning");
-        }
-        else
-        {
-            SearchIndexStatusText.Text = Localization.T("Settings.Search.Index.Status.Idle");
-        }
-
-        // Entry count
-        int count = engine?.IndexedItemCount ?? 0;
-        SearchIndexCountText.Text = Localization.Format("Settings.Search.Index.Status.Ready", count);
-
-        // Progress bar visibility with fade-out animation
-        bool showProgress = isScanning && !isPaused;
-        if (showProgress)
-        {
-            IndexProgressBar.Opacity = 1;
-            IndexProgressBar.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            HideProgressBar();
-        }
-
-        // Storage info (throttled: refresh at most every 5 seconds to avoid disk I/O)
-        RefreshStorageInfo(engine);
-        ToolTipService.SetToolTip(SearchIndexBackendText, null);
-        if (!Settings.Settings.SearchRustIndexerPreviewEnabled)
-        {
-            SearchIndexBackendText.Text =
-                Localization.T("Settings.Search.Index.Backend.Managed");
-        }
-        else if (engine?.IsRustIndexPreviewActive == true)
-        {
-            SearchIndexBackendText.Text =
-                Localization.T("Settings.Search.Index.Backend.Rust");
-        }
-        else if (!string.IsNullOrWhiteSpace(engine?.RustIndexPreviewFallbackReason))
-        {
-            SearchIndexBackendText.Text =
-                Localization.T("Settings.Search.Index.Backend.Fallback");
-            ToolTipService.SetToolTip(
-                SearchIndexBackendText,
-                engine.RustIndexPreviewFallbackReason);
-        }
-        else
-        {
-            SearchIndexBackendText.Text =
-                Localization.T("Settings.Search.Index.Backend.Preparing");
-        }
-
-        // Pause/Resume button (always visible when indexer enabled, disabled when idle)
-        IndexPauseResumeButton.IsEnabled = isScanning || isPaused;
-
-        if (isPaused)
-        {
-            IndexPauseResumeIcon.Glyph = "\uE768"; // Play icon
-            IndexPauseResumeLabel.Text = Localization.T("Settings.Search.Index.Resume");
-        }
-        else
-        {
-            IndexPauseResumeIcon.Glyph = "\uE769"; // Pause icon
-            IndexPauseResumeLabel.Text = Localization.T("Settings.Search.Index.Pause");
-        }
-
-        UpdateDashboardVisibility();
-    }
-
-    private void RefreshStorageInfo(SearchEngineService? engine)
-    {
-        long now = Environment.TickCount64;
-        long last = Interlocked.Read(ref _lastStorageRefreshMs);
-        // Throttle storage info to 5 seconds to avoid frequent disk I/O during indexing.
-        if (now - last < 5000 && !string.IsNullOrEmpty(_lastStorageText))
-        {
-            SearchIndexStorageText.Text = _lastStorageText;
-            return;
-        }
-
-        Interlocked.Exchange(ref _lastStorageRefreshMs, now);
-        long bytes = engine?.GetIndexStorageBytes() ?? 0;
-        string storageStr = FormatBytes(bytes);
-        string lastScan = engine?.LastScanTime is { } time
-            ? time.ToString("g")
-            : Localization.T("Settings.Search.Index.LastScan.Never");
-        _lastStorageText = Localization.Format("Settings.Search.Index.StorageInfo", storageStr, lastScan);
-        SearchIndexStorageText.Text = _lastStorageText;
-    }
-
-    private void HideProgressBar()
-    {
-        if (IndexProgressBar.Visibility == Visibility.Collapsed)
+        EverythingSearchService? provider = EnsureEverythingProviderForUserAction();
+        if (provider is null)
         {
             return;
         }
 
-        // Fade out animation for smooth transition
-        var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-        var fadeOut = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        _everythingRefreshCts?.Cancel();
+        _everythingRefreshCts?.Dispose();
+        _everythingRefreshCts = new CancellationTokenSource();
+        _ = RefreshEverythingStatusAsync(provider, _everythingRefreshCts.Token);
+    }
+
+    private async Task RefreshEverythingStatusAsync(
+        EverythingSearchService provider,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            To = 0,
-            Duration = TimeSpan.FromMilliseconds(300)
+            EverythingConnectionSnapshot snapshot = await provider.RefreshConnectionAsync(
+                allowIpcProbe: Settings.Settings.SearchEverythingEnabled,
+                cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _ = DispatcherQueue.TryEnqueue(() => UpdateEverythingDashboard(snapshot));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer detection or the settings window closing.
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Everything] Settings refresh failed: {ex.Message}");
+        }
+    }
+
+    private void OnEverythingConnectionChanged(EverythingConnectionSnapshot snapshot)
+    {
+        _ = DispatcherQueue.TryEnqueue(() => UpdateEverythingDashboard(snapshot));
+    }
+
+    private void UpdateEverythingDashboard(EverythingConnectionSnapshot snapshot)
+    {
+        EverythingStatusInfoBar.Title =
+            Localization.T("Settings.Search.Everything.StatusTitle");
+        EverythingStatusInfoBar.Severity = snapshot.State switch
+        {
+            EverythingConnectionState.Connected => InfoBarSeverity.Success,
+            EverythingConnectionState.Checking or EverythingConnectionState.NotConfirmed =>
+                InfoBarSeverity.Informational,
+            EverythingConnectionState.NotInstalled or EverythingConnectionState.NotRunning =>
+                InfoBarSeverity.Warning,
+            _ => InfoBarSeverity.Error
         };
-        storyboard.Children.Add(fadeOut);
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fadeOut, IndexProgressBar);
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fadeOut, "Opacity");
-        storyboard.Completed += (_, _) =>
+        EverythingStatusInfoBar.Message = snapshot.State switch
         {
-            IndexProgressBar.Visibility = Visibility.Collapsed;
-            IndexProgressBar.Opacity = 1; // Reset for next show
+            EverythingConnectionState.Unknown =>
+                Localization.T("Settings.Search.Everything.Status.Unknown"),
+            EverythingConnectionState.Checking =>
+                Localization.T("Settings.Search.Everything.Status.Checking"),
+            EverythingConnectionState.NotConfirmed =>
+                Localization.T("Settings.Search.Everything.Status.NotConfirmed"),
+            EverythingConnectionState.NotInstalled =>
+                Localization.T("Settings.Search.Everything.Status.NotInstalled"),
+            EverythingConnectionState.NotRunning =>
+                Localization.T("Settings.Search.Everything.Status.NotRunning"),
+            EverythingConnectionState.PermissionMismatch =>
+                Localization.T("Settings.Search.Everything.Status.PermissionMismatch"),
+            EverythingConnectionState.IpcUnavailable =>
+                Localization.T("Settings.Search.Everything.Status.IpcUnavailable"),
+            EverythingConnectionState.SdkUnavailable =>
+                Localization.T("Settings.Search.Everything.Status.SdkUnavailable"),
+            EverythingConnectionState.Connected => Localization.Format(
+                "Settings.Search.Everything.Status.Connected",
+                snapshot.Version ?? Localization.T("Settings.Search.Everything.VersionUnknown")),
+            _ => Localization.T("Settings.Search.Everything.Status.Error")
         };
-        storyboard.Begin();
+
+        EverythingPathText.Text = string.IsNullOrWhiteSpace(snapshot.ExecutablePath)
+            ? Localization.T("Settings.Search.Everything.Path.NotFound")
+            : Localization.Format(
+                snapshot.UsesManualPath
+                    ? "Settings.Search.Everything.Path.Manual"
+                    : "Settings.Search.Everything.Path.Detected",
+                snapshot.ExecutablePath);
+
+        bool enabled = Settings.Settings.SearchEverythingEnabled;
+        EverythingAdvancedSyntaxToggle.IsEnabled = enabled;
+        EverythingLaunchButton.Visibility =
+            !string.IsNullOrWhiteSpace(snapshot.ExecutablePath) && !snapshot.IsRunning
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        EverythingDownloadButton.Visibility =
+            snapshot.State == EverythingConnectionState.NotInstalled
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        EverythingHelpButton.Visibility = snapshot.State is
+            EverythingConnectionState.PermissionMismatch or
+            EverythingConnectionState.IpcUnavailable
+                ? Visibility.Visible
+                : Visibility.Collapsed;
     }
 
-    private void UpdateDashboardVisibility()
+    private void EverythingConsentCheckBox_Changed(object sender, RoutedEventArgs e)
     {
-        IndexDashboardCard.Visibility = Visibility.Visible;
-    }
-
-    private void OnIndexProgressChanged(int count)
-    {
-        // Throttle: at most one full UI refresh per 500 ms to avoid flooding the
-        // dispatcher when the index service reports progress every few entries.
-        long now = Environment.TickCount64;
-        long last = Interlocked.Read(ref _lastProgressRefreshMs);
-        if (now - last < 500 ||
-            Interlocked.CompareExchange(ref _lastProgressRefreshMs, now, last) != last)
-            return;
-
-        _ = DispatcherQueue.TryEnqueue(RefreshIndexStatus);
-    }
-
-    private void OnIndexCompleted()
-    {
-        _ = DispatcherQueue.TryEnqueue(() => RefreshIndexStatus());
-    }
-
-    private void IndexPauseResumeButton_Click(object sender, RoutedEventArgs e)
-    {
-        var engine = App.Current.SearchEngineService;
-        if (engine is null)
+        if (_isLoading || !IsLoaded)
         {
             return;
         }
 
-        if (engine.IsIndexPaused)
-        {
-            engine.ResumeIndexing();
-        }
-        else
-        {
-            engine.PauseIndexing();
-        }
-
-        RefreshIndexStatus();
+        bool enabled = EverythingConsentCheckBox.IsChecked == true;
+        Settings.Settings.SearchEverythingEnabled = enabled;
+        Settings.SaveDebounced();
+        EverythingAdvancedSyntaxToggle.IsEnabled = enabled;
+        QueueEverythingRefresh();
     }
 
-    private void IndexRebuildButton_Click(object sender, RoutedEventArgs e)
+    private void EverythingAdvancedSyntaxToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        EnsureSearchEngineForUserAction()?.RebuildIndex();
-        RefreshIndexStatus();
+        if (_isLoading || !IsLoaded)
+        {
+            return;
+        }
+
+        Settings.Settings.SearchEverythingAdvancedSyntaxEnabled =
+            EverythingAdvancedSyntaxToggle.IsOn;
+        Settings.SaveDebounced();
+    }
+
+    private async void EverythingDetectButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (EnsureEverythingProviderForUserAction() is not { } provider)
+        {
+            return;
+        }
+
+        EverythingDetectButton.IsEnabled = false;
+        try
+        {
+            await provider.UseAutomaticDetectionAsync();
+        }
+        finally
+        {
+            EverythingDetectButton.IsEnabled = true;
+        }
+    }
+
+    private async void EverythingLaunchButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (EnsureEverythingProviderForUserAction() is not { } provider)
+        {
+            return;
+        }
+
+        EverythingLaunchButton.IsEnabled = false;
+        try
+        {
+            _ = await provider.LaunchEverythingAsync();
+        }
+        finally
+        {
+            EverythingLaunchButton.IsEnabled = true;
+        }
+    }
+
+    private async void EverythingBrowseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (App.Current.SettingsWindowInstance is not { } settingsWindow ||
+            EnsureEverythingProviderForUserAction() is not { } provider)
+        {
+            return;
+        }
+
+        nint owner = WindowNative.GetWindowHandle(settingsWindow);
+        if (owner == 0)
+        {
+            return;
+        }
+
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.ComputerFolder
+        };
+        picker.FileTypeFilter.Add(".exe");
+        InitializeWithWindow.Initialize(picker, owner);
+        Windows.Storage.StorageFile? file = await picker.PickSingleFileAsync();
+        if (file is null)
+        {
+            return;
+        }
+
+        if (!await provider.SetExecutablePathAsync(file.Path))
+        {
+            EverythingStatusInfoBar.Severity = InfoBarSeverity.Error;
+            EverythingStatusInfoBar.Message =
+                Localization.T("Settings.Search.Everything.Status.InvalidExecutable");
+        }
+    }
+
+    private async void EverythingDownloadButton_Click(object sender, RoutedEventArgs e)
+    {
+        _ = await Launcher.LaunchUriAsync(new Uri("https://www.voidtools.com/downloads/"));
+    }
+
+    private async void EverythingHelpButton_Click(object sender, RoutedEventArgs e)
+    {
+        _ = await Launcher.LaunchUriAsync(new Uri(
+            "https://www.voidtools.com/support/everything/installing-everything/"));
     }
 
     private void RefreshSearchHotkeyControls()
@@ -495,27 +515,6 @@ public sealed partial class SearchSettingsSection : UserControl
             Windows.System.VirtualKey.RightShift or
             Windows.System.VirtualKey.LeftWindows or
             Windows.System.VirtualKey.RightWindows;
-    }
-
-    private static string FormatBytes(long bytes)
-    {
-        if (bytes <= 0)
-        {
-            return "0 B";
-        }
-
-        string[] units = ["B", "KB", "MB", "GB"];
-        int unitIndex = 0;
-        double size = bytes;
-        while (size >= 1024 && unitIndex < units.Length - 1)
-        {
-            size /= 1024;
-            unitIndex++;
-        }
-
-        return unitIndex == 0
-            ? $"{bytes} {units[unitIndex]}"
-            : $"{size:F1} {units[unitIndex]}";
     }
 
 }

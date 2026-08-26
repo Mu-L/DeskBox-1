@@ -7,11 +7,21 @@ using Microsoft.Win32;
 
 namespace DeskBox.Updater;
 
+internal enum DirectInstallScope
+{
+    CurrentUser,
+    AllUsers
+}
+
 internal static class Program
 {
     private const int InstallRegistrationMismatchExitCode = 20;
     private const string UpdateInstallResultArgument = "--update-install-result";
     private const string InstallStateRegistryPath = @"Software\DeskBox\DirectInstall";
+    private const string UninstallRegistryPath =
+        @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{5E052824-3456-427E-9759-3BCAE078A1D3}_is1";
+    private const string WowUninstallRegistryPath =
+        @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{5E052824-3456-427E-9759-3BCAE078A1D3}_is1";
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DeskBox",
@@ -98,6 +108,8 @@ internal static class Program
             return 4;
         }
 
+        DirectInstallScope installScope = ResolveInstallScope(installDirectory);
+
         var startInfo = new ProcessStartInfo
         {
             FileName = options.InstallerPath,
@@ -108,12 +120,17 @@ internal static class Program
         // Inno Setup otherwise falls back to DefaultDirName during a silent
         // install. Always pin an in-app update to the directory containing
         // the currently running DeskBox.exe.
-        foreach (string argument in BuildInstallerArguments(installDirectory, options.Silent))
+        foreach (string argument in BuildInstallerArguments(
+                     installDirectory,
+                     options.Silent,
+                     installScope))
         {
             startInfo.ArgumentList.Add(argument);
         }
 
-        Log($"Starting installer: {options.InstallerPath}; target directory: {installDirectory}");
+        Log(
+            $"Starting installer: {options.InstallerPath}; " +
+            $"target directory: {installDirectory}; scope: {installScope}");
         using var process = Process.Start(startInfo);
         if (process is null)
         {
@@ -128,7 +145,7 @@ internal static class Program
             return process.ExitCode;
         }
 
-        if (!IsInstallRegistrationConsistent(installDirectory))
+        if (!IsInstallRegistrationConsistent(installDirectory, installScope))
         {
             Log($"Installer reported success, but the registered installation path does not match {installDirectory}.");
             return InstallRegistrationMismatchExitCode;
@@ -137,11 +154,17 @@ internal static class Program
         return 0;
     }
 
-    internal static IReadOnlyList<string> BuildInstallerArguments(string installDirectory, bool silent)
+    internal static IReadOnlyList<string> BuildInstallerArguments(
+        string installDirectory,
+        bool silent,
+        DirectInstallScope installScope)
     {
         var arguments = new List<string>
         {
-            $"/DIR={installDirectory}"
+            $"/DIR={installDirectory}",
+            installScope == DirectInstallScope.AllUsers
+                ? "/ALLUSERS"
+                : "/CURRENTUSER"
         };
 
         if (silent)
@@ -157,28 +180,120 @@ internal static class Program
         return arguments;
     }
 
-    private static bool IsInstallRegistrationConsistent(string expectedInstallDirectory)
+    internal static DirectInstallScope ResolveInstallScope(string installDirectory)
+    {
+        if (RegisteredLocationMatches(Registry.LocalMachine, InstallStateRegistryPath, installDirectory) ||
+            RegisteredLocationMatches(Registry.LocalMachine, UninstallRegistryPath, installDirectory) ||
+            RegisteredLocationMatches(Registry.LocalMachine, WowUninstallRegistryPath, installDirectory))
+        {
+            return DirectInstallScope.AllUsers;
+        }
+
+        if (RegisteredLocationMatches(Registry.CurrentUser, InstallStateRegistryPath, installDirectory) ||
+            RegisteredLocationMatches(Registry.CurrentUser, UninstallRegistryPath, installDirectory) ||
+            RegisteredLocationMatches(Registry.CurrentUser, WowUninstallRegistryPath, installDirectory))
+        {
+            return DirectInstallScope.CurrentUser;
+        }
+
+        // Compatibility fallback for older machine-wide builds that predate the
+        // explicit InstallScope registration.
+        if (IsDirectoryWithinKnownFolder(
+                installDirectory,
+                Environment.SpecialFolder.ProgramFiles) ||
+            IsDirectoryWithinKnownFolder(
+                installDirectory,
+                Environment.SpecialFolder.ProgramFilesX86))
+        {
+            return DirectInstallScope.AllUsers;
+        }
+
+        return DirectInstallScope.CurrentUser;
+    }
+
+    private static bool IsInstallRegistrationConsistent(
+        string expectedInstallDirectory,
+        DirectInstallScope installScope)
     {
         try
         {
-            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(InstallStateRegistryPath, writable: false);
+            RegistryKey root = installScope == DirectInstallScope.AllUsers
+                ? Registry.LocalMachine
+                : Registry.CurrentUser;
+            using RegistryKey? key = root.OpenSubKey(InstallStateRegistryPath, writable: false);
             string? registeredPath = key?.GetValue("InstallLocation") as string;
+            string? registeredScope = key?.GetValue("InstallScope") as string;
             if (string.IsNullOrWhiteSpace(registeredPath))
             {
                 return false;
             }
 
-            return string.Equals(
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(registeredPath)),
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(expectedInstallDirectory)),
-                StringComparison.OrdinalIgnoreCase);
+            string expectedScope = installScope == DirectInstallScope.AllUsers
+                ? "all-users"
+                : "current-user";
+            return PathsEqual(registeredPath, expectedInstallDirectory) &&
+                   string.Equals(
+                       registeredScope?.Trim(),
+                       expectedScope,
+                       StringComparison.OrdinalIgnoreCase);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
         {
             Log($"Install registration verification failed: {ex.Message}");
             return false;
         }
     }
+
+    private static bool RegisteredLocationMatches(
+        RegistryKey root,
+        string registryPath,
+        string expectedInstallDirectory)
+    {
+        try
+        {
+            using RegistryKey? key = root.OpenSubKey(registryPath, writable: false);
+            return key?.GetValue("InstallLocation") is string registeredPath &&
+                   PathsEqual(registeredPath, expectedInstallDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsDirectoryWithinKnownFolder(
+        string directory,
+        Environment.SpecialFolder specialFolder)
+    {
+        string knownFolder = Environment.GetFolderPath(specialFolder);
+        if (string.IsNullOrWhiteSpace(knownFolder))
+        {
+            return false;
+        }
+
+        try
+        {
+            string normalizedDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+            string normalizedKnownFolder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(knownFolder));
+            return string.Equals(
+                       normalizedDirectory,
+                       normalizedKnownFolder,
+                       StringComparison.OrdinalIgnoreCase) ||
+                   normalizedDirectory.StartsWith(
+                       normalizedKnownFolder + Path.DirectorySeparatorChar,
+                       StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
+
+    private static bool PathsEqual(string first, string second) =>
+        string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool TryGetInstallDirectory(UpdateOptions options, out string installDirectory)
     {

@@ -6,34 +6,22 @@ public sealed class AotStage7BContractTests
     public void ProductLoaders_AcceptX64AndArm64ButRejectOtherProcessArchitectures()
     {
         string shortcut = Read("src/DeskBox/Helpers/ShortcutNativeBackend.cs");
-        string search = Read("src/DeskBox/Services/SearchCoreNativeBackend.cs");
 
-        foreach (string source in new[] { shortcut, search })
-        {
-            Assert.Contains(
-                "Architecture.X64 or Architecture.Arm64",
-                source,
-                StringComparison.Ordinal);
-        }
+        Assert.Contains(
+            "Architecture.X64 or Architecture.Arm64",
+            shortcut,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("supports only x64", shortcut, StringComparison.Ordinal);
-        Assert.DoesNotContain("supports x64 only", search, StringComparison.Ordinal);
     }
 
     [Fact]
     public void BuildScripts_LoadTheDllWheneverHostAndTargetArchitecturesMatch()
     {
-        foreach (string relativePath in new[]
-                 {
-                     "scripts/build-rust-native.ps1",
-                     "scripts/build-rust-search-core.ps1"
-                 })
-        {
-            string script = Read(relativePath);
-            Assert.Contains("expectedProcessArchitecture", script, StringComparison.Ordinal);
-            Assert.Contains("host-and-target-architectures-match", script, StringComparison.Ordinal);
-            Assert.Contains("cross-architecture-static-validation-only", script, StringComparison.Ordinal);
-            Assert.Contains("runtime-load-plus-static-pe", script, StringComparison.Ordinal);
-        }
+        string script = Read("scripts/build-rust-native.ps1");
+        Assert.Contains("expectedProcessArchitecture", script, StringComparison.Ordinal);
+        Assert.Contains("host-and-target-architectures-match", script, StringComparison.Ordinal);
+        Assert.Contains("cross-architecture-static-validation-only", script, StringComparison.Ordinal);
+        Assert.Contains("runtime-load-plus-static-pe", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -91,14 +79,14 @@ public sealed class AotStage7BContractTests
                      "targetArchitectureRuntimeExecuted",
                      "physicalUserDeviceExecuted",
                      "interactiveDesktopExecuted",
-                     "DESKBOX_REQUIRE_ARM64_RUNTIME_GATE",
-                     "SearchCoreNativeBackendTests"
+                     "DESKBOX_REQUIRE_ARM64_RUNTIME_GATE"
                  })
         {
             Assert.Contains(token, runner, StringComparison.Ordinal);
         }
         Assert.Contains("Architecture.Arm64", gate, StringComparison.Ordinal);
-        Assert.Contains("searchCore.Query", gate, StringComparison.Ordinal);
+        Assert.Contains("ProbeAbiVersion", gate, StringComparison.Ordinal);
+        Assert.DoesNotContain("SearchCore", runner, StringComparison.Ordinal);
     }
 
     private static string Read(string relativePath) =>

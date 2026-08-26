@@ -1,5 +1,6 @@
 using DeskBox.Helpers;
 using Microsoft.UI.Dispatching;
+using System.Diagnostics;
 
 namespace DeskBox.Services;
 
@@ -17,11 +18,17 @@ public sealed class DisplayAreaWatcherService : IDisposable
 {
     private const int PollIntervalMs = 2000;
     private const int DebounceDelayMs = 500;
+    private static readonly TimeSpan CaptureTimeout = TimeSpan.FromMilliseconds(1500);
 
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly DispatcherQueueTimer _pollTimer;
     private readonly DispatcherQueueTimer _debounceTimer;
-    private bool _isDisposed;
+    private readonly DisplayTopologySnapshotProvider _snapshotProvider;
+    private volatile bool _isDisposed;
+    private bool _isStarted;
+    private bool _hasSnapshot;
+    private int _pollInProgress;
+    private int _captureFailureCount;
     private int _displayCount;
     private string _displaySignature = string.Empty;
 
@@ -38,8 +45,16 @@ public sealed class DisplayAreaWatcherService : IDisposable
     public int DisplayCount => _displayCount;
 
     public DisplayAreaWatcherService(DispatcherQueue dispatcherQueue)
+        : this(dispatcherQueue, snapshotProvider: null)
+    {
+    }
+
+    internal DisplayAreaWatcherService(
+        DispatcherQueue dispatcherQueue,
+        DisplayTopologySnapshotProvider? snapshotProvider = null)
     {
         _dispatcherQueue = dispatcherQueue;
+        _snapshotProvider = snapshotProvider ?? new DisplayTopologySnapshotProvider();
         _pollTimer = dispatcherQueue.CreateTimer();
         _pollTimer.Interval = TimeSpan.FromMilliseconds(PollIntervalMs);
         _pollTimer.IsRepeating = true;
@@ -53,20 +68,19 @@ public sealed class DisplayAreaWatcherService : IDisposable
 
     public void Start()
     {
-        if (_isDisposed)
+        if (_isDisposed || _isStarted)
         {
             return;
         }
 
-        _displayCount = CountDisplays();
-        _displaySignature = CaptureCurrentSignature();
-        App.Log($"[DisplayAreaWatcher] Started, initial display count: {_displayCount}, signature: {_displaySignature}");
+        _isStarted = true;
         _pollTimer.Start();
+        _ = PollForChangesAsync();
     }
 
     private void PollTimer_Tick(DispatcherQueueTimer sender, object args)
     {
-        PollForChanges();
+        _ = PollForChangesAsync();
     }
 
     /// <summary>
@@ -80,31 +94,112 @@ public sealed class DisplayAreaWatcherService : IDisposable
             return;
         }
 
-        PollForChanges();
+        _ = PollForChangesAsync();
     }
 
-    private void PollForChanges()
+    private async Task PollForChangesAsync()
+    {
+        if (_isDisposed || Interlocked.Exchange(ref _pollInProgress, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            DisplayTopologySnapshot snapshot;
+            try
+            {
+                snapshot = await _snapshotProvider
+                    .CaptureAsync()
+                    .WaitAsync(CaptureTimeout);
+            }
+            catch (TimeoutException)
+            {
+                RecordCaptureFailure("timeout");
+                return;
+            }
+            catch (Exception ex)
+            {
+                RecordCaptureFailure(ex.GetType().Name);
+                return;
+            }
+
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            if (_dispatcherQueue.HasThreadAccess)
+            {
+                ApplySnapshot(snapshot);
+            }
+            else
+            {
+                _dispatcherQueue.TryEnqueue(() => ApplySnapshot(snapshot));
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _pollInProgress, 0);
+        }
+    }
+
+    private void ApplySnapshot(DisplayTopologySnapshot snapshot)
     {
         if (_isDisposed)
         {
             return;
         }
 
-        int newCount = CountDisplays();
-        string newSignature = CaptureCurrentSignature();
-
-        if (newCount != _displayCount || !string.Equals(newSignature, _displaySignature, StringComparison.Ordinal))
+        if (!snapshot.IsValid)
         {
-            bool isCountChange = newCount != _displayCount;
-            _displayCount = newCount;
-            _displaySignature = newSignature;
+            RecordCaptureFailure(snapshot.FailureReason);
+            return;
+        }
 
+        Interlocked.Exchange(ref _captureFailureCount, 0);
+        if (!_hasSnapshot)
+        {
+            _hasSnapshot = true;
+            _displayCount = snapshot.DisplayCount;
+            _displaySignature = snapshot.SemanticSignature;
             App.Log(
-                $"[DisplayAreaWatcher] Display topology changed: " +
-                $"count={newCount} countChanged={isCountChange} " +
-                $"signature={newSignature}");
+                $"[DisplayAreaWatcher] Started, initial display count: {_displayCount}, " +
+                $"signature: {_displaySignature}");
+            return;
+        }
 
-            _debounceTimer.Start();
+        bool countChanged = snapshot.DisplayCount != _displayCount;
+        bool signatureChanged = !string.Equals(
+            snapshot.SemanticSignature,
+            _displaySignature,
+            StringComparison.Ordinal);
+        if (!countChanged && !signatureChanged)
+        {
+            return;
+        }
+
+        _displayCount = snapshot.DisplayCount;
+        _displaySignature = snapshot.SemanticSignature;
+
+        App.Log(
+            $"[DisplayAreaWatcher] Display topology changed: " +
+            $"count={snapshot.DisplayCount} countChanged={countChanged} " +
+            $"signature={snapshot.SemanticSignature}");
+
+        // Restart the one-shot timer so a burst of native changes produces one event.
+        _debounceTimer.Stop();
+        _debounceTimer.Start();
+    }
+
+    private void RecordCaptureFailure(string? reason)
+    {
+        int failureCount = Interlocked.Increment(ref _captureFailureCount);
+        if (failureCount == 1 || failureCount % 10 == 0)
+        {
+            App.Log(
+                $"[DisplayAreaWatcher] Snapshot unavailable count={failureCount} " +
+                $"reason={reason ?? "unknown"}; retaining the last valid topology");
         }
     }
 
@@ -118,36 +213,61 @@ public sealed class DisplayAreaWatcherService : IDisposable
     /// Creates a string signature of the current display topology
     /// (monitor bounds + work areas) to detect any geometry changes.
     /// </summary>
-    internal static string CaptureCurrentSignature()
+    internal static DisplayTopologySnapshot CaptureCurrentSnapshot()
     {
+        var stopwatch = Stopwatch.StartNew();
         try
         {
-            var areas = Win32Helper.GetMonitorWorkAreaInfos();
-            return string.Join("|", areas
-                .OrderBy(a => a.DeviceName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(a => a.Monitor.Left)
-                .ThenBy(a => a.Monitor.Top)
-                .Select(a =>
-                $"{a.DeviceName};{a.IsPrimary};{a.DpiScale:F3};" +
-                $"{a.Monitor.Left},{a.Monitor.Top},{a.Monitor.Right},{a.Monitor.Bottom};" +
-                $"{a.WorkArea.Left},{a.WorkArea.Top},{a.WorkArea.Right},{a.WorkArea.Bottom}"));
+            IReadOnlyList<Win32Helper.MonitorWorkAreaInfo> areas =
+                Win32Helper.GetMonitorWorkAreaInfos();
+            if (areas.Count == 0)
+            {
+                return DisplayTopologySnapshot.Invalid("no-displays");
+            }
+
+            string semanticSignature = CreateSemanticSignature(areas);
+            WidgetDisplayTopologySnapshot layoutTopology =
+                WidgetTopologyLayoutService.CreateSnapshotFromMonitorAreas(areas);
+            return new DisplayTopologySnapshot(
+                areas.Count,
+                semanticSignature,
+                layoutTopology,
+                IsValid: true,
+                FailureReason: string.Empty);
         }
-        catch
+        catch (Exception ex)
         {
-            return string.Empty;
+            return DisplayTopologySnapshot.Invalid(ex.GetType().Name);
+        }
+        finally
+        {
+            stopwatch.Stop();
+            if (stopwatch.ElapsedMilliseconds >= 250)
+            {
+                App.Log(
+                    $"[DisplayTopology] Slow background snapshot " +
+                    $"elapsedMs={stopwatch.ElapsedMilliseconds}");
+            }
         }
     }
 
-    private static int CountDisplays()
+    internal static string CaptureCurrentSignature()
     {
-        try
-        {
-            return Win32Helper.GetMonitorWorkAreas().Count;
-        }
-        catch
-        {
-            return 1;
-        }
+        DisplayTopologySnapshot snapshot = CaptureCurrentSnapshot();
+        return snapshot.IsValid ? snapshot.SemanticSignature : string.Empty;
+    }
+
+    internal static string CreateSemanticSignature(
+        IReadOnlyList<Win32Helper.MonitorWorkAreaInfo> areas)
+    {
+        return string.Join("|", areas
+                .OrderBy(a => a.Monitor.Left)
+                .ThenBy(a => a.Monitor.Top)
+                .ThenBy(a => a.Monitor.Right)
+                .ThenBy(a => a.Monitor.Bottom)
+                .Select(a =>
+                    FormattableString.Invariant(
+                        $"{a.IsPrimary};{a.DpiScale:F3};{a.Monitor.Left},{a.Monitor.Top},{a.Monitor.Right},{a.Monitor.Bottom};{a.WorkArea.Left},{a.WorkArea.Top},{a.WorkArea.Right},{a.WorkArea.Bottom}")));
     }
 
     public void Dispose()
@@ -158,9 +278,57 @@ public sealed class DisplayAreaWatcherService : IDisposable
         }
 
         _isDisposed = true;
+        _isStarted = false;
         _pollTimer.Stop();
         _pollTimer.Tick -= PollTimer_Tick;
         _debounceTimer.Stop();
         _debounceTimer.Tick -= DebounceTimer_Tick;
+    }
+}
+
+internal sealed record DisplayTopologySnapshot(
+    int DisplayCount,
+    string SemanticSignature,
+    WidgetDisplayTopologySnapshot? LayoutTopology,
+    bool IsValid,
+    string FailureReason)
+{
+    internal static DisplayTopologySnapshot Invalid(string? reason) => new(
+        DisplayCount: 0,
+        SemanticSignature: string.Empty,
+        LayoutTopology: null,
+        IsValid: false,
+        FailureReason: string.IsNullOrWhiteSpace(reason) ? "unknown" : reason);
+}
+
+/// <summary>
+/// Shares one background native display capture between the polling fallback and
+/// the transition coordinator. If a driver call stalls, callers time out while
+/// this provider keeps the single in-flight capture instead of accumulating work.
+/// </summary>
+internal sealed class DisplayTopologySnapshotProvider
+{
+    private readonly object _gate = new();
+    private readonly Func<DisplayTopologySnapshot> _captureAction;
+    private Task<DisplayTopologySnapshot>? _inFlightCapture;
+
+    public DisplayTopologySnapshotProvider(
+        Func<DisplayTopologySnapshot>? captureAction = null)
+    {
+        _captureAction = captureAction ?? DisplayAreaWatcherService.CaptureCurrentSnapshot;
+    }
+
+    public Task<DisplayTopologySnapshot> CaptureAsync()
+    {
+        lock (_gate)
+        {
+            if (_inFlightCapture is { IsCompleted: false })
+            {
+                return _inFlightCapture;
+            }
+
+            _inFlightCapture = Task.Run(_captureAction);
+            return _inFlightCapture;
+        }
     }
 }

@@ -43,4 +43,20 @@ public sealed class DisplayTopologyTransitionCoordinatorTests
 
         Assert.Equal("widget-window-message,display-area-watcher", reasons);
     }
+
+    [Theory]
+    [InlineData("widget-window-message", false)]
+    [InlineData("lifecycle-display-message,display-area-watcher", false)]
+    [InlineData("lifecycle-resume", true)]
+    [InlineData("lifecycle-session-unlock", true)]
+    [InlineData("lifecycle-explorer-restart", true)]
+    public void UnchangedTopology_OnlyLifecycleRecoveryReasonsForceRestore(
+        string reasons,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            DisplayTopologyTransitionCoordinator
+                .RequiresRestoreWhenSignatureUnchanged(reasons));
+    }
 }

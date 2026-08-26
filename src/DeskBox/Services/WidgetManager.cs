@@ -1173,7 +1173,10 @@ public sealed partial class WidgetManager
     /// the current display topology.  Called when displays are added,
     /// removed, or reconfigured (hot-plug, resolution change, DPI change).
     /// </summary>
-    public async Task<bool> RestoreWidgetPositionsAsync(long generation, string reasons)
+    internal async Task<bool> RestoreWidgetPositionsAsync(
+        long generation,
+        string reasons,
+        DisplayTopologySnapshot snapshot)
     {
         using var perfScope = PerformanceLogger.Measure("WidgetManager.RestoreWidgetPositions");
         App.Log(
@@ -1187,6 +1190,14 @@ public sealed partial class WidgetManager
             return false;
         }
 
+        if (!snapshot.IsValid || snapshot.LayoutTopology is null)
+        {
+            App.Log(
+                $"[WidgetManager] Deferring topology generation={generation}; " +
+                $"the captured display snapshot is unavailable");
+            return false;
+        }
+
         bool allRestored = true;
         IReadOnlyList<IDesktopWidgetWindow> windows = GetLoadedDesktopWindows();
         foreach (IDesktopWidgetWindow window in windows)
@@ -1196,13 +1207,16 @@ public sealed partial class WidgetManager
 
         try
         {
-            if (_topologyLayoutService.ActivateCurrentTopology(_settingsService.Settings))
+            if (_topologyLayoutService.Activate(
+                    _settingsService.Settings,
+                    snapshot.LayoutTopology))
             {
                 _settingsService.SaveDebounced(notifySubscribers: false);
             }
 
             foreach (IDesktopWidgetWindow window in windows)
             {
+                long windowStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
                 try
                 {
                     allRestored &= window.TryRestoreBoundsForDisplayTopology();
@@ -1211,6 +1225,17 @@ public sealed partial class WidgetManager
                 {
                     allRestored = false;
                     App.Log($"[WidgetManager] Failed to restore position for widget '{window.Identity.WidgetId}': {ex.Message}");
+                }
+                finally
+                {
+                    TimeSpan elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(windowStartedAt);
+                    if (elapsed >= TimeSpan.FromMilliseconds(100))
+                    {
+                        App.Log(
+                            $"[DisplayTopology] Slow widget bounds restore " +
+                            $"generation={generation} widget={window.Identity.WidgetId} " +
+                            $"elapsedMs={elapsed.TotalMilliseconds:F0}");
+                    }
                 }
             }
         }
@@ -1223,8 +1248,29 @@ public sealed partial class WidgetManager
         }
 
         await Task.Yield();
-        QueueIdleWidgetZOrderNormalization("display-topology-restored");
-        return allRestored;
+        if (!allRestored)
+        {
+            return false;
+        }
+
+        // Restore the desktop layer once for the whole visible group. Individual
+        // windows no longer run their own layer restore and queue overlapping
+        // normalization passes during the same topology generation.
+        IReadOnlyList<IDesktopWidgetWindow> visibleWindows =
+            GetWindowsInIdleHighestFirstOrder(windows.Where(window => window.Visible));
+        long layerStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool layerRestored = WidgetLayerService.RestoreGroupPreservingForeground(
+            visibleWindows.Select(window => window.WindowHandle).ToList(),
+            "display-topology-restored");
+        TimeSpan layerElapsed = System.Diagnostics.Stopwatch.GetElapsedTime(layerStartedAt);
+        if (layerElapsed >= TimeSpan.FromMilliseconds(100))
+        {
+            App.Log(
+                $"[DisplayTopology] Slow group layer restore generation={generation} " +
+                $"count={visibleWindows.Count} elapsedMs={layerElapsed.TotalMilliseconds:F0}");
+        }
+
+        return layerRestored;
     }
 
     internal void CaptureCurrentTopologyLayout(WidgetConfig config)

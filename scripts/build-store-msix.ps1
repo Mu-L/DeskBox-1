@@ -66,7 +66,6 @@ if ($NativeAot.IsPresent) {
         "-p:PublishAot=true",
         "-p:DeskBoxRustNative=true",
         "-p:DeskBoxRustCrtLinkage=Static",
-        "-p:DeskBoxSearchCorePreviewModule=false",
         "-p:JsonSerializerIsReflectionEnabledByDefault=false",
         "-p:IlcUseEnvironmentalTools=true",
         "-p:PublishTrimmed=true"

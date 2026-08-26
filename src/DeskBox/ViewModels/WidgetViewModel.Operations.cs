@@ -441,7 +441,7 @@ public partial class WidgetViewModel
                 restartWatchers = true;
             }
 
-            await _fileService.RelocateEntryAsync(sourcePath, destinationPath);
+            await _fileService.RenameEntryAsync(sourcePath, destinationPath);
             TransferFileAddedAt(sourcePath, destinationPath);
             var refreshedItem = await _fileService.CreateWidgetItemAsync(
                 destinationPath,

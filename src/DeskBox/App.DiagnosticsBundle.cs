@@ -14,8 +14,7 @@ public partial class App
     public DeskBoxDiagnosticSnapshot CreateDiagnosticSnapshot()
     {
         AppRuntimeHealthSnapshot? runtimeHealth = DiagnosticsService?.GetRuntimeHealthSnapshot(
-            SearchIndexService,
-            SearchEngineService,
+            EverythingSearchService,
             WidgetManager?.GetFolderWatcherHealthSnapshots());
         DeskBoxWidgetManagerDiagnostic widgetManager =
             WidgetManager?.CreateDiagnosticsSnapshot() ?? DeskBoxWidgetManagerDiagnostic.Empty;

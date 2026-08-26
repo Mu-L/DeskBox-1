@@ -350,9 +350,19 @@ public sealed partial class FileSurfaceContent :
 
     public void OnActivated()
     {
-        if (IsLoaded)
+        // The stack title editor is a separate top-level window. Activating
+        // its owner is expected during the hand-off; focusing the content root
+        // here would immediately steal focus back from the TextBox and make
+        // the editor close through LostFocus.
+        if (IsLoaded && !_stackPopoverTitleEditing)
         {
             Root.Focus(FocusState.Programmatic);
+        }
+        else if (_stackPopoverTitleEditing)
+        {
+            App.LogVerbose(
+                $"[FileStack] Surface activation kept title editor focus " +
+                $"widget={WidgetId}");
         }
 
         if (_isWindowRevealCompleted)
@@ -1286,8 +1296,10 @@ public sealed partial class FileSurfaceContent :
                 _localizationService.T("Widget.RenameFailed"),
                 WidgetFeedbackSeverity.Error,
                 "file-rename-error"));
-            ItemRenameTextBox.Focus(FocusState.Programmatic);
-            ItemRenameTextBox.SelectAll();
+            // End the failed edit instead of restoring focus to the editor.
+            // Restoring focus can raise LostFocus again and resubmit the same
+            // blocked rename while another application still owns a file.
+            CompleteItemRename();
         }
         finally
         {

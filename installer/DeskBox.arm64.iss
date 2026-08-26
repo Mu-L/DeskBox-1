@@ -1,6 +1,6 @@
 ; DeskBox ARM64 安装脚本
 ; 构建命令：
-; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:DeskBoxSearchCorePreviewModule=true -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\arm64 -v:minimal
+; dotnet publish ..\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o ..\artifacts\publish\DeskBox\arm64 -v:minimal
 
 #define MyAppName "DeskBox"
 #define MyAppVersion "1.4.5"
@@ -42,14 +42,18 @@ MinVersion=10.0.19044
 DefaultDirName={code:GetDefaultInstallDir}
 DisableProgramGroupPage=yes
 DisableDirPage=no
-PrivilegesRequired=lowest
-; First installs use the default per-user path. Upgrade paths are resolved and
-; locked by DeskBox.Installation.iss before the directory page is shown.
+; New installs recommend the machine-wide Program Files location while still
+; allowing an unelevated current-user install. Registered upgrades retain their
+; previous install mode and path.
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
+; Upgrade paths are resolved and locked by DeskBox.Installation.iss before the
+; directory page is shown.
 ; Directory reuse is handled exclusively by DeskBox.Installation.iss. Leaving
 ; Inno's previous-directory fallback enabled could resurrect a stale uninstall
 ; record after the detector intentionally classified the run as a first install.
 UsePreviousAppDir=no
-UsePreviousPrivileges=no
+UsePreviousPrivileges=yes
 CloseApplications=force
 CloseApplicationsFilter={#MyAppExeName}
 RestartApplications=no
@@ -210,24 +214,24 @@ brazilianportuguese.DependencyVerificationFailed=O ambiente de execução necess
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [InstallDelete]
-Type: files; Name: "{userdesktop}\{#MyAppName}.lnk"; Tasks: desktopicon
+Type: files; Name: "{autodesktop}\{#MyAppName}.lnk"; Tasks: desktopicon
 Type: filesandordirs; Name: "{app}\Microsoft.WindowsAppRuntime"
 Type: files; Name: "{app}\Microsoft.WinUI.dll"
 Type: files; Name: "{app}\Microsoft.Windows.SDK.NET.dll"
 Type: files; Name: "{app}\DirectML.dll"
 Type: files; Name: "{app}\onnxruntime.dll"
-Type: files; Name: "{userstartup}\{#MyAppName}.lnk"
+Type: files; Name: "{autostartup}\{#MyAppName}.lnk"
 
 [Files]
-Source: "{#MyAppReleaseDir}\*"; DestDir: "{app}"; Excludes: "DeskBox.Updater.*,deskbox_native.dll,deskbox_native.pdb,deskbox_search_core.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyAppReleaseDir}\*"; DestDir: "{app}"; Excludes: "DeskBox.Updater.*,deskbox_native.dll,deskbox_native.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
 #if DeskBoxNativeAot
 Source: "{#MyAppReleaseDir}\deskbox_native.dll"; DestDir: "{app}"; Flags: ignoreversion
 #endif
 Source: "{#MyAppReleaseDir}\DeskBox.Updater.*"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\deskbox.ico"
-Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\deskbox.ico"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\deskbox.ico"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\deskbox.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
@@ -238,12 +242,11 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 #include "DeskBox.Uninstall.iss"
 
 [Registry]
-; Record the language chosen at install time so the DeskBox app can
-; default to it on first run (when the user has not manually
-; changed the in-app language). Read by LocalizationService.
-Root: HKCU; Subkey: "Software\DeskBox"; ValueType: string; ValueName: "InstallLanguage"; ValueData: "{code:InstallLanguageCode}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKCU; Subkey: "Software\DeskBox\DirectInstall"; ValueType: string; ValueName: "InstallLocation"; ValueData: "{app}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKCU; Subkey: "Software\DeskBox\DirectInstall"; ValueType: string; ValueName: "InstallVersion"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletevalue uninsdeletekeyifempty
+; HKA maps installation metadata to HKLM for all-users installs and HKCU for
+; current-user installs. The per-user language preference is handled below.
+Root: HKA; Subkey: "Software\DeskBox\DirectInstall"; ValueType: string; ValueName: "InstallLocation"; ValueData: "{app}"; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\DeskBox\DirectInstall"; ValueType: string; ValueName: "InstallVersion"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\DeskBox\DirectInstall"; ValueType: string; ValueName: "InstallScope"; ValueData: "{code:GetInstallScopeName}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 
 [Code]
 function InstallLanguageCode(Value: string): string;
@@ -260,4 +263,17 @@ begin
   else if ActiveLanguage = 'chinesesimplified' then Result := 'zh-CN'
   else if ActiveLanguage = 'chinesetraditional' then Result := 'zh-TW'
   else Result := 'en-US';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // Install language is a per-user preference. Never write it while running in
+  // administrative install mode because HKCU may belong to an elevation
+  // account rather than the person who launched Setup.
+  if (CurStep = ssPostInstall) and (not IsAdminInstallMode) then
+    RegWriteStringValue(
+      HKEY_CURRENT_USER,
+      'Software\DeskBox',
+      'InstallLanguage',
+      InstallLanguageCode(''));
 end;

@@ -5,9 +5,8 @@ using DeskBox.Models;
 namespace DeskBox.Services;
 
 /// <summary>
-/// Coordinates the single SearchCore filename catalog with a small DeskBox-content
-/// snapshot. The snapshot is not a second filename index and performs no I/O in the
-/// per-keystroke query path.
+/// Coordinates Everything filename results with a small DeskBox-content snapshot.
+/// DeskBox owns no filename index, scanner, filesystem watcher, or persisted catalog.
 /// </summary>
 public sealed class SearchEngineService : IDisposable
 {
@@ -17,7 +16,7 @@ public sealed class SearchEngineService : IDisposable
 
     private readonly SettingsService _settingsService;
     private readonly LocalizationService _localizationService;
-    private readonly SearchIndexService _indexService;
+    private readonly EverythingSearchService _everythingSearchService;
     private readonly QuickCaptureService _quickCaptureService;
     private readonly object _deskBoxContentRefreshLock = new();
     private readonly CancellationTokenSource _deskBoxContentLifetimeCts = new();
@@ -30,47 +29,19 @@ public sealed class SearchEngineService : IDisposable
     public SearchEngineService(
         SettingsService settingsService,
         LocalizationService localizationService,
-        SearchIndexService indexService,
+        EverythingSearchService everythingSearchService,
         QuickCaptureService quickCaptureService)
     {
         _settingsService = settingsService;
         _localizationService = localizationService;
-        _indexService = indexService;
+        _everythingSearchService = everythingSearchService;
         _quickCaptureService = quickCaptureService;
-        _indexService.IndexUpdated += OnIndexUpdated;
-        _indexService.ProgressChanged += OnIndexProgressChanged;
         _quickCaptureService.Changed += OnQuickCaptureChanged;
     }
 
-    public SearchIndexService IndexService => _indexService;
+    public EverythingSearchService EverythingProvider => _everythingSearchService;
 
-    public int IndexedItemCount => _indexService.EntryCount;
-
-    public bool IsCustomIndexing => _indexService.IsScanning ||
-                                    _indexService.IsLoading ||
-                                    _indexService.IsReconciliationPending;
-
-    public bool IsIndexPaused => _indexService.IsPaused;
-
-    public DateTime? LastScanTime => _indexService.LastScanTime;
-    public bool IsCustomIndexResident => _indexService.IsIndexResident;
-    public bool IsRustIndexPreviewActive => _indexService.IsRustPreviewActive;
-    public string? RustIndexPreviewFallbackReason =>
-        _indexService.RustPreviewFallbackReason;
-
-    // Retained for the diagnostics schema. The former USN service no longer owns
-    // a parallel query index; the single SearchIndexService/SearchCore catalog is
-    // now the only runtime search authority.
-    public bool IsUsnIndexAvailable => false;
-    public bool IsUsnIndexScanning => false;
-    public bool IsUsnIndexIncrementalSyncing => false;
-
-    public event Action? IndexUpdated;
-
-    /// <summary>Raised periodically during indexing with the current total entry count.</summary>
-    public event Action<int>? IndexProgressChanged;
-
-    private void OnIndexUpdated() => IndexUpdated?.Invoke();
+    public event Action? ResultsChanged;
 
     private void OnQuickCaptureChanged()
     {
@@ -81,74 +52,6 @@ public sealed class SearchEngineService : IDisposable
                 _deskBoxContentLifetimeCts.Token);
         }
     }
-
-    private void OnIndexProgressChanged(int _)
-    {
-        // Aggregate both services' counts and forward to subscribers.
-        IndexProgressChanged?.Invoke(IndexedItemCount);
-    }
-
-    public void SetCustomIndexingEnabled(bool enabled)
-    {
-        if (enabled)
-        {
-            _ = StartCustomIndexingAsync();
-        }
-        else
-        {
-            _indexService.SaveIndex();
-            _indexService.StopIndexing();
-        }
-    }
-
-    public async Task ReconfigureCustomIndexBackendAsync(
-        CancellationToken cancellationToken = default)
-    {
-        if (_isDisposed ||
-            !_settingsService.Settings.SearchCustomIndexerEnabled)
-        {
-            return;
-        }
-
-        _indexService.ResetRustPreviewRuntimeFallback();
-        _indexService.SaveIndex();
-        _indexService.StopIndexing();
-        await StartCustomIndexingAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Restores the persisted custom index away from the UI thread, then starts its
-    /// reconciliation/watchers. Safe to call concurrently with popup preloading.
-    /// </summary>
-    public async Task StartCustomIndexingAsync(
-        CancellationToken cancellationToken = default)
-    {
-        if (_isDisposed ||
-            !_settingsService.Settings.SearchCustomIndexerEnabled)
-        {
-            return;
-        }
-
-        Task<bool> fileIndexTask = _indexService.EnsureLoadedAsync(cancellationToken);
-        Task contentTask = _settingsService.Settings.SearchIncludeDeskBoxContent
-            ? EnsureDeskBoxContentSnapshotAsync(forceRefresh: true, cancellationToken)
-            : Task.CompletedTask;
-        await Task.WhenAll(fileIndexTask, contentTask).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        _indexService.StartIndexing();
-    }
-
-    /// <summary>
-    /// Awaits the startup preload when search is invoked unusually early.
-    /// </summary>
-    public Task<bool> PrepareForPopupAsync(
-        CancellationToken cancellationToken = default) =>
-        _indexService.EnsureLoadedAsync(cancellationToken);
 
     public void SetDeskBoxContentSearchEnabled(bool enabled)
     {
@@ -170,50 +73,33 @@ public sealed class SearchEngineService : IDisposable
         Interlocked.Exchange(ref _deskBoxContentLastRefreshMs, long.MinValue);
     }
 
-    /// <summary>Pauses all in-progress indexing.</summary>
-    public void PauseIndexing()
-    {
-        _indexService.PauseIndexing();
-    }
-
-    /// <summary>Resumes paused indexing.</summary>
-    public void ResumeIndexing()
-    {
-        _indexService.ResumeIndexing();
-    }
-
-    /// <summary>Clears and rebuilds the index from scratch.</summary>
-    public void RebuildIndex()
-    {
-        _indexService.RebuildIndex();
-    }
-
-    /// <summary>Returns the on-disk storage size (bytes) of the persisted index.</summary>
-    public long GetIndexStorageBytes() => _indexService.GetIndexStorageBytes();
-
     /// <summary>
     /// Performs a unified search across all enabled layers.
     /// </summary>
     public async Task<SearchResponse> SearchAsync(string query, CancellationToken cancellationToken = default)
         => await SearchPageAsync(
             query,
+            0,
             InitialFileResultPageSize,
             cancellationToken).ConfigureAwait(false);
 
     public async Task<SearchResponse> SearchPageAsync(
         string query,
-        int requestedFileResults,
+        int fileResultOffset,
+        int fileResultPageSize,
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
-        int fileResultLimit = Math.Clamp(
-            requestedFileResults,
-            InitialFileResultPageSize,
-            SearchIndexService.MaxSearchResultCount);
+        int normalizedOffset = Math.Max(0, fileResultOffset);
+        int normalizedPageSize = Math.Max(1, fileResultPageSize);
 
-        Task<MeasuredProviderResult<SearchIndexQueryPage>> fileTask = MeasureProviderAsync(
-            "rust-index",
-            () => SearchCustomIndexPageAsync(query, fileResultLimit, cancellationToken));
+        Task<MeasuredProviderResult<SearchFileQueryPage>> fileTask = MeasureProviderAsync(
+            "everything",
+            () => _everythingSearchService.SearchPageAsync(
+                query,
+                normalizedOffset,
+                normalizedPageSize,
+                cancellationToken));
         Task<MeasuredProviderResult<IReadOnlyList<SearchResultItem>>> deskBoxTask =
             _settingsService.Settings.SearchIncludeDeskBoxContent
                 ? MeasureProviderAsync(
@@ -228,7 +114,7 @@ public sealed class SearchEngineService : IDisposable
         await Task.WhenAll(fileTask, deskBoxTask).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
-        MeasuredProviderResult<SearchIndexQueryPage> measuredFile = await fileTask.ConfigureAwait(false);
+        MeasuredProviderResult<SearchFileQueryPage> measuredFile = await fileTask.ConfigureAwait(false);
         MeasuredProviderResult<IReadOnlyList<SearchResultItem>> measuredDeskBox =
             await deskBoxTask.ConfigureAwait(false);
         if (measuredFile.Failure is not null)
@@ -240,9 +126,9 @@ public sealed class SearchEngineService : IDisposable
             LogProviderFailure(measuredDeskBox.Provider, measuredDeskBox.Failure);
         }
 
-        SearchIndexQueryPage filePage = measuredFile.Failure is null
+        SearchFileQueryPage filePage = measuredFile.Failure is null
             ? measuredFile.Value
-            : SearchIndexQueryPage.Empty;
+            : SearchFileQueryPage.Empty;
         IReadOnlyList<SearchResultItem> deskBoxResults = measuredDeskBox.Failure is null
             ? measuredDeskBox.Value
             : [];
@@ -255,9 +141,10 @@ public sealed class SearchEngineService : IDisposable
             stopwatch.Elapsed);
         App.Log(
             $"[Search] Query completed chars={query.Trim().Length} " +
-            $"rustMs={measuredFile.ElapsedMilliseconds} " +
+            $"everythingMs={measuredFile.ElapsedMilliseconds} " +
             $"deskboxMs={measuredDeskBox.ElapsedMilliseconds} " +
             $"totalMs={stopwatch.ElapsedMilliseconds} " +
+            $"fileOffset={normalizedOffset}->{response.NextFileResultOffset} " +
             $"files={response.MaterializedFileResultCount}/{response.TotalFileResultCount} " +
             $"visible={response.RankedItems.Count}");
         return response;
@@ -272,7 +159,7 @@ public sealed class SearchEngineService : IDisposable
 
     private SearchResponse BuildSearchResponse(
         string query,
-        SearchIndexQueryPage filePage,
+        SearchFileQueryPage filePage,
         IReadOnlyList<SearchResultItem> deskBoxResults,
         IReadOnlyList<SearchResultItem> actions,
         TimeSpan elapsed)
@@ -291,12 +178,16 @@ public sealed class SearchEngineService : IDisposable
             Query = query,
             RankedItems = rankedItems,
             Groups = groups,
-            TotalResultCount = checked(filePage.TotalMatchedCount + nonFileResults),
+            TotalResultCount = (int)Math.Min(
+                int.MaxValue,
+                (long)filePage.TotalMatchedCount + nonFileResults),
             MaterializedFileResultCount = materializedFileResults,
             TotalFileResultCount = filePage.TotalMatchedCount,
-            HasMoreResults = materializedFileResults < filePage.TotalMatchedCount,
+            NextFileResultOffset = filePage.NextOffset,
+            HasMoreResults = filePage.NextOffset < filePage.TotalMatchedCount,
             Elapsed = elapsed,
-            IsComplete = true
+            IsComplete = true,
+            FileProviderState = _everythingSearchService.CurrentSnapshot.State
         };
     }
 
@@ -333,24 +224,6 @@ public sealed class SearchEngineService : IDisposable
     private static void LogProviderFailure(string provider, Exception ex)
     {
         App.Log($"[Search] Provider '{provider}' failed; returning partial results: {ex}");
-    }
-
-    private async Task<SearchIndexQueryPage> SearchCustomIndexPageAsync(
-        string query,
-        int maxResults,
-        CancellationToken cancellationToken)
-    {
-        bool loaded = await _indexService
-            .EnsureLoadedAsync(cancellationToken)
-            .ConfigureAwait(false);
-        if (!loaded)
-        {
-            return SearchIndexQueryPage.Empty;
-        }
-
-        return await Task.Run(
-            () => _indexService.SearchPage(query, maxResults, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
     }
 
     private readonly record struct MeasuredProviderResult<T>(
@@ -571,7 +444,7 @@ public sealed class SearchEngineService : IDisposable
                  DeskBoxContentRefreshIntervalMilliseconds)
         {
             // Return the current immutable snapshot immediately. The refresh runs
-            // outside the query hot path and raises IndexUpdated only if content
+            // outside the query hot path and raises ResultsChanged only if content
             // actually changed, which refreshes an already-visible query in place.
             _ = EnsureDeskBoxContentSnapshotAsync(
                 forceRefresh: false,
@@ -651,7 +524,7 @@ public sealed class SearchEngineService : IDisposable
 
             if (wasInitialized && changed)
             {
-                IndexUpdated?.Invoke();
+                ResultsChanged?.Invoke();
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -999,8 +872,6 @@ public sealed class SearchEngineService : IDisposable
         _deskBoxContentLifetimeCts.Dispose();
         Volatile.Write(ref _deskBoxContentSnapshot, []);
         Volatile.Write(ref _deskBoxContentInitialized, 0);
-        _indexService.IndexUpdated -= OnIndexUpdated;
-        _indexService.ProgressChanged -= OnIndexProgressChanged;
-        _indexService.Dispose();
+        _everythingSearchService.Dispose();
     }
 }

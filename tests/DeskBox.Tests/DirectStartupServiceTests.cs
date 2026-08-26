@@ -20,6 +20,9 @@ public sealed class DirectStartupServiceTests
 
         Assert.Equal(Path.GetFullPath(ExecutablePath), registration.ExecutablePath);
         Assert.Equal(
+            DirectStartupTaskBackend.GetTaskName(userSid),
+            registration.TaskName);
+        Assert.Equal(
             DirectStartupTaskBackend.StartupArguments,
             registration.Arguments);
         Assert.Equal(userSid, registration.PrincipalUserId);

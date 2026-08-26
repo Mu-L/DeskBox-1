@@ -5,12 +5,18 @@ using Microsoft.Win32;
 namespace DeskBox.Helpers;
 
 /// <summary>
-/// Resolves third-party Explorer thumbnails in a short-lived native process.
-/// No thumbnail handler DLL is ever loaded into the DeskBox process, and a
-/// hung or crashing handler is contained by the per-request timeout.
+/// Resolves Explorer thumbnails and Shell-item icons in a short-lived native
+/// process. No Shell handler DLL is ever loaded into the DeskBox process, and
+/// a hung or crashing handler is contained by the per-request timeout.
 /// </summary>
 internal static class ShellThumbnailProxy
 {
+    private enum ShellImageMode
+    {
+        Thumbnail,
+        Icon
+    }
+
     internal const string ExecutableName = "DeskBox.ThumbnailProxy.exe";
     private const string ThumbnailHandlerClassId =
         "{e357fccd-a995-4576-b01f-234630154e96}";
@@ -50,8 +56,24 @@ internal static class ShellThumbnailProxy
         string path,
         int requestedSize)
     {
+        return await TryLoadAsync(path, requestedSize, ShellImageMode.Thumbnail);
+    }
+
+    public static async Task<byte[]?> TryLoadIconAsync(
+        string path,
+        int requestedSize)
+    {
+        return await TryLoadAsync(path, requestedSize, ShellImageMode.Icon);
+    }
+
+    private static async Task<byte[]?> TryLoadAsync(
+        string path,
+        int requestedSize,
+        ShellImageMode mode)
+    {
         string normalizedPath = NormalizePath(path);
-        if (IsRecentFailure(normalizedPath))
+        string failureKey = BuildFailureKey(normalizedPath, mode);
+        if (IsRecentFailure(failureKey))
         {
             return null;
         }
@@ -68,7 +90,7 @@ internal static class ShellThumbnailProxy
                     $"{executablePath}");
             }
 
-            RecordFailure(normalizedPath);
+            RecordFailure(failureKey);
             return null;
         }
 
@@ -82,6 +104,11 @@ internal static class ShellThumbnailProxy
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+        if (mode == ShellImageMode.Icon)
+        {
+            startInfo.ArgumentList.Add("--icon-only");
+        }
+
         startInfo.ArgumentList.Add(normalizedPath);
         startInfo.ArgumentList.Add(normalizedSize.ToString(
             System.Globalization.CultureInfo.InvariantCulture));
@@ -91,15 +118,16 @@ internal static class ShellThumbnailProxy
         {
             if (!process.Start())
             {
-                RecordFailure(normalizedPath);
+                RecordFailure(failureKey);
                 return null;
             }
         }
         catch (Exception ex)
         {
-            RecordFailure(normalizedPath);
+            RecordFailure(failureKey);
             App.Log(
-                $"[ShellThumbnailProxy] Start failed path={normalizedPath}: " +
+                $"[ShellThumbnailProxy] Start failed mode={mode} " +
+                $"path={normalizedPath}: " +
                 ex.Message);
             return null;
         }
@@ -119,11 +147,11 @@ internal static class ShellThumbnailProxy
             TryKill(process);
             await ObserveExitAsync(process);
             await ObserveOutputAsync(outputTask, errorTask);
-            RecordFailure(normalizedPath);
+            RecordFailure(failureKey);
             App.Log(
                 $"[ShellThumbnailProxy] Extraction timed out " +
                 $"timeoutMs={ExtractionTimeout.TotalMilliseconds:0} " +
-                $"path={normalizedPath}");
+                $"mode={mode} path={normalizedPath}");
             return null;
         }
 
@@ -137,29 +165,35 @@ internal static class ShellThumbnailProxy
         catch (Exception ex)
         {
             TryKill(process);
-            RecordFailure(normalizedPath);
+            RecordFailure(failureKey);
             App.Log(
                 $"[ShellThumbnailProxy] Invalid proxy output " +
-                $"path={normalizedPath}: {ex.Message}");
+                $"mode={mode} path={normalizedPath}: {ex.Message}");
             return null;
         }
 
-        if (process.ExitCode != 0 || !IsBitmapPayload(output))
+        if (process.ExitCode != 0 || !IsVisibleBitmapPayload(output))
         {
-            RecordFailure(normalizedPath);
+            RecordFailure(failureKey);
             App.LogVerbose(
-                $"[ShellThumbnailProxy] No thumbnail exit={process.ExitCode} " +
-                $"path={normalizedPath} error={error.Trim()}");
+                $"[ShellThumbnailProxy] No usable image exit={process.ExitCode} " +
+                $"mode={mode} path={normalizedPath} error={error.Trim()}");
             return null;
         }
 
-        s_recentFailures.TryRemove(normalizedPath, out _);
+        s_recentFailures.TryRemove(failureKey, out _);
         return output;
     }
 
     public static void Invalidate(string path)
     {
-        s_recentFailures.TryRemove(NormalizePath(path), out _);
+        string normalizedPath = NormalizePath(path);
+        s_recentFailures.TryRemove(
+            BuildFailureKey(normalizedPath, ShellImageMode.Thumbnail),
+            out _);
+        s_recentFailures.TryRemove(
+            BuildFailureKey(normalizedPath, ShellImageMode.Icon),
+            out _);
     }
 
     public static void ClearTransientFailures()
@@ -231,7 +265,7 @@ internal static class ShellThumbnailProxy
         return output.ToArray();
     }
 
-    private static bool IsBitmapPayload(byte[] bytes)
+    internal static bool IsVisibleBitmapPayload(byte[] bytes)
     {
         if (bytes.Length < 138 || bytes[0] != (byte)'B' || bytes[1] != (byte)'M')
         {
@@ -240,10 +274,47 @@ internal static class ShellThumbnailProxy
 
         uint declaredSize = BitConverter.ToUInt32(bytes, 2);
         uint pixelOffset = BitConverter.ToUInt32(bytes, 10);
-        return declaredSize == bytes.Length &&
-            pixelOffset >= 54 &&
-            pixelOffset < bytes.Length;
+        uint dibHeaderSize = BitConverter.ToUInt32(bytes, 14);
+        int width = BitConverter.ToInt32(bytes, 18);
+        int signedHeight = BitConverter.ToInt32(bytes, 22);
+        ushort bitsPerPixel = BitConverter.ToUInt16(bytes, 28);
+        long height = Math.Abs((long)signedHeight);
+        if (declaredSize != bytes.Length ||
+            dibHeaderSize < 40 ||
+            width <= 0 ||
+            height <= 0 ||
+            bitsPerPixel != 32 ||
+            pixelOffset < 54 ||
+            pixelOffset >= bytes.Length)
+        {
+            return false;
+        }
+
+        long availablePixelBytes = bytes.Length - pixelOffset;
+        if ((long)width > availablePixelBytes / 4 / height)
+        {
+            return false;
+        }
+
+        long pixelByteCount = (long)width * height * 4;
+
+        int pixelEnd = checked((int)(pixelOffset + pixelByteCount));
+        for (int index = checked((int)pixelOffset) + 3;
+             index < pixelEnd;
+             index += 4)
+        {
+            if (bytes[index] != 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
+
+    private static string BuildFailureKey(
+        string normalizedPath,
+        ShellImageMode mode) => $"{mode}:{normalizedPath}";
 
     private static bool IsRecentFailure(string path)
     {

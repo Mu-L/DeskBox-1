@@ -20,7 +20,8 @@ internal sealed record DirectStartupTaskRegistration(
     bool DisallowStartIfOnBatteries,
     bool StopIfGoingOnBatteries,
     bool RunOnlyIfIdle,
-    string TriggerDelay)
+    string TriggerDelay,
+    string TaskName = "")
 {
     public string CommandLine =>
         $"\"{ExecutablePath}\" {Arguments}".TrimEnd();
@@ -52,7 +53,8 @@ internal interface IDirectStartupTaskBackend
 /// </summary>
 internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
 {
-    internal const string TaskName = "DeskBox User Startup";
+    internal const string LegacyTaskName = "DeskBox User Startup";
+    internal const string TaskNamePrefix = LegacyTaskName + "-";
     internal const string StartupArguments =
         "--startup --startup-source=scheduled-task";
     internal const int InteractiveTaskPriority = 4;
@@ -65,28 +67,41 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
     public DirectStartupTaskRegistration? Read()
     {
         LastError = string.Empty;
-        SchtasksResult result = RunSchtasks("/Query", "/TN", TaskName, "/XML");
-        if (result.ExitCode != 0)
-        {
-            LastError = FormatFailure("query", result);
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(result.StandardOutput))
-        {
-            LastError = "Task query succeeded but returned no XML.";
-            return null;
-        }
-
+        string currentUserSid;
         try
         {
-            return ParseTaskXml(result.StandardOutput);
+            currentUserSid = GetCurrentUserSid();
         }
         catch (Exception ex)
         {
-            LastError = $"Task XML could not be parsed: {ex.Message}";
+            LastError = ex.Message;
             return null;
         }
+
+        DirectStartupTaskRegistration? currentTask = ReadTask(
+            GetTaskName(currentUserSid),
+            out string currentError);
+        if (currentTask is not null)
+        {
+            return currentTask;
+        }
+
+        // Read the old fixed-name task only as a migration source. A successful
+        // registration always uses the SID-scoped name, so separate Windows
+        // users can configure startup independently on an all-users install.
+        DirectStartupTaskRegistration? legacyTask = ReadTask(
+            LegacyTaskName,
+            out string legacyError);
+        if (legacyTask is not null &&
+            IsCurrentUserRegistration(legacyTask, currentUserSid))
+        {
+            return legacyTask;
+        }
+
+        LastError = string.IsNullOrWhiteSpace(currentError)
+            ? legacyError
+            : currentError;
+        return null;
     }
 
     public bool IsPreferred(
@@ -97,7 +112,11 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
         string currentUserSid = identity.User?.Value ??
             throw new InvalidOperationException("The current Windows user SID is unavailable.");
         string currentUserName = identity.Name;
-        return registration.IsOwnedBy(executablePath) &&
+        return string.Equals(
+                   registration.TaskName,
+                   GetTaskName(currentUserSid),
+                   StringComparison.OrdinalIgnoreCase) &&
+               registration.IsOwnedBy(executablePath) &&
                registration.Enabled &&
                string.Equals(
                    registration.Arguments.Trim(),
@@ -142,7 +161,9 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
     public bool TryRegister(string executablePath)
     {
         LastError = string.Empty;
-        string taskXml = BuildTaskXml(executablePath, GetCurrentUserSid());
+        string currentUserSid = GetCurrentUserSid();
+        string taskName = GetTaskName(currentUserSid);
+        string taskXml = BuildTaskXml(executablePath, currentUserSid);
         string temporaryPath = Path.Combine(
             Path.GetTempPath(),
             $"DeskBox-startup-{Guid.NewGuid():N}.xml");
@@ -153,7 +174,7 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
             SchtasksResult result = RunSchtasks(
                 "/Create",
                 "/TN",
-                TaskName,
+                taskName,
                 "/XML",
                 temporaryPath,
                 "/F");
@@ -163,21 +184,22 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
                 return false;
             }
 
-            DirectStartupTaskRegistration? verified = Read();
+            DirectStartupTaskRegistration? verified = ReadTask(taskName, out string verificationReadError);
             if (verified is null || !IsPreferred(verified, executablePath))
             {
                 string verificationError = string.IsNullOrWhiteSpace(LastError)
                     ? verified is null
-                        ? "The registered task could not be read back."
+                        ? $"The registered task could not be read back: {verificationReadError}"
                         : DescribePreferenceMismatch(verified, executablePath)
                     : LastError;
-                bool removedInvalidTask = TryDelete();
+                bool removedInvalidTask = TryDeleteTask(taskName, out string cleanupError);
                 LastError = removedInvalidTask
                     ? verificationError
-                    : $"{verificationError} Cleanup also failed: {LastError}";
+                    : $"{verificationError} Cleanup also failed: {cleanupError}";
                 return false;
             }
 
+            TryDeleteOwnedLegacyTask(executablePath, currentUserSid);
             return true;
         }
         catch (Exception ex)
@@ -201,21 +223,126 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
     public bool TryDelete()
     {
         LastError = string.Empty;
-        SchtasksResult result = RunSchtasks("/Delete", "/TN", TaskName, "/F");
-        if (result.ExitCode == 0)
+        string currentUserSid;
+        try
+        {
+            currentUserSid = GetCurrentUserSid();
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+            return false;
+        }
+
+        string taskName = GetTaskName(currentUserSid);
+        if (TryDeleteTask(taskName, out string currentError))
         {
             return true;
         }
 
-        LastError = FormatFailure("delete", result);
+        DirectStartupTaskRegistration? legacyTask = ReadTask(
+            LegacyTaskName,
+            out string legacyReadError);
+        string legacyDeleteError = string.Empty;
+        if (legacyTask is not null &&
+            IsCurrentUserRegistration(legacyTask, currentUserSid) &&
+            TryDeleteTask(LegacyTaskName, out legacyDeleteError))
+        {
+            return true;
+        }
+
+        LastError = legacyTask is null
+            ? currentError
+            : $"{currentError} Legacy cleanup failed: {legacyDeleteError}";
+        if (legacyTask is null && !string.IsNullOrWhiteSpace(legacyReadError))
+        {
+            LastError = $"{LastError} Legacy query: {legacyReadError}";
+        }
         return false;
     }
+
+    private static DirectStartupTaskRegistration? ReadTask(
+        string taskName,
+        out string error)
+    {
+        error = string.Empty;
+        SchtasksResult result = RunSchtasks("/Query", "/TN", taskName, "/XML");
+        if (result.ExitCode != 0)
+        {
+            error = FormatFailure("query", result);
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(result.StandardOutput))
+        {
+            error = "Task query succeeded but returned no XML.";
+            return null;
+        }
+
+        try
+        {
+            return ParseTaskXml(result.StandardOutput) with { TaskName = taskName };
+        }
+        catch (Exception ex)
+        {
+            error = $"Task XML could not be parsed: {ex.Message}";
+            return null;
+        }
+    }
+
+    private static bool TryDeleteTask(string taskName, out string error)
+    {
+        SchtasksResult result = RunSchtasks("/Delete", "/TN", taskName, "/F");
+        if (result.ExitCode == 0)
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        error = FormatFailure("delete", result);
+        return false;
+    }
+
+    private static bool IsCurrentUserRegistration(
+        DirectStartupTaskRegistration registration,
+        string currentUserSid)
+    {
+        using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+        string currentUserName = identity.Name;
+        return IsCurrentUserId(
+                   registration.PrincipalUserId,
+                   currentUserSid,
+                   currentUserName) &&
+               IsCurrentUserId(
+                   registration.TriggerUserId,
+                   currentUserSid,
+                   currentUserName);
+    }
+
+    private static void TryDeleteOwnedLegacyTask(
+        string executablePath,
+        string currentUserSid)
+    {
+        DirectStartupTaskRegistration? legacyTask = ReadTask(
+            LegacyTaskName,
+            out _);
+        if (legacyTask is not null &&
+            legacyTask.IsOwnedBy(executablePath) &&
+            IsCurrentUserRegistration(legacyTask, currentUserSid))
+        {
+            _ = TryDeleteTask(LegacyTaskName, out _);
+        }
+    }
+
+    internal static string GetTaskName(string currentUserSid) =>
+        TaskNamePrefix + currentUserSid;
 
     internal static string BuildTaskXml(
         string executablePath,
         string currentUserSid)
     {
         string fullExecutablePath = Path.GetFullPath(executablePath);
+        string taskName = GetTaskName(currentUserSid);
         var document = new XDocument(
             new XDeclaration("1.0", "utf-16", null),
             new XElement(
@@ -228,7 +355,7 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
                     new XElement(
                         TaskNamespace + "Description",
                         "Starts DeskBox promptly after this user signs in."),
-                    new XElement(TaskNamespace + "URI", $"\\{TaskName}")),
+                    new XElement(TaskNamespace + "URI", $"\\{taskName}")),
                 new XElement(
                     TaskNamespace + "Triggers",
                     new XElement(
@@ -280,6 +407,7 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
         XNamespace ns = root.Name.Namespace;
         XElement? trigger = root.Descendants(ns + "LogonTrigger").FirstOrDefault();
         XElement? principal = root.Descendants(ns + "Principal").FirstOrDefault();
+        XElement? registrationInfo = root.Element(ns + "RegistrationInfo");
         XElement? settings = root.Element(ns + "Settings");
         XElement? action = root.Descendants(ns + "Exec").FirstOrDefault();
 
@@ -324,7 +452,8 @@ internal sealed class DirectStartupTaskBackend : IDirectStartupTaskBackend
             BooleanValue(settings, ns, "DisallowStartIfOnBatteries"),
             BooleanValue(settings, ns, "StopIfGoingOnBatteries"),
             BooleanValue(settings, ns, "RunOnlyIfIdle"),
-            Value(trigger, ns, "Delay"));
+            Value(trigger, ns, "Delay"),
+            Value(registrationInfo, ns, "URI").TrimStart('\\'));
     }
 
     internal static bool PathsEqual(string? first, string? second)

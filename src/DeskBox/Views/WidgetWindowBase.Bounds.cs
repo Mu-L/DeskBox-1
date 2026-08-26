@@ -10,6 +10,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using System.Runtime.CompilerServices;
@@ -21,7 +22,7 @@ namespace DeskBox.Views;
 
 public abstract partial class WidgetWindowBase
 {
-    private bool _desktopPinnedPointerActivationInProgress;
+    private bool _desktopPinnedInputActivationInProgress;
 
     protected void ConfigureWindowCore()
     {
@@ -152,6 +153,8 @@ public abstract partial class WidgetWindowBase
             UIElement.PointerPressedEvent,
             _desktopPinnedPointerPressedHandler,
             handledEventsToo: true);
+        RootElement.GotFocus -= RootElement_GotFocusForDesktopPinnedLayer;
+        RootElement.GotFocus += RootElement_GotFocusForDesktopPinnedLayer;
         Activated -= WidgetWindowBase_ActivatedForDesktopPinnedLayer;
         Activated += WidgetWindowBase_ActivatedForDesktopPinnedLayer;
     }
@@ -166,6 +169,7 @@ public abstract partial class WidgetWindowBase
             _desktopPinnedPointerPressedHandler = null;
         }
 
+        RootElement.GotFocus -= RootElement_GotFocusForDesktopPinnedLayer;
         Activated -= WidgetWindowBase_ActivatedForDesktopPinnedLayer;
     }
 
@@ -178,12 +182,82 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
-        bool allowActivation =
-            WidgetLayerService.TryAllowDesktopPinnedPointerActivation(HWnd);
-        if (allowActivation && Win32Helper.GetForegroundWindow() != HWnd)
+        bool isKeyboardInput = IsKeyboardInputTarget(args.OriginalSource);
+        bool allowActivation;
+        string reason;
+        if (isKeyboardInput)
         {
-            _desktopPinnedPointerActivationInProgress = true;
-            try
+            WidgetLayerService.PrepareForDesktopPinnedKeyboardInput(HWnd);
+            allowActivation = true;
+            reason = "routed-keyboard-input";
+        }
+        else
+        {
+            allowActivation =
+                WidgetLayerService.TryAllowDesktopPinnedPointerActivation(HWnd);
+            reason = allowActivation
+                ? "routed-pointer"
+                : "routed-pointer-suppressed";
+        }
+
+        if (allowActivation)
+        {
+            ActivateDesktopPinnedWindow(reason);
+        }
+        else
+        {
+            RestoreDesktopPinnedBottomState(reason);
+        }
+    }
+
+    private void RootElement_GotFocusForDesktopPinnedLayer(
+        object sender,
+        RoutedEventArgs args)
+    {
+        if (!WidgetLayerService.UsesDesktopPinnedMode() ||
+            _desktopPinnedInputActivationInProgress ||
+            !IsKeyboardInputTarget(args.OriginalSource))
+        {
+            return;
+        }
+
+        // Buttons that open an editor focus it programmatically after their
+        // click event. That focus request is also an explicit text-entry action.
+        WidgetLayerService.PrepareForDesktopPinnedKeyboardInput(HWnd);
+        ActivateDesktopPinnedWindow("keyboard-focus");
+    }
+
+    private static bool IsKeyboardInputTarget(object? source)
+    {
+        DependencyObject? current = source as DependencyObject;
+        while (current is not null)
+        {
+            if (current is TextBox or
+                RichEditBox or
+                PasswordBox or
+                AutoSuggestBox or
+                NumberBox)
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
+    private void ActivateDesktopPinnedWindow(string reason)
+    {
+        if (_desktopPinnedInputActivationInProgress)
+        {
+            return;
+        }
+
+        _desktopPinnedInputActivationInProgress = true;
+        try
+        {
+            if (Win32Helper.GetForegroundWindow() != HWnd)
             {
                 // Activation is retained for keyboard-oriented controls, but
                 // the HWND is returned to the desktop bottom before this input
@@ -191,14 +265,13 @@ public abstract partial class WidgetWindowBase
                 base.Activate();
                 _ = Win32Helper.SetForegroundWindow(HWnd);
             }
-            finally
-            {
-                _desktopPinnedPointerActivationInProgress = false;
-            }
+        }
+        finally
+        {
+            _desktopPinnedInputActivationInProgress = false;
         }
 
-        RestoreDesktopPinnedBottomState(
-            allowActivation ? "routed-pointer" : "routed-pointer-suppressed");
+        RestoreDesktopPinnedBottomState(reason);
     }
 
     private void WidgetWindowBase_ActivatedForDesktopPinnedLayer(
@@ -210,7 +283,7 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
-        if (!_desktopPinnedPointerActivationInProgress)
+        if (!_desktopPinnedInputActivationInProgress)
         {
             RestoreDesktopPinnedBottomState(
                 $"window-{args.WindowActivationState}");
@@ -479,11 +552,6 @@ public abstract partial class WidgetWindowBase
         bool restored = TryRestoreBoundsForCurrentTopology(
             allowHidden: true,
             updateConfig: false);
-        if (restored && Visible)
-        {
-            RestoreDesktopLayer(force: true);
-        }
-
         return restored;
     }
 

@@ -63,7 +63,7 @@ public sealed class DpiAdaptiveLayoutContractTests
             "window.BeginDisplayTopologyTransition(generation)",
             StringComparison.Ordinal);
         int activate = manager.IndexOf(
-            "_topologyLayoutService.ActivateCurrentTopology",
+            "_topologyLayoutService.Activate(",
             begin,
             StringComparison.Ordinal);
         int end = manager.IndexOf(
