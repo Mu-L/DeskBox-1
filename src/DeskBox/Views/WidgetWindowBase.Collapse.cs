@@ -1865,7 +1865,10 @@ public abstract partial class WidgetWindowBase
     private void WidgetShellControl_CompactPointerEntered(object? sender, EventArgs e)
     {
         ReconcileCompactDragStateAfterPointerRelease();
+        bool establishesNewPointerIntent = !_isPointerOverWidget;
         MarkCompactRoutedPointerActivity();
+        ReleaseSmartHoverSuppressionAfterSettledPointerIntent(
+            establishesNewPointerIntent);
         _isPointerOverWidget = true;
         // Treat the compact surface as an expansion candidate immediately.
         // Child move/action regions cancel this state when they receive their
@@ -1900,6 +1903,8 @@ public abstract partial class WidgetWindowBase
         MarkCompactRoutedPointerActivity();
 
         bool recoveredMissingRoutedEntry = !_isPointerOverWidget;
+        ReleaseSmartHoverSuppressionAfterSettledPointerIntent(
+            recoveredMissingRoutedEntry);
 
         // Receiving this routed move proves that this HWND owns the pointer.
         // Rebuild the compact-region flags from real geometry without relying
@@ -1914,6 +1919,27 @@ public abstract partial class WidgetWindowBase
                 "CompactHoverPointerMoveRecovered",
                 $"kind={Config.WidgetKind} id={Config.Id}");
         }
+    }
+
+    private void ReleaseSmartHoverSuppressionAfterSettledPointerIntent(
+        bool establishesNewPointerIntent)
+    {
+        if (!_suppressSmartExpansionUntilPointerExit ||
+            !WidgetCompactInteractionPolicy
+                .CanReleaseHoverSuppressionAfterRoutedPointerIntent(
+                    establishesNewPointerIntent,
+                    _targetCollapsed,
+                    WidgetShellControl.IsCollapsed,
+                    _isCollapseAnimationRendering,
+                    _isShellTransitionActive))
+        {
+            return;
+        }
+
+        _suppressSmartExpansionUntilPointerExit = false;
+        PerformanceLogger.Mark(
+            "CompactHoverSuppressionReleased",
+            $"kind={Config.WidgetKind} id={Config.Id}");
     }
 
     private void WidgetShellControl_CompactExpansionPointerEntered(object? sender, EventArgs e)
@@ -2950,7 +2976,7 @@ public abstract partial class WidgetWindowBase
         bool collapsed = _targetCollapsed;
         long generation = _collapseAnimationGeneration;
         App.Log($"[Compact] Bounds transition watchdog recovered generation={generation}");
-        StopCollapseAnimation();
+        StopCollapseAnimation(cancelShellTransition: false);
         MoveWindowWithoutPersisting(_collapseAnimationTo);
         CompleteBoundsTransition(collapsed, generation);
     }
@@ -2992,7 +3018,7 @@ public abstract partial class WidgetWindowBase
 
         bool collapsed = _targetCollapsed;
         long generation = _collapseAnimationGeneration;
-        StopCollapseAnimation();
+        StopCollapseAnimation(cancelShellTransition: false);
         MoveWindowWithoutPersisting(_collapseAnimationTo);
         CompleteBoundsTransition(collapsed, generation);
     }
@@ -3549,7 +3575,7 @@ public abstract partial class WidgetWindowBase
         }
     }
 
-    private void StopCollapseAnimation()
+    private void StopCollapseAnimation(bool cancelShellTransition = true)
     {
         CancelTimer(ref _collapseAnimationWatchdogTimer);
         CompleteCompactAnimationMetrics();
@@ -3565,7 +3591,11 @@ public abstract partial class WidgetWindowBase
         _collapseAnimationFrameRegistration = null;
         if (_isShellTransitionActive)
         {
-            WidgetShellControl.CancelCompactTransition();
+            if (cancelShellTransition)
+            {
+                WidgetShellControl.CancelCompactTransition();
+            }
+
             _isShellTransitionActive = false;
         }
         _collapseAnimationAnchor = null;

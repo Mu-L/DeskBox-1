@@ -267,6 +267,11 @@ public partial class WidgetViewModel
             return;
         }
 
+        if (_surfaceActivity.TryDeferChange())
+        {
+            return;
+        }
+
         using var perfScope = PerformanceLogger.Measure(
             "WidgetViewModel.OnFolderChanged",
             $"id={Config.Id} changes={changeBatch.Changes.Count} fullReload={changeBatch.RequiresFullReload}");
@@ -278,6 +283,11 @@ public partial class WidgetViewModel
                 string.IsNullOrEmpty(CurrentFolderPath) ||
                 !IsCurrentWatcherBatch(changeBatch, CurrentFolderPath) ||
                 !IsCurrentWatcherGeneration(changeBatch))
+            {
+                return;
+            }
+
+            if (_surfaceActivity.TryDeferChange())
             {
                 return;
             }
@@ -333,7 +343,7 @@ public partial class WidgetViewModel
     /// </summary>
     private void OnFolderIconChanged(string folderPath)
     {
-        if (_isDisposed)
+        if (_isDisposed || _surfaceActivity.TryDeferChange())
         {
             return;
         }

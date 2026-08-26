@@ -343,7 +343,10 @@ public sealed partial class TodoWidgetContent : UserControl
 
     private void QueueTodoSegmentedRestore()
     {
-        if (TodoFilterSegmented is null ||
+        if (!IsLoaded ||
+            TodoFilterSegmented is null ||
+            ViewModel?.TabBarVisibility != Visibility.Visible ||
+            ListHeaderArea.Visibility != Visibility.Visible ||
             TodoFilterSegmented.Visibility == Visibility.Visible ||
             _todoSegmentedRestoreQueued)
         {
@@ -360,9 +363,17 @@ public sealed partial class TodoWidgetContent : UserControl
     private void TodoSegmentedRestore_Rendering(object? sender, object e)
     {
         if (!IsLoaded ||
-            _isResponsiveLayoutTransitionActive ||
             ViewModel?.TabBarVisibility != Visibility.Visible ||
             ListHeaderArea.Visibility != Visibility.Visible)
+        {
+            // CompositionTarget is a static event. Leaving the callback attached
+            // after this view is detached keeps the whole Todo XAML tree alive
+            // and continues invoking it on every frame.
+            CancelTodoSegmentedRestore();
+            return;
+        }
+
+        if (_isResponsiveLayoutTransitionActive)
         {
             _todoSegmentedStableFrameCount = 0;
             return;
@@ -405,6 +416,11 @@ public sealed partial class TodoWidgetContent : UserControl
         _todoSegmentedRestoreQueued = false;
         _todoSegmentedStableFrameCount = 0;
         _todoSegmentedLastCandidateWidth = 0;
+    }
+
+    internal void ReleaseTransientRenderingSubscriptions()
+    {
+        CancelTodoSegmentedRestore();
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)

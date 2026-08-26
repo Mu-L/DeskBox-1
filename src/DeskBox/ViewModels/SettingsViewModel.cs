@@ -352,9 +352,14 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         QuickCaptureRecentLimit = QuickCaptureService.NormalizeRecentLimit(settings.QuickCaptureRecentLimit);
         QuickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
         _selectedAttachmentStorageMode = SettingsService.NormalizeAttachmentStorageMode(settings.AttachmentStorageMode);
-        _selectedManagedDropAction = settings.ManagedDropAction == SettingsService.ManagedDropActionMove
-            ? SettingsService.ManagedDropActionMove
-            : SettingsService.ManagedDropActionCopy;
+        _selectedManagedDropAction = settings.ManagedDropAction switch
+        {
+            SettingsService.ManagedDropActionMove =>
+                SettingsService.ManagedDropActionMove,
+            SettingsService.ManagedDropActionFollowWindows =>
+                SettingsService.ManagedDropActionFollowWindows,
+            _ => SettingsService.ManagedDropActionCopy
+        };
         _selectedQuickCaptureDefaultView = NormalizeQuickCaptureDefaultView(settings.QuickCaptureDefaultView);
         _selectedQuickCaptureTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.QuickCaptureTabStyle);
         QuickCaptureShowTabBar = settings.QuickCaptureShowTabBar;

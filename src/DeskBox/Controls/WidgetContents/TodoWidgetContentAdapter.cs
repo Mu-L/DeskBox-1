@@ -18,10 +18,12 @@ public sealed class TodoWidgetContentAdapter :
     IWidgetTransientStateContent,
     IWidgetResponsiveLayoutContent,
     IWidgetInteractiveResizeContent,
+    IWidgetGroupContentCacheable,
     IDisposable
 {
     private readonly Func<TodoWidgetViewModel, FrameworkElement> _viewFactory;
     private FrameworkElement? _view;
+    private bool _isDisposed;
 
     public TodoWidgetContentAdapter(WidgetConfig config, LocalizationService localizationService)
         : this(config, new TodoWidgetStore(config.Id), localizationService)
@@ -78,6 +80,8 @@ public sealed class TodoWidgetContentAdapter :
 
     public TodoWidgetViewModel ViewModel { get; }
 
+    public bool IsReadyForReuse => ViewModel.IsInitialized && !_isDisposed;
+
     public event EventHandler<WidgetFeedbackRequestedEventArgs>? FeedbackRequested;
 
     private void TodoContent_FeedbackRequested(
@@ -108,6 +112,14 @@ public sealed class TodoWidgetContentAdapter :
 
     public void OnDeactivated()
     {
+    }
+
+    public void OnWindowLongHidden()
+    {
+        if (_view is TodoWidgetContent todoContent)
+        {
+            todoContent.ReleaseTransientRenderingSubscriptions();
+        }
     }
 
     public void BeginResponsiveLayoutTransition(
@@ -209,10 +221,26 @@ public sealed class TodoWidgetContentAdapter :
             : Task.FromResult(false);
     }
 
+    internal Task<bool> ImportNativeDroppedFilesAsync(
+        IReadOnlyList<DroppedFilePath> files,
+        TodoItemViewModel? targetItem)
+    {
+        return View is TodoWidgetContent todoContent
+            ? todoContent.ImportNativeDroppedFilesAsync(files, targetItem)
+            : Task.FromResult(false);
+    }
+
     public void Dispose()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
         if (_view is TodoWidgetContent todoContent)
         {
+            todoContent.ReleaseTransientRenderingSubscriptions();
             todoContent.FeedbackRequested -= TodoContent_FeedbackRequested;
         }
 

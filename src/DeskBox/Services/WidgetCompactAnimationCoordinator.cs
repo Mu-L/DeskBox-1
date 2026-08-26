@@ -52,6 +52,8 @@ internal static class WidgetCompactAnimationCoordinator
             BoundsTransitionRegistrations.Count,
             MaximumConcurrentBoundsTransitions);
 
+    internal static bool HasActiveAnimations => FrameCallbacks.Count > 0;
+
     public static IDisposable RegisterBoundsTransition(Action frameCallback)
     {
         if (!HasBoundsTransitionCapacity)

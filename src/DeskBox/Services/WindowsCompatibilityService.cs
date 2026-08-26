@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
@@ -15,6 +16,11 @@ public static class WindowsCompatibilityService
     public const int Windows11Build = 22000;
 
     private static readonly Lazy<int> s_osBuild = new(GetOsBuild);
+    private static readonly object s_animationSettingsCacheGate = new();
+    private static readonly long s_animationSettingsCacheDurationTicks =
+        Stopwatch.Frequency * 2;
+    private static long s_animationSettingsReadTimestamp;
+    private static int s_cachedShouldAnimate = -1;
 
     public static int OsBuild => s_osBuild.Value;
 
@@ -118,10 +124,44 @@ public static class WindowsCompatibilityService
         static settings => settings.HighContrast,
         fallback: false);
 
-    public static bool ShouldAnimate => ResolveShouldAnimate(
-        AreAnimationsEnabled,
-        AreAdvancedEffectsEnabled,
-        IsHighContrast);
+    public static bool ShouldAnimate
+    {
+        get
+        {
+            long now = Stopwatch.GetTimestamp();
+            int cached = Volatile.Read(ref s_cachedShouldAnimate);
+            long readAt = Volatile.Read(ref s_animationSettingsReadTimestamp);
+            if (cached >= 0 &&
+                now - readAt <= s_animationSettingsCacheDurationTicks)
+            {
+                return cached == 1;
+            }
+
+            lock (s_animationSettingsCacheGate)
+            {
+                now = Stopwatch.GetTimestamp();
+                cached = Volatile.Read(ref s_cachedShouldAnimate);
+                readAt = Volatile.Read(ref s_animationSettingsReadTimestamp);
+                if (cached >= 0 &&
+                    now - readAt <= s_animationSettingsCacheDurationTicks)
+                {
+                    return cached == 1;
+                }
+
+                bool shouldAnimate = ResolveShouldAnimate(
+                    AreAnimationsEnabled,
+                    AreAdvancedEffectsEnabled,
+                    IsHighContrast);
+                Volatile.Write(
+                    ref s_cachedShouldAnimate,
+                    shouldAnimate ? 1 : 0);
+                Volatile.Write(
+                    ref s_animationSettingsReadTimestamp,
+                    now);
+                return shouldAnimate;
+            }
+        }
+    }
 
     internal static bool ResolveShouldAnimate(
         bool animationsEnabled,

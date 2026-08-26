@@ -105,9 +105,14 @@ public partial class SettingsViewModel
         get => _selectedManagedDropAction;
         set
         {
-            string normalized = value == SettingsService.ManagedDropActionCopy
-                ? SettingsService.ManagedDropActionCopy
-                : SettingsService.ManagedDropActionMove;
+            string normalized = value switch
+            {
+                SettingsService.ManagedDropActionCopy =>
+                    SettingsService.ManagedDropActionCopy,
+                SettingsService.ManagedDropActionFollowWindows =>
+                    SettingsService.ManagedDropActionFollowWindows,
+                _ => SettingsService.ManagedDropActionMove
+            };
             if (!SetProperty(ref _selectedManagedDropAction, normalized))
             {
                 return;
@@ -1074,7 +1079,8 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
     public string[] AvailableManagedDropActions { get; } =
     [
         SettingsService.ManagedDropActionCopy,
-        SettingsService.ManagedDropActionMove
+        SettingsService.ManagedDropActionMove,
+        SettingsService.ManagedDropActionFollowWindows
     ];
 
     public string[] AvailableManagedDropActionDisplayNames =>
@@ -1083,9 +1089,14 @@ set => WidgetOpacity = Math.Clamp(1.0 - value / 100d, SettingsService.MinWidgetO
             .ToArray();
 
     public string GetManagedDropActionDisplayName(string action) =>
-        action == SettingsService.ManagedDropActionMove
-            ? _localizationService.T("Settings.DropAction.Move")
-            : _localizationService.T("Settings.DropAction.Copy");
+        action switch
+        {
+            SettingsService.ManagedDropActionMove =>
+                _localizationService.T("Settings.DropAction.Move"),
+            SettingsService.ManagedDropActionFollowWindows =>
+                _localizationService.T("Settings.DropAction.System"),
+            _ => _localizationService.T("Settings.DropAction.Copy")
+        };
 
     public string GetAttachmentStorageModeDisplayName(string storageMode)
     {

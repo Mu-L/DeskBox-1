@@ -2323,6 +2323,19 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Performance.VisibleIdleCleanup.Description"
+                            svc:Localized.HeaderKey="Settings.Performance.VisibleIdleCleanup.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE823;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="176"
+                                ItemsSource="{Binding AvailableVisibleIdleCacheCleanupDelayOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedVisibleIdleCacheCleanupDelaySeconds, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.Performance.HiddenCleanup.Description"
                             svc:Localized.HeaderKey="Settings.Performance.HiddenCleanup.Title">
                             <toolkit:SettingsCard.HeaderIcon>
@@ -2336,16 +2349,43 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Performance.TransientRelease.Description"
+                            svc:Localized.HeaderKey="Settings.Performance.TransientRelease.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8BB;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="176"
+                                ItemsSource="{Binding AvailableTransientWindowReleaseDelayOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedTransientWindowReleaseDelaySeconds, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Performance.CacheBudget.Description"
+                            svc:Localized.HeaderKey="Settings.Performance.CacheBudget.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE950;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="176"
+                                ItemsSource="{Binding AvailablePerformanceCacheBudgetOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedPerformanceCacheBudget, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.Performance.DecorativeAnimations.Description"
                             svc:Localized.HeaderKey="Settings.Performance.DecorativeAnimations.Title">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE7B5;" />
                             </toolkit:SettingsCard.HeaderIcon>
-                            <ToggleSwitch
-                                MinWidth="0"
-                                IsOn="{Binding EnableContinuousDecorativeAnimations, Mode=TwoWay}"
-                                OffContent=""
-                                OnContent="" />
+                            <DropDownButton
+                                MinWidth="176"
+                                MaxWidth="260"
+                                HorizontalAlignment="Right"
+                                Click="ContinuousDecorativeAnimationsDropDown_Click"
+                                Content="{Binding ContinuousDecorativeAnimationsSummaryText}" />
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>

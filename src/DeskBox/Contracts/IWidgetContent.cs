@@ -35,6 +35,13 @@ public interface IWidgetContent
     void OnWindowRevealCompleted() { }
 
     /// <summary>
+    /// Called only after the host has remained hidden for the configured deep
+    /// cleanup interval. Content can release native watchers and other warm
+    /// resources here without making an ordinary tray toggle a cold start.
+    /// </summary>
+    void OnWindowLongHidden() { }
+
+    /// <summary>
     /// Called when the host switches between its expanded content and capsule
     /// presentation. Content that owns purely visual animations can suspend them
     /// while the expanded surface is covered without suspending its live data.

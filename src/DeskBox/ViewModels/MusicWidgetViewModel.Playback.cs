@@ -46,6 +46,7 @@ public sealed partial class MusicWidgetViewModel
         }
 
         _isRefreshing = true;
+        bool refreshCompleted = false;
         try
         {
             do
@@ -72,6 +73,7 @@ public sealed partial class MusicWidgetViewModel
                     if (!isStaleMediaRefresh)
                     {
                         await ApplyInfoAsync(info, refreshGeneration);
+                        refreshCompleted = true;
                     }
                 }
                 catch (Exception ex)
@@ -95,6 +97,12 @@ public sealed partial class MusicWidgetViewModel
         }
         finally
         {
+            if (refreshCompleted)
+            {
+                Interlocked.Exchange(
+                    ref _lastFullRefreshCompletedUtcTicks,
+                    DateTime.UtcNow.Ticks);
+            }
             _isRefreshing = false;
         }
     }

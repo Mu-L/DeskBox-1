@@ -19,6 +19,8 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private const int ExpandedProgressRefreshMs = 500;
     private const int CompactProgressRefreshMs = 1000;
     private const int MediaPropertiesSettleDelayMs = 180;
+    private static readonly TimeSpan RevealFullRefreshFreshness =
+        TimeSpan.FromSeconds(30);
 
     private readonly MusicSessionService _musicSessionService;
     private readonly MusicVolumeService _musicVolumeService;
@@ -46,6 +48,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private bool _canChangeShuffle;
     private bool _canChangeRepeat;
     private bool _isRefreshing;
+    private bool _hasCurrentMediaInfo;
+    private int _hiddenMediaStateDirty;
+    private long _lastFullRefreshCompletedUtcTicks;
     private int _timelineRefreshGeneration;
     private int _playbackRefreshGeneration;
     private int _coverGeneration;
@@ -132,6 +137,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     internal static int ResolveProgressRefreshIntervalMs(bool isCompactCollapsed) =>
         isCompactCollapsed ? CompactProgressRefreshMs : ExpandedProgressRefreshMs;
 
+    internal static bool ShouldRunProgressTimer(
+        MusicPlaybackState playbackState,
+        bool hasCurrentMediaInfo) =>
+        hasCurrentMediaInfo &&
+        playbackState is (MusicPlaybackState.Playing or MusicPlaybackState.Unknown);
+
     public ObservableCollection<string> SessionDisplayNames { get; } = [];
 
     public ObservableCollection<string> SessionIds { get; } = [];
@@ -212,9 +223,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(StatusText));
 
                 // Start or stop the progress timer based on playback state.
-                // Also start for Unknown — many players report "Changing" (buffering)
-                // at song start, which maps to Unknown. The audio is already playing
-                // during this window, so the progress bar should keep moving.
+                // Also start for Unknown when a current media snapshot exists — many
+                // players report "Changing" (buffering) at song start, which maps to
+                // Unknown. A missing session also maps to Unknown and must stay idle.
                 UpdateProgressTimerState();
             }
         }
@@ -660,7 +671,11 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         // changing tracks. Wait for that burst to settle and let the newest request
         // supersede every earlier one, including the fallback queued by the button.
         int gen = Interlocked.Increment(ref _mediaPropertiesPendingGeneration);
-        if (!CanRunWindowMediaRefresh()) return;
+        if (!CanRunWindowMediaRefresh())
+        {
+            Interlocked.Exchange(ref _hiddenMediaStateDirty, 1);
+            return;
+        }
 
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
@@ -687,7 +702,11 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     /// </summary>
     private void OnTimelineChanged(object? sender, EventArgs e)
     {
-        if (!CanRunWindowMediaRefresh()) return;
+        if (!CanRunWindowMediaRefresh())
+        {
+            Interlocked.Exchange(ref _hiddenMediaStateDirty, 1);
+            return;
+        }
 
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
@@ -703,7 +722,11 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     /// </summary>
     private void OnPlaybackInfoChanged(object? sender, EventArgs e)
     {
-        if (!CanRunWindowMediaRefresh()) return;
+        if (!CanRunWindowMediaRefresh())
+        {
+            Interlocked.Exchange(ref _hiddenMediaStateDirty, 1);
+            return;
+        }
 
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
@@ -716,7 +739,11 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
 
     private void ScheduleFullRefresh()
     {
-        if (!CanRunWindowMediaRefresh()) return;
+        if (!CanRunWindowMediaRefresh())
+        {
+            Interlocked.Exchange(ref _hiddenMediaStateDirty, 1);
+            return;
+        }
 
         if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
         {
@@ -790,7 +817,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         if (_isDisposed ||
             !_isWindowVisible ||
             !_isWindowRevealCompleted ||
-            PlaybackState is not (MusicPlaybackState.Playing or MusicPlaybackState.Unknown))
+            !ShouldRunProgressTimer(PlaybackState, _hasCurrentMediaInfo))
         {
             sender.Stop();
             UpdateMusicTimerDiagnostics();
@@ -835,7 +862,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         if (!_isDisposed &&
             _isWindowVisible &&
             _isWindowRevealCompleted &&
-            PlaybackState is (MusicPlaybackState.Playing or MusicPlaybackState.Unknown))
+            ShouldRunProgressTimer(PlaybackState, _hasCurrentMediaInfo))
         {
             _progressTimer.Start();
         }

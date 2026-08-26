@@ -31,6 +31,7 @@ public sealed partial class MarkdownDocumentView : UserControl
     private const double InternalScrollBarContentClearance = 12;
     private const double EmbeddedBlockMinimumWidth = 160;
     private const double TableColumnMinimumWidth = 96;
+    private const int WidthRenderDebounceMilliseconds = 160;
     private const double LightThemeSemanticMinimumContrast = 4.5;
     private static readonly Windows.UI.Color LightMarkdownWorstCaseSurface =
         Windows.UI.Color.FromArgb(0xFF, 0xB8, 0xB8, 0xB8);
@@ -48,7 +49,14 @@ public sealed partial class MarkdownDocumentView : UserControl
     private int _taskListIndex;
     private bool _isLoaded;
     private bool _renderQueued;
+    private bool _renderInvalidated = true;
+    private bool _renderInvalidationRequiresRender = true;
+    private bool _renderDependsOnWidth;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _widthRenderTimer;
     private double _lastRenderedWidth = double.NaN;
+    private MarkdownRenderState _lastRenderedState;
+    private bool _hasRenderedState;
+    private string _renderInvalidationReason = "initial";
 
     public MarkdownDocumentView()
         : this(new MarkdownDocumentService())
@@ -61,24 +69,25 @@ public sealed partial class MarkdownDocumentView : UserControl
         _scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         _scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         ApplyContentHost();
-        RegisterPropertyChangedCallback(FontSizeProperty, (_, _) => QueueRender());
-        RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => QueueRender());
-        RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => QueueRender());
-        ActualThemeChanged += (_, _) => QueueRender();
-        SizeChanged += (_, args) =>
-        {
-            if (!double.IsFinite(_lastRenderedWidth) ||
-                Math.Abs(args.NewSize.Width - _lastRenderedWidth) > 4)
-            {
-                QueueRender();
-            }
-        };
+        RegisterPropertyChangedCallback(
+            FontSizeProperty,
+            (_, _) => InvalidateRenderForAppearanceChange("font-size"));
+        RegisterPropertyChangedCallback(
+            ForegroundProperty,
+            (_, _) => InvalidateRenderForAppearanceChange("foreground"));
+        RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => QueueInvalidatedRender());
+        ActualThemeChanged += (_, _) => InvalidateRenderForAppearanceChange("theme");
+        SizeChanged += (_, args) => QueueWidthDependentRender(args.NewSize.Width);
         Loaded += (_, _) =>
         {
             _isLoaded = true;
-            QueueRender();
+            QueueInvalidatedRender();
         };
-        Unloaded += (_, _) => _isLoaded = false;
+        Unloaded += (_, _) =>
+        {
+            _isLoaded = false;
+            ReleaseWidthRenderTimer();
+        };
     }
 
     public static readonly DependencyProperty MarkdownProperty = DependencyProperty.Register(
@@ -150,8 +159,13 @@ public sealed partial class MarkdownDocumentView : UserControl
         get => _attachmentResolver;
         set
         {
+            if (Equals(_attachmentResolver, value))
+            {
+                return;
+            }
+
             _attachmentResolver = value;
-            QueueRender();
+            InvalidateRender("attachment-resolver");
         }
     }
 
@@ -161,31 +175,122 @@ public sealed partial class MarkdownDocumentView : UserControl
 
     public event EventHandler<MarkdownAttachmentRequestedEventArgs>? AttachmentOpenRequested;
 
-    public void Refresh() => QueueRender();
+    public void Refresh() => InvalidateRender("explicit-refresh");
 
     private static void OnDocumentPropertyChanged(
         DependencyObject sender,
         DependencyPropertyChangedEventArgs args) =>
-        ((MarkdownDocumentView)sender).QueueRender();
+        ((MarkdownDocumentView)sender).InvalidateRender(
+            "document-property",
+            requiresRender: false);
 
-    private void QueueRender()
+    private void InvalidateRender(string reason, bool requiresRender = true)
     {
-        if (!_isLoaded || _renderQueued)
+        _renderInvalidationRequiresRender = _renderInvalidated
+            ? _renderInvalidationRequiresRender || requiresRender
+            : requiresRender;
+        _renderInvalidated = true;
+        _renderInvalidationReason = reason;
+        QueueInvalidatedRender();
+    }
+
+    private void InvalidateRenderForAppearanceChange(string reason)
+    {
+        if (!_hasRenderedState ||
+            !GetRenderState().Equals(_lastRenderedState))
+        {
+            InvalidateRender(reason, requiresRender: false);
+        }
+    }
+
+    private void QueueInvalidatedRender()
+    {
+        if (!_renderInvalidated || !_isLoaded || _renderQueued)
         {
             return;
         }
 
         _renderQueued = true;
-        DispatcherQueue.TryEnqueue(
+        bool queued = DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
             () =>
             {
                 _renderQueued = false;
-                if (_isLoaded && Visibility == Visibility.Visible)
+                if (_renderInvalidated &&
+                    _isLoaded &&
+                    Visibility == Visibility.Visible)
                 {
+                    if (!_renderInvalidationRequiresRender &&
+                        _hasRenderedState &&
+                        GetRenderState().Equals(_lastRenderedState))
+                    {
+                        _renderInvalidated = false;
+                        _renderInvalidationRequiresRender = false;
+                        return;
+                    }
+
                     Render();
                 }
             });
+        if (!queued)
+        {
+            _renderQueued = false;
+        }
+    }
+
+    private void QueueWidthDependentRender(double width)
+    {
+        if (!_renderDependsOnWidth ||
+            !double.IsFinite(width) ||
+            width < EmbeddedBlockMinimumWidth ||
+            (double.IsFinite(_lastRenderedWidth) &&
+             Math.Abs(width - _lastRenderedWidth) <= 4))
+        {
+            ReleaseWidthRenderTimer();
+            return;
+        }
+
+        _widthRenderTimer ??= CreateWidthRenderTimer();
+        _widthRenderTimer.Stop();
+        _widthRenderTimer.Start();
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer CreateWidthRenderTimer()
+    {
+        Microsoft.UI.Dispatching.DispatcherQueueTimer timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(WidthRenderDebounceMilliseconds);
+        timer.IsRepeating = false;
+        timer.Tick += WidthRenderTimer_Tick;
+        PerformanceLogger.RecordTransientUiTimerCreated();
+        return timer;
+    }
+
+    private void WidthRenderTimer_Tick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        ReleaseWidthRenderTimer();
+        if (_renderDependsOnWidth &&
+            double.IsFinite(ActualWidth) &&
+            ActualWidth >= EmbeddedBlockMinimumWidth &&
+            (!double.IsFinite(_lastRenderedWidth) ||
+             Math.Abs(ActualWidth - _lastRenderedWidth) > 4))
+        {
+            InvalidateRender("width");
+        }
+    }
+
+    private void ReleaseWidthRenderTimer()
+    {
+        if (_widthRenderTimer is null)
+        {
+            return;
+        }
+
+        _widthRenderTimer.Stop();
+        _widthRenderTimer.Tick -= WidthRenderTimer_Tick;
+        _widthRenderTimer = null;
+        PerformanceLogger.RecordTransientUiTimerReleased();
     }
 
     private static void OnContentHostPropertyChanged(
@@ -220,15 +325,22 @@ public sealed partial class MarkdownDocumentView : UserControl
 
     private void Render()
     {
+        PerformanceLogger.RecordMarkdownRender();
         double verticalOffset = _scrollViewer.VerticalOffset;
         _lastRenderedWidth = ActualWidth;
+        _renderDependsOnWidth = false;
         string source = Markdown ?? string.Empty;
+        PerformanceLogger.Mark(
+            "MarkdownRender",
+            $"reason={_renderInvalidationReason} " +
+            $"length={source.Length} format={ContentFormat} width={ActualWidth:F1}");
         UpdateForegrounds();
         _documentText.Blocks.Clear();
         _taskListIndex = 0;
         WasTruncated = false;
         if (source.Length == 0)
         {
+            CompleteRender();
             return;
         }
 
@@ -238,6 +350,7 @@ public sealed partial class MarkdownDocumentView : UserControl
             AppendText(paragraph.Inlines, source);
             _documentText.Blocks.Add(paragraph);
             RestoreScrollOffset(source, verticalOffset);
+            CompleteRender();
             return;
         }
 
@@ -249,7 +362,57 @@ public sealed partial class MarkdownDocumentView : UserControl
         }
 
         RestoreScrollOffset(source, verticalOffset);
+        CompleteRender();
     }
+
+    private void CompleteRender()
+    {
+        _lastRenderedState = GetRenderState();
+        _hasRenderedState = true;
+        _renderInvalidated = false;
+        _renderInvalidationRequiresRender = false;
+    }
+
+    private MarkdownRenderState GetRenderState() => new(
+        Markdown ?? string.Empty,
+        ContentFormat,
+        AllowRemoteImages,
+        AreTaskListsInteractive,
+        GetRenderAppearance());
+
+    private MarkdownRenderAppearance GetRenderAppearance()
+    {
+        bool hasSolidForeground = Foreground is SolidColorBrush;
+        Windows.UI.Color foregroundColor = Foreground is SolidColorBrush foreground
+            ? foreground.Color
+            : default;
+        Windows.UI.Color accentColor = Application.Current is App
+            {
+                ThemeService: { } themeService
+            }
+            ? themeService.GetEffectiveAccentColor()
+            : default;
+        return new MarkdownRenderAppearance(
+            BaseFontSize,
+            UsesDarkTheme,
+            hasSolidForeground,
+            foregroundColor,
+            accentColor);
+    }
+
+    private readonly record struct MarkdownRenderAppearance(
+        double FontSize,
+        bool UsesDarkTheme,
+        bool HasSolidForeground,
+        Windows.UI.Color ForegroundColor,
+        Windows.UI.Color AccentColor);
+
+    private readonly record struct MarkdownRenderState(
+        string Markdown,
+        TextContentFormat ContentFormat,
+        bool AllowRemoteImages,
+        bool AreTaskListsInteractive,
+        MarkdownRenderAppearance Appearance);
 
     private void UpdateForegrounds()
     {
@@ -514,6 +677,7 @@ public sealed partial class MarkdownDocumentView : UserControl
 
     private void AppendCode(CodeBlock code, int quoteDepth, int listDepth)
     {
+        _renderDependsOnWidth = true;
         var paragraph = CreateParagraph(Math.Max(11, BaseFontSize - 1), FontWeights.Normal);
         paragraph.LineStackingStrategy = LineStackingStrategy.MaxHeight;
         paragraph.Margin = new Thickness(Indent(quoteDepth, listDepth), 8, 0, 8);
@@ -555,6 +719,7 @@ public sealed partial class MarkdownDocumentView : UserControl
             return;
         }
 
+        _renderDependsOnWidth = true;
         double surfaceWidth = GetEmbeddedBlockWidth(quoteDepth, listDepth);
         double tableWidth = Math.Max(surfaceWidth, columnCount * TableColumnMinimumWidth);
         var tableGrid = new Grid
@@ -887,6 +1052,7 @@ public sealed partial class MarkdownDocumentView : UserControl
             return;
         }
 
+        PerformanceLogger.RecordMarkdownInlineImageDecode();
         var bitmap = new BitmapImage
         {
             // Inline screenshots can be very large. Decode at twice the maximum

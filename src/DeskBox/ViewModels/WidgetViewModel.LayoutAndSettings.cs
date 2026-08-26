@@ -44,17 +44,45 @@ public partial class WidgetViewModel
 
     private string GetManagedActionText()
     {
-        return ShouldMoveManagedItems()
-            ? _localizationService.T("Common.Move")
-            : _localizationService.T("Common.Copy");
+        return _settingsService.Settings.ManagedDropAction switch
+        {
+            SettingsService.ManagedDropActionMove =>
+                _localizationService.T("Common.Move"),
+            SettingsService.ManagedDropActionFollowWindows =>
+                _localizationService.T("Settings.DropAction.System"),
+            _ => _localizationService.T("Common.Copy")
+        };
     }
 
-    private bool ShouldMoveManagedItems()
+    private bool ShouldMoveManagedItems(
+        IEnumerable<string>? sourcePaths = null,
+        string? destinationFolderPath = null)
     {
-        return string.Equals(
-            _settingsService.Settings.ManagedDropAction,
-            SettingsService.ManagedDropActionMove,
-            StringComparison.Ordinal);
+        string action = _settingsService.Settings.ManagedDropAction;
+        if (string.Equals(
+                action,
+                SettingsService.ManagedDropActionMove,
+                StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (!string.Equals(
+                action,
+                SettingsService.ManagedDropActionFollowWindows,
+                StringComparison.Ordinal) ||
+            sourcePaths is null ||
+            string.IsNullOrWhiteSpace(destinationFolderPath))
+        {
+            return false;
+        }
+
+        // Explorer moves within one volume and copies across volumes. If a
+        // provider exposes an unknown root, AreAllOnSameVolume deliberately
+        // returns false so the safer copy path is selected.
+        return FileDropIntentPolicy.AreAllOnSameVolume(
+            sourcePaths,
+            destinationFolderPath);
     }
 
     private void ApplyLayoutSettings()

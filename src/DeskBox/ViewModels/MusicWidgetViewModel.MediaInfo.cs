@@ -51,12 +51,14 @@ public sealed partial class MusicWidgetViewModel
         ResetTransientEmptyInfoRetry();
         if (info is null)
         {
+            _hasCurrentMediaInfo = false;
             Title = string.Empty;
             Artist = string.Empty;
             Album = string.Empty;
             _sourceAppUserModelId = string.Empty;
             SourceDisplayName = string.Empty;
             PlaybackState = MusicPlaybackState.Unknown;
+            UpdateProgressTimerState();
             Position = TimeSpan.Zero;
         _lastSyncedPosition = TimeSpan.Zero;
         _lastPositionSyncAt = DateTimeOffset.UtcNow;
@@ -78,6 +80,7 @@ public sealed partial class MusicWidgetViewModel
             return;
         }
 
+        _hasCurrentMediaInfo = true;
         Title = info.Title;
         Artist = info.Artist;
         Album = info.Album;
@@ -96,6 +99,7 @@ public sealed partial class MusicWidgetViewModel
         CanChangeShuffle = info.CanChangeShuffle;
         CanChangeRepeat = info.CanChangeRepeat;
         PlaybackMode = info.PlaybackMode;
+        UpdateProgressTimerState();
         // Cover signature dedup: skip expensive cover reload when the song hasn't changed.
         // Timeline and playback events go through lightweight refresh paths, but
         // MediaPropertiesChanged can fire even when only metadata (not the thumbnail) changes.

@@ -90,6 +90,16 @@
             <Setter Property="CornerRadius" Value="6" />
         </Style>
 
+        <!-- Explicit virtualizing panels keep the cached stack popup bounded to
+             its viewport instead of allowing a default panel to retain every
+             realized member after source changes. -->
+        <ItemsPanelTemplate x:Key="StackPopoverIconItemsPanelTemplate">
+            <ItemsWrapGrid Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="StackPopoverListItemsPanelTemplate">
+            <ItemsStackPanel Orientation="Vertical" />
+        </ItemsPanelTemplate>
+
         <DataTemplate x:Key="SurfaceFileIconTemplate">
             <Grid
                 Tag="ItemSlot"

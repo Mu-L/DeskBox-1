@@ -143,9 +143,14 @@ public partial class SettingsViewModel
             QuickCaptureShowCreatedTime = settings.QuickCaptureShowCreatedTime;
             SelectedAttachmentStorageMode = SettingsService.NormalizeAttachmentStorageMode(settings.AttachmentStorageMode);
             ApplyPerformanceSettingsSnapshot(settings);
-            SelectedManagedDropAction = settings.ManagedDropAction == SettingsService.ManagedDropActionMove
-                ? SettingsService.ManagedDropActionMove
-                : SettingsService.ManagedDropActionCopy;
+            SelectedManagedDropAction = settings.ManagedDropAction switch
+            {
+                SettingsService.ManagedDropActionMove =>
+                    SettingsService.ManagedDropActionMove,
+                SettingsService.ManagedDropActionFollowWindows =>
+                    SettingsService.ManagedDropActionFollowWindows,
+                _ => SettingsService.ManagedDropActionCopy
+            };
             SelectedQuickCaptureDefaultView = NormalizeQuickCaptureDefaultView(settings.QuickCaptureDefaultView);
             SelectedQuickCaptureTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.QuickCaptureTabStyle);
             QuickCaptureShowTabBar = settings.QuickCaptureShowTabBar;

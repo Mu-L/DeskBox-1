@@ -36,10 +36,12 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private readonly SettingsService _settingsService;
     private readonly LocalizationService _localizationService;
     private readonly SemaphoreSlim _folderRefreshGate = new(1, 1);
+    private readonly WidgetSurfaceActivityTracker _surfaceActivity = new();
     private int _itemHydrationGeneration;
+    private CancellationTokenSource? _itemHydrationCancellation;
     private int _iconDecodePixelWidth;
     private bool _isDisposed;
-    private bool _isSurfaceBackgroundSuspended;
+    private bool _surfaceBackgroundResourcesReleased;
 
     private string _name = string.Empty;
     private ViewMode _viewMode;
@@ -414,6 +416,10 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             ref _folderNavigationCancellation,
             null)?.Cancel();
         Interlocked.Increment(ref _itemHydrationGeneration);
+        CancelItemHydration(
+            Interlocked.Exchange(
+                ref _itemHydrationCancellation,
+                null));
         CleanupStacks();
         _folderWatcher.FolderChanged -= OnFolderChanged;
         _folderWatcher.FolderIconChanged -= OnFolderIconChanged;
@@ -430,28 +436,57 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
 
     public void SuspendBackgroundActivity()
     {
-        if (_isDisposed || _isSurfaceBackgroundSuspended)
+        if (_isDisposed)
         {
             return;
         }
 
-        _isSurfaceBackgroundSuspended = true;
+        // A tray hide is usually brief. Keep the native/WinRT folder watchers
+        // alive and coalesce any hidden changes instead of disposing and
+        // recreating every watcher on each reveal.
+        _surfaceActivity.Suspend();
+    }
+
+    public void ReleaseBackgroundActivityForLongHide()
+    {
+        if (_isDisposed || _surfaceBackgroundResourcesReleased)
+        {
+            return;
+        }
+
+        _surfaceActivity.Suspend();
+        _surfaceBackgroundResourcesReleased = true;
         Interlocked.Increment(ref _itemHydrationGeneration);
+        CancelItemHydration(
+            Interlocked.Exchange(
+                ref _itemHydrationCancellation,
+                null));
         _folderWatcher.Stop();
         _publicFolderWatcher.Stop();
     }
 
-    public void ResumeBackgroundActivity()
+    public bool ResumeBackgroundActivity()
     {
-        if (_isDisposed || !_isSurfaceBackgroundSuspended ||
-            string.IsNullOrWhiteSpace(CurrentFolderPath))
+        if (_isDisposed || !_surfaceActivity.IsSuspended)
         {
-            return;
+            return false;
         }
 
-        _isSurfaceBackgroundSuspended = false;
-        string folderPath = CurrentFolderPath;
-        _ = ResumeBackgroundActivityAsync(folderPath);
+        bool requiresReconciliation = _surfaceActivity.Resume();
+        if (!_surfaceBackgroundResourcesReleased)
+        {
+            return requiresReconciliation;
+        }
+
+        _surfaceBackgroundResourcesReleased = false;
+        if (!string.IsNullOrWhiteSpace(CurrentFolderPath))
+        {
+            string folderPath = CurrentFolderPath;
+            _ = ResumeBackgroundActivityAsync(folderPath);
+            requiresReconciliation = true;
+        }
+
+        return requiresReconciliation;
     }
 
     private async Task ResumeBackgroundActivityAsync(string folderPath)

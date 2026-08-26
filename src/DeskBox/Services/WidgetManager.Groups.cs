@@ -22,6 +22,7 @@ public sealed partial class WidgetManager
     private readonly SemaphoreSlim _widgetGroupGate = new(1, 1);
     private readonly WidgetSurfaceSwitchGatePool _widgetSurfaceSwitchGates =
         new();
+    internal int SurfaceSwitchGateCount => _widgetSurfaceSwitchGates.Count;
     private readonly WidgetGroupSwitchRequestCoordinator _widgetGroupSwitchRequests = new();
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _groupDragDwellTimer;
     private string? _groupDragSourceId;
@@ -104,6 +105,7 @@ public sealed partial class WidgetManager
             if (string.IsNullOrWhiteSpace(memberId))
             {
                 _settingsService.Settings.WidgetGroups.Remove(group);
+                _widgetSurfaceSwitchGates.Remove(group.SurfaceId);
                 continue;
             }
 
@@ -891,6 +893,15 @@ public sealed partial class WidgetManager
                 RetireLoadedWindowForGroup(memberId, keepConfigVisible: mergedGroup.IsVisible);
             }
 
+            if (sourceGroup is not null &&
+                !string.Equals(
+                    sourceGroup.SurfaceId,
+                    mergedGroup.SurfaceId,
+                    StringComparison.Ordinal))
+            {
+                _widgetSurfaceSwitchGates.Remove(sourceGroup.SurfaceId);
+            }
+
             if (preserveRaisedLayer && mergedGroup.IsVisible)
             {
                 RaiseVisibleWidgetTransitionWindows(
@@ -1427,6 +1438,11 @@ public sealed partial class WidgetManager
                 }
             }
 
+            if (survivingGroup is null)
+            {
+                _widgetSurfaceSwitchGates.Remove(group.SurfaceId);
+            }
+
             App.Log(
                 $"[WidgetGroup] Removed member={widgetId} group={group.Id} " +
                 $"remaining={group.MemberIds.Count} reveal={revealStandalone} " +
@@ -1512,6 +1528,8 @@ public sealed partial class WidgetManager
                 ApplyCapsuleArrangementIfChanged(force: true);
                 return false;
             }
+
+            _widgetSurfaceSwitchGates.Remove(group.SurfaceId);
 
             foreach (WidgetConfig member in members)
             {
@@ -2298,6 +2316,7 @@ public sealed partial class WidgetManager
             if (group.MemberIds.Count < 2)
             {
                 _settingsService.Settings.WidgetGroups.Remove(group);
+                _widgetSurfaceSwitchGates.Remove(group.SurfaceId);
                 if (group.MemberIds.FirstOrDefault() is { } remainingId &&
                     FindConfig(remainingId) is { } remainingConfig)
                 {

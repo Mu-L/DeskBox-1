@@ -140,4 +140,66 @@ public sealed class SettingsMigrationPipelineTests
         Assert.Equal(string.Empty, settings.SearchEverythingExecutablePath);
         Assert.False(settings.SearchEverythingAdvancedSyntaxEnabled);
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void VersionEight_SplitsLegacyDecorativeEffectsWithoutChangingGlance(
+        bool legacyEnabled)
+    {
+        var settings = new AppSettings
+        {
+            SchemaVersion = 7,
+            PerformanceMode = PerformanceSettingsPolicy.ModeCustom,
+            EnableContinuousDecorativeAnimations = legacyEnabled
+        };
+
+        Assert.True(new SettingsMigrationPipeline().RunMigrations(settings));
+
+        Assert.Equal(SettingsMigrationPipeline.CurrentSchemaVersion, settings.SchemaVersion);
+        Assert.Equal(legacyEnabled, settings.EnableTextMarqueeAnimations);
+        Assert.Equal(legacyEnabled, settings.EnableVinylRotationAnimations);
+        Assert.Equal(legacyEnabled, settings.EnableCompactAmbientAnimations);
+        Assert.True(settings.EnableGlanceImageAutoRotation);
+    }
+
+    [Fact]
+    public void VersionEight_RetiresBestVisualAndUnboundedCleanupValues()
+    {
+        var settings = new AppSettings
+        {
+            SchemaVersion = 7,
+            PerformanceMode = PerformanceSettingsPolicy.ModeBestVisual,
+            HiddenCacheCleanupDelaySeconds = PerformanceSettingsPolicy.CleanupNever,
+            VisibleIdleCacheCleanupDelaySeconds = PerformanceSettingsPolicy.CleanupNever,
+            TransientWindowReleaseDelaySeconds = PerformanceSettingsPolicy.CleanupNever
+        };
+
+        Assert.True(new SettingsMigrationPipeline().RunMigrations(settings));
+
+        Assert.Equal(PerformanceSettingsPolicy.ModeBalanced, settings.PerformanceMode);
+        Assert.Equal(30, settings.HiddenCacheCleanupDelaySeconds);
+        Assert.Equal(10 * 60, settings.VisibleIdleCacheCleanupDelaySeconds);
+        Assert.Equal(10 * 60, settings.TransientWindowReleaseDelaySeconds);
+    }
+
+    [Fact]
+    public void VersionEight_CustomNeverValuesBecomeLongestFiniteChoices()
+    {
+        var settings = new AppSettings
+        {
+            SchemaVersion = 7,
+            PerformanceMode = PerformanceSettingsPolicy.ModeCustom,
+            HiddenCacheCleanupDelaySeconds = PerformanceSettingsPolicy.CleanupNever,
+            VisibleIdleCacheCleanupDelaySeconds = PerformanceSettingsPolicy.CleanupNever,
+            TransientWindowReleaseDelaySeconds = PerformanceSettingsPolicy.CleanupNever
+        };
+
+        Assert.True(new SettingsMigrationPipeline().RunMigrations(settings));
+
+        Assert.Equal(PerformanceSettingsPolicy.ModeCustom, settings.PerformanceMode);
+        Assert.Equal(5 * 60, settings.HiddenCacheCleanupDelaySeconds);
+        Assert.Equal(15 * 60, settings.VisibleIdleCacheCleanupDelaySeconds);
+        Assert.Equal(10 * 60, settings.TransientWindowReleaseDelaySeconds);
+    }
 }

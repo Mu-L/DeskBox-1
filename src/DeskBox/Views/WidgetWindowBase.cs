@@ -173,6 +173,13 @@ public abstract partial class WidgetWindowBase : Window
     /// <summary>The shared chrome used to render expanded and compact widget states.</summary>
     protected abstract WidgetShell WidgetShellControl { get; }
 
+    internal bool HasActiveVisualWork =>
+        IsDragging ||
+        IsResizing ||
+        IsHideAnimationRunning ||
+        TrayAnimation.IsPositionTransitionActive ||
+        WidgetShellControl.HasActiveVisualWork;
+
     /// <summary>Log prefix used in Z-order and backdrop log messages.</summary>
     protected abstract string LogPrefix { get; }
 

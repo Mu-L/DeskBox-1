@@ -252,8 +252,7 @@ public sealed partial class WidgetGroupTitleSwitcher
             return;
         }
 
-        _wheelFeedbackStoryboard?.Stop();
-        _wheelFeedbackStoryboard = null;
+        StopWheelFeedbackStoryboard();
         UpWheelFeedback.Opacity = 0;
         DownWheelFeedback.Opacity = 0;
         UpWheelFeedbackTransform.ScaleY = 1;
@@ -321,33 +320,56 @@ public sealed partial class WidgetGroupTitleSwitcher
         Storyboard.SetTargetProperty(scaleAnimation, nameof(ScaleTransform.ScaleY));
         storyboard.Children.Add(scaleAnimation);
 
-        storyboard.Completed += (_, _) =>
-        {
-            if (!ReferenceEquals(_wheelFeedbackStoryboard, storyboard))
-            {
-                return;
-            }
-
-            target.Opacity = 0;
-            transform.ScaleY = 1;
-            _wheelFeedbackStoryboard = null;
-        };
+        storyboard.Completed += WheelFeedbackStoryboard_Completed;
         _wheelFeedbackStoryboard = storyboard;
         storyboard.Begin();
     }
 
+    private void WheelFeedbackStoryboard_Completed(object? sender, object args)
+    {
+        if (sender is not Storyboard storyboard)
+        {
+            return;
+        }
+
+        storyboard.Completed -= WheelFeedbackStoryboard_Completed;
+        storyboard.Stop();
+        storyboard.Children.Clear();
+        if (!ReferenceEquals(_wheelFeedbackStoryboard, storyboard))
+        {
+            return;
+        }
+
+        _wheelFeedbackStoryboard = null;
+        UpWheelFeedback.Opacity = 0;
+        DownWheelFeedback.Opacity = 0;
+        UpWheelFeedbackTransform.ScaleY = 1;
+        DownWheelFeedbackTransform.ScaleY = 1;
+    }
+
+    private void StopWheelFeedbackStoryboard()
+    {
+        if (_wheelFeedbackStoryboard is not { } storyboard)
+        {
+            return;
+        }
+
+        _wheelFeedbackStoryboard = null;
+        storyboard.Completed -= WheelFeedbackStoryboard_Completed;
+        storyboard.Stop();
+        storyboard.Children.Clear();
+    }
+
     private void CancelWheelFeedback()
     {
-        _wheelFeedbackStoryboard?.Stop();
-        _wheelFeedbackStoryboard = null;
+        StopWheelFeedbackStoryboard();
         _wheelFeedbackFallbackTimer?.Stop();
         UpWheelFeedback.Opacity = 0;
         DownWheelFeedback.Opacity = 0;
         UpWheelFeedbackTransform.ScaleY = 1;
         DownWheelFeedbackTransform.ScaleY = 1;
         CancelBoundaryRebound();
-        _scrollSurfaceStoryboard?.Stop();
-        _scrollSurfaceStoryboard = null;
+        StopScrollSurfaceStoryboard();
         TitleInteractionChromeTransform.ScaleX = 1;
         TitleInteractionChromeTransform.ScaleY = 1;
     }
@@ -369,10 +391,8 @@ public sealed partial class WidgetGroupTitleSwitcher
 
     private void AnimateScrollSurfaceFeedback()
     {
-        _interactionChromeStoryboard?.Stop();
-        _interactionChromeStoryboard = null;
-        _scrollSurfaceStoryboard?.Stop();
-        _scrollSurfaceStoryboard = null;
+        StopAndClearStoryboard(ref _interactionChromeStoryboard);
+        StopScrollSurfaceStoryboard();
 
         double restingOpacity = ResolveInteractionSurfaceOpacity();
         if (!AreSystemAnimationsEnabled() || XamlRoot is null)
@@ -408,17 +428,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         storyboard.Children.Add(opacity);
         storyboard.Children.Add(scaleX);
         storyboard.Children.Add(scaleY);
-        storyboard.Completed += (_, _) =>
-        {
-            if (!ReferenceEquals(_scrollSurfaceStoryboard, storyboard))
-            {
-                return;
-            }
-
-            TitleInteractionChromeTransform.ScaleX = 1;
-            TitleInteractionChromeTransform.ScaleY = 1;
-            _scrollSurfaceStoryboard = null;
-        };
+        storyboard.Completed += ScrollSurfaceStoryboard_Completed;
         _scrollSurfaceStoryboard = storyboard;
         storyboard.Begin();
 
@@ -439,6 +449,40 @@ public sealed partial class WidgetGroupTitleSwitcher
             });
             return animation;
         }
+    }
+
+    private void ScrollSurfaceStoryboard_Completed(object? sender, object args)
+    {
+        if (sender is not Storyboard storyboard)
+        {
+            return;
+        }
+
+        storyboard.Completed -= ScrollSurfaceStoryboard_Completed;
+        storyboard.Stop();
+        storyboard.Children.Clear();
+        if (!ReferenceEquals(_scrollSurfaceStoryboard, storyboard))
+        {
+            return;
+        }
+
+        _scrollSurfaceStoryboard = null;
+        TitleInteractionChrome.Opacity = ResolveInteractionSurfaceOpacity();
+        TitleInteractionChromeTransform.ScaleX = 1;
+        TitleInteractionChromeTransform.ScaleY = 1;
+    }
+
+    private void StopScrollSurfaceStoryboard()
+    {
+        if (_scrollSurfaceStoryboard is not { } storyboard)
+        {
+            return;
+        }
+
+        _scrollSurfaceStoryboard = null;
+        storyboard.Completed -= ScrollSurfaceStoryboard_Completed;
+        storyboard.Stop();
+        storyboard.Children.Clear();
     }
 
     private void AnimateBoundaryRebound(int direction)
@@ -473,24 +517,39 @@ public sealed partial class WidgetGroupTitleSwitcher
         Storyboard.SetTargetProperty(motion, nameof(TranslateTransform.Y));
         var storyboard = new Storyboard();
         storyboard.Children.Add(motion);
-        storyboard.Completed += (_, _) =>
-        {
-            if (!ReferenceEquals(_boundaryReboundStoryboard, storyboard))
-            {
-                return;
-            }
-
-            CurrentIdentityLayer.RenderTransform = null;
-            _boundaryReboundStoryboard = null;
-        };
+        storyboard.Completed += BoundaryReboundStoryboard_Completed;
         _boundaryReboundStoryboard = storyboard;
         storyboard.Begin();
     }
 
+    private void BoundaryReboundStoryboard_Completed(object? sender, object args)
+    {
+        if (sender is not Storyboard storyboard)
+        {
+            return;
+        }
+
+        storyboard.Completed -= BoundaryReboundStoryboard_Completed;
+        storyboard.Stop();
+        storyboard.Children.Clear();
+        if (!ReferenceEquals(_boundaryReboundStoryboard, storyboard))
+        {
+            return;
+        }
+
+        _boundaryReboundStoryboard = null;
+        CurrentIdentityLayer.RenderTransform = null;
+    }
+
     private void CancelBoundaryRebound()
     {
-        _boundaryReboundStoryboard?.Stop();
-        _boundaryReboundStoryboard = null;
+        if (_boundaryReboundStoryboard is { } storyboard)
+        {
+            _boundaryReboundStoryboard = null;
+            storyboard.Completed -= BoundaryReboundStoryboard_Completed;
+            storyboard.Stop();
+            storyboard.Children.Clear();
+        }
         if (_identityStoryboard is null)
         {
             CurrentIdentityLayer.RenderTransform = null;
@@ -876,10 +935,8 @@ public sealed partial class WidgetGroupTitleSwitcher
 
     private void UpdateInteractionChrome(bool animate = true)
     {
-        _interactionChromeStoryboard?.Stop();
-        _interactionChromeStoryboard = null;
-        _scrollSurfaceStoryboard?.Stop();
-        _scrollSurfaceStoryboard = null;
+        StopAndClearStoryboard(ref _interactionChromeStoryboard);
+        StopScrollSurfaceStoryboard();
         TitleInteractionChromeTransform.ScaleX = 1;
         TitleInteractionChromeTransform.ScaleY = 1;
 
@@ -938,6 +995,8 @@ public sealed partial class WidgetGroupTitleSwitcher
         if (sender is Storyboard storyboard)
         {
             storyboard.Completed -= IdentityStoryboard_Completed;
+            storyboard.Stop();
+            storyboard.Children.Clear();
         }
 
         OutgoingIdentityLayer.Opacity = 0;
@@ -965,6 +1024,7 @@ public sealed partial class WidgetGroupTitleSwitcher
         {
             _identityStoryboard.Completed -= IdentityStoryboard_Completed;
             _identityStoryboard.Stop();
+            _identityStoryboard.Children.Clear();
             _identityStoryboard = null;
         }
 
@@ -979,6 +1039,14 @@ public sealed partial class WidgetGroupTitleSwitcher
         CurrentIconScaleTransform.ScaleX = 1;
         CurrentIconScaleTransform.ScaleY = 1;
         SetPositionRail(OutgoingPositionRailLayer, null);
+    }
+
+    private static void StopAndClearStoryboard(ref Storyboard? storyboard)
+    {
+        Storyboard? active = storyboard;
+        storyboard = null;
+        active?.Stop();
+        active?.Children.Clear();
     }
 
     private bool CanAnimateIdentity()

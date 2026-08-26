@@ -176,14 +176,15 @@ public static partial class Win32Helper
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool EmptyWorkingSet(IntPtr process);
 
-    public static void TrimCurrentProcessWorkingSet()
+    public static bool TrimCurrentProcessWorkingSet()
     {
         try
         {
-            EmptyWorkingSet(GetCurrentProcess());
+            return EmptyWorkingSet(GetCurrentProcess());
         }
         catch
         {
+            return false;
         }
     }
 

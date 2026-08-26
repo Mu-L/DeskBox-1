@@ -904,13 +904,26 @@ public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposabl
     private void UpdateRotationTimer()
     {
         _rotationTimer.Stop();
-        if (!_isWindowVisible || _isCompact || IsPaused || _isDisposed || _settings.RotationIntervalMinutes <= 0 || _images.Count < 2)
+        if (!_isWindowVisible ||
+            _isCompact ||
+            IsPaused ||
+            _isDisposed ||
+            !GlanceImageAutoRotationEnabled() ||
+            _settings.RotationIntervalMinutes <= 0 ||
+            _images.Count < 2)
         {
             return;
         }
 
         _rotationTimer.Interval = TimeSpan.FromMinutes(_settings.RotationIntervalMinutes);
         _rotationTimer.Start();
+    }
+
+    private bool GlanceImageAutoRotationEnabled()
+    {
+        return _settingsService is null ||
+            PerformanceSettingsPolicy.Resolve(_settingsService.Settings)
+                .AllowGlanceImageAutoRotation;
     }
 
     private void ClockTimer_Tick(DispatcherQueueTimer sender, object args)
@@ -981,6 +994,7 @@ public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposabl
 
         if (_dispatcherQueue.HasThreadAccess)
         {
+            UpdateRotationTimer();
             OnPropertyChanged(nameof(CalendarCornerRadius));
             RaiseCalendarMaterialProperties();
         }
@@ -988,6 +1002,7 @@ public sealed partial class GlanceWidgetViewModel : ObservableObject, IDisposabl
         {
             _dispatcherQueue.TryEnqueue(() =>
             {
+                UpdateRotationTimer();
                 OnPropertyChanged(nameof(CalendarCornerRadius));
                 RaiseCalendarMaterialProperties();
             });

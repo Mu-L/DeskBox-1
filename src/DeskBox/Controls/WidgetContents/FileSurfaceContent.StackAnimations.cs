@@ -13,6 +13,7 @@ public sealed partial class FileSurfaceContent
     private const int StackCollapseDurationMs = 130;
     private readonly HashSet<FrameworkElement> _animatedStackElements = [];
     private int _stackTransitionGeneration;
+    private CancellationTokenSource? _stackTransitionCancellation;
     private string? _pendingStackTransitionKey;
     private bool? _pendingStackExpanded;
 
@@ -20,16 +21,44 @@ public sealed partial class FileSurfaceContent
         WidgetStackItem stack,
         bool expanded)
     {
-        _ = ObserveStackTransitionAsync(stack, expanded);
+        var cancellation = new CancellationTokenSource();
+        CancelStackTransition(
+            Interlocked.Exchange(
+                ref _stackTransitionCancellation,
+                cancellation));
+        _ = ObserveStackTransitionAsync(stack, expanded, cancellation);
+    }
+
+    private static void CancelStackTransition(
+        CancellationTokenSource? cancellation)
+    {
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The previous transition completed while a new input event was
+            // being routed.
+        }
     }
 
     private async Task ObserveStackTransitionAsync(
         WidgetStackItem stack,
-        bool expanded)
+        bool expanded,
+        CancellationTokenSource cancellation)
     {
         try
         {
-            await RunStackTransitionAsync(stack, expanded);
+            await RunStackTransitionAsync(
+                stack,
+                expanded,
+                cancellation.Token);
+        }
+        catch (OperationCanceledException) when (
+            cancellation.IsCancellationRequested)
+        {
+            // A newer stack input or a lifecycle reset owns the transition.
         }
         catch (Exception ex)
         {
@@ -55,6 +84,14 @@ public sealed partial class FileSurfaceContent
                     ViewModel.SetStackExpanded(stack, expanded));
             }
         }
+        finally
+        {
+            Interlocked.CompareExchange(
+                ref _stackTransitionCancellation,
+                null,
+                cancellation);
+            cancellation.Dispose();
+        }
     }
 
     private bool GetDesiredStackState(WidgetStackItem stack) =>
@@ -68,7 +105,8 @@ public sealed partial class FileSurfaceContent
 
     private async Task RunStackTransitionAsync(
         WidgetStackItem stack,
-        bool expanded)
+        bool expanded,
+        CancellationToken cancellationToken)
     {
         int generation = ++_stackTransitionGeneration;
         _pendingStackTransitionKey = stack.StackKey;
@@ -90,7 +128,9 @@ public sealed partial class FileSurfaceContent
         {
             StartStackMemberExitAnimations(expandedStack);
             playedExitAnimation = true;
-            await Task.Delay(StackCollapseDurationMs);
+            await Task.Delay(
+                StackCollapseDurationMs,
+                cancellationToken);
             if (generation != _stackTransitionGeneration)
             {
                 return;
@@ -100,7 +140,9 @@ public sealed partial class FileSurfaceContent
         {
             StartStackMemberExitAnimations(stack);
             playedExitAnimation = true;
-            await Task.Delay(StackCollapseDurationMs);
+            await Task.Delay(
+                StackCollapseDurationMs,
+                cancellationToken);
             if (generation != _stackTransitionGeneration)
             {
                 return;
