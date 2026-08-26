@@ -119,6 +119,40 @@ public sealed class OrganizerService
             await AddHistoryEntryAsync(historyEntry);
             return historyEntry;
         }
+        catch (Exception ex) when (
+            ex is FileService.IFileTransferWithCompletedResults partial)
+        {
+            IReadOnlyList<FileService.FileTransferResult> completedResults =
+                partial.CompletedResults;
+            if (completedResults.Count > 0)
+            {
+                bool canUndoCompletedMove = move && completedResults.All(
+                    result =>
+                        !File.Exists(result.SourcePath) &&
+                        !Directory.Exists(result.SourcePath));
+                await AddHistoryEntryAsync(CreateHistoryEntry(
+                    widget.Id,
+                    widgetName,
+                    OrganizationActionType.ManagedDrop,
+                    move,
+                    completedResults.Select(result =>
+                        new OrganizationHistoryItem
+                        {
+                            Name = Path.GetFileName(result.DestinationPath),
+                            SourcePath = result.SourcePath,
+                            DestinationPath = result.DestinationPath,
+                            TargetWidgetId = widget.Id,
+                            TargetWidgetName = widgetName
+                        }).ToList(),
+                    canUndo: canUndoCompletedMove));
+            }
+
+            App.Log(
+                $"[Organizer] Import ended with partial results " +
+                $"widget={widget.Id} completed={completedResults.Count} " +
+                $"requested={normalizedSourcePaths.Count} move={move}: {ex}");
+            throw;
+        }
         catch (OperationCanceledException)
         {
             throw;

@@ -5,6 +5,23 @@ namespace DeskBox.Tests;
 public sealed class NativeDropEffectPolicyTests
 {
     [Fact]
+    public void PayloadClassification_PhysicalPathsWinOverVirtualDescriptors()
+    {
+        Assert.False(
+            NativeDropEffectPolicy.IsVirtualOnlyFileData(
+                hasPhysicalPathData: true,
+                hasVirtualDescriptorData: true));
+        Assert.True(
+            NativeDropEffectPolicy.IsVirtualOnlyFileData(
+                hasPhysicalPathData: false,
+                hasVirtualDescriptorData: true));
+        Assert.False(
+            NativeDropEffectPolicy.IsVirtualOnlyFileData(
+                hasPhysicalPathData: false,
+                hasVirtualDescriptorData: false));
+    }
+
+    [Fact]
     public void Feedback_DefaultsToMoveForPhysicalFiles()
     {
         Assert.Equal(
@@ -92,6 +109,88 @@ public sealed class NativeDropEffectPolicyTests
                 keyState: controlAndShiftKeyState,
                 allowedEffects: NativeDropEffectPolicy.Copy |
                                 NativeDropEffectPolicy.Move));
+    }
+
+    [Fact]
+    public void Feedback_UsesLinkForCtrlShiftOrAltWhenLinkIsAllowed()
+    {
+        uint allowed = NativeDropEffectPolicy.Copy |
+                       NativeDropEffectPolicy.Move |
+                       NativeDropEffectPolicy.Link;
+
+        Assert.Equal(
+            NativeDropEffectPolicy.Link,
+            NativeDropEffectPolicy.ResolveFeedbackEffect(
+                hasFileData: true,
+                hasVirtualFileData: false,
+                keyState: NativeDropEffectPolicy.ControlKeyState |
+                          NativeDropEffectPolicy.ShiftKeyState,
+                allowedEffects: allowed));
+        Assert.Equal(
+            NativeDropEffectPolicy.Link,
+            NativeDropEffectPolicy.ResolveFeedbackEffect(
+                hasFileData: true,
+                hasVirtualFileData: false,
+                keyState: NativeDropEffectPolicy.AltKeyState,
+                allowedEffects: allowed));
+    }
+
+    [Fact]
+    public void RightButtonStateIsTrackedSeparatelyFromCopyMoveIntent()
+    {
+        Assert.True(
+            NativeDropEffectPolicy.IsRightButtonDrag(
+                NativeDropEffectPolicy.RightButtonKeyState));
+        Assert.False(NativeDropEffectPolicy.IsRightButtonDrag(0));
+        Assert.True(
+            NativeDropEffectPolicy.ShouldCreateMappedShortcut(
+                containsTemporaryFiles: false,
+                keyState: NativeDropEffectPolicy.AltKeyState));
+        Assert.False(
+            NativeDropEffectPolicy.ShouldCreateMappedShortcut(
+                containsTemporaryFiles: true,
+                keyState: NativeDropEffectPolicy.AltKeyState));
+    }
+
+    [Fact]
+    public void TransferIntent_UsesTheConfiguredMoveWhenFeedbackIsCopyOnly()
+    {
+        Assert.Equal(
+            NativeDropEffectPolicy.Copy,
+            NativeDropEffectPolicy.ResolveFeedbackEffect(
+                hasFileData: true,
+                hasVirtualFileData: false,
+                keyState: 0,
+                allowedEffects: NativeDropEffectPolicy.Copy,
+                defaultMove: true));
+        Assert.False(
+            NativeDropEffectPolicy.ShouldCopyMappedTransfer(
+                containsTemporaryFiles: false,
+                keyState: 0,
+                defaultMove: true));
+    }
+
+    [Fact]
+    public void TransferIntent_RespectsTemporaryFilesAndDropModifiers()
+    {
+        const uint shiftKeyState = 0x0004;
+        const uint controlKeyState = 0x0008;
+
+        Assert.True(
+            NativeDropEffectPolicy.ShouldCopyMappedTransfer(
+                containsTemporaryFiles: true,
+                keyState: shiftKeyState,
+                defaultMove: true));
+        Assert.True(
+            NativeDropEffectPolicy.ShouldCopyMappedTransfer(
+                containsTemporaryFiles: false,
+                keyState: controlKeyState,
+                defaultMove: true));
+        Assert.False(
+            NativeDropEffectPolicy.ShouldCopyMappedTransfer(
+                containsTemporaryFiles: false,
+                keyState: shiftKeyState,
+                defaultMove: false));
     }
 
     [Fact]

@@ -37,6 +37,10 @@ public sealed class NativeDropVisualContractTests
             surface,
             StringComparison.Ordinal);
         Assert.Contains(
+            "e.DragUI.SetContentFromDataPackage();",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "CreateNativeFileDropDescription",
             window,
             StringComparison.Ordinal);
@@ -146,6 +150,157 @@ public sealed class NativeDropVisualContractTests
         Assert.Contains(
             "release: true",
             description,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ContentFileAssociations_UseTheNativeVisualAndFallbackImport()
+    {
+        string window = ReadRepositoryFile(
+            "src/DeskBox/Views/ContentWidgetWindow.NativeDragDrop.cs");
+        string interaction = ReadRepositoryFile(
+            "src/DeskBox/Views/ContentWidgetWindow.WindowInteraction.cs");
+        string quickCapture = ReadRepositoryFile(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs");
+        string todo = ReadRepositoryFile(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContent.DragDrop.cs");
+        string todoAdapter = ReadRepositoryFile(
+            "src/DeskBox/Controls/WidgetContents/TodoWidgetContentAdapter.cs");
+
+        Assert.Contains(
+            "QuickCaptureSurfaceContent => true",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TodoWidgetContentAdapter => true",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Widget.Compact.QuickCaptureDropHint",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Widget.Compact.TodoDropHint",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "FindNativeDropDataContext<QuickCaptureItemViewModel>",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "FindNativeDropDataContext<TodoItemViewModel>",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case QuickCaptureSurfaceContent quickCapture:",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case TodoWidgetContentAdapter todo:",
+            window,
+            StringComparison.Ordinal);
+
+        foreach (string source in new[] { quickCapture, todo })
+        {
+            Assert.Contains(
+                "e.DragUIOverride.IsContentVisible = false;",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "e.DragUIOverride.IsGlyphVisible = false;",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "e.DragUIOverride.IsCaptionVisible = false;",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        Assert.Contains(
+            "e.DragUIOverride.IsContentVisible = isInternalFileDrag;",
+            interaction,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.DragUIOverride.IsGlyphVisible = isInternalFileDrag;",
+            interaction,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.DragUIOverride.IsCaptionVisible = isInternalFileDrag;",
+            interaction,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "ImportNativeDroppedFilesAsync(",
+            quickCapture,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ImportNativeDroppedFilesAsync(",
+            todo,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "todoContent.ImportNativeDroppedFilesAsync(files, targetItem)",
+            todoAdapter,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExplorerFiles_CanTargetFoldersAndStacksThroughTheNativeBridge()
+    {
+        string window = ReadRepositoryFile(
+            "src/DeskBox/Views/ContentWidgetWindow.NativeDragDrop.cs");
+        string surface = ReadRepositoryFile(
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs");
+        string visuals = ReadRepositoryFile(
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs");
+
+        Assert.Contains(
+            "FindNativeDropDataContext<WidgetItem>",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "NormalizeNativeFileDropItemTarget(",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Widget.Stack.DragCaption.Import",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_nativeFileDropItemTarget is WidgetStackItem stack",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Name.Length: > 0",
+            window,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "WidgetItem? targetItem = null",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "targetItem is WidgetStackItem stack",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "targetItem is { IsFolder: true, Path.Length: > 0 } folder",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ImportNativeDroppedFilesIntoFolderAsync(",
+            visuals,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ImportNativeDroppedFilesIntoStackAsync(",
+            visuals,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TransferItemsWithResultAsync(",
+            visuals,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ViewModel.AddItemsToStack(targetStackKey, importedItems)",
+            visuals,
             StringComparison.Ordinal);
     }
 

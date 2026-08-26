@@ -9,6 +9,7 @@ public sealed partial class FileService
     public enum FileTransferPhase
     {
         Preparing,
+        DelegatedToShell,
         Transferring,
         Finalizing,
         Canceling,
@@ -170,6 +171,7 @@ public sealed partial class FileService
         string sourcePath,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             if (File.Exists(sourcePath))
@@ -184,50 +186,12 @@ public sealed partial class FileService
                 return new TransferWorkEstimate(0, IsExact: false);
             }
 
-            long totalBytes = 0;
-            bool isExact = true;
-            var pending = new Stack<string>();
-            pending.Push(sourcePath);
-            while (pending.Count > 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                string directoryPath = pending.Pop();
-                IEnumerable<FileSystemInfo> entries;
-                try
-                {
-                    entries = new DirectoryInfo(directoryPath)
-                        .EnumerateFileSystemInfos();
-                    foreach (FileSystemInfo entry in entries)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        if (entry is FileInfo file)
-                        {
-                            totalBytes = checked(totalBytes + Math.Max(0, file.Length));
-                        }
-                        else if (entry is DirectoryInfo directory)
-                        {
-                            if (directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                            {
-                                isExact = false;
-                                continue;
-                            }
-
-                            pending.Push(directory.FullName);
-                        }
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex) when (
-                    ex is UnauthorizedAccessException or IOException)
-                {
-                    isExact = false;
-                }
-            }
-
-            return new TransferWorkEstimate(totalBytes, isExact);
+            // Never recursively enumerate a directory before starting its
+            // transfer. A deep folder, an offline cloud provider or a slow
+            // network share can otherwise hold the UI at "Preparing 0/1" for
+            // minutes before the first byte is copied. Directory progress is
+            // item-based until the transfer itself discovers its contents.
+            return new TransferWorkEstimate(0, IsExact: false);
         }
         catch (OperationCanceledException)
         {
@@ -612,50 +576,44 @@ public sealed partial class FileService
             // Preserve the existing fallback for paths requiring per-entry work.
         }
 
-        Directory.CreateDirectory(destinationDirectory);
-        var completedChildOperations = new List<TransferOperation>();
+        // A directory fallback must preserve a complete copy before changing
+        // the source tree. Moving children one by one makes a late failure
+        // while deleting an empty source directory split the tree between the
+        // source and destination. Copy-first guarantees that every source
+        // byte still exists in at least one complete tree.
+        await CopyDirectoryWithProgressAsync(
+            sourceDirectory,
+            destinationDirectory,
+            reporter,
+            cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            // The destination is already complete while the source is still
+            // untouched. Preserve and report that exact partial outcome
+            // instead of losing track of the copied tree during cancellation.
+            throw new FileTransferCanceledException(
+                [new FileTransferResult(
+                    sourceDirectory,
+                    destinationDirectory)],
+                cancellationToken);
+        }
         try
         {
-            foreach (string filePath in Directory.EnumerateFiles(sourceDirectory))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                string destinationFilePath = GetAvailableDestinationPath(
-                    destinationDirectory,
-                    Path.GetFileName(filePath));
-                await MoveFileWithProgressAsync(
-                    filePath,
-                    destinationFilePath,
-                    reporter,
-                    cancellationToken);
-                completedChildOperations.Add(
-                    new TransferOperation(filePath, destinationFilePath));
-            }
-
-            foreach (string subDirectory in Directory.EnumerateDirectories(sourceDirectory))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                string destinationSubDirectory = GetAvailableDestinationPath(
-                    destinationDirectory,
-                    Path.GetFileName(subDirectory));
-                await MoveDirectoryWithProgressAsync(
-                    subDirectory,
-                    destinationSubDirectory,
-                    estimate: null,
-                    reporter,
-                    cancellationToken);
-                completedChildOperations.Add(
-                    new TransferOperation(subDirectory, destinationSubDirectory));
-            }
+            await Task.Run(
+                () => Directory.Delete(sourceDirectory, recursive: true),
+                CancellationToken.None);
         }
-        catch
+        catch (Exception ex) when (
+            ex is UnauthorizedAccessException or IOException)
         {
-            await RollbackTransfersAsync(completedChildOperations, move: true);
-            throw;
-        }
-
-        if (!Directory.EnumerateFileSystemEntries(sourceDirectory).Any())
-        {
-            Directory.Delete(sourceDirectory, recursive: false);
+            App.Log(
+                $"[FileTransfer] Directory copy completed but source cleanup " +
+                $"failed source='{sourceDirectory}' " +
+                $"destination='{destinationDirectory}': {ex}");
+            throw new FileTransferSourceCleanupException(
+                sourceDirectory,
+                destinationDirectory,
+                ex);
         }
     }
 

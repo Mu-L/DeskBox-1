@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using DeskBox.Models;
+using DeskBox.Services;
 using DeskBox.ViewModels;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -52,6 +54,8 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
             new PropertyMetadata(double.PositiveInfinity));
 
     private FileItemSurfaceVisualState _visualState = FileItemSurfaceVisualState.Normal;
+    private FileTransferPathState _transferState = FileTransferPathState.None;
+    private string _transferStatusText = string.Empty;
     private WidgetViewModel? _subscribedLayoutContext;
     private bool _isSurfaceLoaded;
 
@@ -139,12 +143,61 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
 
     public FileItemSurfaceVisualState VisualState => _visualState;
 
+    public FileTransferPathState TransferState => _transferState;
+
+    public bool IsTransferActive => _transferState.IsActive;
+
+    public Visibility TransferBadgeVisibility =>
+        IsTransferActive ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility TransferStatusVisibility =>
+        string.IsNullOrWhiteSpace(_transferStatusText)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+    public string TransferStatusText => _transferStatusText;
+
+    public Visibility PathTooltipVisibility =>
+        LayoutContext?.ShowFileItemPathTooltips == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    public bool ToolTipEnabled =>
+        IsTransferActive || PathTooltipVisibility == Visibility.Visible;
+
     public Border InteractiveBorder => SurfaceBorder;
 
     public TextBlock ItemNameText =>
         Mode == FileItemSurfaceMode.List
             ? ListItemNameText
             : IconItemNameText;
+
+    internal void SetTransferState(
+        FileTransferPathState state,
+        string? statusText)
+    {
+        string normalizedStatus = statusText ?? string.Empty;
+        if (_transferState == state &&
+            string.Equals(
+                _transferStatusText,
+                normalizedStatus,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _transferState = state;
+        _transferStatusText = normalizedStatus;
+        AutomationProperties.SetItemStatus(
+            SurfaceBorder,
+            normalizedStatus);
+        OnPropertyChanged(nameof(TransferState));
+        OnPropertyChanged(nameof(IsTransferActive));
+        OnPropertyChanged(nameof(TransferBadgeVisibility));
+        OnPropertyChanged(nameof(TransferStatusVisibility));
+        OnPropertyChanged(nameof(TransferStatusText));
+        OnPropertyChanged(nameof(ToolTipEnabled));
+    }
 
     public static Border? TryGetInteractiveBorder(object? source)
     {
@@ -228,6 +281,7 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
         // item without raising Loaded again. Reset pointer state and ask the
         // host to reapply all item-dependent styling, especially cut opacity.
         _visualState = FileItemSurfaceVisualState.Normal;
+        SetTransferState(FileTransferPathState.None, string.Empty);
         VisualStateChanged?.Invoke(
             this,
             new FileItemSurfaceVisualStateChangedEventArgs(_visualState));
@@ -243,6 +297,8 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
         OnPropertyChanged(nameof(SurfaceMaxWidth));
         OnPropertyChanged(nameof(SurfaceMargin));
         OnPropertyChanged(nameof(SurfacePadding));
+        OnPropertyChanged(nameof(PathTooltipVisibility));
+        OnPropertyChanged(nameof(ToolTipEnabled));
     }
 
     private void SurfaceBorder_Loaded(object sender, RoutedEventArgs e)

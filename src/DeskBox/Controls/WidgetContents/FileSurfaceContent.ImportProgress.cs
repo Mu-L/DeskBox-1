@@ -129,6 +129,14 @@ public sealed partial class FileSurfaceContent
                     "ImportPreparingState",
                     false);
                 break;
+            case FileService.FileTransferPhase.DelegatedToShell:
+                // Windows now owns the progress, conflict, error and cancel
+                // experience. Keep the surface busy until it returns, but do
+                // not cover the widget with a second competing progress card.
+                _importCardDelayCancellation?.Cancel();
+                ImportProgressCard.Visibility = Visibility.Collapsed;
+                _importCardWasShown = false;
+                return;
             case FileService.FileTransferPhase.Finalizing:
                 ImportTitleText.Text = T("Widget.Import.Finalizing");
                 VisualStateManager.GoToState(

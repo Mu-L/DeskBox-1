@@ -566,6 +566,44 @@ public sealed class FileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteTransferPlanAsync_DirectoryStartsWithoutExactRecursivePreScan()
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "unknown-directory-total-source")).FullName;
+        string nestedDirectory = Directory.CreateDirectory(
+            Path.Combine(sourceDirectory, "nested")).FullName;
+        await File.WriteAllTextAsync(
+            Path.Combine(nestedDirectory, "archive.zip"),
+            "content");
+        string destinationDirectory = Path.Combine(
+            _tempRoot,
+            "unknown-directory-total-destination");
+        var updates = new List<FileService.FileTransferProgress>();
+
+        await service.ExecuteTransferPlanAsync(
+            [new FileService.FileTransferPlan(
+                sourceDirectory,
+                destinationDirectory)],
+            move: false,
+            progress: new InlineProgress<FileService.FileTransferProgress>(
+                updates.Add));
+
+        FileService.FileTransferProgress transferring = updates.First(update =>
+            update.Phase == FileService.FileTransferPhase.Transferring);
+        FileService.FileTransferProgress completed = updates.Last(update =>
+            update.Phase == FileService.FileTransferPhase.Completed);
+        Assert.Null(transferring.TotalBytes);
+        Assert.Null(completed.TotalBytes);
+        Assert.Equal(1, completed.CompletedItems);
+        Assert.Equal(100d, completed.Percentage);
+        Assert.True(File.Exists(Path.Combine(
+            destinationDirectory,
+            "nested",
+            "archive.zip")));
+    }
+
+    [Fact]
     [Trait("Category", "Hardware")]
     public async Task ExecuteTransferPlanAsync_RealCrossVolumeMoveReportsProgressAndCancelsPromptly()
     {
@@ -796,6 +834,94 @@ public sealed class FileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteTransferPlanAsync_ShellCopyCompletesAndDelegatesProgress()
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "shell-copy-source")).FullName;
+        string destinationDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "shell-copy-destination")).FullName;
+        string sourcePath = Path.Combine(sourceDirectory, "manual.zip");
+        string destinationPath = Path.Combine(
+            destinationDirectory,
+            "manual.zip");
+        File.WriteAllText(sourcePath, "copy through Windows Shell");
+        var updates = new List<FileService.FileTransferProgress>();
+
+        var results = await service.ExecuteTransferPlanAsync(
+            [new FileService.FileTransferPlan(sourcePath, destinationPath)],
+            move: false,
+            useShellProgress: true,
+            ownerWindowHandle: IntPtr.Zero,
+            progress: new InlineProgress<FileService.FileTransferProgress>(
+                updates.Add));
+
+        var result = Assert.Single(results);
+        Assert.Equal(sourcePath, result.SourcePath);
+        Assert.Equal(destinationPath, result.DestinationPath);
+        Assert.True(File.Exists(sourcePath));
+        Assert.Equal(
+            "copy through Windows Shell",
+            File.ReadAllText(destinationPath));
+        Assert.Contains(updates, update =>
+            update.Phase == FileService.FileTransferPhase.DelegatedToShell);
+        Assert.Contains(updates, update =>
+            update.Phase == FileService.FileTransferPhase.Completed);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteTransferPlanAsync_SourceCleanupFailureKeepsCompleteDestination(
+        bool reportProgress)
+    {
+        var service = new FileService();
+        string sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, $"cleanup-source-{reportProgress}")).FullName;
+        string nestedDirectory = Directory.CreateDirectory(
+            Path.Combine(sourceDirectory, "documents")).FullName;
+        string sourceFile = Path.Combine(nestedDirectory, "report.pdf");
+        File.WriteAllText(sourceFile, "complete destination content");
+        string destinationDirectory = Path.Combine(
+            _tempRoot,
+            $"cleanup-destination-{reportProgress}");
+        Directory.CreateDirectory(destinationDirectory);
+
+        await using var sourceFileLock = new FileStream(
+            sourceFile,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read);
+        IProgress<FileService.FileTransferProgress>? progress = reportProgress
+            ? new InlineProgress<FileService.FileTransferProgress>(_ => { })
+            : null;
+
+        FileService.FileTransferSourceCleanupException exception =
+            await Assert.ThrowsAsync<FileService.FileTransferSourceCleanupException>(
+                () => service.ExecuteTransferPlanAsync(
+                    [new FileService.FileTransferPlan(
+                        sourceDirectory,
+                        destinationDirectory)],
+                    move: true,
+                    progress: progress));
+
+        FileService.FileTransferResult completed = Assert.Single(
+            exception.CompletedResults);
+        Assert.Equal(sourceDirectory, completed.SourcePath);
+        Assert.Equal(destinationDirectory, completed.DestinationPath);
+        Assert.Equal(
+            "complete destination content",
+            File.ReadAllText(Path.Combine(
+                destinationDirectory,
+                "documents",
+                "report.pdf")));
+        Assert.True(Directory.Exists(sourceDirectory));
+        Assert.Equal(
+            "complete destination content",
+            File.ReadAllText(sourceFile));
+    }
+
+    [Fact]
     public async Task TransferItemsWithResultAsync_MovesDeepDirectoryToAvailableNameWhenDestinationExists()
     {
         var service = new FileService();
@@ -963,6 +1089,31 @@ public sealed class FileServiceTests : IDisposable
         Assert.Equal("1 项", item.SecondaryInfo);
     }
 
+    [Fact]
+    public void ShellKindCache_RemainsBoundedDuringLongRunningPathChurn()
+    {
+        FileService.ClearShellKindCache();
+        try
+        {
+            for (int index = 0;
+                 index < FileService.MaxShellKindCacheEntries + 512;
+                 index++)
+            {
+                FileService.CacheShellKind(
+                    $@"C:\synthetic\entry-{index}.bin",
+                    "document");
+            }
+
+            Assert.Equal(
+                FileService.MaxShellKindCacheEntries,
+                FileService.ShellKindCacheEntryCount);
+        }
+        finally
+        {
+            FileService.ClearShellKindCache();
+        }
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempRoot))
@@ -981,4 +1132,5 @@ public sealed class FileServiceTests : IDisposable
     {
         public void Report(T value) => callback(value);
     }
+
 }

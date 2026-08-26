@@ -5,6 +5,7 @@ internal enum FileDropIntent
     None,
     Copy,
     Move,
+    Shortcut,
     Reference,
     Reorder,
     Organize
@@ -23,7 +24,11 @@ internal static class FileDropIntentPolicy
         bool shiftDown,
         bool defaultMove,
         bool canCopy = true,
-        bool canMove = true)
+        bool canMove = true,
+        bool altDown = false,
+        bool followWindows = false,
+        bool sameVolume = true,
+        bool canLink = true)
     {
         if (!hasMappedFolder)
         {
@@ -37,9 +42,15 @@ internal static class FileDropIntentPolicy
             return canCopy ? FileDropIntent.Copy : FileDropIntent.None;
         }
 
-        // Ctrl+Shift normally means Link in Explorer. DeskBox intentionally
-        // does not create links for folder-backed grids, so the safer Ctrl
-        // copy behavior wins when both modifiers are held.
+        // Windows documents Ctrl+Shift as the link gesture. DeskBox also
+        // accepts Alt as a discoverable shortcut gesture because it is the
+        // modifier users commonly use when dragging from Explorer. Keep this
+        // decision in the shared policy so XAML and native OLE paths agree.
+        if ((altDown || (controlDown && shiftDown)) && canLink)
+        {
+            return FileDropIntent.Shortcut;
+        }
+
         if (controlDown)
         {
             return canCopy ? FileDropIntent.Copy : FileDropIntent.None;
@@ -48,6 +59,22 @@ internal static class FileDropIntentPolicy
         if (shiftDown)
         {
             return canMove ? FileDropIntent.Move : FileDropIntent.None;
+        }
+
+        // Explorer chooses Move for a same-volume drop and Copy when the
+        // source and destination are on different volumes. A caller that has
+        // enough path information can opt into that exact behaviour.
+        if (followWindows)
+        {
+            if (sameVolume && canMove)
+            {
+                return FileDropIntent.Move;
+            }
+
+            if (!sameVolume && canCopy)
+            {
+                return FileDropIntent.Copy;
+            }
         }
 
         if (defaultMove && canMove)
@@ -60,5 +87,38 @@ internal static class FileDropIntentPolicy
             : canMove
                 ? FileDropIntent.Move
                 : FileDropIntent.None;
+    }
+
+    public static bool AreSameVolume(string sourcePath, string destinationPath)
+    {
+        try
+        {
+            string sourceRoot = Path.GetPathRoot(Path.GetFullPath(sourcePath)) ??
+                string.Empty;
+            string destinationRoot = Path.GetPathRoot(
+                Path.GetFullPath(destinationPath)) ?? string.Empty;
+            return sourceRoot.Length > 0 &&
+                   destinationRoot.Length > 0 &&
+                   string.Equals(
+                       sourceRoot,
+                       destinationRoot,
+                       StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            // Unknown roots are treated as cross-volume. That is the safe
+            // choice because a move may otherwise delete the source after a
+            // provider has copied only part of a large payload.
+            return false;
+        }
+    }
+
+    public static bool AreAllOnSameVolume(
+        IEnumerable<string> sourcePaths,
+        string destinationPath)
+    {
+        return sourcePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .All(path => AreSameVolume(path, destinationPath));
     }
 }
