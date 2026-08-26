@@ -8,7 +8,7 @@ const
   DeskBoxTemporaryRootPath = '{%TEMP}\DeskBox';
   DeskBoxProductRegistryKey = 'Software\DeskBox';
   DeskBoxStartupRunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
-  DeskBoxStartupTaskName = 'DeskBox User Startup';
+  DeskBoxStartupTaskNamePrefix = 'DeskBox User Startup';
   DeskBoxAppUserModelId = 'DeskBox.DeskBox';
   DeskBoxAppUserModelIdRegistryKey = 'Software\Classes\AppUserModelId';
   DeskBoxNotificationSettingsRegistryKey = 'Software\Microsoft\Windows\CurrentVersion\Notifications\Settings';
@@ -321,42 +321,60 @@ begin
   end;
 end;
 
-procedure RemoveStartupScheduledTask;
+function IsDeskBoxStartupTaskName(TaskName: string): Boolean;
+begin
+  Result :=
+    (CompareText(TaskName, DeskBoxStartupTaskNamePrefix) = 0) or
+    (Pos(Uppercase(DeskBoxStartupTaskNamePrefix + '-'), Uppercase(TaskName)) = 1);
+end;
+
+procedure RemoveStartupScheduledTasks;
 var
   ScheduleService: Variant;
   RootFolder: Variant;
+  RegisteredTasks: Variant;
   RegisteredTask: Variant;
   TaskDefinition: Variant;
   Actions: Variant;
   Action: Variant;
   ActionPath: string;
+  TaskName: string;
+  TaskIndex: Integer;
 begin
   try
     ScheduleService := CreateOleObject('Schedule.Service');
     ScheduleService.Connect;
     RootFolder := ScheduleService.GetFolder('\');
-    RegisteredTask := RootFolder.GetTask(DeskBoxStartupTaskName);
-    TaskDefinition := RegisteredTask.Definition;
-    Actions := TaskDefinition.Actions;
+    RegisteredTasks := RootFolder.GetTasks(1);
 
-    if Actions.Count < 1 then
+    for TaskIndex := RegisteredTasks.Count downto 1 do
     begin
-      Log('DeskBox uninstall preserved a startup task with no executable action.');
-      Exit;
+      RegisteredTask := RegisteredTasks.Item(TaskIndex);
+      TaskName := RegisteredTask.Name;
+      if IsDeskBoxStartupTaskName(TaskName) then
+      begin
+        TaskDefinition := RegisteredTask.Definition;
+        Actions := TaskDefinition.Actions;
+
+        if Actions.Count < 1 then
+          Log('DeskBox uninstall preserved a startup task with no executable action: ' + TaskName)
+        else
+        begin
+          Action := Actions.Item(1);
+          ActionPath := Action.Path;
+          if SameInstallPath(ExtractFileDir(ActionPath), ExpandConstant('{app}')) and
+             (CompareText(ExtractFileName(ActionPath), DeskBoxProcessName) = 0) then
+          begin
+            RootFolder.DeleteTask(TaskName, 0);
+            Log('DeskBox uninstall removed startup scheduled task: ' + TaskName);
+          end
+          else
+            Log('DeskBox uninstall preserved a startup task owned by another DeskBox installation: ' + TaskName);
+        end;
+      end;
     end;
-
-    Action := Actions.Item(1);
-    ActionPath := Action.Path;
-    if SameInstallPath(ExtractFileDir(ActionPath), ExpandConstant('{app}')) and
-       (CompareText(ExtractFileName(ActionPath), DeskBoxProcessName) = 0) then
-    begin
-      RootFolder.DeleteTask(DeskBoxStartupTaskName, 0);
-      Log('DeskBox uninstall removed the startup scheduled task.');
-    end
-    else
-      Log('DeskBox uninstall preserved a startup task owned by another DeskBox installation.');
   except
-    Log('DeskBox startup scheduled task was not present or could not be inspected.');
+    Log('DeskBox startup scheduled tasks could not be fully inspected.');
   end;
 end;
 
@@ -539,9 +557,21 @@ end;
 
 function InitializeUninstall: Boolean;
 begin
-  Result := ConfirmManagedStoragePreserved;
-  if Result then
-    Result := ChooseAppDataRemoval;
+  if IsAdminInstallMode then
+  begin
+    // A machine-wide uninstaller can run under a different administrator
+    // account from the person who started it. Never interpret that elevated
+    // account's LocalAppData as the data of every DeskBox user.
+    PurgeDeskBoxAppData := False;
+    Log('DeskBox all-users uninstall will preserve every user profile''s application data.');
+    Result := True;
+  end
+  else
+  begin
+    Result := ConfirmManagedStoragePreserved;
+    if Result then
+      Result := ChooseAppDataRemoval;
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -551,15 +581,23 @@ begin
 
   if CurUninstallStep = usPostUninstall then
   begin
-    RemoveStartupScheduledTask;
-    RemoveStartupRegistryEntry;
-    RemoveTaskbarPinnedShortcut;
-    RemoveAppCompatFlag;
-    RemoveNotificationRegistration;
-    RemoveDeskBoxDataDirectories;
-    if PurgeDeskBoxAppData then
-      Log('DeskBox uninstall removed local app data and recovery snapshots.')
+    // Scheduled tasks live outside the per-user registry and can be safely
+    // removed when their executable action targets this exact installation.
+    RemoveStartupScheduledTasks;
+
+    if IsAdminInstallMode then
+      Log('DeskBox all-users uninstall preserved per-user startup entries, notifications, settings, and content.')
     else
-      Log('DeskBox uninstall kept local app data and recovery snapshots.');
+    begin
+      RemoveStartupRegistryEntry;
+      RemoveTaskbarPinnedShortcut;
+      RemoveAppCompatFlag;
+      RemoveNotificationRegistration;
+      RemoveDeskBoxDataDirectories;
+      if PurgeDeskBoxAppData then
+        Log('DeskBox uninstall removed local app data and recovery snapshots.')
+      else
+        Log('DeskBox uninstall kept local app data and recovery snapshots.');
+    end;
   end;
 end;

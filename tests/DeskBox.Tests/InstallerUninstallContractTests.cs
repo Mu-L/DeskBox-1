@@ -63,7 +63,7 @@ public sealed class InstallerUninstallContractTests
         string code = ReadRepositoryFile("installer/DeskBox.Uninstall.iss");
 
         Assert.Contains(
-            "DeskBoxStartupTaskName = 'DeskBox User Startup'",
+            "DeskBoxStartupTaskNamePrefix = 'DeskBox User Startup'",
             code,
             StringComparison.Ordinal);
         Assert.Contains("CreateOleObject('Schedule.Service')", code, StringComparison.Ordinal);
@@ -77,12 +77,36 @@ public sealed class InstallerUninstallContractTests
             code,
             StringComparison.Ordinal);
         Assert.Contains(
-            "RootFolder.DeleteTask(DeskBoxStartupTaskName, 0)",
+            "RootFolder.DeleteTask(TaskName, 0)",
             code,
             StringComparison.Ordinal);
         Assert.True(
-            code.LastIndexOf("RemoveStartupScheduledTask;", StringComparison.Ordinal) <
+            code.LastIndexOf("RemoveStartupScheduledTasks;", StringComparison.Ordinal) <
             code.LastIndexOf("RemoveStartupRegistryEntry;", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("installer/DeskBox.iss")]
+    [InlineData("installer/DeskBox.arm64.iss")]
+    public void DirectInstaller_SupportsMachineAndCurrentUserScopes(string scriptPath)
+    {
+        string installer = ReadRepositoryFile(scriptPath);
+        string installation = ReadRepositoryFile("installer/DeskBox.Installation.iss");
+        string migration = ReadRepositoryFile("installer/DeskBox.Migration.iss");
+
+        Assert.Contains("PrivilegesRequired=admin", installer, StringComparison.Ordinal);
+        Assert.Contains("PrivilegesRequiredOverridesAllowed=dialog", installer, StringComparison.Ordinal);
+        Assert.Contains("UsePreviousPrivileges=yes", installer, StringComparison.Ordinal);
+        Assert.Contains("{autoprograms}", installer, StringComparison.Ordinal);
+        Assert.Contains("{autodesktop}", installer, StringComparison.Ordinal);
+        Assert.Contains("Root: HKA; Subkey: \"Software\\DeskBox\\DirectInstall\"", installer, StringComparison.Ordinal);
+        Assert.Contains("ValueName: \"InstallScope\"", installer, StringComparison.Ordinal);
+        Assert.Contains("if (CurStep = ssPostInstall) and (not IsAdminInstallMode) then", installer, StringComparison.Ordinal);
+        Assert.DoesNotContain("Root: HKCU; Subkey: \"Software\\DeskBox\"; ValueType: string; ValueName: \"InstallLanguage\"", installer, StringComparison.Ordinal);
+        Assert.Contains("ExpandConstant('{autopf}\\DeskBox')", installation, StringComparison.Ordinal);
+        Assert.Contains("HKEY_LOCAL_MACHINE, DeskBoxInstallStateKey", installation, StringComparison.Ordinal);
+        Assert.DoesNotContain("DelTree(LegacyInstallPath", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("DeskBoxAdminCleanupParam", migration, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -12,6 +12,20 @@ public sealed class DisplayTopologyRestorationContractTests
         Assert.Contains("updateConfig: false", method, StringComparison.Ordinal);
         Assert.DoesNotContain("SaveDebounced", method, StringComparison.Ordinal);
         Assert.DoesNotContain("UpdateConfigBoundsFromPhysical", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("RestoreDesktopLayer", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AutomaticDisplayRestore_RestoresTheWindowLayerAsOneGroup()
+    {
+        string source = File.ReadAllText(GetRepoFile(
+            "src/DeskBox/Services/WidgetManager.cs"));
+        string method = ExtractMethod(
+            source,
+            "internal async Task<bool> RestoreWidgetPositionsAsync(");
+
+        Assert.Contains("RestoreGroupPreservingForeground", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("QueueIdleWidgetZOrderNormalization", method, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -23,6 +37,17 @@ public sealed class DisplayTopologyRestorationContractTests
 
         Assert.Contains("RequestDisplayTopologyRestore", method, StringComparison.Ordinal);
         Assert.DoesNotContain("TryRestoreBoundsForCurrentTopology", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerificationPass_CompletesWithoutReapplyingAllWindows()
+    {
+        string source = File.ReadAllText(GetRepoFile(
+            "src/DeskBox/Services/DisplayTopologyTransitionCoordinator.cs"));
+        string method = ExtractMethod(source, "private async void Timer_Tick(");
+
+        Assert.Contains("CompleteSuccessfulRestore(generation, signature);", method, StringComparison.Ordinal);
+        Assert.Equal(1, CountOccurrences(method, "_restoreAction("));
     }
 
     [Fact]
@@ -60,6 +85,19 @@ public sealed class DisplayTopologyRestorationContractTests
         }
 
         throw new InvalidOperationException($"Unterminated method body: {signature}");
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        int count = 0;
+        int offset = 0;
+        while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            offset += value.Length;
+        }
+
+        return count;
     }
 
     private static string GetRepoFile(string relativePath)

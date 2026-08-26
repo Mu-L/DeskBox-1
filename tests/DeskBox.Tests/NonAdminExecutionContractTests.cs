@@ -12,11 +12,13 @@ public sealed class NonAdminExecutionContractTests
     }
 
     [Fact]
-    public void Installer_UsesLowestPrivilegesAndOriginalUserLaunch()
+    public void Installer_OffersBothScopesAndLaunchesTheAppAsOriginalUser()
     {
         string installer = File.ReadAllText(TestPaths.FromRepository("installer/DeskBox.iss"));
 
-        Assert.Contains("PrivilegesRequired=lowest", installer, StringComparison.Ordinal);
+        Assert.Contains("PrivilegesRequired=admin", installer, StringComparison.Ordinal);
+        Assert.Contains("PrivilegesRequiredOverridesAllowed=dialog", installer, StringComparison.Ordinal);
+        Assert.Contains("UsePreviousPrivileges=yes", installer, StringComparison.Ordinal);
         Assert.Contains("runasoriginaluser", installer, StringComparison.OrdinalIgnoreCase);
     }
 

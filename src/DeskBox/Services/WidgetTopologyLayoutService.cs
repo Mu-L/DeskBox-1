@@ -144,7 +144,13 @@ internal sealed class WidgetTopologyLayoutService
 
     private static WidgetDisplayTopologySnapshot CaptureCurrentTopology()
     {
-        var monitors = Win32Helper.GetMonitorWorkAreaInfos()
+        return CreateSnapshotFromMonitorAreas(Win32Helper.GetMonitorWorkAreaInfos());
+    }
+
+    internal static WidgetDisplayTopologySnapshot CreateSnapshotFromMonitorAreas(
+        IReadOnlyList<Win32Helper.MonitorWorkAreaInfo> monitorAreas)
+    {
+        var monitors = monitorAreas
             .Select(area => new WidgetTopologyMonitorProfile
             {
                 StableId = ResolveStableMonitorId(area.DeviceName),
@@ -170,16 +176,22 @@ internal sealed class WidgetTopologyLayoutService
         string signature = string.Join(
             "|",
             monitors
-                .OrderBy(monitor => monitor.StableId, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(monitor => monitor.DeviceName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(monitor => monitor.MonitorX)
+                .OrderBy(monitor => monitor.MonitorX)
                 .ThenBy(monitor => monitor.MonitorY)
+                .ThenBy(monitor => monitor.MonitorWidth)
+                .ThenBy(monitor => monitor.MonitorHeight)
                 .Select(monitor =>
-                    $"{monitor.StableId};{monitor.DeviceName};{monitor.IsPrimary};" +
-                    $"{monitor.DpiScale:F3};{monitor.MonitorX},{monitor.MonitorY}," +
-                    $"{monitor.MonitorWidth},{monitor.MonitorHeight}"));
+                    FormattableString.Invariant(
+                        $"{NormalizeStableIdentityForKey(monitor.StableId)};{monitor.IsPrimary};{monitor.DpiScale:F3};{monitor.MonitorX},{monitor.MonitorY},{monitor.MonitorWidth},{monitor.MonitorHeight}")));
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(signature));
-        return "v1-" + Convert.ToHexString(hash.AsSpan(0, 12));
+        return "v2-" + Convert.ToHexString(hash.AsSpan(0, 12));
+    }
+
+    private static string NormalizeStableIdentityForKey(string? stableId)
+    {
+        return string.IsNullOrWhiteSpace(stableId)
+            ? "geometry-only"
+            : stableId.Trim().ToUpperInvariant();
     }
 
     private static void SeedProfile(
@@ -712,10 +724,9 @@ internal sealed class WidgetTopologyLayoutService
 
     private static string ResolveStableMonitorId(string? deviceName)
     {
-        string fallback = string.IsNullOrWhiteSpace(deviceName) ? "unknown-display" : deviceName.Trim();
         if (string.IsNullOrWhiteSpace(deviceName))
         {
-            return fallback;
+            return string.Empty;
         }
 
         try
@@ -750,7 +761,11 @@ internal sealed class WidgetTopologyLayoutService
         {
         }
 
-        return fallback;
+        // \\.\DISPLAYn is an adapter-local alias and can change after monitor
+        // power cycles. Falling back to it would create a new layout profile for
+        // the same physical geometry, so leave the identity empty and let the
+        // topology key use its deterministic geometry fallback.
+        return string.Empty;
     }
 
     [DllImport("user32.dll", EntryPoint = "EnumDisplayDevicesW", CharSet = CharSet.Unicode)]

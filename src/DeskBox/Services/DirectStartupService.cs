@@ -164,7 +164,12 @@ public sealed class DirectStartupService : IStartupService
 
             bool ownsRunEntry = IsCommandOwnedBy(_runEntryStore.Read(), executablePath);
             bool ownsShortcut = IsLegacyShortcutOwnedBy(executablePath);
-            if (!ownsRunEntry && !ownsShortcut)
+            DirectStartupTaskRegistration? existingTask = _taskBackend.Read();
+            bool ownsLegacyTask =
+                existingTask is not null &&
+                existingTask.IsOwnedBy(executablePath) &&
+                !_taskBackend.IsPreferred(existingTask, executablePath);
+            if (!ownsRunEntry && !ownsShortcut && !ownsLegacyTask)
             {
                 return;
             }
