@@ -6,7 +6,22 @@ public readonly record struct EffectivePerformanceSettings(
     string Mode,
     int HiddenCacheCleanupDelaySeconds,
     int HiddenDeepCleanupDelaySeconds,
-    bool AllowContinuousDecorativeAnimations);
+    bool AllowTextMarqueeAnimations,
+    bool AllowVinylRotationAnimations,
+    bool AllowGlanceImageAutoRotation,
+    bool AllowCompactAmbientAnimations,
+    int VisibleIdleCacheCleanupDelaySeconds,
+    int TransientWindowReleaseDelaySeconds,
+    string CacheBudget,
+    int HiddenIdleWorkingSetTrimDelaySeconds,
+    bool ClearVisibleIdleCaches)
+{
+    public bool AllowContinuousDecorativeAnimations =>
+        AllowTextMarqueeAnimations ||
+        AllowVinylRotationAnimations ||
+        AllowGlanceImageAutoRotation ||
+        AllowCompactAmbientAnimations;
+}
 
 /// <summary>
 /// Resolves the user-facing performance preset into narrowly scoped runtime
@@ -20,22 +35,45 @@ public static class PerformanceSettingsPolicy
     public const string ModeResourceSaver = "ResourceSaver";
     public const string ModeCustom = "Custom";
 
+    public const string DecorativeAnimationTextMarquee = "TextMarquee";
+    public const string DecorativeAnimationVinylRotation = "VinylRotation";
+    public const string DecorativeAnimationGlanceRotation = "GlanceRotation";
+    public const string DecorativeAnimationCompactAmbient = "CompactAmbient";
+
+    public static IReadOnlyList<string> SupportedDecorativeAnimationOptions { get; } =
+        Array.AsReadOnly(new[]
+        {
+            DecorativeAnimationTextMarquee,
+            DecorativeAnimationVinylRotation,
+            DecorativeAnimationGlanceRotation,
+            DecorativeAnimationCompactAmbient
+        });
+
+    public const string CacheBudgetSmall = "Small";
+    public const string CacheBudgetBalanced = "Balanced";
+    public const string CacheBudgetLarge = "Large";
+
     public const int CleanupNever = -1;
     public const int CleanupAfter30Seconds = 30;
     public const int CleanupAfter1Minute = 60;
+    public const int CleanupAfter2Minutes = 2 * 60;
     public const int CleanupAfter5Minutes = 5 * 60;
+    public const int CleanupAfter10Minutes = 10 * 60;
+    public const int CleanupAfter15Minutes = 15 * 60;
 
     public const string DefaultMode = ModeBalanced;
     public const int DefaultHiddenCacheCleanupDelaySeconds = CleanupAfter30Seconds;
+    public const int DefaultVisibleIdleCacheCleanupDelaySeconds = CleanupAfter10Minutes;
+    public const int DefaultTransientWindowReleaseDelaySeconds = CleanupAfter10Minutes;
+    public const string DefaultCacheBudget = CacheBudgetBalanced;
     public const bool DefaultContinuousDecorativeAnimationsEnabled = true;
+    public const bool DefaultTextMarqueeAnimationsEnabled = true;
+    public const bool DefaultVinylRotationAnimationsEnabled = true;
+    public const bool DefaultGlanceImageAutoRotationEnabled = true;
+    public const bool DefaultCompactAmbientAnimationsEnabled = true;
 
     public static string NormalizeMode(string? mode)
     {
-        if (string.Equals(mode, ModeBestVisual, StringComparison.OrdinalIgnoreCase))
-        {
-            return ModeBestVisual;
-        }
-
         if (string.Equals(mode, ModeResourceSaver, StringComparison.OrdinalIgnoreCase))
         {
             return ModeResourceSaver;
@@ -49,14 +87,72 @@ public static class PerformanceSettingsPolicy
         return ModeBalanced;
     }
 
+    public static string NormalizeCacheBudget(string? cacheBudget)
+    {
+        if (string.Equals(
+                cacheBudget,
+                CacheBudgetSmall,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return CacheBudgetSmall;
+        }
+
+        if (string.Equals(
+                cacheBudget,
+                CacheBudgetLarge,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return CacheBudgetLarge;
+        }
+
+        return CacheBudgetBalanced;
+    }
+
+    public static int ResolveInactiveGroupContentCacheCapacity(
+        string? cacheBudget)
+    {
+        return NormalizeCacheBudget(cacheBudget) switch
+        {
+            CacheBudgetSmall => 1,
+            CacheBudgetLarge => 2,
+            _ => 1
+        };
+    }
+
     public static int NormalizeHiddenCacheCleanupDelaySeconds(int delaySeconds) =>
-        delaySeconds is
-            CleanupNever or
+        delaySeconds == CleanupNever
+            ? CleanupAfter5Minutes
+            : delaySeconds is
             CleanupAfter30Seconds or
             CleanupAfter1Minute or
             CleanupAfter5Minutes
                 ? delaySeconds
                 : DefaultHiddenCacheCleanupDelaySeconds;
+
+    public static int NormalizeVisibleIdleCacheCleanupDelaySeconds(
+        int delaySeconds) =>
+        delaySeconds == CleanupNever
+            ? CleanupAfter15Minutes
+            : delaySeconds is
+            CleanupAfter30Seconds or
+            CleanupAfter1Minute or
+            CleanupAfter5Minutes or
+            CleanupAfter10Minutes or
+            CleanupAfter15Minutes
+                ? delaySeconds
+                : DefaultVisibleIdleCacheCleanupDelaySeconds;
+
+    public static int NormalizeTransientWindowReleaseDelaySeconds(
+        int delaySeconds) =>
+        delaySeconds == CleanupNever
+            ? CleanupAfter10Minutes
+            : delaySeconds is
+            CleanupAfter30Seconds or
+            CleanupAfter1Minute or
+            CleanupAfter2Minutes or
+            CleanupAfter10Minutes
+                ? delaySeconds
+                : DefaultTransientWindowReleaseDelaySeconds;
 
     public static EffectivePerformanceSettings Resolve(AppSettings settings)
     {
@@ -65,22 +161,33 @@ public static class PerformanceSettingsPolicy
         string mode = NormalizeMode(settings.PerformanceMode);
         return mode switch
         {
-            ModeBestVisual => new(
-                mode,
-                CleanupAfter5Minutes,
-                10 * 60,
-                true),
             ModeResourceSaver => new(
                 mode,
                 CleanupAfter30Seconds,
                 CleanupAfter1Minute,
-                false),
+                false,
+                false,
+                false,
+                false,
+                CleanupAfter5Minutes,
+                CleanupAfter2Minutes,
+                CacheBudgetSmall,
+                CleanupAfter10Minutes,
+                true),
             ModeCustom => ResolveCustom(settings),
             _ => new(
                 ModeBalanced,
                 CleanupAfter30Seconds,
                 CleanupAfter5Minutes,
-                true)
+                true,
+                true,
+                true,
+                true,
+                CleanupAfter10Minutes,
+                CleanupAfter10Minutes,
+                CacheBudgetBalanced,
+                CleanupNever,
+                false)
         };
     }
 
@@ -91,40 +198,77 @@ public static class PerformanceSettingsPolicy
         string mode = NormalizeMode(settings.PerformanceMode);
         int hiddenDelay = NormalizeHiddenCacheCleanupDelaySeconds(
             settings.HiddenCacheCleanupDelaySeconds);
-        bool allowDecorativeAnimations =
-            settings.EnableContinuousDecorativeAnimations;
+        int visibleIdleDelay = NormalizeVisibleIdleCacheCleanupDelaySeconds(
+            settings.VisibleIdleCacheCleanupDelaySeconds);
+        int transientWindowDelay = NormalizeTransientWindowReleaseDelaySeconds(
+            settings.TransientWindowReleaseDelaySeconds);
+        string cacheBudget = NormalizeCacheBudget(settings.PerformanceCacheBudget);
+        bool allowTextMarqueeAnimations =
+            settings.EnableTextMarqueeAnimations;
+        bool allowVinylRotationAnimations =
+            settings.EnableVinylRotationAnimations;
+        bool allowGlanceImageAutoRotation =
+            settings.EnableGlanceImageAutoRotation;
+        bool allowCompactAmbientAnimations =
+            settings.EnableCompactAmbientAnimations;
 
         if (!string.Equals(mode, ModeCustom, StringComparison.Ordinal))
         {
             EffectivePerformanceSettings preset = ResolvePreset(mode);
             hiddenDelay = preset.HiddenCacheCleanupDelaySeconds;
-            allowDecorativeAnimations = preset.AllowContinuousDecorativeAnimations;
+            visibleIdleDelay = preset.VisibleIdleCacheCleanupDelaySeconds;
+            transientWindowDelay = preset.TransientWindowReleaseDelaySeconds;
+            cacheBudget = preset.CacheBudget;
+            allowTextMarqueeAnimations = preset.AllowTextMarqueeAnimations;
+            allowVinylRotationAnimations = preset.AllowVinylRotationAnimations;
+            allowGlanceImageAutoRotation = preset.AllowGlanceImageAutoRotation;
+            allowCompactAmbientAnimations = preset.AllowCompactAmbientAnimations;
         }
 
         bool changed = false;
-        if (!string.Equals(
-                settings.PerformanceMode,
-                mode,
-                StringComparison.Ordinal))
-        {
-            settings.PerformanceMode = mode;
-            changed = true;
-        }
-
-        if (settings.HiddenCacheCleanupDelaySeconds != hiddenDelay)
-        {
-            settings.HiddenCacheCleanupDelaySeconds = hiddenDelay;
-            changed = true;
-        }
-
-        if (settings.EnableContinuousDecorativeAnimations !=
-            allowDecorativeAnimations)
-        {
-            settings.EnableContinuousDecorativeAnimations =
-                allowDecorativeAnimations;
-            changed = true;
-        }
-
+        changed |= SetIfChanged(settings.PerformanceMode, mode, value =>
+            settings.PerformanceMode = value);
+        changed |= SetIfChanged(
+            settings.HiddenCacheCleanupDelaySeconds,
+            hiddenDelay,
+            value => settings.HiddenCacheCleanupDelaySeconds = value);
+        changed |= SetIfChanged(
+            settings.VisibleIdleCacheCleanupDelaySeconds,
+            visibleIdleDelay,
+            value => settings.VisibleIdleCacheCleanupDelaySeconds = value);
+        changed |= SetIfChanged(
+            settings.TransientWindowReleaseDelaySeconds,
+            transientWindowDelay,
+            value => settings.TransientWindowReleaseDelaySeconds = value);
+        changed |= SetIfChanged(
+            settings.PerformanceCacheBudget,
+            cacheBudget,
+            value => settings.PerformanceCacheBudget = value);
+        changed |= SetIfChanged(
+            settings.EnableTextMarqueeAnimations,
+            allowTextMarqueeAnimations,
+            value => settings.EnableTextMarqueeAnimations = value);
+        changed |= SetIfChanged(
+            settings.EnableVinylRotationAnimations,
+            allowVinylRotationAnimations,
+            value => settings.EnableVinylRotationAnimations = value);
+        changed |= SetIfChanged(
+            settings.EnableGlanceImageAutoRotation,
+            allowGlanceImageAutoRotation,
+            value => settings.EnableGlanceImageAutoRotation = value);
+        changed |= SetIfChanged(
+            settings.EnableCompactAmbientAnimations,
+            allowCompactAmbientAnimations,
+            value => settings.EnableCompactAmbientAnimations = value);
+        bool legacyDecorativeAnimationsEnabled =
+            allowTextMarqueeAnimations &&
+            allowVinylRotationAnimations &&
+            allowGlanceImageAutoRotation &&
+            allowCompactAmbientAnimations;
+        changed |= SetIfChanged(
+            settings.EnableContinuousDecorativeAnimations,
+            legacyDecorativeAnimationsEnabled,
+            value => settings.EnableContinuousDecorativeAnimations = value);
         return changed;
     }
 
@@ -141,6 +285,19 @@ public static class PerformanceSettingsPolicy
             settings.HiddenCacheCleanupDelaySeconds =
                 NormalizeHiddenCacheCleanupDelaySeconds(
                     settings.HiddenCacheCleanupDelaySeconds);
+            settings.VisibleIdleCacheCleanupDelaySeconds =
+                NormalizeVisibleIdleCacheCleanupDelaySeconds(
+                    settings.VisibleIdleCacheCleanupDelaySeconds);
+            settings.TransientWindowReleaseDelaySeconds =
+                NormalizeTransientWindowReleaseDelaySeconds(
+                    settings.TransientWindowReleaseDelaySeconds);
+            settings.PerformanceCacheBudget =
+                NormalizeCacheBudget(settings.PerformanceCacheBudget);
+            settings.EnableContinuousDecorativeAnimations =
+                settings.EnableTextMarqueeAnimations &&
+                settings.EnableVinylRotationAnimations &&
+                settings.EnableGlanceImageAutoRotation &&
+                settings.EnableCompactAmbientAnimations;
             return;
         }
 
@@ -148,8 +305,24 @@ public static class PerformanceSettingsPolicy
             settings.PerformanceMode);
         settings.HiddenCacheCleanupDelaySeconds =
             preset.HiddenCacheCleanupDelaySeconds;
+        settings.VisibleIdleCacheCleanupDelaySeconds =
+            preset.VisibleIdleCacheCleanupDelaySeconds;
+        settings.TransientWindowReleaseDelaySeconds =
+            preset.TransientWindowReleaseDelaySeconds;
+        settings.PerformanceCacheBudget = preset.CacheBudget;
+        settings.EnableTextMarqueeAnimations =
+            preset.AllowTextMarqueeAnimations;
+        settings.EnableVinylRotationAnimations =
+            preset.AllowVinylRotationAnimations;
+        settings.EnableGlanceImageAutoRotation =
+            preset.AllowGlanceImageAutoRotation;
+        settings.EnableCompactAmbientAnimations =
+            preset.AllowCompactAmbientAnimations;
         settings.EnableContinuousDecorativeAnimations =
-            preset.AllowContinuousDecorativeAnimations;
+            preset.AllowTextMarqueeAnimations &&
+            preset.AllowVinylRotationAnimations &&
+            preset.AllowGlanceImageAutoRotation &&
+            preset.AllowCompactAmbientAnimations;
     }
 
     private static EffectivePerformanceSettings ResolvePreset(string mode)
@@ -168,15 +341,42 @@ public static class PerformanceSettingsPolicy
             settings.HiddenCacheCleanupDelaySeconds);
         int deepDelay = hiddenDelay switch
         {
-            CleanupNever => CleanupNever,
-            CleanupAfter5Minutes => 10 * 60,
+            CleanupAfter5Minutes => CleanupAfter10Minutes,
             _ => CleanupAfter5Minutes
         };
+        string cacheBudget = NormalizeCacheBudget(
+            settings.PerformanceCacheBudget);
         return new(
             ModeCustom,
             hiddenDelay,
             deepDelay,
-            settings.EnableContinuousDecorativeAnimations);
+            settings.EnableTextMarqueeAnimations,
+            settings.EnableVinylRotationAnimations,
+            settings.EnableGlanceImageAutoRotation,
+            settings.EnableCompactAmbientAnimations,
+            NormalizeVisibleIdleCacheCleanupDelaySeconds(
+                settings.VisibleIdleCacheCleanupDelaySeconds),
+            NormalizeTransientWindowReleaseDelaySeconds(
+                settings.TransientWindowReleaseDelaySeconds),
+            cacheBudget,
+            hiddenDelay,
+            string.Equals(
+                cacheBudget,
+                CacheBudgetSmall,
+                StringComparison.Ordinal));
     }
 
+    private static bool SetIfChanged<T>(
+        T current,
+        T value,
+        Action<T> setter)
+    {
+        if (EqualityComparer<T>.Default.Equals(current, value))
+        {
+            return false;
+        }
+
+        setter(value);
+        return true;
+    }
 }

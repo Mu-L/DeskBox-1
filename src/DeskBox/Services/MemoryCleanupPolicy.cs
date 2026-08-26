@@ -12,10 +12,12 @@ internal readonly record struct MemoryCleanupActivitySnapshot(
 internal static class MemoryCleanupPolicy
 {
     internal const long VisibleIdleManagedHeapThresholdBytes = 96L * 1024 * 1024;
-    internal const long VisibleIdleWorkingSetThresholdBytes = 300L * 1024 * 1024;
-    internal const long VisibleIdlePrivateBytesThreshold = 320L * 1024 * 1024;
+    internal const long VisibleIdleWorkingSetThresholdBytes = 240L * 1024 * 1024;
+    internal const long VisibleIdlePrivateBytesThreshold = 260L * 1024 * 1024;
     internal const long VisibleIdleMinimumAllocationBytes = 32L * 1024 * 1024;
     internal const long HiddenIdleWorkingSetTrimThresholdBytes = 220L * 1024 * 1024;
+    internal const long ResourceSaverWorkingSetTrimMinimumBytes = 256L * 1024 * 1024;
+    internal const long ResourceSaverWorkingSetTrimHighBytes = 384L * 1024 * 1024;
 
     public static bool IsVisibleIdleCandidate(MemoryCleanupActivitySnapshot snapshot)
     {
@@ -45,6 +47,25 @@ internal static class MemoryCleanupPolicy
     {
         return CanTrimWorkingSet(snapshot) &&
             workingSetBytes >= HiddenIdleWorkingSetTrimThresholdBytes;
+    }
+
+    public static bool ShouldTrimResourceSaverHiddenWorkingSet(
+        MemoryCleanupActivitySnapshot snapshot,
+        long workingSetBytes,
+        long memoryLoadBytes,
+        long highMemoryLoadThresholdBytes)
+    {
+        if (!CanTrimWorkingSet(snapshot) ||
+            workingSetBytes < ResourceSaverWorkingSetTrimMinimumBytes)
+        {
+            return false;
+        }
+
+        bool underSystemMemoryPressure =
+            highMemoryLoadThresholdBytes > 0 &&
+            memoryLoadBytes >= highMemoryLoadThresholdBytes * 85 / 100;
+        return underSystemMemoryPressure ||
+            workingSetBytes >= ResourceSaverWorkingSetTrimHighBytes;
     }
 
     public static bool ShouldCollectVisibleIdleManagedMemory(
@@ -79,5 +100,17 @@ internal static class MemoryCleanupPolicy
         // cause a forced Gen2 collection every few minutes.
         return !hasCompletedVisibleIdleCollection ||
             allocatedSinceLastCollection >= VisibleIdleMinimumAllocationBytes;
+    }
+
+    public static bool ShouldTrimVisibleIdleWorkingSet(
+        MemoryCleanupActivitySnapshot snapshot,
+        long workingSetBytes,
+        long privateBytes,
+        bool hasActiveVisualWork)
+    {
+        return !hasActiveVisualWork &&
+            IsVisibleIdleCandidate(snapshot) &&
+            workingSetBytes >= VisibleIdleWorkingSetThresholdBytes &&
+            privateBytes >= VisibleIdlePrivateBytesThreshold;
     }
 }

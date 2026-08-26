@@ -50,7 +50,23 @@ public sealed class PerformanceSettingsContractTests
             xaml,
             StringComparison.Ordinal);
         Assert.Contains(
-            "EnableContinuousDecorativeAnimations",
+            "SelectedVisibleIdleCacheCleanupDelaySeconds",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SelectedTransientWindowReleaseDelaySeconds",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SelectedPerformanceCacheBudget",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ContinuousDecorativeAnimationsSummaryText",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ContinuousDecorativeAnimationsDropDown_Click",
             xaml,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -64,7 +80,7 @@ public sealed class PerformanceSettingsContractTests
     }
 
     [Fact]
-    public void RuntimePolicy_ControlsHiddenCleanupAndOnlyContinuousDecoration()
+    public void RuntimePolicy_ControlsRetentionAndOnlyContinuousDecoration()
     {
         string app = ReadRepositoryFile("src/DeskBox/App.xaml.cs");
         string shell = ReadRepositoryFile(
@@ -73,6 +89,8 @@ public sealed class PerformanceSettingsContractTests
             "src/DeskBox/Views/WidgetWindowBase.Collapse.cs");
         string musicAdapter = ReadRepositoryFile(
             "src/DeskBox/Controls/WidgetContents/MusicWidgetContentAdapter.cs");
+        string glance = ReadRepositoryFile(
+            "src/DeskBox/ViewModels/GlanceWidgetViewModel.cs");
 
         Assert.Contains(
             "PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings)",
@@ -82,14 +100,31 @@ public sealed class PerformanceSettingsContractTests
             "BackgroundMemoryCleanupDisabled",
             app,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "TryRunHiddenWorkingSetTrimAsync(",
+            app,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ScheduleTransientWindowRelease()",
+            app,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "clearVisibleCaches: performance.ClearVisibleIdleCaches",
+            app,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ConfigurePerformanceCacheBudget(",
+            app,
+            StringComparison.Ordinal);
         Assert.DoesNotContain(
             "BackgroundMemoryCleanupDelaySeconds",
             app,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "ContinuousDecorativeAnimationsEnabled()",
-            shell,
-            StringComparison.Ordinal);
+        Assert.Contains("TextMarqueeAnimationsEnabled()", shell, StringComparison.Ordinal);
+        Assert.Contains("VinylRotationAnimationsEnabled()", shell, StringComparison.Ordinal);
+        Assert.Contains("CompactAmbientAnimationsEnabled()", shell, StringComparison.Ordinal);
+        Assert.Contains("AllowGlanceImageAutoRotation", glance, StringComparison.Ordinal);
+        Assert.Contains("UpdateRotationTimer();", glance, StringComparison.Ordinal);
         Assert.Contains(
             "IWidgetPerformanceAwareContent",
             musicAdapter,
@@ -102,6 +137,34 @@ public sealed class PerformanceSettingsContractTests
         Assert.DoesNotContain(
             "PerformanceSettingsPolicy",
             collapse,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PerformanceOptions_ExposeOnlyFiniteCleanupAndActivePresets()
+    {
+        string viewModel = ReadRepositoryFile(
+            "src/DeskBox/ViewModels/SettingsViewModel.Performance.cs");
+
+        Assert.DoesNotContain(
+            "PerformanceSettingsPolicy.ModeBestVisual,",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "PerformanceSettingsPolicy.CleanupNever,",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PerformanceSettingsPolicy.ModeBalanced,",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PerformanceSettingsPolicy.ModeResourceSaver,",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "AvailableContinuousDecorativeAnimationOptions",
+            viewModel,
             StringComparison.Ordinal);
     }
 
