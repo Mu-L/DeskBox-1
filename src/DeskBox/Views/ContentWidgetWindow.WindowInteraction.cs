@@ -30,6 +30,16 @@ public sealed partial class ContentWidgetWindow
 
     private void RootGrid_DragOver(object sender, DragEventArgs e)
     {
+        if (CurrentContent is FileSurfaceContent file)
+        {
+            // The transparent resize grid sits above the content along every
+            // window edge. Reuse the file surface's normal feedback there so
+            // the cursor does not briefly report a forbidden drop even though
+            // the native window drop target can accept it.
+            file.ApplyHostEdgeDragOverFeedback(e);
+            return;
+        }
+
         if (!IsCompactBoundsStateActive || CurrentContent is not TodoWidgetContentAdapter todo)
         {
             return;
@@ -51,6 +61,12 @@ public sealed partial class ContentWidgetWindow
 
     private async void RootGrid_Drop(object sender, DragEventArgs e)
     {
+        if (CurrentContent is FileSurfaceContent file)
+        {
+            file.HandleHostEdgeDrop(e);
+            return;
+        }
+
         if (!IsCompactBoundsStateActive || CurrentContent is not TodoWidgetContentAdapter todo)
         {
             return;

@@ -95,7 +95,45 @@ internal static class WidgetCompactInteractionPolicy
             allowInteractionRegionDwell: true);
         return longestHoverDelay +
             (Math.Max(0, recoveryProbeMilliseconds) *
-             RoutedPointerAuthoritySafetyProbeCount);
+            RoutedPointerAuthoritySafetyProbeCount);
+    }
+
+    public static string ResolveResizeDirection(
+        bool isCompactBoundsStateActive,
+        string? direction)
+    {
+        string resolved = direction ?? string.Empty;
+        if (!isCompactBoundsStateActive)
+        {
+            return resolved;
+        }
+
+        // In capsule mode the rounded end caps overlap the corner resize hit
+        // targets. Treat every point on an end cap as horizontal resizing.
+        if (resolved.Contains("Left", StringComparison.Ordinal))
+        {
+            return "Left";
+        }
+
+        return resolved.Contains("Right", StringComparison.Ordinal)
+            ? "Right"
+            : string.Empty;
+    }
+
+    public static bool CanResize(
+        bool isCompactTransitionActive,
+        bool isCompactBoundsStateActive,
+        string? direction)
+    {
+        if (isCompactTransitionActive)
+        {
+            return false;
+        }
+
+        return !isCompactBoundsStateActive ||
+            ResolveResizeDirection(
+                isCompactBoundsStateActive,
+                direction) is "Left" or "Right";
     }
 
     public static bool CanTrustPointerOwnership(

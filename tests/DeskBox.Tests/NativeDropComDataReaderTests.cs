@@ -116,6 +116,53 @@ public sealed class NativeDropComDataReaderTests
     }
 
     [Fact]
+    public void DataObject_SetDataUsesSlotSevenAndTransfersTheNativeMedium()
+    {
+        using var fake = new FakeComObject(slotCount: 8);
+        NativeFormatEtc capturedFormat = default;
+        NativeStorageMedium capturedMedium = default;
+        int capturedRelease = 0;
+        SetDataCallback callback = (
+            nint _,
+            ref NativeFormatEtc format,
+            ref NativeStorageMedium medium,
+            int release) =>
+        {
+            capturedFormat = format;
+            capturedMedium = medium;
+            capturedRelease = release;
+            return 0;
+        };
+        fake.SetSlot(7, callback);
+
+        var format = new NativeFormatEtc
+        {
+            ClipboardFormat = 49153,
+            Aspect = 1,
+            Index = -1,
+            MediumType = 1,
+        };
+        var medium = new NativeStorageMedium
+        {
+            MediumType = 1,
+            Content = (nint)0x1234,
+            ReleaseUnknown = 0,
+        };
+        var dataObject = new NativeOleDataObject(fake.Pointer);
+
+        int result = dataObject.SetData(
+            ref format,
+            ref medium,
+            release: true);
+
+        Assert.Equal(0, result);
+        Assert.Equal(format.ClipboardFormat, capturedFormat.ClipboardFormat);
+        Assert.Equal(format.Index, capturedFormat.Index);
+        Assert.Equal(medium.Content, capturedMedium.Content);
+        Assert.Equal(1, capturedRelease);
+    }
+
+    [Fact]
     public void StreamReader_CopiesChunksAndStopsOnSFalse()
     {
         byte[] payload = "native virtual drop"u8.ToArray();
@@ -239,6 +286,13 @@ public sealed class NativeDropComDataReaderTests
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int QueryGetDataCallback(nint self, ref NativeFormatEtc format);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int SetDataCallback(
+        nint self,
+        ref NativeFormatEtc format,
+        ref NativeStorageMedium medium,
+        int release);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int ReadCallback(

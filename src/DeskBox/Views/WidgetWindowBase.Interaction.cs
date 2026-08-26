@@ -405,7 +405,9 @@ public abstract partial class WidgetWindowBase
             return;
         }
 
-        string direction = element.Tag as string ?? string.Empty;
+        string direction = WidgetCompactInteractionPolicy.ResolveResizeDirection(
+            IsCompactBoundsStateActive,
+            element.Tag as string);
         if (!CanResizeCurrentWidgetState(direction))
         {
             return;
@@ -559,12 +561,15 @@ public abstract partial class WidgetWindowBase
 
     protected InputSystemCursorShape GetResizeCursorShapeForCurrentState(string? direction)
     {
-        if (IsSizeLocked || !CanResizeCurrentWidgetState(direction))
+        string resolvedDirection = WidgetCompactInteractionPolicy.ResolveResizeDirection(
+            IsCompactBoundsStateActive,
+            direction);
+        if (IsSizeLocked || !CanResizeCurrentWidgetState(resolvedDirection))
         {
             return InputSystemCursorShape.Arrow;
         }
 
-        return direction switch
+        return resolvedDirection switch
         {
             "Left" or "Right" => InputSystemCursorShape.SizeWestEast,
             "Top" or "Bottom" => InputSystemCursorShape.SizeNorthSouth,

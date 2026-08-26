@@ -25,4 +25,21 @@ public sealed class WidgetLayerPointerActivationPolicyTests
                 foregroundIsDesktopShell,
                 foregroundIsWidget));
     }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void ActivatingClick_IsPreservedOnlyDuringAnActiveQuickReveal(
+        bool usesQuickRevealMode,
+        bool widgetsRaisedFromTray,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WidgetLayerPointerActivationPolicy.ShouldPreserveActivatingClick(
+                usesQuickRevealMode,
+                widgetsRaisedFromTray));
+    }
 }

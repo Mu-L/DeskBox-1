@@ -574,12 +574,18 @@ public partial class WidgetViewModel
         }
     }
 
-    private static void ApplyRuntimeItemData(WidgetItem target, WidgetItem source)
+    private static void ApplyRuntimeItemData(
+        WidgetItem target,
+        WidgetItem source,
+        bool preserveExistingIconWhenMissing = false)
     {
         target.Name = source.Name;
         target.Path = source.Path;
         target.TargetPath = source.TargetPath;
-        target.Icon = source.Icon;
+        if (!preserveExistingIconWhenMissing || source.Icon is not null)
+        {
+            target.Icon = source.Icon;
+        }
         target.FileSize = source.FileSize;
         if (source.IsFolderItemCountLoaded)
         {

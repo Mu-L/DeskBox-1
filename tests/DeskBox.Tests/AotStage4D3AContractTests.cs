@@ -16,13 +16,14 @@ public sealed class AotStage4D3AContractTests
     }
 
     [Fact]
-    public void NativeDropComDataReader_IsAThreeMethodBorrowedPointerBoundary()
+    public void NativeDropComDataReader_UsesExplicitBorrowedPointerSlots()
     {
         string source = ReadRepositoryFile(
             "src/DeskBox/Helpers/NativeDropComDataReader.cs");
 
         Assert.Contains("GetDataVtableSlot = 3", source, StringComparison.Ordinal);
         Assert.Contains("QueryGetDataVtableSlot = 5", source, StringComparison.Ordinal);
+        Assert.Contains("SetDataVtableSlot = 7", source, StringComparison.Ordinal);
         Assert.Contains("ReadVtableSlot = 3", source, StringComparison.Ordinal);
         Assert.Contains("delegate* unmanaged[Stdcall]", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Marshal.GetObjectForIUnknown", source, StringComparison.Ordinal);

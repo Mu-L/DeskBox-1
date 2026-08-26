@@ -16,7 +16,7 @@ public sealed partial class ContentWidgetWindow
         bool leaveWithoutDrop,
         bool stopAfterDragOver = false)
     {
-        if (_nativeFileDropTarget is not { IsRegistered: true } target)
+        if (GetAotNativeFileDropTarget() is not { IsRegistered: true } target)
         {
             throw new InvalidOperationException(
                 "The real ContentWidgetWindow OLE drop target is not registered.");
@@ -141,7 +141,7 @@ public sealed partial class ContentWidgetWindow
 
     internal unsafe int InvokeAotNativeDragLeaveCallback()
     {
-        if (_nativeFileDropTarget is not { IsRegistered: true } target)
+        if (GetAotNativeFileDropTarget() is not { IsRegistered: true } target)
         {
             throw new InvalidOperationException(
                 "The real ContentWidgetWindow OLE drop target is not registered.");
@@ -164,6 +164,14 @@ public sealed partial class ContentWidgetWindow
         {
             NativeDropTargetComInterop.ReleaseInterfacePointer(interfacePointer);
         }
+    }
+
+    private NativeDropTarget? GetAotNativeFileDropTarget()
+    {
+        return _nativeFileDropTargets.TryGetValue(HWnd, out NativeDropTarget? root)
+            ? root
+            : _nativeFileDropTargets.Values.FirstOrDefault(target =>
+                target.IsRegistered);
     }
 }
 
