@@ -102,4 +102,5 @@ docs/wechat/*.webp
 
 
 .tmp_*
+.tmp/
 store-listing/
