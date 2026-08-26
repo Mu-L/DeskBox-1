@@ -260,6 +260,11 @@ public class AppSettings
     public string WidgetForegroundColor { get; set; } = "#F5F5F5";
 
     /// <summary>
+    /// Widget text edge mode: <c>"Off"</c>, <c>"Soft"</c>, <c>"Strong"</c>.
+    /// </summary>
+    public string WidgetTextEdgeMode { get; set; } = "Off";
+
+    /// <summary>
     /// Border color mode for widget windows.
     /// Valid values: <c>"Neutral"</c>, <c>"Accent"</c>, <c>"None"</c>.
     /// </summary>
@@ -490,6 +495,20 @@ public class AppSettings
     /// <c>"Inline"</c> and <c>"Popover"</c>.
     /// </summary>
     public string FileStackOpenMode { get; set; } = "Inline";
+
+    /// <summary>
+    /// Grid shape of the stack popover: <c>"Adaptive"</c>, <c>"Grid3"</c>
+    /// (3×3), or <c>"Grid5"</c> (5×5). Fixed grids scroll vertically once
+    /// the visible cells are exceeded. Defaults to the 3×3 grid.
+    /// </summary>
+    public string FileStackPopoverLayout { get; set; } = "Grid3";
+
+    /// <summary>
+    /// Visual style of the stack popover: <c>"FollowMaterial"</c> reuses the
+    /// widget material system, <c>"Neutral"</c> keeps the original acrylic
+    /// tint in both light and dark themes.
+    /// </summary>
+    public string FileStackPopoverStyle { get; set; } = "Neutral";
 
     /// <summary>User-defined extension groups, evaluated in list order.</summary>
     public List<FileStackCustomRule> FileStackCustomRules { get; set; } = [];

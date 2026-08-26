@@ -15,6 +15,8 @@ public partial class SettingsViewModel
     private int _selectedFileStackThreshold = SettingsService.DefaultFileStackThreshold;
     private string _selectedFileStackOrderBy = SettingsService.FileStackOrderByWidget;
     private string _selectedFileStackOpenMode = SettingsService.FileStackOpenModeInline;
+    private string _selectedFileStackPopoverLayout = SettingsService.FileStackPopoverLayoutGrid3;
+    private string _selectedFileStackPopoverStyle = SettingsService.FileStackPopoverStyleNeutral;
     private string _selectedFileStackUnmatchedBehavior = SettingsService.FileStackUnmatchedKeepLoose;
     private bool _isSynchronizingFileStackRules;
     private int _fileStackPreviewRefreshGeneration;
@@ -24,6 +26,8 @@ public partial class SettingsViewModel
     private string[]? _cachedFileStackThresholdDisplayNames;
     private string[]? _cachedFileStackOrderByDisplayNames;
     private string[]? _cachedFileStackOpenModeDisplayNames;
+    private string[]? _cachedFileStackPopoverLayoutDisplayNames;
+    private string[]? _cachedFileStackPopoverStyleDisplayNames;
     private string[]? _cachedFileStackUnmatchedBehaviorDisplayNames;
 
     public ObservableCollection<FileStackCustomRuleEditor> FileStackCustomRules { get; } = [];
@@ -256,6 +260,83 @@ public partial class SettingsViewModel
             AvailableFileStackOpenModeDisplayNames);
 
 
+    public string[] AvailableFileStackPopoverLayouts { get; } =
+    [
+        SettingsService.FileStackPopoverLayoutAdaptive,
+        SettingsService.FileStackPopoverLayoutGrid3,
+        SettingsService.FileStackPopoverLayoutGrid5
+    ];
+
+    public string[] AvailableFileStackPopoverLayoutDisplayNames =>
+        _cachedFileStackPopoverLayoutDisplayNames ??=
+            AvailableFileStackPopoverLayouts
+                .Select(GetFileStackPopoverLayoutDisplayName)
+                .ToArray();
+
+    public IReadOnlyList<SettingsOption> AvailableFileStackPopoverLayoutOptions =>
+        CreateSelectionOptions(
+            AvailableFileStackPopoverLayouts,
+            AvailableFileStackPopoverLayoutDisplayNames);
+
+    public string SelectedFileStackPopoverLayout
+    {
+        get => _selectedFileStackPopoverLayout;
+        set
+        {
+            string normalized = SettingsService.NormalizeFileStackPopoverLayout(value);
+            if (!SetProperty(ref _selectedFileStackPopoverLayout, normalized))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.FileStackPopoverLayout = normalized;
+            _settingsService.SaveDebounced();
+        }
+    }
+
+    public string[] AvailableFileStackPopoverStyles { get; } =
+    [
+        SettingsService.FileStackPopoverStyleFollowMaterial,
+        SettingsService.FileStackPopoverStyleNeutral
+    ];
+
+    public string[] AvailableFileStackPopoverStyleDisplayNames =>
+        _cachedFileStackPopoverStyleDisplayNames ??=
+            AvailableFileStackPopoverStyles
+                .Select(GetFileStackPopoverStyleDisplayName)
+                .ToArray();
+
+    public IReadOnlyList<SettingsOption> AvailableFileStackPopoverStyleOptions =>
+        CreateSelectionOptions(
+            AvailableFileStackPopoverStyles,
+            AvailableFileStackPopoverStyleDisplayNames);
+
+    public string SelectedFileStackPopoverStyle
+    {
+        get => _selectedFileStackPopoverStyle;
+        set
+        {
+            string normalized = SettingsService.NormalizeFileStackPopoverStyle(value);
+            if (!SetProperty(ref _selectedFileStackPopoverStyle, normalized))
+            {
+                return;
+            }
+
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.FileStackPopoverStyle = normalized;
+            _settingsService.SaveDebounced();
+        }
+    }
+
     public string SelectedFileStackUnmatchedBehavior
     {
         get => _selectedFileStackUnmatchedBehavior;
@@ -320,6 +401,22 @@ public partial class SettingsViewModel
             SettingsService.FileStackOpenModePopover
                 ? _localizationService.T("Settings.FileStacks.OpenMode.Popover")
                 : _localizationService.T("Settings.FileStacks.OpenMode.Inline");
+
+    public string GetFileStackPopoverLayoutDisplayName(string layout) =>
+        SettingsService.NormalizeFileStackPopoverLayout(layout) switch
+        {
+            SettingsService.FileStackPopoverLayoutGrid3 =>
+                _localizationService.T("Settings.FileStacks.PopoverLayout.Grid3"),
+            SettingsService.FileStackPopoverLayoutGrid5 =>
+                _localizationService.T("Settings.FileStacks.PopoverLayout.Grid5"),
+            _ => _localizationService.T("Settings.FileStacks.PopoverLayout.Adaptive")
+        };
+
+    public string GetFileStackPopoverStyleDisplayName(string style) =>
+        SettingsService.NormalizeFileStackPopoverStyle(style) ==
+            SettingsService.FileStackPopoverStyleFollowMaterial
+                ? _localizationService.T("Settings.FileStacks.PopoverStyle.FollowMaterial")
+                : _localizationService.T("Settings.FileStacks.PopoverStyle.Neutral");
 
     public string GetFileStackUnmatchedBehaviorDisplayName(string behavior) =>
         SettingsService.NormalizeFileStackUnmatchedBehavior(behavior) ==
@@ -403,6 +500,12 @@ public partial class SettingsViewModel
             settings.FileStackOrderBy);
         _selectedFileStackOpenMode = SettingsService.NormalizeFileStackOpenMode(
             settings.FileStackOpenMode);
+        _selectedFileStackPopoverLayout =
+            SettingsService.NormalizeFileStackPopoverLayout(
+                settings.FileStackPopoverLayout);
+        _selectedFileStackPopoverStyle =
+            SettingsService.NormalizeFileStackPopoverStyle(
+                settings.FileStackPopoverStyle);
         _selectedFileStackUnmatchedBehavior =
             SettingsService.NormalizeFileStackUnmatchedBehavior(
                 settings.FileStackUnmatchedBehavior);
@@ -423,6 +526,12 @@ public partial class SettingsViewModel
             settings.FileStackOrderBy);
         SelectedFileStackOpenMode = SettingsService.NormalizeFileStackOpenMode(
             settings.FileStackOpenMode);
+        SelectedFileStackPopoverLayout =
+            SettingsService.NormalizeFileStackPopoverLayout(
+                settings.FileStackPopoverLayout);
+        SelectedFileStackPopoverStyle =
+            SettingsService.NormalizeFileStackPopoverStyle(
+                settings.FileStackPopoverStyle);
         SelectedFileStackUnmatchedBehavior =
             SettingsService.NormalizeFileStackUnmatchedBehavior(
                 settings.FileStackUnmatchedBehavior);
@@ -440,6 +549,8 @@ public partial class SettingsViewModel
         _cachedFileStackThresholdDisplayNames = null;
         _cachedFileStackOrderByDisplayNames = null;
         _cachedFileStackOpenModeDisplayNames = null;
+        _cachedFileStackPopoverLayoutDisplayNames = null;
+        _cachedFileStackPopoverStyleDisplayNames = null;
         _cachedFileStackUnmatchedBehaviorDisplayNames = null;
         OnPropertyChanged(nameof(AvailableFileStackGroupByDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackThresholdDisplayNames));
@@ -447,6 +558,12 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableFileStackOpenModeDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackOpenModeOptions));
         OnPropertyChanged(nameof(SelectedFileStackOpenMode));
+        OnPropertyChanged(nameof(AvailableFileStackPopoverLayoutDisplayNames));
+        OnPropertyChanged(nameof(AvailableFileStackPopoverLayoutOptions));
+        OnPropertyChanged(nameof(SelectedFileStackPopoverLayout));
+        OnPropertyChanged(nameof(AvailableFileStackPopoverStyleDisplayNames));
+        OnPropertyChanged(nameof(AvailableFileStackPopoverStyleOptions));
+        OnPropertyChanged(nameof(SelectedFileStackPopoverStyle));
         OnPropertyChanged(nameof(AvailableFileStackUnmatchedBehaviorDisplayNames));
         OnPropertyChanged(nameof(AvailableFileStackModeOptions));
         OnPropertyChanged(nameof(AvailableFileStackModeOptionItems));

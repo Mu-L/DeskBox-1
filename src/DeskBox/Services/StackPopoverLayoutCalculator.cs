@@ -157,6 +157,8 @@ internal static class StackPopoverLayoutCalculator
     internal const double TitleBottomSpacing = 4;
     internal const double TitleMinimumWidth = 120;
     internal const double TitleEditorHeight = 28;
+    // Reserved space for the close button docked at the title row's right.
+    internal const double TitleTrailingButtonWidth = 30;
 
     private const double WorkAreaMargin = 40;
     private const double HorizontalPadding = SurfacePadding * 2;
@@ -173,12 +175,15 @@ internal static class StackPopoverLayoutCalculator
         double workAreaWidth,
         double workAreaHeight,
         double itemWidth,
-        double itemHeight)
+        double itemHeight,
+        string? layoutMode = null)
     {
         int count = Math.Max(1, itemCount);
         double availableWidth = Math.Max(180, workAreaWidth - WorkAreaMargin);
         double availableHeight = Math.Max(160, workAreaHeight - WorkAreaMargin);
         double chromeHeight = BaseChromeHeight;
+        int? fixedColumns = ResolveFixedColumns(layoutMode);
+        int? fixedVisibleRows = ResolveFixedVisibleRows(layoutMode);
 
         return isListMode
             ? CalculateList(
@@ -187,7 +192,8 @@ internal static class StackPopoverLayoutCalculator
                 availableWidth,
                 availableHeight,
                 itemHeight,
-                chromeHeight)
+                chromeHeight,
+                fixedVisibleRows)
             : CalculateIcons(
                 count,
                 widgetWidth,
@@ -195,8 +201,24 @@ internal static class StackPopoverLayoutCalculator
                 availableHeight,
                 itemWidth,
                 itemHeight,
-                chromeHeight);
+                chromeHeight,
+                fixedColumns,
+                fixedVisibleRows);
     }
+
+    internal static int? ResolveFixedColumns(string? layoutMode) =>
+        layoutMode == SettingsService.FileStackPopoverLayoutGrid3
+            ? 3
+            : layoutMode == SettingsService.FileStackPopoverLayoutGrid5
+                ? 5
+                : null;
+
+    internal static int? ResolveFixedVisibleRows(string? layoutMode) =>
+        layoutMode == SettingsService.FileStackPopoverLayoutGrid3
+            ? 3
+            : layoutMode == SettingsService.FileStackPopoverLayoutGrid5
+                ? 5
+                : null;
 
     private static StackPopoverLayout CalculateIcons(
         int count,
@@ -205,7 +227,9 @@ internal static class StackPopoverLayoutCalculator
         double availableHeight,
         double itemWidth,
         double itemHeight,
-        double chromeHeight)
+        double chromeHeight,
+        int? fixedColumns = null,
+        int? fixedVisibleRows = null)
     {
         double cellWidth =
             Math.Clamp(itemWidth, 64, 196) + IconHorizontalSpacing;
@@ -228,12 +252,16 @@ internal static class StackPopoverLayoutCalculator
             <= 25 => 5,
             _ => 6
         };
-        int columns = Math.Min(
-            count,
-            Math.Clamp(contentColumns, 1, maximumColumns));
+        int columns = fixedColumns is { } fixedColumnCount
+            ? Math.Min(count, Math.Min(fixedColumnCount, maximumColumns))
+            : Math.Min(
+                count,
+                Math.Clamp(contentColumns, 1, maximumColumns));
 
         int totalRows = (int)Math.Ceiling(count / (double)columns);
-        int desiredRows = Math.Min(5, totalRows);
+        int desiredRows = fixedVisibleRows is { } fixedRowCount
+            ? fixedRowCount
+            : Math.Min(5, totalRows);
         double maximumHeight = Math.Min(720, availableHeight);
         int rowsThatFit = Math.Max(
             1,
@@ -270,7 +298,8 @@ internal static class StackPopoverLayoutCalculator
         double availableWidth,
         double availableHeight,
         double itemHeight,
-        double chromeHeight)
+        double chromeHeight,
+        int? fixedVisibleRows = null)
     {
         double rowHeight = Math.Clamp(itemHeight, 40, 96);
         double maximumWidth = Math.Min(560, availableWidth);
@@ -287,7 +316,10 @@ internal static class StackPopoverLayoutCalculator
             (int)Math.Floor(
                 Math.Max(rowHeight, maximumHeight - chromeHeight) /
                 rowHeight));
-        int visibleRows = Math.Min(Math.Min(8, count), rowsThatFit);
+        int desiredRows = fixedVisibleRows is { } fixedRowCount
+            ? fixedRowCount
+            : Math.Min(8, count);
+        int visibleRows = Math.Min(desiredRows, rowsThatFit);
         double itemsWidth = Math.Max(1, width - HorizontalPadding);
         double itemsHeight = visibleRows * rowHeight;
         double height = Math.Min(

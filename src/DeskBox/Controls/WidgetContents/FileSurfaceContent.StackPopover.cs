@@ -29,12 +29,17 @@ public sealed partial class FileSurfaceContent
     // leaves native template allocations behind after repeated light dismisses.
     private readonly ObservableCollection<WidgetItem> _stackPopoverItems = [];
     private DispatcherQueueTimer? _stackPopoverCacheReleaseTimer;
+    private WidgetMaterialSystemBackdrop? _stackPopoverMaterialBackdrop;
+    private DesktopAcrylicBackdrop? _stackPopoverNeutralBackdrop;
+    private Button? _stackPopoverCloseButton;
     private Border? _stackPopoverSurface;
     private Grid? _stackPopoverTitleHost;
     private TextBlock? _stackPopoverTitleText;
     private TextBox? _stackPopoverTitleEditor;
     private StackPopoverInlineRenameWindow? _stackPopoverTitleEditorWindow;
     private TextBlock? _stackPopoverEmptyText;
+    private Canvas? _stackPopoverTextShadowHost;
+    private WidgetTextShadowManager? _stackPopoverTextShadowManager;
     private Canvas? _stackPopoverReorderOverlay;
     private Border? _stackPopoverReorderIndicator;
     private Canvas? _stackPopoverSelectionOverlay;
@@ -465,8 +470,7 @@ public sealed partial class FileSurfaceContent
                 XamlRoot = XamlRoot,
                 IsLightDismissEnabled = true,
                 LightDismissOverlayMode = LightDismissOverlayMode.Off,
-                ShouldConstrainToRootBounds = false,
-                SystemBackdrop = new DesktopAcrylicBackdrop()
+                ShouldConstrainToRootBounds = false
             };
             popup.Opened += StackPopoverPopup_Opened;
             popup.Closed += StackPopoverPopup_Closed;
@@ -502,6 +506,7 @@ public sealed partial class FileSurfaceContent
             _stackPopoverSurface,
             currentStack.Name);
         ApplyStackPopoverLayout(currentStack);
+        UpdateStackPopoverAppearance();
 
         try
         {
@@ -534,7 +539,9 @@ public sealed partial class FileSurfaceContent
             ViewModel.IconTileWidth,
             ViewModel.IsListMode
                 ? listRowHeight
-                : ViewModel.IconTileHeight);
+                : ViewModel.IconTileHeight,
+            SettingsService.NormalizeFileStackPopoverLayout(
+                _settingsService.Settings.FileStackPopoverLayout));
     }
 
     private ListViewBase CreateStackPopoverItemsView(
@@ -664,7 +671,8 @@ public sealed partial class FileSurfaceContent
         double titleMaximumWidth = Math.Max(
             StackPopoverLayoutCalculator.TitleMinimumWidth,
             layout.Width -
-                (StackPopoverLayoutCalculator.SurfacePadding * 2));
+                (StackPopoverLayoutCalculator.SurfacePadding * 2) -
+                StackPopoverLayoutCalculator.TitleTrailingButtonWidth);
         var title = new TextBlock
         {
             Text = stack.Name,
@@ -682,10 +690,40 @@ public sealed partial class FileSurfaceContent
         };
         titleHost.DoubleTapped += StackPopoverTitle_DoubleTapped;
         AutomationProperties.SetName(title, stack.Name);
-        _stackPopoverTitleHost = titleHost;
-        _stackPopoverTitleText = title;
+        var closeButton = new Button
+        {
+            Style = Application.Current.Resources.TryGetValue(
+                "WidgetInlineEditorCloseButtonStyle",
+                out object? closeStyleValue)
+                ? closeStyleValue as Style
+                : null,
+            Content = new FontIcon
+            {
+                Glyph = "",
+                FontSize = 10
+            },
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        closeButton.Click += StackPopoverCloseButton_Click;
+        AutomationProperties.SetName(
+            closeButton,
+            T("Widget.Stack.Popover.Close"));
         titleHost.Children.Add(title);
+        titleHost.Children.Add(closeButton);
+        _stackPopoverCloseButton = closeButton;
         content.Children.Add(titleHost);
+
+        var textShadowHost = new Canvas
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            IsHitTestVisible = false
+        };
+        Grid.SetRowSpan(textShadowHost, 2);
+        Canvas.SetZIndex(textShadowHost, 30);
+        content.Children.Add(textShadowHost);
+        _stackPopoverTextShadowHost = textShadowHost;
 
         var itemsHost = new Grid
         {
@@ -783,7 +821,7 @@ public sealed partial class FileSurfaceContent
             Padding = new Thickness(
                 StackPopoverLayoutCalculator.SurfacePadding),
             CornerRadius = new CornerRadius(cornerRadius),
-            Background = CreateStackPopoverTintBrush(),
+            Background = CreateStackPopoverSurfaceBrush(),
             BorderBrush = new SolidColorBrush(borderVisuals.BorderColor),
             BorderThickness = new Thickness(borderVisuals.Thickness),
             AllowDrop = true,
@@ -808,6 +846,15 @@ public sealed partial class FileSurfaceContent
             BeginStackPopoverTitleRename(title);
         }
         e.Handled = true;
+    }
+
+    private void StackPopoverCloseButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        App.Current?.WidgetManager?.BeginWidgetInteraction(
+            "surface-stack-popover-close-button");
+        CloseStackPopover();
     }
 
     private void BeginStackPopoverTitleRename(TextBlock title)
@@ -839,8 +886,9 @@ public sealed partial class FileSurfaceContent
         var editorWindow = new StackPopoverInlineRenameWindow(
             stack.Name,
             inlineRenameStyle,
-            CreateStackPopoverTintBrush(),
-            IsStackPopoverDarkTheme(),
+            CreateStackPopoverSurfaceBrush(),
+            ResolveBrush("TextFillColorPrimaryBrush"),
+            ResolveStackPopoverMaterialAppearance(),
             _hostWindowHandle);
         TextBox editor = editorWindow.Editor;
         editor.Loaded += StackPopoverTitleEditor_Loaded;
@@ -1106,11 +1154,25 @@ public sealed partial class FileSurfaceContent
         Brush? secondary = ResolveBrush("TextFillColorSecondaryBrush");
         Brush? tertiary = ResolveBrush("TextFillColorTertiaryBrush");
         Brush? disabled = ResolveBrush("TextFillColorDisabledBrush");
+        Brush? divider = ResolveBrush("DividerStrokeColorDefaultBrush");
 
         AddBrush("TextFillColorPrimaryBrush", primary);
         AddBrush("TextFillColorSecondaryBrush", secondary);
         AddBrush("TextFillColorTertiaryBrush", tertiary);
         AddBrush("TextFillColorDisabledBrush", disabled);
+        AddBrush("ControlStrongFillColorDefaultBrush", primary);
+        AddBrush("ControlStrongFillColorDisabledBrush", disabled);
+        AddBrush("ControlStrongStrokeColorDefaultBrush", secondary);
+        AddBrush("ControlStrongStrokeColorDisabledBrush", disabled);
+        AddBrush("ButtonForeground", primary);
+        AddBrush("ButtonForegroundPointerOver", primary);
+        AddBrush("ButtonForegroundPressed", secondary);
+        AddBrush("ButtonForegroundDisabled", disabled);
+        AddBrush("SubtleButtonForeground", primary);
+        AddBrush("SubtleButtonForegroundPointerOver", primary);
+        AddBrush("SubtleButtonForegroundPressed", secondary);
+        AddBrush("SubtleButtonForegroundDisabled", disabled);
+        AddBrush("DividerStrokeColorDefaultBrush", divider);
         AddBrush("TextControlForeground", primary);
         AddBrush("TextControlForegroundPointerOver", primary);
         AddBrush("TextControlForegroundFocused", primary);
@@ -1138,12 +1200,76 @@ public sealed partial class FileSurfaceContent
         }
     }
 
-    private SolidColorBrush CreateStackPopoverTintBrush()
+    private WidgetMaterialBackdropAppearance
+        ResolveStackPopoverMaterialAppearance()
     {
         bool isDark = IsStackPopoverDarkTheme();
-        return new SolidColorBrush(isDark
-            ? Windows.UI.Color.FromArgb(0x42, 0x18, 0x18, 0x1B)
-            : Windows.UI.Color.FromArgb(0x58, 0xF8, 0xF8, 0xFA));
+        Windows.UI.Color accentColor =
+            App.Current.ThemeService?.GetEffectiveAccentColor() ??
+            AccentColorHelper.DefaultAccentColor;
+        double surfaceOpacity =
+            double.IsFinite(_settingsService.Settings.WidgetOpacity)
+                ? Math.Clamp(
+                    _settingsService.Settings.WidgetOpacity,
+                    SettingsService.MinWidgetOpacity,
+                    SettingsService.MaxWidgetOpacity)
+                : SettingsService.DefaultWidgetOpacity;
+        double materialIntensity =
+            double.IsFinite(_settingsService.Settings.WidgetMaterialIntensity)
+                ? Math.Clamp(
+                    _settingsService.Settings.WidgetMaterialIntensity,
+                    SettingsService.MinWidgetMaterialIntensity,
+                    SettingsService.MaxWidgetMaterialIntensity)
+                : SettingsService.DefaultWidgetMaterialIntensity;
+        string materialType =
+            WindowsCompatibilityService.ResolveWidgetMaterialType(
+                _settingsService.Settings.WidgetMaterialType);
+        return new WidgetMaterialBackdropAppearance(
+            materialType,
+            isDark,
+            accentColor,
+            surfaceOpacity,
+            materialIntensity);
+    }
+
+    private SolidColorBrush CreateStackPopoverSurfaceBrush() =>
+        CreateStackPopoverSurfaceBrush(
+            ResolveStackPopoverMaterialAppearance());
+
+    private static SolidColorBrush CreateStackPopoverSurfaceBrush(
+        WidgetMaterialBackdropAppearance appearance)
+    {
+        bool materialSupported = WidgetMaterialSystemBackdrop.IsSupported(
+            appearance.MaterialType);
+        Windows.UI.Color surfaceColor;
+        if (materialSupported &&
+            WindowsCompatibilityService.UsesLegacyWindowAcrylic &&
+            SettingsService.IsAcrylicMaterial(appearance.MaterialType))
+        {
+            surfaceColor =
+                WidgetMaterialVisualCalculator
+                    .BuildLegacyAcrylicSurfaceOverlayColor(
+                        appearance.IsDark,
+                        appearance.AccentColor,
+                        appearance.MaterialType ==
+                            SettingsService.WidgetMaterialTypeAcrylicBase,
+                        appearance.SurfaceOpacity,
+                        appearance.MaterialIntensity);
+        }
+        else if (materialSupported)
+        {
+            surfaceColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+        }
+        else
+        {
+            surfaceColor =
+                WidgetMaterialVisualCalculator.BuildContentSolidSurfaceColor(
+                    appearance.IsDark,
+                    appearance.AccentColor,
+                    appearance.SurfaceOpacity);
+        }
+
+        return new SolidColorBrush(surfaceColor);
     }
 
     private double ResolveStackPopoverCornerRadius() =>
@@ -1174,15 +1300,141 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
+        bool followMaterial = UsesStackPopoverMaterialStyle();
+        WidgetMaterialBackdropAppearance materialAppearance =
+            ResolveStackPopoverMaterialAppearance();
+        ElementTheme requestedTheme = materialAppearance.IsDark
+            ? ElementTheme.Dark
+            : ElementTheme.Light;
         double cornerRadius = ResolveStackPopoverCornerRadius();
         WidgetBorderVisuals borderVisuals =
             ResolveStackPopoverBorderVisuals();
-        _stackPopoverSurface.Background = CreateStackPopoverTintBrush();
+        Brush background = followMaterial
+            ? CreateStackPopoverSurfaceBrush(materialAppearance)
+            : CreateStackPopoverNeutralBrush(materialAppearance.IsDark);
+        _stackPopoverSurface.RequestedTheme = requestedTheme;
+        _stackPopoverSurface.Background = background;
         _stackPopoverSurface.CornerRadius = new CornerRadius(cornerRadius);
         _stackPopoverSurface.BorderBrush =
             new SolidColorBrush(borderVisuals.BorderColor);
         _stackPopoverSurface.BorderThickness =
             new Thickness(borderVisuals.Thickness);
+
+        Brush? primary = ResolveBrush("TextFillColorPrimaryBrush");
+        Brush? secondary = ResolveBrush("TextFillColorSecondaryBrush");
+        if (_stackPopoverSurface.Child is FrameworkElement content)
+        {
+            content.RequestedTheme = requestedTheme;
+            ApplyStackPopoverForegroundResources(content);
+            if (followMaterial)
+            {
+                UpdateStackPopoverTextEdge(content, primary);
+            }
+            else if (_stackPopoverTextShadowManager is not null)
+            {
+                _stackPopoverTextShadowManager.Dispose();
+                _stackPopoverTextShadowManager = null;
+            }
+        }
+        if (_stackPopoverTitleText is not null)
+        {
+            _stackPopoverTitleText.Foreground = primary;
+        }
+        if (_stackPopoverEmptyText is not null)
+        {
+            _stackPopoverEmptyText.Foreground = secondary;
+        }
+        if (_stackPopoverReorderIndicator is not null)
+        {
+            _stackPopoverReorderIndicator.Background =
+                new SolidColorBrush(materialAppearance.AccentColor);
+        }
+
+        if (_stackPopoverPopup is { } popup)
+        {
+            if (followMaterial &&
+                WidgetMaterialSystemBackdrop.IsSupported(
+                    materialAppearance.MaterialType))
+            {
+                _stackPopoverMaterialBackdrop ??=
+                    new WidgetMaterialSystemBackdrop(materialAppearance);
+                _stackPopoverMaterialBackdrop.UpdateAppearance(
+                    materialAppearance);
+                if (!ReferenceEquals(
+                        popup.SystemBackdrop,
+                        _stackPopoverMaterialBackdrop))
+                {
+                    popup.SystemBackdrop = _stackPopoverMaterialBackdrop;
+                }
+            }
+            else if (followMaterial)
+            {
+                popup.SystemBackdrop = null;
+                _stackPopoverMaterialBackdrop = null;
+            }
+            else
+            {
+                // Neutral keeps the original translucent acrylic look with a
+                // theme-following tint so the light theme reads correctly.
+                _stackPopoverNeutralBackdrop ??= new DesktopAcrylicBackdrop();
+                if (!ReferenceEquals(
+                        popup.SystemBackdrop,
+                        _stackPopoverNeutralBackdrop))
+                {
+                    popup.SystemBackdrop = _stackPopoverNeutralBackdrop;
+                }
+                _stackPopoverMaterialBackdrop = null;
+            }
+        }
+
+        _stackPopoverTitleEditorWindow?.UpdateAppearance(
+            background,
+            primary,
+            followMaterial
+                ? materialAppearance
+                : materialAppearance with
+                {
+                    MaterialType = SettingsService.WidgetMaterialTypeSolid
+                });
+    }
+
+    private bool UsesStackPopoverMaterialStyle() =>
+        SettingsService.NormalizeFileStackPopoverStyle(
+            _settingsService.Settings.FileStackPopoverStyle) ==
+        SettingsService.FileStackPopoverStyleFollowMaterial;
+
+    private static SolidColorBrush CreateStackPopoverNeutralBrush(
+        bool isDark) =>
+        new(isDark
+            ? Windows.UI.Color.FromArgb(0x42, 0x18, 0x18, 0x1B)
+            : Windows.UI.Color.FromArgb(0x58, 0xF8, 0xF8, 0xFA));
+
+    private void UpdateStackPopoverTextEdge(
+        FrameworkElement content,
+        Brush? primary)
+    {
+        string edgeMode = WindowsCompatibilityService.IsHighContrast
+            ? WidgetForegroundSettings.EdgeOff
+            : WidgetForegroundSettings.ResolveEdgeMode(
+                Config,
+                _settingsService.Settings);
+        if (string.Equals(
+                edgeMode,
+                WidgetForegroundSettings.EdgeOff,
+                StringComparison.Ordinal) ||
+            primary is not SolidColorBrush primaryBrush ||
+            _stackPopoverTextShadowHost is null)
+        {
+            _stackPopoverTextShadowManager?.Dispose();
+            _stackPopoverTextShadowManager = null;
+            return;
+        }
+
+        _stackPopoverTextShadowManager ??=
+            new WidgetTextShadowManager(
+                content,
+                _stackPopoverTextShadowHost);
+        _stackPopoverTextShadowManager.Apply(edgeMode, primaryBrush.Color);
     }
 
     private void UpdateStackPopoverScrollPolicy(int visibleItemCount)
@@ -1621,17 +1873,27 @@ public sealed partial class FileSurfaceContent
 
         StackPopoverInlineRenameWindow? titleEditorWindow =
             _stackPopoverTitleEditorWindow;
+        if (_stackPopoverCloseButton is not null)
+        {
+            _stackPopoverCloseButton.Click -= StackPopoverCloseButton_Click;
+        }
+        _stackPopoverTextShadowManager?.Dispose();
+        _stackPopoverTextShadowManager = null;
         popup.Child = null;
         popup.SystemBackdrop = null;
+        _stackPopoverMaterialBackdrop = null;
+        _stackPopoverNeutralBackdrop = null;
         ResetBoxSelectionState();
         _stackPopoverPopup = null;
         _stackPopoverItemsView = null;
         _stackPopoverSurface = null;
         _stackPopoverTitleHost = null;
         _stackPopoverTitleText = null;
+        _stackPopoverCloseButton = null;
         _stackPopoverTitleEditor = null;
         _stackPopoverTitleEditorWindow = null;
         _stackPopoverEmptyText = null;
+        _stackPopoverTextShadowHost = null;
         _stackPopoverReorderOverlay = null;
         _stackPopoverReorderIndicator = null;
         _stackPopoverSelectionOverlay = null;
@@ -2102,7 +2364,8 @@ public sealed partial class FileSurfaceContent
         double titleMaxWidth = Math.Max(
             StackPopoverLayoutCalculator.TitleMinimumWidth,
             layout.Width -
-                (StackPopoverLayoutCalculator.SurfacePadding * 2));
+                (StackPopoverLayoutCalculator.SurfacePadding * 2) -
+                StackPopoverLayoutCalculator.TitleTrailingButtonWidth);
         if (_stackPopoverTitleText is { } title)
         {
             title.MinWidth = Math.Min(

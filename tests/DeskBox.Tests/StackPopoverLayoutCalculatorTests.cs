@@ -187,6 +187,143 @@ public sealed class StackPopoverLayoutCalculatorTests
     }
 
     [Fact]
+    public void PopoverLayout_Grid3PinsColumnsAndVisibleRowsAndScrollsBeyond()
+    {
+        StackPopoverLayout layout = StackPopoverLayoutCalculator.Calculate(
+            isListMode: false,
+            itemCount: 69,
+            widgetWidth: 280,
+            workAreaWidth: 1920,
+            workAreaHeight: 1080,
+            itemWidth: 96,
+            itemHeight: 112,
+            layoutMode: SettingsService.FileStackPopoverLayoutGrid3);
+
+        Assert.Equal(3, layout.Columns);
+        Assert.Equal(3, layout.VisibleRows);
+        Assert.True(layout.HasVerticalOverflow);
+    }
+
+    [Fact]
+    public void PopoverLayout_Grid5PinsFiveColumnsAndVisibleRows()
+    {
+        StackPopoverLayout layout = StackPopoverLayoutCalculator.Calculate(
+            isListMode: false,
+            itemCount: 69,
+            widgetWidth: 280,
+            workAreaWidth: 1920,
+            workAreaHeight: 1080,
+            itemWidth: 96,
+            itemHeight: 112,
+            layoutMode: SettingsService.FileStackPopoverLayoutGrid5);
+
+        Assert.Equal(5, layout.Columns);
+        Assert.Equal(5, layout.VisibleRows);
+        Assert.True(layout.HasVerticalOverflow);
+    }
+
+    [Fact]
+    public void PopoverLayout_GridModeShrinksColumnsToItemCountWhenStackIsSmall()
+    {
+        StackPopoverLayout layout = StackPopoverLayoutCalculator.Calculate(
+            isListMode: false,
+            itemCount: 4,
+            widgetWidth: 280,
+            workAreaWidth: 1920,
+            workAreaHeight: 1080,
+            itemWidth: 96,
+            itemHeight: 112,
+            layoutMode: SettingsService.FileStackPopoverLayoutGrid5);
+
+        Assert.Equal(4, layout.Columns);
+        Assert.Equal(5, layout.VisibleRows);
+        Assert.False(layout.HasVerticalOverflow);
+    }
+
+    [Fact]
+    public void PopoverLayout_AdaptiveModeMatchesLegacyBehavior()
+    {
+        StackPopoverLayout adaptive = StackPopoverLayoutCalculator.Calculate(
+            isListMode: false,
+            itemCount: 7,
+            widgetWidth: 900,
+            workAreaWidth: 1920,
+            workAreaHeight: 1080,
+            itemWidth: 72,
+            itemHeight: 82,
+            layoutMode: SettingsService.FileStackPopoverLayoutAdaptive);
+        StackPopoverLayout unspecified = StackPopoverLayoutCalculator.Calculate(
+            isListMode: false,
+            itemCount: 7,
+            widgetWidth: 900,
+            workAreaWidth: 1920,
+            workAreaHeight: 1080,
+            itemWidth: 72,
+            itemHeight: 82);
+
+        Assert.Equal(3, adaptive.Columns);
+        Assert.Equal(3, adaptive.VisibleRows);
+        Assert.Equal(unspecified, adaptive);
+    }
+
+    [Fact]
+    public void PopoverLayout_ListModeGrid3LimitsVisibleRowsToThree()
+    {
+        StackPopoverLayout layout = StackPopoverLayoutCalculator.Calculate(
+            isListMode: true,
+            itemCount: 40,
+            widgetWidth: 280,
+            workAreaWidth: 1920,
+            workAreaHeight: 1080,
+            itemWidth: 32,
+            itemHeight: 48,
+            layoutMode: SettingsService.FileStackPopoverLayoutGrid3);
+
+        Assert.Equal(1, layout.Columns);
+        Assert.Equal(3, layout.VisibleRows);
+        Assert.True(layout.HasVerticalOverflow);
+    }
+
+    [Fact]
+    public void PopoverLayout_GridModesFallBackToAdaptiveForUnknownValues()
+    {
+        Assert.Null(StackPopoverLayoutCalculator.ResolveFixedColumns("Bogus"));
+        Assert.Null(
+            StackPopoverLayoutCalculator.ResolveFixedVisibleRows("Bogus"));
+        Assert.Equal(
+            SettingsService.FileStackPopoverLayoutAdaptive,
+            SettingsService.NormalizeFileStackPopoverLayout("Bogus"));
+    }
+
+    [Fact]
+    public void PopoverStyle_NormalizesToNeutralAndKeepsMaterialOptIn()
+    {
+        Assert.Equal(
+            SettingsService.FileStackPopoverStyleFollowMaterial,
+            SettingsService.NormalizeFileStackPopoverStyle(
+                SettingsService.FileStackPopoverStyleFollowMaterial));
+        Assert.Equal(
+            SettingsService.FileStackPopoverStyleNeutral,
+            SettingsService.NormalizeFileStackPopoverStyle("Bogus"));
+        Assert.Equal(
+            SettingsService.FileStackPopoverStyleNeutral,
+            SettingsService.NormalizeFileStackPopoverStyle(null));
+    }
+
+    [Fact]
+    public void PopoverLayout_DefaultsToGrid3ForNewSettings()
+    {
+        var fresh = new Models.AppSettings();
+
+        Assert.Equal(
+            SettingsService.FileStackPopoverLayoutGrid3,
+            fresh.FileStackPopoverLayout);
+        Assert.Equal(
+            SettingsService.FileStackPopoverStyleNeutral,
+            fresh.FileStackPopoverStyle);
+    }
+
+    [Fact]
     public void IconLayout_SevenItemsUsesACompactCenteredThreeByThreeGrid()
     {
         StackPopoverLayout layout = StackPopoverLayoutCalculator.Calculate(

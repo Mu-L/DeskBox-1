@@ -1204,6 +1204,34 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
                             IsEnabled="{Binding FileStacksEnabled}"
+                            svc:Localized.DescriptionKey="Settings.FileStacks.PopoverLayout.Description"
+                            svc:Localized.HeaderKey="Settings.FileStacks.PopoverLayout.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8A9;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableFileStackPopoverLayoutOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedFileStackPopoverLayout, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            IsEnabled="{Binding FileStacksEnabled}"
+                            svc:Localized.DescriptionKey="Settings.FileStacks.PopoverStyle.Description"
+                            svc:Localized.HeaderKey="Settings.FileStacks.PopoverStyle.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE790;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{Binding AvailableFileStackPopoverStyleOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedFileStackPopoverStyle, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            IsEnabled="{Binding FileStacksEnabled}"
                             svc:Localized.DescriptionKey="Settings.FileStacks.Threshold.Description"
                             svc:Localized.HeaderKey="Settings.FileStacks.Threshold.Title">
                             <ComboBox

@@ -226,6 +226,11 @@ public sealed class SettingsService
     public const string FileStackOrderByDateModified = "DateModified";
     public const string FileStackOpenModeInline = "Inline";
     public const string FileStackOpenModePopover = "Popover";
+    public const string FileStackPopoverLayoutAdaptive = "Adaptive";
+    public const string FileStackPopoverLayoutGrid3 = "Grid3";
+    public const string FileStackPopoverLayoutGrid5 = "Grid5";
+    public const string FileStackPopoverStyleFollowMaterial = "FollowMaterial";
+    public const string FileStackPopoverStyleNeutral = "Neutral";
     public const string FileStackUnmatchedKeepLoose = "KeepLoose";
     public const string FileStackUnmatchedOther = "Other";
     public const int MaxFileStackCustomRules = 32;
@@ -419,6 +424,7 @@ public const int DefaultSearchMaxResults = 100;
         settings.WidgetMaterialIntensity = DefaultWidgetMaterialIntensity;
         settings.WidgetForegroundMode = WidgetForegroundSettings.ModeFollowTheme;
         settings.WidgetForegroundColor = WidgetForegroundSettings.DefaultCustomColorHex;
+        settings.WidgetTextEdgeMode = WidgetForegroundSettings.EdgeOff;
         settings.WidgetBorderColorMode = WidgetBorderColorModeNeutral;
         settings.WidgetBorderStyle = WidgetBorderStyleThin;
         settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
@@ -470,6 +476,8 @@ public const int DefaultSearchMaxResults = 100;
         settings.FileStackThreshold = DefaultFileStackThreshold;
         settings.FileStackOrderBy = FileStackOrderByWidget;
         settings.FileStackOpenMode = FileStackOpenModeInline;
+        settings.FileStackPopoverLayout = FileStackPopoverLayoutGrid3;
+        settings.FileStackPopoverStyle = FileStackPopoverStyleNeutral;
         settings.FileStackCustomRules = [];
         settings.FileStackUnmatchedBehavior = FileStackUnmatchedKeepLoose;
         settings.HideShortcutExtensionWhenShowingFileExtensions = true;
@@ -2283,6 +2291,28 @@ settings.FocusClickedWidgetOnRaise = false;
             changed = true;
         }
 
+        string normalizedPopoverLayout = NormalizeFileStackPopoverLayout(
+            settings.FileStackPopoverLayout);
+        if (!string.Equals(
+                settings.FileStackPopoverLayout,
+                normalizedPopoverLayout,
+                StringComparison.Ordinal))
+        {
+            settings.FileStackPopoverLayout = normalizedPopoverLayout;
+            changed = true;
+        }
+
+        string normalizedPopoverStyle = NormalizeFileStackPopoverStyle(
+            settings.FileStackPopoverStyle);
+        if (!string.Equals(
+                settings.FileStackPopoverStyle,
+                normalizedPopoverStyle,
+                StringComparison.Ordinal))
+        {
+            settings.FileStackPopoverStyle = normalizedPopoverStyle;
+            changed = true;
+        }
+
         string normalizedUnmatchedBehavior = NormalizeFileStackUnmatchedBehavior(
             settings.FileStackUnmatchedBehavior);
         if (!string.Equals(
@@ -2547,6 +2577,22 @@ settings.FocusClickedWidgetOnRaise = false;
             StringComparison.OrdinalIgnoreCase)
                 ? FileStackOpenModePopover
                 : FileStackOpenModeInline;
+
+    public static string NormalizeFileStackPopoverLayout(string? layout) =>
+        layout switch
+        {
+            FileStackPopoverLayoutGrid3 => FileStackPopoverLayoutGrid3,
+            FileStackPopoverLayoutGrid5 => FileStackPopoverLayoutGrid5,
+            _ => FileStackPopoverLayoutAdaptive
+        };
+
+    public static string NormalizeFileStackPopoverStyle(string? style) =>
+        string.Equals(
+            style,
+            FileStackPopoverStyleFollowMaterial,
+            StringComparison.OrdinalIgnoreCase)
+                ? FileStackPopoverStyleFollowMaterial
+                : FileStackPopoverStyleNeutral;
 
     public static string NormalizeFileStackUnmatchedBehavior(string? behavior) =>
         string.Equals(behavior, FileStackUnmatchedOther, StringComparison.OrdinalIgnoreCase)
