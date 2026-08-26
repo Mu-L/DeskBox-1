@@ -47,6 +47,11 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     private double _latitude;
     private double _longitude;
     private string _locationName = string.Empty;
+    private bool _locationInitialized;
+    private DateTimeOffset _locationResolvedAtUtc;
+    private DateTimeOffset _locationRetryNotBeforeUtc;
+    private int _consecutiveRefreshFailures;
+    private DateTimeOffset _automaticRefreshNotBeforeUtc;
 
     // Display settings
     private bool _isWeekView;
@@ -325,11 +330,10 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     }
 
     /// <summary>
-    /// Shows the loading overlay when data is being fetched for the first time
-    /// (no cached data available yet) or during a user-triggered refresh.
-    /// Auto-refresh (timer) with existing data only rotates the refresh icon.
+    /// Shows the loading overlay only while fetching the first usable snapshot.
+    /// Existing weather remains visible during manual and automatic refreshes.
     /// </summary>
-    public Visibility LoadingVisibility => _isRefreshing && (!_hasData || _refreshWasUserTriggered)
+    public Visibility LoadingVisibility => _isRefreshing && !_hasData
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -762,6 +766,10 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
 
             if (locationChanged && _isWindowRevealCompleted)
             {
+                _locationInitialized = false;
+                _locationResolvedAtUtc = default;
+                _locationRetryNotBeforeUtc = default;
+                _automaticRefreshNotBeforeUtc = default;
                 _ = RefreshAsync(forceRefresh: true);
             }
         }

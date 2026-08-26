@@ -565,11 +565,16 @@ public sealed partial class FileSurfaceContent
             !e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
         {
             _pressedStack = null;
+            _stackInputActivation.CancelPointer();
             return;
         }
 
         _pressedStack = stack;
         _stackPointerDragStarted = false;
+        _stackInputActivation.BeginPointer(stack.StackKey);
+        App.LogVerbose(
+            $"[FileStack] Pointer pressed widget={WidgetId} " +
+            $"stack={stack.StackKey}");
         border.Background =
             ResolveBrush("SubtleFillColorTertiaryBrush");
     }
@@ -582,6 +587,7 @@ public sealed partial class FileSurfaceContent
         {
             _pressedStack = null;
             _stackPointerDragStarted = false;
+            _stackInputActivation.CancelPointer();
             return;
         }
 
@@ -594,13 +600,19 @@ public sealed partial class FileSurfaceContent
             point.Y <= border.ActualHeight;
         WidgetStackItem? releasedStack =
             border.DataContext as WidgetStackItem;
-        bool shouldToggle =
+        bool isValidRelease =
             inside &&
             !_stackPointerDragStarted &&
             releasedStack is { IsExpanded: false } &&
             ReferenceEquals(_pressedStack, releasedStack);
+        bool shouldToggle =
+            releasedStack is not null &&
+            _stackInputActivation.ShouldActivateFromPointerRelease(
+                releasedStack.StackKey,
+                isValidRelease);
         _pressedStack = null;
         _stackPointerDragStarted = false;
+        _stackInputActivation.EndPointer();
         ApplyStackSurfaceVisual(
             border,
             hovered: inside);
@@ -1034,6 +1046,7 @@ public sealed partial class FileSurfaceContent
         StopAndRestoreStackAnimations();
         _pressedStack = null;
         _stackPointerDragStarted = false;
+        _stackInputActivation.CancelPointer();
         ClearStackMemberDropTarget();
         foreach (Border surface in _stackSurfaces.ToArray())
         {

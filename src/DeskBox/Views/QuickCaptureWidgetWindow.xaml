@@ -152,13 +152,6 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Canvas
-            x:Name="WidgetTextShadowHost"
-            Grid.RowSpan="2"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            IsHitTestVisible="False" />
-
         <controls:WidgetShell
             x:Name="QuickCaptureShell"
             Grid.RowSpan="2"

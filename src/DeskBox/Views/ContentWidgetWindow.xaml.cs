@@ -731,6 +731,16 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
 
 public void PrepareTrayShowAnimation()
 {
+PrepareTrayShowAnimationCore(restoreBoundsForCurrentTopology: false);
+}
+
+internal bool PrepareTrayShowAnimationForCurrentTopology()
+{
+return PrepareTrayShowAnimationCore(restoreBoundsForCurrentTopology: true);
+}
+
+private bool PrepareTrayShowAnimationCore(bool restoreBoundsForCurrentTopology)
+{
 SetTrayHideInputSuppressed(false);
 TrayAnimation.NextGeneration();
 TrayAnimation.StopAndRestoreWindowPosition();
@@ -738,31 +748,40 @@ TrayAnimation.CloakWindowForTrayShow();
 _isHidePrepared = false;
 IsHideAnimationRunning = false;
 
+        // A group detach changes this persistent HWND's topology identity.
+        // Retarget it only after DWM cloak is active and before preparing the
+        // animation offset; otherwise TryRestoreBounds sees an active position
+        // transition and intentionally skips the move.
+        bool boundsRestored = !restoreBoundsForCurrentTopology ||
+            TryRestoreBoundsForCurrentTopology(allowHidden: true);
+
         var profile = GetTrayAnimationProfile();
         LogTrayWindow(
-            $"PrepareShow gen={TrayAnimation.Generation} effect={SettingsService.Settings.WidgetAnimationEffect} " +
+            $"PrepareShow gen={TrayAnimation.Generation} topologyRetarget={restoreBoundsForCurrentTopology} " +
+            $"boundsRestored={boundsRestored} effect={SettingsService.Settings.WidgetAnimationEffect} " +
             $"speed={SettingsService.Settings.WidgetAnimationSpeed} enabled={profile.IsEnabled} durationMs={profile.DurationMs}");
         TrayAnimation.PrepareVisualState(
             profile.ShowOffsetX,
             profile.ShowOffsetY,
             profile.ShowStartOpacity,
             profile.ShowStartScale);
+        return boundsRestored;
     }
 
     public void ShowPreparedAtDesktopLayer(bool persistVisibility = true)
     {
         ShowWithoutActivation(persistVisibility);
         TrayAnimation.PrepareHiddenState();
+        PushToBottom(showWindow: false);
         TrayAnimation.RevealWindowForTrayShow();
-        PushToBottom();
     }
 
     public void ShowPreparedRaisedFromTray(bool persistVisibility = true)
     {
         ShowWithoutActivation(persistVisibility);
         TrayAnimation.PrepareHiddenState();
+        HoldTemporaryTopMost(showWindow: false);
         TrayAnimation.RevealWindowForTrayShow();
-        HoldTemporaryTopMost();
     }
 
     public void PlayTrayShowAnimation()

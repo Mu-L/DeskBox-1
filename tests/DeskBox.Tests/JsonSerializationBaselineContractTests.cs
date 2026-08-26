@@ -13,7 +13,7 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
         Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public void ProductionInventory_IsFrozenAtTwentyNineFilesAndSixtyFiveCalls()
+    public void ProductionInventory_IsFrozenAtTwentyNineFilesAndSixtySevenCalls()
     {
         var expected = new Dictionary<string, int>(StringComparer.Ordinal)
         {
@@ -44,7 +44,7 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
             ["src/DeskBox/Services/SearchIndexService.cs"] = 3,
             ["src/DeskBox/Services/SettingsService.cs"] = 2,
             ["src/DeskBox/Services/TodoWidgetStore.cs"] = 2,
-            ["src/DeskBox/Services/WeatherService.cs"] = 3,
+            ["src/DeskBox/Services/WeatherService.cs"] = 5,
             ["src/DeskBox/Services/WidgetFileStackSettings.cs"] = 7
         };
 
@@ -66,7 +66,7 @@ public sealed class JsonSerializationBaselineContractTests : IDisposable
         }
 
         Assert.Equal(29, actual.Count);
-        Assert.Equal(65, actual.Values.Sum());
+        Assert.Equal(67, actual.Values.Sum());
 
         string[] expectedContextOwners =
         [

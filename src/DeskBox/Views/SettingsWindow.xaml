@@ -536,19 +536,6 @@ Text="DeskBox" />
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.WidgetTextEdge.Description"
-                                    svc:Localized.HeaderKey="Settings.WidgetTextEdge.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE91B;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
-                                    <ComboBox
-                                        MinWidth="{StaticResource SettingsControlMinWidth}"
-                                        ItemsSource="{Binding AvailableWidgetTextEdgeModeOptions}"
-                                        controls:SettingsComboBox.Value="{Binding SelectedWidgetTextEdgeMode, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
                                     svc:Localized.DescriptionKey="Settings.BorderColor.Description"
                                     svc:Localized.HeaderKey="Settings.BorderColor.Title">
                                     <ComboBox
@@ -2257,6 +2244,31 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 controls:SettingsComboBox.Value="{Binding SelectedAttachmentStorageMode, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
+                        <Border Style="{StaticResource SettingsGroupStyle}">
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" Margin="4">
+                                <Button
+                                    Grid.Column="0"
+                                    Click="NestedSettingsButton_Click"
+                                    Style="{StaticResource DrillDownRowStyle}"
+                                    Tag="PerformanceSettings">
+                                    <Grid ColumnDefinitions="Auto,*" Style="{StaticResource SettingCardIdentityGridStyle}">
+                                        <FontIcon Grid.Column="0" FontSize="18" Glyph="&#xE945;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" IsHitTestVisible="False" Spacing="3" VerticalAlignment="Center">
+                                            <TextBlock Style="{StaticResource SettingTitleTextStyle}" svc:Localized.Key="Settings.Performance.Title" />
+                                            <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" TextWrapping="Wrap" svc:Localized.Key="Settings.Performance.Description" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Button>
+                                <ComboBox
+                                    Grid.Column="1"
+                                    MinWidth="176"
+                                    VerticalAlignment="Center"
+                                    ItemsSource="{Binding AvailablePerformanceModeOptions}"
+                                    controls:SettingsComboBox.Value="{Binding SelectedPerformanceMode, Mode=TwoWay}" />
+                                <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.AutoStart.Description"
@@ -2287,6 +2299,53 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                     <TextBlock svc:Localized.Key="Common.View" />
                                 </StackPanel>
                             </Button>
+                        </toolkit:SettingsCard>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel
+                    x:Name="PerformanceSettingsSection"
+                    Visibility="Collapsed"
+                    Style="{StaticResource SectionPanelStyle}">
+                    <StackPanel Margin="0,8,0,0" Spacing="4">
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Performance.Mode.Description"
+                            svc:Localized.HeaderKey="Settings.Performance.Mode.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE945;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="176"
+                                ItemsSource="{Binding AvailablePerformanceModeOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedPerformanceMode, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Performance.HiddenCleanup.Description"
+                            svc:Localized.HeaderKey="Settings.Performance.HiddenCleanup.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE823;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ComboBox
+                                MinWidth="176"
+                                ItemsSource="{Binding AvailableHiddenCacheCleanupDelayOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedHiddenCacheCleanupDelaySeconds, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Performance.DecorativeAnimations.Description"
+                            svc:Localized.HeaderKey="Settings.Performance.DecorativeAnimations.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7B5;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch
+                                MinWidth="0"
+                                IsOn="{Binding EnableContinuousDecorativeAnimations, Mode=TwoWay}"
+                                OffContent=""
+                                OnContent="" />
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>

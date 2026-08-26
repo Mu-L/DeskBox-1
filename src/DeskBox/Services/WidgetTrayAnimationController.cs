@@ -847,7 +847,22 @@ public sealed class WidgetTrayAnimationController
         }
 
         var windowId = Win32Interop.GetWindowIdFromWindow(_windowHandle);
-        var workArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
+        DisplayArea? displayArea = DisplayArea.GetFromWindowId(
+            windowId,
+            DisplayAreaFallback.Primary);
+        if (displayArea is null)
+        {
+            App.Log(
+                $"[TrayAnimation] Display area unavailable for " +
+                $"hwnd=0x{_windowHandle.ToInt64():X}; using minimum slide offsets");
+            return (
+                MinWidgetSlideOffset,
+                MinWidgetSlideOffset,
+                MinWidgetSlideOffset,
+                MinWidgetSlideOffset);
+        }
+
+        RectInt32 workArea = displayArea.WorkArea;
         var bounds = _getAnimationBounds();
         double x = bounds.X;
         double y = bounds.Y;

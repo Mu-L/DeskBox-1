@@ -285,6 +285,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         WidgetOpacity = settings.WidgetOpacity;
         WidgetMaterialIntensity = settings.WidgetMaterialIntensity;
         InitializeWidgetForegroundSettings(settings);
+        InitializePerformanceSettings(settings);
         _selectedWidgetCornerPreference = settings.WidgetCornerPreference is CornerSquare or CornerSmall or CornerRound
             ? settings.WidgetCornerPreference
             : CornerRound;

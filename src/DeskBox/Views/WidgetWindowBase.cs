@@ -189,6 +189,20 @@ public abstract partial class WidgetWindowBase : Window
     protected abstract void UpdateConfigBoundsFromPhysical(
         int x, int y, int width, int height, bool persist);
 
+    public void ApplyPerformanceSettings()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(ApplyPerformanceSettings);
+            return;
+        }
+
+        if (!IsClosing)
+        {
+            WidgetShellControl.ApplyPerformanceSettings();
+        }
+    }
+
     // ── Virtual hooks: subclasses can override for specific behavior ──
 
     /// <summary>Apply XAML-level surface styling (border brush, plate color, etc.).</summary>

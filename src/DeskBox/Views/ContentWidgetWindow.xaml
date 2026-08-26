@@ -66,12 +66,6 @@
             <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="TextFillColorPrimaryBrush" />
         </Grid.Resources>
 
-        <Canvas
-            x:Name="WidgetTextShadowHost"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            IsHitTestVisible="False" />
-
         <controls:WidgetShell
             x:Name="ContentWidgetShell"
             CloseRequested="CloseButton_Click"

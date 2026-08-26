@@ -11,13 +11,100 @@ namespace DeskBox.ViewModels;
 
 public sealed partial class WeatherWidgetViewModel
 {
+    private async Task LoadCachedWeatherAsync()
+    {
+        WeatherCacheState state = await _weatherService.LoadCacheStateAsync();
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        WeatherCachedForecast? forecast = state.LastForecast;
+        if (forecast?.IsValid == true &&
+            forecast.Data is not null &&
+            CanUseCachedForecast(forecast))
+        {
+            _latitude = forecast.Latitude;
+            _longitude = forecast.Longitude;
+            _locationName = forecast.LocationName;
+            _locationInitialized = true;
+            _locationResolvedAtUtc = state.LastLocation?.IsValid == true &&
+                WeatherCacheStore.IsSameLocation(
+                    state.LastLocation.Latitude,
+                    state.LastLocation.Longitude,
+                    forecast.Latitude,
+                    forecast.Longitude)
+                    ? state.LastLocation.ResolvedAtUtc
+                    : default;
+
+            TimeSpan refreshInterval = GetConfiguredRefreshInterval();
+            bool isStale = DateTimeOffset.UtcNow - forecast.FetchedAtUtc >= refreshInterval;
+            forecast.Data.LocationName = forecast.LocationName;
+            forecast.Data.IsStale = isStale;
+            forecast.Data.IsFallback = !string.Equals(
+                forecast.RequestedSource,
+                forecast.ActualSource,
+                StringComparison.Ordinal);
+            _weatherData = forecast.Data;
+            ApplyWeatherData(forecast.Data);
+            HasData = true;
+            _automaticRefreshNotBeforeUtc = isStale
+                ? DateTimeOffset.MinValue
+                : forecast.FetchedAtUtc + refreshInterval;
+            App.Log(
+                $"[WeatherWidget] Restored cached forecast " +
+                $"location='{forecast.LocationName}' stale={isStale}");
+            return;
+        }
+
+        if ((_settingsService?.Settings.WeatherAutoLocation ?? true) &&
+            state.LastLocation?.IsValid == true)
+        {
+            _latitude = state.LastLocation.Latitude;
+            _longitude = state.LastLocation.Longitude;
+            _locationName = state.LastLocation.Name;
+            _locationInitialized = true;
+            _locationResolvedAtUtc = state.LastLocation.ResolvedAtUtc;
+        }
+    }
+
+    private bool CanUseCachedForecast(WeatherCachedForecast forecast)
+    {
+        if (_settingsService is null || _settingsService.Settings.WeatherAutoLocation)
+        {
+            return true;
+        }
+
+        AppSettings settings = _settingsService.Settings;
+        if (settings.WeatherLatitude != 0 || settings.WeatherLongitude != 0)
+        {
+            return WeatherCacheStore.IsSameLocation(
+                settings.WeatherLatitude,
+                settings.WeatherLongitude,
+                forecast.Latitude,
+                forecast.Longitude);
+        }
+
+        return !string.IsNullOrWhiteSpace(settings.WeatherCityName) &&
+            string.Equals(
+                settings.WeatherCityName.Trim(),
+                forecast.LocationName.Trim(),
+                StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task EnsureLocationAsync()
     {
-        IsUsingFallbackLocation = false;
         string lang = _localizationService.CurrentCultureName;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
 
         if (_settingsService is null)
         {
+            if (_locationInitialized &&
+                now - _locationResolvedAtUtc < WeatherRefreshBackoffPolicy.LocationReuseDuration)
+            {
+                return;
+            }
+
             // No settings service: try auto-detect, fall back to a well-known default.
             var autoLoc = await WindowsLocationHelper.GetLocationAsync(_localizationService);
             if (autoLoc is not null)
@@ -25,12 +112,23 @@ public sealed partial class WeatherWidgetViewModel
                 _latitude = autoLoc.Value.Lat;
                 _longitude = autoLoc.Value.Lon;
                 _locationName = RefineLocationName(autoLoc.Value.Lat, autoLoc.Value.Lon, autoLoc.Value.Name, lang);
+                _locationInitialized = true;
+                _locationResolvedAtUtc = now;
+                _locationRetryNotBeforeUtc = default;
+                IsUsingFallbackLocation = false;
+                await _weatherService.SaveResolvedLocationAsync(
+                    _latitude,
+                    _longitude,
+                    _locationName,
+                    now);
             }
             else
             {
                 _latitude = 39.9042;
                 _longitude = 116.4074;
                 _locationName = _localizationService.ApiLanguageCode switch { "zh" => "北京", "ja" => "北京", "de" => "Peking", "pt" => "Pequim", _ => "Beijing" };
+                _locationInitialized = true;
+                _locationRetryNotBeforeUtc = now + WeatherRefreshBackoffPolicy.LocationFailureDelay;
                 IsUsingFallbackLocation = true;
             }
             return;
@@ -39,6 +137,18 @@ public sealed partial class WeatherWidgetViewModel
         var settings = _settingsService.Settings;
         if (settings.WeatherAutoLocation)
         {
+            if (_locationInitialized && now < _locationRetryNotBeforeUtc)
+            {
+                return;
+            }
+
+            if (_locationInitialized &&
+                !IsUsingFallbackLocation &&
+                now - _locationResolvedAtUtc < WeatherRefreshBackoffPolicy.LocationReuseDuration)
+            {
+                return;
+            }
+
             // Try Windows location API + multi-source IP fallback
             var result = await WindowsLocationHelper.GetLocationAsync(_localizationService);
             if (result is not null)
@@ -46,6 +156,22 @@ public sealed partial class WeatherWidgetViewModel
                 _latitude = result.Value.Lat;
                 _longitude = result.Value.Lon;
                 _locationName = RefineLocationName(result.Value.Lat, result.Value.Lon, result.Value.Name, lang);
+                _locationInitialized = true;
+                _locationResolvedAtUtc = now;
+                _locationRetryNotBeforeUtc = default;
+                IsUsingFallbackLocation = false;
+                await _weatherService.SaveResolvedLocationAsync(
+                    _latitude,
+                    _longitude,
+                    _locationName,
+                    now);
+                return;
+            }
+
+            _locationRetryNotBeforeUtc = now + WeatherRefreshBackoffPolicy.LocationFailureDelay;
+            if (_locationInitialized)
+            {
+                App.Log("[Weather] Auto-location failed, retaining cached location");
                 return;
             }
     
@@ -62,6 +188,9 @@ public sealed partial class WeatherWidgetViewModel
                     _latitude = item.Latitude;
                     _longitude = item.Longitude;
                     _locationName = item.DisplayName;
+                    _locationInitialized = true;
+                    _locationResolvedAtUtc = now;
+                    IsUsingFallbackLocation = false;
                     return;
                 }
             }
@@ -70,6 +199,7 @@ public sealed partial class WeatherWidgetViewModel
             _latitude = 39.9042;
             _longitude = 116.4074;
             _locationName = _localizationService.ApiLanguageCode switch { "zh" => "北京", "ja" => "北京", "de" => "Peking", "pt" => "Pequim", _ => "Beijing" };
+            _locationInitialized = true;
             IsUsingFallbackLocation = true;
         }
         else
@@ -79,6 +209,9 @@ public sealed partial class WeatherWidgetViewModel
                 _latitude = settings.WeatherLatitude;
                 _longitude = settings.WeatherLongitude;
                 _locationName = settings.WeatherCityName;
+                _locationInitialized = true;
+                _locationResolvedAtUtc = now;
+                IsUsingFallbackLocation = false;
             }
             else
             {
@@ -93,20 +226,36 @@ public sealed partial class WeatherWidgetViewModel
                         _latitude = item.Latitude;
                         _longitude = item.Longitude;
                         _locationName = item.DisplayName;
+                        _locationInitialized = true;
+                        _locationResolvedAtUtc = now;
+                        IsUsingFallbackLocation = false;
                         settings.WeatherLatitude = _latitude;
                         settings.WeatherLongitude = _longitude;
                         _settingsService.SaveDebounced();
                     }
                 }
-                else
+
+                if (!_locationInitialized)
                 {
                     _latitude = 39.9042;
                     _longitude = 116.4074;
                     _locationName = _localizationService.ApiLanguageCode switch { "zh" => "北京", "ja" => "北京", "de" => "Peking", "pt" => "Pequim", _ => "Beijing" };
+                    _locationInitialized = true;
                     IsUsingFallbackLocation = true;
                 }
             }
         }
+    }
+
+    private TimeSpan GetConfiguredRefreshInterval()
+    {
+        int minutes = _settingsService is null
+            ? 30
+            : Math.Clamp(
+                _settingsService.Settings.WeatherRefreshIntervalMinutes,
+                SettingsService.WeatherRefreshMinMinutes,
+                SettingsService.WeatherRefreshMaxMinutes);
+        return TimeSpan.FromMinutes(minutes);
     }
 
     private void ApplyWeatherData(WeatherData data)

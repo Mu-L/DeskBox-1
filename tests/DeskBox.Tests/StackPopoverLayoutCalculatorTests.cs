@@ -5,6 +5,49 @@ namespace DeskBox.Tests;
 public sealed class StackPopoverLayoutCalculatorTests
 {
     [Fact]
+    public void Activation_ItemClickBeforePointerReleaseRunsOnlyOnce()
+    {
+        var arbiter = new StackInputActivationArbiter();
+
+        arbiter.BeginPointer("kind:folder");
+
+        Assert.True(arbiter.ShouldActivateFromItemClick("kind:folder"));
+        Assert.False(arbiter.ShouldActivateFromPointerRelease(
+            "kind:folder",
+            isValidRelease: true));
+        arbiter.EndPointer();
+    }
+
+    [Fact]
+    public void Activation_PointerReleaseBeforeItemClickRunsOnlyOnce()
+    {
+        var arbiter = new StackInputActivationArbiter();
+
+        arbiter.BeginPointer("kind:folder");
+
+        Assert.True(arbiter.ShouldActivateFromPointerRelease(
+            "kind:folder",
+            isValidRelease: true));
+        arbiter.EndPointer();
+        Assert.False(arbiter.ShouldActivateFromItemClick("kind:folder"));
+    }
+
+    [Fact]
+    public void Activation_NewPointerGestureClearsAnUnconsumedReleaseMarker()
+    {
+        var arbiter = new StackInputActivationArbiter();
+
+        arbiter.BeginPointer("kind:folder");
+        Assert.True(arbiter.ShouldActivateFromPointerRelease(
+            "kind:folder",
+            isValidRelease: true));
+        arbiter.EndPointer();
+
+        arbiter.BeginPointer("kind:folder");
+        Assert.True(arbiter.ShouldActivateFromItemClick("kind:folder"));
+    }
+
+    [Fact]
     public void Position_CentersPopoverDirectlyOverFolderIconWhenSpaceFits()
     {
         StackPopoverPosition position =
@@ -160,9 +203,29 @@ public sealed class StackPopoverLayoutCalculatorTests
         Assert.Equal(3, layout.VisibleRows);
         Assert.Equal(240, layout.ItemsWidth);
         Assert.Equal(258, layout.ItemsHeight);
-        Assert.Equal(264, layout.Width);
-        Assert.Equal(312, layout.Height);
+        Assert.Equal(256, layout.Width);
+        Assert.Equal(310, layout.Height);
         Assert.False(layout.ShowFilter);
+    }
+
+    [Fact]
+    public void IconLayout_FourItemsUsesACompactTwoByTwoSurface()
+    {
+        StackPopoverLayout layout = StackPopoverLayoutCalculator.Calculate(
+            isListMode: false,
+            itemCount: 4,
+            widgetWidth: 420,
+            workAreaWidth: 1920,
+            workAreaHeight: 1080,
+            itemWidth: 72,
+            itemHeight: 82);
+
+        Assert.Equal(2, layout.Columns);
+        Assert.Equal(2, layout.VisibleRows);
+        Assert.Equal(160, layout.ItemsWidth);
+        Assert.Equal(172, layout.ItemsHeight);
+        Assert.Equal(184, layout.Width);
+        Assert.Equal(224, layout.Height);
     }
 
     [Theory]

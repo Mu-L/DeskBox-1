@@ -12,7 +12,8 @@ namespace DeskBox.Helpers;
 /// </summary>
 public static class WindowsLocationHelper
 {
-    internal static readonly TimeSpan SuccessfulResultReuseDuration = TimeSpan.FromSeconds(5);
+    internal static readonly TimeSpan SuccessfulResultReuseDuration = TimeSpan.FromHours(6);
+    internal static readonly TimeSpan FailedResultReuseDuration = TimeSpan.FromMinutes(10);
     private static readonly object s_locationGate = new();
     private static readonly HttpClient s_httpClient = new()
     {
@@ -21,20 +22,32 @@ public static class WindowsLocationHelper
     private static Task<(double Lat, double Lon, string Name)?>? s_inFlightLocationTask;
     private static (double Lat, double Lon, string Name)? s_cachedLocation;
     private static DateTimeOffset s_cachedLocationAtUtc;
+    private static DateTimeOffset s_lastFailureAtUtc;
 
     /// <summary>
     /// Gets the current location using the Windows Geolocation API.
     /// Returns (latitude, longitude, displayName) or null if all methods fail.
     /// </summary>
     public static Task<(double Lat, double Lon, string Name)?> GetLocationAsync(
-        Services.LocalizationService? localizationService = null)
+        Services.LocalizationService? localizationService = null,
+        bool forceRefresh = false)
     {
         lock (s_locationGate)
         {
-            if (s_cachedLocation is { } cached &&
+            if (!forceRefresh &&
+                s_cachedLocation is { } cached &&
                 DateTimeOffset.UtcNow - s_cachedLocationAtUtc <= SuccessfulResultReuseDuration)
             {
+                App.LogVerbose("[WindowsLocation] Reusing successful in-memory location");
                 return Task.FromResult<(double Lat, double Lon, string Name)?>(cached);
+            }
+
+            if (!forceRefresh &&
+                s_lastFailureAtUtc != default &&
+                DateTimeOffset.UtcNow - s_lastFailureAtUtc <= FailedResultReuseDuration)
+            {
+                App.LogVerbose("[WindowsLocation] Reusing recent failed location result");
+                return Task.FromResult<(double Lat, double Lon, string Name)?>(null);
             }
 
             if (s_inFlightLocationTask is not null)
@@ -65,6 +78,14 @@ public static class WindowsLocationHelper
                 {
                     s_cachedLocation = result;
                     s_cachedLocationAtUtc = DateTimeOffset.UtcNow;
+                    s_lastFailureAtUtc = default;
+                }
+            }
+            else
+            {
+                lock (s_locationGate)
+                {
+                    s_lastFailureAtUtc = DateTimeOffset.UtcNow;
                 }
             }
 
@@ -129,23 +150,32 @@ public static class WindowsLocationHelper
     }
 
     /// <summary>
-    /// Tries multiple IP geolocation services in sequence.
+    /// Tries multiple IP geolocation services concurrently.
     /// Returns the first successful result, or null if all fail.
     /// </summary>
     private static async Task<(double Lat, double Lon, string Name)?> TryMultiSourceIpLocationAsync(
         Services.LocalizationService? localizationService)
     {
-        // Source 1: ip-api.com (free, no key, city-level accuracy, works in China)
-        var result = await TryIpApiComAsync(localizationService);
-        if (result is not null) return result;
+        using var cancellation = new CancellationTokenSource();
+        var pending = new List<Task<(double Lat, double Lon, string Name)?>>
+        {
+            TryIpApiComAsync(localizationService, cancellation.Token),
+            TryIpApiCoAsync(localizationService, cancellation.Token),
+            TryIpSbAsync(localizationService, cancellation.Token)
+        };
 
-        // Source 2: ipapi.co (fallback)
-        result = await TryIpApiCoAsync(localizationService);
-        if (result is not null) return result;
-
-        // Source 3: ip.sb (lightweight, works in China)
-        result = await TryIpSbAsync(localizationService);
-        if (result is not null) return result;
+        while (pending.Count > 0)
+        {
+            Task<(double Lat, double Lon, string Name)?> completed =
+                await Task.WhenAny(pending);
+            pending.Remove(completed);
+            (double Lat, double Lon, string Name)? result = await completed;
+            if (result is not null)
+            {
+                await cancellation.CancelAsync();
+                return result;
+            }
+        }
 
         App.Log("[WindowsLocation] All IP location sources failed");
         return null;
@@ -156,13 +186,15 @@ public static class WindowsLocationHelper
     /// Supports Chinese city names via language parameter.
     /// </summary>
     private static async Task<(double Lat, double Lon, string Name)?> TryIpApiComAsync(
-        Services.LocalizationService? localizationService)
+        Services.LocalizationService? localizationService,
+        CancellationToken cancellationToken)
     {
         try
         {
             string lang = localizationService?.ApiLanguageCode ?? "en";
             string json = await s_httpClient.GetStringAsync(
-                $"http://ip-api.com/json/?fields=status,lat,lon,city,regionName,country&lang={lang}");
+                $"http://ip-api.com/json/?fields=status,lat,lon,city,regionName,country&lang={lang}",
+                cancellationToken);
 
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
@@ -184,6 +216,9 @@ public static class WindowsLocationHelper
                 return (lat, lon, cityName);
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
         catch (Exception ex)
         {
             App.Log($"[WindowsLocation] ip-api.com failed: {ex.Message}");
@@ -196,11 +231,14 @@ public static class WindowsLocationHelper
     /// ipapi.co — fallback source.
     /// </summary>
     private static async Task<(double Lat, double Lon, string Name)?> TryIpApiCoAsync(
-        Services.LocalizationService? localizationService)
+        Services.LocalizationService? localizationService,
+        CancellationToken cancellationToken)
     {
         try
         {
-            string json = await s_httpClient.GetStringAsync("https://ipapi.co/json/");
+            string json = await s_httpClient.GetStringAsync(
+                "https://ipapi.co/json/",
+                cancellationToken);
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
@@ -230,6 +268,9 @@ public static class WindowsLocationHelper
                 return (lat, lon, cityName);
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
         catch (Exception ex)
         {
             App.Log($"[WindowsLocation] ipapi.co failed: {ex.Message}");
@@ -242,11 +283,14 @@ public static class WindowsLocationHelper
     /// ip.sb — lightweight fallback, works well in China.
     /// </summary>
     private static async Task<(double Lat, double Lon, string Name)?> TryIpSbAsync(
-        Services.LocalizationService? localizationService)
+        Services.LocalizationService? localizationService,
+        CancellationToken cancellationToken)
     {
         try
         {
-            string json = await s_httpClient.GetStringAsync("https://api.ip.sb/geoip");
+            string json = await s_httpClient.GetStringAsync(
+                "https://api.ip.sb/geoip",
+                cancellationToken);
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
@@ -275,6 +319,9 @@ public static class WindowsLocationHelper
                 App.Log($"[WindowsLocation] ip.sb: lat={lat:F4} lon={lon:F4} city={cityName}");
                 return (lat, lon, cityName);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {

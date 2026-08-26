@@ -173,7 +173,6 @@ public sealed partial class WidgetShell : UserControl
     private TextBlock? _compactMarqueeClone;
     private Canvas? _compactMarqueeCanvas;
     private FrameworkElement? _compactMarqueeViewport;
-    private bool _compactMarqueeTextEdgeModeActive;
     private WidgetCompactPresentation? _compactPresentation;
     private WidgetGroupPresentation? _groupPresentation;
     private IWidgetContent? _hostedContent;
@@ -383,6 +382,25 @@ public sealed partial class WidgetShell : UserControl
         _compactUpdateStoryboard?.Stop();
     }
 
+    internal void ApplyPerformanceSettings()
+    {
+        StopCompactMarquee();
+        StopCompactVisualTimers();
+        StopCompactVinylRotation();
+        if (_hostedContent is IWidgetPerformanceAwareContent performanceAware)
+        {
+            performanceAware.ApplyPerformanceSettings();
+        }
+
+        if (!_isHostVisualActivityEnabled || !IsLoaded)
+        {
+            return;
+        }
+
+        QueueCompactMarquee();
+        RestartCompactVisualTimers();
+    }
+
     public bool ShowHoverButtons
     {
         get => (bool)GetValue(ShowHoverButtonsProperty);
@@ -576,26 +594,6 @@ public sealed partial class WidgetShell : UserControl
     public bool IsOverlayChromeMode => ChromeMode is WidgetChromeMode.Overlay or WidgetChromeMode.Hidden;
 
     public bool IsCollapsed => _isCollapsed;
-
-    /// <summary>
-    /// Keeps the root-level text edge visual aligned with compact text. The
-    /// marquee uses a parent render transform that does not produce per-frame
-    /// layout updates, so its detached shadow cannot reliably follow it.
-    /// </summary>
-    public void SetCompactMarqueeTextEdgeModeActive(bool active)
-    {
-        if (_compactMarqueeTextEdgeModeActive == active)
-        {
-            return;
-        }
-
-        _compactMarqueeTextEdgeModeActive = active;
-        StopCompactMarquee();
-        if (!active)
-        {
-            QueueCompactMarquee(650);
-        }
-    }
 
     public bool IsCompactMoveHandlePress => _isCompactMoveHandlePress;
 
@@ -2312,6 +2310,7 @@ public sealed partial class WidgetShell : UserControl
             _isCollapsed &&
             CompactVinylHost.Visibility == Visibility.Visible &&
             isPlaying &&
+            ContinuousDecorativeAnimationsEnabled() &&
             SystemAnimationsEnabled();
         if (shouldRotate == _isCompactVinylRotating)
         {
@@ -2655,6 +2654,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopCompactLiveIndeterminate();
@@ -2731,6 +2731,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopCompactLiveBreathing();
@@ -2906,6 +2907,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopEdgeGlowPulse();
@@ -2981,7 +2983,10 @@ public sealed partial class WidgetShell : UserControl
 
     private void ApplyParticles(WidgetCompactPresentation p)
     {
-        if (!_isHostVisualActivityEnabled || !IsLoaded || !_isCollapsed)
+        if (!_isHostVisualActivityEnabled ||
+            !IsLoaded ||
+            !_isCollapsed ||
+            !ContinuousDecorativeAnimationsEnabled())
         {
             StopParticles();
             return;
@@ -3073,6 +3078,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled() ||
             generation != _particleAnimationGeneration)
         {
@@ -3193,6 +3199,7 @@ public sealed partial class WidgetShell : UserControl
         particle.Batch = null;
         particle.Animation = null;
         if (!_isHostVisualActivityEnabled ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled() ||
             particle.Generation != _particleAnimationGeneration ||
             _activeParticleKind == CompactParticleKind.None)
@@ -3227,6 +3234,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopBottomGlow();
@@ -3283,6 +3291,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopBreathBorder();
@@ -3491,10 +3500,10 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            _compactMarqueeTextEdgeModeActive ||
             _compactPresentation?.EnableMarquee != true ||
             ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             return;
@@ -3526,10 +3535,10 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            _compactMarqueeTextEdgeModeActive ||
             _compactPresentation?.EnableMarquee != true ||
             ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             return;
@@ -4162,6 +4171,14 @@ public sealed partial class WidgetShell : UserControl
     private static bool SystemAnimationsEnabled()
     {
         return WindowsCompatibilityService.ShouldAnimate;
+    }
+
+    private static bool ContinuousDecorativeAnimationsEnabled()
+    {
+        return Application.Current is not App app ||
+            app.SettingsService is null ||
+            PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings)
+                .AllowContinuousDecorativeAnimations;
     }
 
     private void CollapseButton_Click(object sender, RoutedEventArgs e) => CollapseRequested?.Invoke(this, e);

@@ -9,7 +9,6 @@ namespace DeskBox.ViewModels;
 public partial class SettingsViewModel
 {
     private string _selectedWidgetForegroundMode = WidgetForegroundSettings.ModeFollowTheme;
-    private string _selectedWidgetTextEdgeMode = WidgetForegroundSettings.EdgeOff;
     private Color _selectedWidgetForegroundColor =
         AccentColorHelper.FromHex(WidgetForegroundSettings.DefaultCustomColorHex);
 
@@ -27,19 +26,6 @@ public partial class SettingsViewModel
         new(
             WidgetForegroundSettings.ModeCustom,
             _localizationService.T("Settings.WidgetForeground.Custom"))
-    ];
-
-    public IReadOnlyList<SettingsOption> AvailableWidgetTextEdgeModeOptions =>
-    [
-        new(
-            WidgetForegroundSettings.EdgeOff,
-            _localizationService.T("Settings.WidgetTextEdge.Off")),
-        new(
-            WidgetForegroundSettings.EdgeSoft,
-            _localizationService.T("Settings.WidgetTextEdge.Soft")),
-        new(
-            WidgetForegroundSettings.EdgeStrong,
-            _localizationService.T("Settings.WidgetTextEdge.Strong"))
     ];
 
     public string SelectedWidgetForegroundMode
@@ -86,27 +72,6 @@ public partial class SettingsViewModel
         }
     }
 
-    public string SelectedWidgetTextEdgeMode
-    {
-        get => _selectedWidgetTextEdgeMode;
-        set
-        {
-            string normalized = WidgetForegroundSettings.NormalizeEdgeMode(value);
-            if (!SetProperty(ref _selectedWidgetTextEdgeMode, normalized))
-            {
-                return;
-            }
-
-            if (_isRestoringDefaults)
-            {
-                return;
-            }
-
-            _settingsService.Settings.WidgetTextEdgeMode = normalized;
-            SaveAppearanceChange();
-        }
-    }
-
     public Visibility WidgetForegroundCustomColorVisibility =>
         string.Equals(
             SelectedWidgetForegroundMode,
@@ -119,8 +84,6 @@ public partial class SettingsViewModel
     {
         _selectedWidgetForegroundMode =
             WidgetForegroundSettings.NormalizeMode(settings.WidgetForegroundMode);
-        _selectedWidgetTextEdgeMode =
-            WidgetForegroundSettings.NormalizeEdgeMode(settings.WidgetTextEdgeMode);
         _selectedWidgetForegroundColor = AccentColorHelper.TryParseHex(
             settings.WidgetForegroundColor,
             out Color color)
@@ -131,7 +94,6 @@ public partial class SettingsViewModel
     private void ApplyWidgetForegroundSettingsSnapshot(AppSettings settings)
     {
         SelectedWidgetForegroundMode = settings.WidgetForegroundMode;
-        SelectedWidgetTextEdgeMode = settings.WidgetTextEdgeMode;
         SelectedWidgetForegroundColor = AccentColorHelper.TryParseHex(
             settings.WidgetForegroundColor,
             out Color color)
@@ -144,7 +106,6 @@ public partial class SettingsViewModel
         if (refreshLocalizedOptions)
         {
             OnPropertyChanged(nameof(AvailableWidgetForegroundModeOptions));
-            OnPropertyChanged(nameof(AvailableWidgetTextEdgeModeOptions));
         }
 
         OnPropertyChanged(nameof(WidgetForegroundCustomColorVisibility));

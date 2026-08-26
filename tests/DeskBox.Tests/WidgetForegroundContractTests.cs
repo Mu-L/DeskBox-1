@@ -3,7 +3,7 @@ namespace DeskBox.Tests;
 public sealed class WidgetForegroundContractTests
 {
     [Fact]
-    public void SettingsSurface_ExposesPaletteColorAndEdgeControls()
+    public void SettingsSurface_ExposesPaletteAndColorControlsWithoutTextEdge()
     {
         string xaml = Read("src/DeskBox/Views/SettingsWindow.xaml");
         string bindable = Read(
@@ -11,52 +11,39 @@ public sealed class WidgetForegroundContractTests
 
         Assert.Contains("AvailableWidgetForegroundModeOptions", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedWidgetForegroundColor", xaml, StringComparison.Ordinal);
-        Assert.Contains("AvailableWidgetTextEdgeModeOptions", xaml, StringComparison.Ordinal);
         Assert.Contains("nameof(SelectedWidgetForegroundColor)", bindable, StringComparison.Ordinal);
-        Assert.Contains("nameof(SelectedWidgetTextEdgeMode)", bindable, StringComparison.Ordinal);
+        Assert.DoesNotContain("WidgetTextEdge", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("WidgetTextEdge", bindable, StringComparison.Ordinal);
     }
 
     [Theory]
     [InlineData("src/DeskBox/Views/ContentWidgetWindow.xaml")]
     [InlineData("src/DeskBox/Views/QuickCaptureWidgetWindow.xaml")]
-    public void WidgetRoots_ProvideLocalSemanticBrushesAndShadowHost(string path)
+    public void WidgetRoots_ProvideLocalSemanticBrushesWithoutDetachedShadowHost(string path)
     {
         string xaml = Read(path);
 
         Assert.Contains("x:Key=\"TextFillColorPrimaryBrush\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Key=\"TextFillColorSecondaryBrush\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"WidgetTextShadowHost\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("WidgetTextShadowHost", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Runtime_HighContrastWinsAndOffDisposesAllShadowResources()
+    public void RemovedTextEdgeFeature_HasNoSettingsMenuOrRuntimeSurface()
     {
+        string settings = Read("src/DeskBox/Models/AppSettings.cs");
         string foreground = Read(
             "src/DeskBox/Views/WidgetWindowBase.Foreground.cs");
-        string shadow = Read(
-            "src/DeskBox/Views/WidgetTextShadowManager.cs");
-
-        Assert.Contains("highContrast", foreground, StringComparison.Ordinal);
-        Assert.Contains("WidgetForegroundSettings.EdgeOff", foreground, StringComparison.Ordinal);
-        Assert.Contains("DisposeWidgetTextShadowManager();", foreground, StringComparison.Ordinal);
-        Assert.Contains("LayoutUpdated -= Root_LayoutUpdated", shadow, StringComparison.Ordinal);
-        Assert.Contains("SetElementChildVisual(_host, null)", shadow, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CapsuleMarquee_IsSuspendedOnlyWhileDetachedTextEdgeVisualsAreActive()
-    {
-        string foreground = Read(
-            "src/DeskBox/Views/WidgetWindowBase.Foreground.cs");
+        string menu = Read("src/DeskBox/Services/WidgetForegroundMenuBuilder.cs");
         string shell = Read("src/DeskBox/Controls/WidgetShell.xaml.cs");
 
-        Assert.Contains(
-            "WidgetShellControl.SetCompactMarqueeTextEdgeModeActive(textEdgeActive)",
-            foreground,
-            StringComparison.Ordinal);
-        Assert.Contains("_compactMarqueeTextEdgeModeActive ||", shell, StringComparison.Ordinal);
-        Assert.Contains("StopCompactMarquee();", shell, StringComparison.Ordinal);
-        Assert.Contains("QueueCompactMarquee(650);", shell, StringComparison.Ordinal);
+        Assert.Contains("highContrast", foreground, StringComparison.Ordinal);
+        Assert.DoesNotContain("WidgetTextEdge", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("TextEdge", foreground, StringComparison.Ordinal);
+        Assert.DoesNotContain("TextEdge", menu, StringComparison.Ordinal);
+        Assert.DoesNotContain("TextEdge", shell, StringComparison.Ordinal);
+        Assert.False(File.Exists(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetTextShadowManager.cs")));
     }
 
     [Fact]

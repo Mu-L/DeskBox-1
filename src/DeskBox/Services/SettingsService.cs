@@ -392,6 +392,11 @@ public const int DefaultSearchMaxResults = 100;
         settings.Theme = "System";
         settings.TrayIconStyle = "Colorful";
         settings.AccentColorMode = "System";
+        settings.PerformanceMode = PerformanceSettingsPolicy.DefaultMode;
+        settings.HiddenCacheCleanupDelaySeconds =
+            PerformanceSettingsPolicy.DefaultHiddenCacheCleanupDelaySeconds;
+        settings.EnableContinuousDecorativeAnimations =
+            PerformanceSettingsPolicy.DefaultContinuousDecorativeAnimationsEnabled;
         settings.DefaultWidgetWidth = DefaultWidgetWidth;
         settings.DefaultWidgetHeight = DefaultWidgetHeight;
         settings.WidgetCornerPreference = WidgetCornerPreferenceRound;
@@ -399,7 +404,6 @@ public const int DefaultSearchMaxResults = 100;
         settings.WidgetMaterialIntensity = DefaultWidgetMaterialIntensity;
         settings.WidgetForegroundMode = WidgetForegroundSettings.ModeFollowTheme;
         settings.WidgetForegroundColor = WidgetForegroundSettings.DefaultCustomColorHex;
-        settings.WidgetTextEdgeMode = WidgetForegroundSettings.EdgeOff;
         settings.WidgetBorderColorMode = WidgetBorderColorModeNeutral;
         settings.WidgetBorderStyle = WidgetBorderStyleThin;
         settings.WidgetAnimationEffect = WidgetAnimationEffectSlideFade;
@@ -643,6 +647,7 @@ settings.FocusClickedWidgetOnRaise = false;
                     changed = true;
                 }
 
+                changed |= PerformanceSettingsPolicy.Normalize(_settings);
                 changed |= NormalizePresentationSettings(_settings);
                 changed |= NormalizeAppearanceSettings(_settings);
                 changed |= NormalizeFeatureWidgetSettings(_settings);
@@ -751,6 +756,7 @@ settings.FocusClickedWidgetOnRaise = false;
             string json;
             lock (_lock)
             {
+                PerformanceSettingsPolicy.Normalize(_settings);
                 NormalizePresentationSettings(_settings);
                 NormalizeAppearanceSettings(_settings);
                 NormalizeFeatureWidgetSettings(_settings);

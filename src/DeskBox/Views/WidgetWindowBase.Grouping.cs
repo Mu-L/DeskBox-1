@@ -16,6 +16,7 @@ public abstract partial class WidgetWindowBase
     private CancellationTokenSource? _groupDetachPreviewCancellation;
     private WidgetDetachPlacementPreviewWindow? _groupDetachPlacementPreview;
     private bool _groupDetachCommitInProgress;
+    private bool _groupDetachPreviewWarmupQueued;
     private Win32Helper.SubclassProc? _groupWheelSubclassProc;
     private bool _isGroupWheelSubclassInstalled;
     private bool _nativeGroupWheelEnabled;
@@ -270,6 +271,7 @@ public abstract partial class WidgetWindowBase
             animateIdentity,
             origin,
             forward);
+        QueueGroupDetachPreviewWarmup(presentation);
         OnWidgetGroupPresentationChanged(presentation);
     }
 
@@ -423,7 +425,7 @@ public abstract partial class WidgetWindowBase
             _groupDetachPlacementPreview = null;
             if (preview is not null)
             {
-                await preview.FadeOutAndCloseAsync();
+                await preview.FadeOutAndHideAsync();
             }
         }
     }
@@ -463,11 +465,16 @@ public abstract partial class WidgetWindowBase
         WidgetDetachPlacementPreviewWindow preview;
         try
         {
-            string caption = App.Current.LocalizationService.T(
+            App app = App.Current
+                ?? throw new InvalidOperationException("DeskBox application is unavailable.");
+            WidgetManager manager = app.WidgetManager
+                ?? throw new InvalidOperationException("Widget manager is unavailable.");
+            string caption = app.LocalizationService.T(
                 "Widget.Group.DetachDragCaption");
-            preview = new WidgetDetachPlacementPreviewWindow(
-                caption,
-                GetCurrentSurfaceCornerRadius());
+            preview = manager
+                .AcquireWidgetDetachPlacementPreview(
+                    caption,
+                    GetCurrentSurfaceCornerRadius());
         }
         catch (Exception ex)
         {
@@ -516,7 +523,7 @@ public abstract partial class WidgetWindowBase
                             outside);
                     }
 
-                    await Task.Delay(24, token);
+                    await Task.Delay(16, token);
                 }
             }
             catch (OperationCanceledException)
@@ -549,7 +556,38 @@ public abstract partial class WidgetWindowBase
         WidgetDetachPlacementPreviewWindow? preview =
             _groupDetachPlacementPreview;
         _groupDetachPlacementPreview = null;
-        preview?.Dispose();
+        preview?.Hide();
+    }
+
+    private void QueueGroupDetachPreviewWarmup(
+        WidgetGroupPresentation? presentation)
+    {
+        if (presentation is null || _groupDetachPreviewWarmupQueued)
+        {
+            return;
+        }
+
+        _groupDetachPreviewWarmupQueued = true;
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                App? app = App.Current;
+                WidgetManager? manager = app?.WidgetManager;
+                if (!_groupingInitialized ||
+                    WidgetShellControl.HasWidgetGroup == false ||
+                    app is null ||
+                    manager is null)
+                {
+                    return;
+                }
+
+                string caption = app.LocalizationService.T(
+                    "Widget.Group.DetachDragCaption");
+                manager.PrewarmWidgetDetachPlacementPreview(
+                    caption,
+                    GetCurrentSurfaceCornerRadius());
+            });
     }
 
     private PointInt32? TryResolveDetachedPosition(

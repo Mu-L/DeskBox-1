@@ -332,6 +332,24 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         UpdateRecordHorizontalVinylRotation();
     }
 
+    public void ApplyPerformanceSettings()
+    {
+        StopTitleMarquee();
+        StopRecordVinylRotation();
+        StopRecordHorizontalVinylRotation();
+        if (!ContinuousDecorativeAnimationsEnabled() ||
+            !IsLoaded ||
+            !_isHostWindowVisible ||
+            _isHostCompactCollapsed)
+        {
+            return;
+        }
+
+        QueueTitleMarqueeUpdate();
+        UpdateRecordVinylRotation();
+        UpdateRecordHorizontalVinylRotation();
+    }
+
     internal void BeginResponsiveLayoutTransition(
         double targetContentWidth,
         double targetContentHeight,
@@ -727,6 +745,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostCompactCollapsed &&
             RecordLayout.Visibility == Visibility.Visible &&
             ViewModel?.IsPlaying == true &&
+            ContinuousDecorativeAnimationsEnabled() &&
             AreSystemAnimationsEnabled();
         if (shouldRotate == _isRecordVinylRotating)
         {
@@ -828,6 +847,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostCompactCollapsed &&
             RecordHorizontalLayout.Visibility == Visibility.Visible &&
             ViewModel?.IsPlaying == true &&
+            ContinuousDecorativeAnimationsEnabled() &&
             AreSystemAnimationsEnabled();
         if (shouldRotate == _isRecordHorizontalVinylRotating)
         {
@@ -1293,6 +1313,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
             ViewModel?.IsPlaying != true ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !AreSystemAnimationsEnabled())
         {
             return;
@@ -1311,6 +1332,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
             ViewModel?.IsPlaying != true ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !AreSystemAnimationsEnabled())
         {
             return;
@@ -1325,6 +1347,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
             ViewModel?.IsPlaying != true ||
+            !ContinuousDecorativeAnimationsEnabled() ||
             !AreSystemAnimationsEnabled())
         {
             return;
@@ -1400,6 +1423,14 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
     private static bool AreSystemAnimationsEnabled()
     {
         return WindowsCompatibilityService.ShouldAnimate;
+    }
+
+    private static bool ContinuousDecorativeAnimationsEnabled()
+    {
+        return Application.Current is not App app ||
+            app.SettingsService is null ||
+            PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings)
+                .AllowContinuousDecorativeAnimations;
     }
 
     private double MeasureTitleWidth()

@@ -16,15 +16,10 @@ public static class WidgetForegroundSettings
     public const string ModeDark = "Dark";
     public const string ModeCustom = "Custom";
 
-    public const string EdgeOff = "Off";
-    public const string EdgeSoft = "Soft";
-    public const string EdgeStrong = "Strong";
-
     public const string DefaultCustomColorHex = "#F5F5F5";
 
     public const string ModeOverrideMetadataKey = "WidgetForegroundMode";
     public const string ColorOverrideMetadataKey = "WidgetForegroundColor";
-    public const string EdgeOverrideMetadataKey = "WidgetTextEdgeMode";
 
     public static string NormalizeMode(string? value)
     {
@@ -46,21 +41,6 @@ public static class WidgetForegroundSettings
         return ModeFollowTheme;
     }
 
-    public static string NormalizeEdgeMode(string? value)
-    {
-        if (string.Equals(value, EdgeSoft, StringComparison.OrdinalIgnoreCase))
-        {
-            return EdgeSoft;
-        }
-
-        if (string.Equals(value, EdgeStrong, StringComparison.OrdinalIgnoreCase))
-        {
-            return EdgeStrong;
-        }
-
-        return EdgeOff;
-    }
-
     public static string? GetModeOverride(WidgetConfig config)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -73,23 +53,8 @@ public static class WidgetForegroundSettings
         return IsSupportedMode(value) ? NormalizeMode(value) : null;
     }
 
-    public static string? GetEdgeModeOverride(WidgetConfig config)
-    {
-        ArgumentNullException.ThrowIfNull(config);
-        if (config.Metadata is null ||
-            !config.Metadata.TryGetValue(EdgeOverrideMetadataKey, out string? value))
-        {
-            return null;
-        }
-
-        return IsSupportedEdgeMode(value) ? NormalizeEdgeMode(value) : null;
-    }
-
     public static string ResolveMode(WidgetConfig config, AppSettings settings) =>
         GetModeOverride(config) ?? NormalizeMode(settings.WidgetForegroundMode);
-
-    public static string ResolveEdgeMode(WidgetConfig config, AppSettings settings) =>
-        GetEdgeModeOverride(config) ?? NormalizeEdgeMode(settings.WidgetTextEdgeMode);
 
     public static Color ResolveCustomColor(WidgetConfig config, AppSettings settings)
     {
@@ -118,19 +83,6 @@ public static class WidgetForegroundSettings
         config.Metadata[ModeOverrideMetadataKey] = NormalizeMode(value);
     }
 
-    public static void SetEdgeModeOverride(WidgetConfig config, string? value)
-    {
-        ArgumentNullException.ThrowIfNull(config);
-        config.Metadata ??= [];
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            config.Metadata.Remove(EdgeOverrideMetadataKey);
-            return;
-        }
-
-        config.Metadata[EdgeOverrideMetadataKey] = NormalizeEdgeMode(value);
-    }
-
     public static void SetCustomColorOverride(WidgetConfig config, Color color)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -148,13 +100,6 @@ public static class WidgetForegroundSettings
         if (!string.Equals(settings.WidgetForegroundMode, mode, StringComparison.Ordinal))
         {
             settings.WidgetForegroundMode = mode;
-            changed = true;
-        }
-
-        string edgeMode = NormalizeEdgeMode(settings.WidgetTextEdgeMode);
-        if (!string.Equals(settings.WidgetTextEdgeMode, edgeMode, StringComparison.Ordinal))
-        {
-            settings.WidgetTextEdgeMode = edgeMode;
             changed = true;
         }
 
@@ -181,12 +126,6 @@ public static class WidgetForegroundSettings
             ModeOverrideMetadataKey,
             IsSupportedMode,
             NormalizeMode);
-        changed |= NormalizeOptionalValue(
-            config,
-            EdgeOverrideMetadataKey,
-            IsSupportedEdgeMode,
-            NormalizeEdgeMode);
-
         if (config.Metadata.TryGetValue(ColorOverrideMetadataKey, out string? colorValue))
         {
             if (!TryNormalizeColor(colorValue, out string colorHex, out _))
@@ -252,9 +191,4 @@ public static class WidgetForegroundSettings
         string.Equals(value, ModeLight, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(value, ModeDark, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(value, ModeCustom, StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsSupportedEdgeMode(string? value) =>
-        string.Equals(value, EdgeOff, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(value, EdgeSoft, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(value, EdgeStrong, StringComparison.OrdinalIgnoreCase);
 }

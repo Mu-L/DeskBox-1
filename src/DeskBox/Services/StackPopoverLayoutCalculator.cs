@@ -153,10 +153,17 @@ internal static class StackFolderPreviewMetricsCalculator
 /// </summary>
 internal static class StackPopoverLayoutCalculator
 {
+    internal const double SurfacePadding = 8;
+    internal const double TitleHeight = 32;
+    internal const double TitleBottomSpacing = 4;
+    internal const double TitleMinimumWidth = 120;
+    internal const double TitleEditorHeight = 28;
+
     private const double WorkAreaMargin = 40;
-    private const double HorizontalPadding = 24;
-    // Surface padding (24) plus the compact inline-rename row (24 + 6 gap).
-    private const double BaseChromeHeight = 54;
+    private const double HorizontalPadding = SurfacePadding * 2;
+    // Surface padding plus the enlarged title row and its bottom gap.
+    private const double BaseChromeHeight =
+        (SurfacePadding * 2) + TitleHeight + TitleBottomSpacing;
     private const double FilterAdditionalHeight = 38;
     private const double IconHorizontalSpacing = 8;
     private const double IconVerticalSpacing = 4;
@@ -212,7 +219,7 @@ internal static class StackPopoverLayoutCalculator
         double cellHeight =
             Math.Clamp(itemHeight, 56, 212) + IconVerticalSpacing;
         double maximumWidth = Math.Min(720, availableWidth);
-        double minimumWidth = Math.Min(200, maximumWidth);
+        double minimumWidth = Math.Min(184, maximumWidth);
         int maximumColumns = Math.Clamp(
             (int)Math.Floor(
                 Math.Max(cellWidth, maximumWidth - HorizontalPadding) /
