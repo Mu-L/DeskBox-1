@@ -22,6 +22,17 @@ public static class WindowsCompatibilityService
     private static long s_animationSettingsReadTimestamp;
     private static int s_cachedShouldAnimate = -1;
 
+    // WinRT settings objects are process-wide singletons by design; allocating
+    // them per read creates a fresh RCW every call on hot paths (stack
+    // animations, compact borders, navigation checks). Cache one instance and
+    // subscribe to change events to invalidate the composite animation cache
+    // immediately instead of waiting for the TTL.
+    private static readonly object s_settingsInstanceGate = new();
+    private static UISettings? s_uiSettings;
+    private static AccessibilitySettings? s_accessibilitySettings;
+    private static readonly Lazy<System.Reflection.PropertyInfo?> s_advancedEffectsProperty =
+        new(() => typeof(UISettings).GetProperty("AdvancedEffectsEnabled"));
+
     public static int OsBuild => s_osBuild.Value;
 
     public static bool IsWindows11OrLater => OsBuild >= Windows11Build;
@@ -108,10 +119,15 @@ public static class WindowsCompatibilityService
     {
         get
         {
+            UISettings? settings = UiSettingsInstance;
+            if (settings is null)
+            {
+                return true;
+            }
+
             try
             {
-                var property = typeof(UISettings).GetProperty("AdvancedEffectsEnabled");
-                return property?.GetValue(new UISettings()) as bool? ?? true;
+                return s_advancedEffectsProperty.Value?.GetValue(settings) as bool? ?? true;
             }
             catch
             {
@@ -123,6 +139,30 @@ public static class WindowsCompatibilityService
     public static bool IsHighContrast => ReadAccessibilitySetting(
         static settings => settings.HighContrast,
         fallback: false);
+
+    /// <summary>
+    /// Reads a system UI color from the shared <see cref="UISettings"/>
+    /// instance. Returns null when the settings object is unavailable so
+    /// callers can keep their configured fallback.
+    /// </summary>
+    public static Windows.UI.Color? TryGetUiColor(
+        Windows.UI.ViewManagement.UIColorType colorType)
+    {
+        UISettings? settings = UiSettingsInstance;
+        if (settings is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return settings.GetColorValue(colorType);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public static bool ShouldAnimate
     {
@@ -197,11 +237,95 @@ public static class WindowsCompatibilityService
         }
     }
 
+    private static UISettings? UiSettingsInstance
+    {
+        get
+        {
+            if (s_uiSettings is not null)
+            {
+                return s_uiSettings;
+            }
+
+            lock (s_settingsInstanceGate)
+            {
+                if (s_uiSettings is not null)
+                {
+                    return s_uiSettings;
+                }
+
+                try
+                {
+                    var settings = new UISettings();
+                    settings.AnimationsEnabledChanged +=
+                        UiSettings_Changed;
+                    s_uiSettings = settings;
+                }
+                catch
+                {
+                    // Leave null; the fallback values apply and the next
+                    // probe retries creation.
+                }
+
+                return s_uiSettings;
+            }
+        }
+    }
+
+    private static AccessibilitySettings? AccessibilitySettingsInstance
+    {
+        get
+        {
+            if (s_accessibilitySettings is not null)
+            {
+                return s_accessibilitySettings;
+            }
+
+            lock (s_settingsInstanceGate)
+            {
+                if (s_accessibilitySettings is not null)
+                {
+                    return s_accessibilitySettings;
+                }
+
+                try
+                {
+                    var settings = new AccessibilitySettings();
+                    settings.HighContrastChanged +=
+                        AccessibilitySettings_Changed;
+                    s_accessibilitySettings = settings;
+                }
+                catch
+                {
+                    // Leave null; the fallback value applies.
+                }
+
+                return s_accessibilitySettings;
+            }
+        }
+    }
+
+    private static void UiSettings_Changed(UISettings sender, object args) =>
+        InvalidateAnimationCapabilityCache();
+
+    private static void AccessibilitySettings_Changed(
+        AccessibilitySettings sender,
+        object args) =>
+        InvalidateAnimationCapabilityCache();
+
+    private static void InvalidateAnimationCapabilityCache() =>
+        Volatile.Write(ref s_cachedShouldAnimate, -1);
+
     private static bool ReadUiSetting(Func<UISettings, bool> read, bool fallback)
     {
+        UISettings? settings = UiSettingsInstance;
+        if (settings is null)
+        {
+            return fallback;
+        }
+
         try
         {
-            return read(new UISettings());
+            return read(settings);
         }
         catch
         {
@@ -213,9 +337,15 @@ public static class WindowsCompatibilityService
         Func<AccessibilitySettings, bool> read,
         bool fallback)
     {
+        AccessibilitySettings? settings = AccessibilitySettingsInstance;
+        if (settings is null)
+        {
+            return fallback;
+        }
+
         try
         {
-            return read(new AccessibilitySettings());
+            return read(settings);
         }
         catch
         {

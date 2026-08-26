@@ -300,11 +300,15 @@ public abstract partial class WidgetWindowBase
 
         try
         {
-            if (new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+            if (WindowsCompatibilityService.IsHighContrast)
             {
                 borderThickness = Math.Max(1, borderThickness);
-                borderColor = new Windows.UI.ViewManagement.UISettings().GetColorValue(
-                    Windows.UI.ViewManagement.UIColorType.Foreground);
+                if (WindowsCompatibilityService.TryGetUiColor(
+                        Windows.UI.ViewManagement.UIColorType.Foreground) is
+                    { } highContrastForeground)
+                {
+                    borderColor = highContrastForeground;
+                }
             }
         }
         catch

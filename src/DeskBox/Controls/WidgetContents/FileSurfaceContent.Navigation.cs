@@ -1,11 +1,11 @@
 using System.Numerics;
 using DeskBox.Models;
+using DeskBox.Services;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Windows.UI.ViewManagement;
 
 namespace DeskBox.Controls.WidgetContents;
 
@@ -382,15 +382,6 @@ public sealed partial class FileSurfaceContent
         _folderNavigationVisualPrepared = false;
     }
 
-    private static bool AreSystemAnimationsEnabled()
-    {
-        try
-        {
-            return new UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return true;
-        }
-    }
+    private static bool AreSystemAnimationsEnabled() =>
+        WindowsCompatibilityService.AreAnimationsEnabled;
 }
