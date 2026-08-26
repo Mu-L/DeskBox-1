@@ -479,7 +479,14 @@ public class AppSettings
     public bool ShowFileItemPathTooltips { get; set; } = true;
 
     /// <summary>Whether file widgets automatically group related items into stacks.</summary>
-    public bool FileStacksEnabled { get; set; }
+    public bool FileStacksEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Whether loose files are grouped into stacks automatically. Manual
+    /// stacks are always available while <see cref="FileStacksEnabled"/> is
+    /// on; this switch only controls automatic grouping.
+    /// </summary>
+    public bool FileStackAutoStacking { get; set; }
 
     /// <summary>Grouping rule used by automatic file stacks.</summary>
     public string FileStackGroupBy { get; set; } = "Kind";

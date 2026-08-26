@@ -1177,15 +1177,37 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                     <StackPanel Margin="0,8,0,0" Spacing="4">
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
-                            svc:Localized.DescriptionKey="Settings.FileStacks.Mode.Description"
-                            svc:Localized.HeaderKey="Settings.FileStacks.Mode.Title">
+                            svc:Localized.DescriptionKey="Settings.FileStacks.Enable.Description"
+                            svc:Localized.HeaderKey="Settings.FileStacks.Title">
                             <toolkit:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE81E;" />
                             </toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding FileStacksEnabled, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            IsEnabled="{Binding FileStacksEnabled}"
+                            svc:Localized.DescriptionKey="Settings.FileStacks.Auto.Description"
+                            svc:Localized.HeaderKey="Settings.FileStacks.Auto.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8B7;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding FileStackAutoStacking, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            IsEnabled="{Binding FileStackAutoStacking}"
+                            svc:Localized.DescriptionKey="Settings.FileStacks.GroupBy.Description"
+                            svc:Localized.HeaderKey="Settings.FileStacks.GroupBy.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8CB;" />
+                            </toolkit:SettingsCard.HeaderIcon>
                             <ComboBox
                                 MinWidth="{StaticResource SettingsControlMinWidth}"
-                                ItemsSource="{Binding AvailableFileStackModeOptions}"
-                                controls:SettingsComboBox.Value="{Binding SelectedFileStackMode, Mode=TwoWay}" />
+                                ItemsSource="{Binding AvailableFileStackGroupByOptions}"
+                                controls:SettingsComboBox.Value="{Binding SelectedFileStackGroupBy, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
                         <toolkit:SettingsCard
@@ -1231,7 +1253,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
-                            IsEnabled="{Binding FileStacksEnabled}"
+                            IsEnabled="{Binding FileStackAutoStacking}"
                             svc:Localized.DescriptionKey="Settings.FileStacks.Threshold.Description"
                             svc:Localized.HeaderKey="Settings.FileStacks.Threshold.Title">
                             <ComboBox
@@ -1242,7 +1264,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"
-                            IsEnabled="{Binding FileStacksEnabled}"
+                            IsEnabled="{Binding FileStackAutoStacking}"
                             svc:Localized.DescriptionKey="Settings.FileStacks.OrderBy.Description"
                             svc:Localized.HeaderKey="Settings.FileStacks.OrderBy.Title">
                             <ComboBox
@@ -1256,7 +1278,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             Visibility="{Binding FileStackCustomRulesVisibility}">
                             <toolkit:SettingsCard
                                 HorizontalContentAlignment="Right"
-                                IsEnabled="{Binding FileStacksEnabled}"
+                                IsEnabled="{Binding FileStackAutoStacking}"
                                 svc:Localized.DescriptionKey="Settings.FileStacks.Unmatched.Description"
                                 svc:Localized.HeaderKey="Settings.FileStacks.Unmatched.Title">
                                 <ComboBox

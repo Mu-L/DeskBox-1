@@ -32,8 +32,10 @@ public partial class WidgetViewModel
         ? _stackDisplayItems
         : Items;
 
-    public bool UsesStackProjection => FileStacksEnabled ||
-        _stackMemberOverrides.Any(entry => entry.Value.Count >= 2);
+    // The master switch now owns the whole feature, including manual
+    // stacks. Keeping manual stacks alive with the feature disabled made the
+    // master and the automatic-grouping switch indistinguishable.
+    public bool UsesStackProjection => FileStacksEnabled;
 
     public bool FileStacksEnabled
     {
@@ -1276,7 +1278,8 @@ public partial class WidgetViewModel
             return;
         }
 
-        IReadOnlyList<WidgetStackGroup> automaticGroups = FileStacksEnabled
+        IReadOnlyList<WidgetStackGroup> automaticGroups =
+            FileStacksEnabled && _settingsService.Settings.FileStackAutoStacking
             ? WidgetStackGroupingService.Group(
                 Items,
                 FileStackGroupBy,

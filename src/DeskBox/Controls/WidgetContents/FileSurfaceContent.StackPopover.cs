@@ -14,6 +14,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 
 namespace DeskBox.Controls.WidgetContents;
 
@@ -240,6 +241,11 @@ public sealed partial class FileSurfaceContent
         preview.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
         CompositeTransform transform =
             preview.RenderTransform as CompositeTransform ?? new CompositeTransform();
+        // The XAML fan layout leaves rotations on the second and third
+        // previews; folder mode renders a straight 2x2 grid instead.
+        transform.Rotation = 0;
+        transform.SkewX = 0;
+        transform.SkewY = 0;
         transform.ScaleX = scale;
         transform.ScaleY = scale;
         transform.TranslateX = translateX;
@@ -464,6 +470,12 @@ public sealed partial class FileSurfaceContent
                 currentStack,
                 itemsView,
                 layout);
+            // Windows-native popup entrance: soft rise plus fade, matching
+            // the system light-dismiss flyout motion.
+            surface.Transitions = new TransitionCollection
+            {
+                new PopupThemeTransition { FromVerticalOffset = 20 }
+            };
             popup = new Popup
             {
                 Child = surface,

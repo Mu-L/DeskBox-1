@@ -20,7 +20,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 8;
+    public const int CurrentSchemaVersion = 9;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -35,6 +35,7 @@ public sealed class SettingsMigrationPipeline
         _migrations.Add(new Migration_5_To_6());
         _migrations.Add(new Migration_6_To_7());
         _migrations.Add(new Migration_7_To_8());
+        _migrations.Add(new Migration_8_To_9());
     }
 
     /// <summary>
@@ -244,6 +245,24 @@ internal sealed class Migration_6_To_7 : ISettingsMigration
 /// individually selectable effects, and repairs retired unbounded performance
 /// values to finite choices.
 /// </summary>
+/// <summary>
+/// Splits the old stack master switch into the new master/auto pair. Legacy
+/// "enabled" meant automatic grouping, so it maps onto the new auto-stacking
+/// switch. The legacy "off" state kept manual stacks visible, which in the
+/// redesigned model is exactly (master on, auto off) — so every profile ends
+/// up with the master switch on and only automatic grouping opt-in.
+/// </summary>
+internal sealed class Migration_8_To_9 : ISettingsMigration
+{
+    public int FromVersion => 8;
+
+    public void Migrate(AppSettings settings)
+    {
+        settings.FileStackAutoStacking = settings.FileStacksEnabled;
+        settings.FileStacksEnabled = true;
+    }
+}
+
 internal sealed class Migration_7_To_8 : ISettingsMigration
 {
     public int FromVersion => 7;

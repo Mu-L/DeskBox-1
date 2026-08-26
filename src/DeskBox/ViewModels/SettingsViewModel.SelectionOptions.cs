@@ -204,8 +204,6 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableFileWidgetFolderOpenBehaviorOptionItems));
         OnPropertyChanged(nameof(AvailableShowDesktopBehaviorOptions));
         OnPropertyChanged(nameof(AvailableWeatherLocationModeOptions));
-        OnPropertyChanged(nameof(AvailableFileStackModeOptions));
-        OnPropertyChanged(nameof(AvailableFileStackModeOptionItems));
         OnPropertyChanged(nameof(AvailableTrayIconStyleOptions));
         OnPropertyChanged(nameof(AvailableLanguageOptions));
         OnPropertyChanged(nameof(AvailableWidgetCornerPreferenceOptions));

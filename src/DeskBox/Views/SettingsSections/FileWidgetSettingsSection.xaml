@@ -73,12 +73,13 @@
                             </StackPanel>
                         </Grid>
                     </Button>
-                    <ComboBox
+                    <ToggleSwitch
                         Grid.Column="1"
-                        MinWidth="176"
+                        MinWidth="0"
                         VerticalAlignment="Center"
-                        ItemsSource="{x:Bind ViewModel.AvailableFileStackModeOptionItems, Mode=OneWay}"
-                        controls:SettingsComboBox.Value="{x:Bind ViewModel.SelectedFileStackMode, Mode=TwoWay}" />
+                        OnContent=""
+                        OffContent=""
+                        IsOn="{x:Bind ViewModel.FileStacksEnabled, Mode=TwoWay}" />
                     <FontIcon Grid.Column="2" FontSize="12" Glyph="&#xE76C;" IsHitTestVisible="False" VerticalAlignment="Center" />
                 </Grid>
             </Border>

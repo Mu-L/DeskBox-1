@@ -117,14 +117,14 @@ public sealed class SettingsCopyAndHierarchyTests
         Assert.DoesNotContain("IsOn=\"{Binding KeepWidgetsVisibleOnShowDesktop", windowXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("IsOn=\"{Binding WeatherAutoLocation", windowXaml, StringComparison.Ordinal);
 
-        Assert.Contains("SelectedFileStackMode", windowXaml, StringComparison.Ordinal);
-        Assert.Contains("SelectedFileStackMode", fileWidgetXaml, StringComparison.Ordinal);
+        // File stacking is redesigned around an explicit master switch plus
+        // an automatic-grouping sub-switch, so the plain dropdown is gone.
+        Assert.Contains("IsOn=\"{x:Bind ViewModel.FileStacksEnabled, Mode=TwoWay}\"", fileWidgetXaml, StringComparison.Ordinal);
+        Assert.Contains("IsOn=\"{Binding FileStackAutoStacking, Mode=TwoWay}\"", windowXaml, StringComparison.Ordinal);
         Assert.Contains(
             "SelectedFileWidgetFolderOpenBehavior",
             fileWidgetXaml,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("IsOn=\"{Binding FileStacksEnabled", windowXaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("IsOn=\"{Binding FileStacksEnabled", fileWidgetXaml, StringComparison.Ordinal);
 
         Assert.Contains("HoverButtonActionsSummaryText", windowXaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"HoverButtonActionsDropDown_Click\"", windowXaml, StringComparison.Ordinal);
@@ -203,7 +203,9 @@ public sealed class SettingsCopyAndHierarchyTests
             ["Settings.Todo.ShowClearCompleted.Title"] = "清除已完成按钮",
             ["Settings.Onboarding.Description"] = "重新查看格子创建、文件收纳、功能格子、外观和快捷键说明",
             ["Settings.Weather.LocationMode.Title"] = "位置来源",
-            ["Settings.FileStacks.Mode.Title"] = "自动归组",
+            ["Settings.FileStacks.Title"] = "文件叠放",
+            ["Settings.FileStacks.Auto.Title"] = "自动叠放",
+            ["Settings.FileStacks.Status.Manual"] = "仅手动叠放",
             ["Settings.HoverButtonActions.None"] = "不显示"
         };
 
@@ -561,7 +563,7 @@ public sealed class SettingsCopyAndHierarchyTests
             "Settings.ShowDesktopBehavior.HideWithWindows",
             "Settings.Weather.LocationMode.Auto",
             "Settings.Weather.LocationMode.Manual",
-            "Settings.FileStacks.Mode.Off",
+            "Settings.FileStacks.Status.Manual",
             "Settings.HoverButtonActions.None"
         ];
 

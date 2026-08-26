@@ -9,8 +9,8 @@ namespace DeskBox.ViewModels;
 
 public partial class SettingsViewModel
 {
-    private const string FileStackModeOff = "Off";
     private bool _fileStacksEnabled;
+    private bool _fileStackAutoStacking;
     private string _selectedFileStackGroupBy = SettingsService.FileStackGroupByKind;
     private int _selectedFileStackThreshold = SettingsService.DefaultFileStackThreshold;
     private string _selectedFileStackOrderBy = SettingsService.FileStackOrderByWidget;
@@ -59,6 +59,11 @@ public partial class SettingsViewModel
                 return _localizationService.T("Settings.FileStacks.Status.Off");
             }
 
+            if (!FileStackAutoStacking)
+            {
+                return _localizationService.T("Settings.FileStacks.Status.Manual");
+            }
+
             if (SelectedFileStackGroupBy == SettingsService.FileStackGroupByCustom)
             {
                 return _localizationService.Format(
@@ -69,33 +74,6 @@ public partial class SettingsViewModel
             return GetFileStackGroupByDisplayName(SelectedFileStackGroupBy);
         }
     }
-
-    public string SelectedFileStackMode
-    {
-        get => FileStacksEnabled
-            ? SelectedFileStackGroupBy
-            : FileStackModeOff;
-        set
-        {
-            if (string.Equals(value, FileStackModeOff, StringComparison.Ordinal))
-            {
-                FileStacksEnabled = false;
-                return;
-            }
-
-            SelectedFileStackGroupBy = value;
-            FileStacksEnabled = true;
-        }
-    }
-
-    public IReadOnlyList<SettingsOption> AvailableFileStackModeOptions =>
-    [
-        new(FileStackModeOff, _localizationService.T("Settings.FileStacks.Mode.Off")),
-        .. AvailableFileStackGroupByOptions
-    ];
-
-    public object[] AvailableFileStackModeOptionItems =>
-        AvailableFileStackModeOptions.Cast<object>().ToArray();
 
     public bool FileStacksEnabled
     {
@@ -108,7 +86,6 @@ public partial class SettingsViewModel
             }
 
             OnPropertyChanged(nameof(FileStackSettingsSummaryText));
-            OnPropertyChanged(nameof(SelectedFileStackMode));
             OnPropertyChanged(nameof(CanAddFileStackCustomRule));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
@@ -116,6 +93,27 @@ public partial class SettingsViewModel
             }
 
             _settingsService.Settings.FileStacksEnabled = value;
+            _settingsService.SaveDebounced();
+        }
+    }
+
+    public bool FileStackAutoStacking
+    {
+        get => _fileStackAutoStacking;
+        set
+        {
+            if (!SetProperty(ref _fileStackAutoStacking, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(FileStackSettingsSummaryText));
+            if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
+            {
+                return;
+            }
+
+            _settingsService.Settings.FileStackAutoStacking = value;
             _settingsService.SaveDebounced();
         }
     }
@@ -133,7 +131,6 @@ public partial class SettingsViewModel
 
             OnPropertyChanged(nameof(FileStackCustomRulesVisibility));
             OnPropertyChanged(nameof(FileStackSettingsSummaryText));
-            OnPropertyChanged(nameof(SelectedFileStackMode));
             if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
             {
                 return;
@@ -492,6 +489,7 @@ public partial class SettingsViewModel
     private void InitializeFileStackSettings(AppSettings settings)
     {
         _fileStacksEnabled = settings.FileStacksEnabled;
+        _fileStackAutoStacking = settings.FileStackAutoStacking;
         _selectedFileStackGroupBy = SettingsService.NormalizeFileStackGroupBy(
             settings.FileStackGroupBy);
         _selectedFileStackThreshold = SettingsService.NormalizeFileStackThreshold(
@@ -518,6 +516,7 @@ public partial class SettingsViewModel
     private void ApplyFileStackSettingsSnapshot(AppSettings settings)
     {
         FileStacksEnabled = settings.FileStacksEnabled;
+        FileStackAutoStacking = settings.FileStackAutoStacking;
         SelectedFileStackGroupBy = SettingsService.NormalizeFileStackGroupBy(
             settings.FileStackGroupBy);
         SelectedFileStackThreshold = SettingsService.NormalizeFileStackThreshold(
@@ -565,9 +564,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableFileStackPopoverStyleOptions));
         OnPropertyChanged(nameof(SelectedFileStackPopoverStyle));
         OnPropertyChanged(nameof(AvailableFileStackUnmatchedBehaviorDisplayNames));
-        OnPropertyChanged(nameof(AvailableFileStackModeOptions));
-        OnPropertyChanged(nameof(AvailableFileStackModeOptionItems));
-        OnPropertyChanged(nameof(SelectedFileStackMode));
+        OnPropertyChanged(nameof(FileStackAutoStacking));
         OnPropertyChanged(nameof(FileStackSettingsSummaryText));
         UpdateFileStackRulePriorities();
         RefreshFileStackRulePreview();

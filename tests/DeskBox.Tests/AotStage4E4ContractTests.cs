@@ -46,11 +46,6 @@ public sealed class AotStage4E4ContractTests
             1,
             CountOccurrences(
                 xaml,
-                "{x:Bind ViewModel.AvailableFileStackModeOptionItems, Mode=OneWay}"));
-        Assert.Equal(
-            1,
-            CountOccurrences(
-                xaml,
                 "{x:Bind ViewModel.AvailableFileWidgetFolderOpenBehaviorOptionItems, Mode=OneWay}"));
     }
 
@@ -64,7 +59,7 @@ public sealed class AotStage4E4ContractTests
             1,
             CountOccurrences(
                 xaml,
-                "{x:Bind ViewModel.SelectedFileStackMode, Mode=TwoWay}"));
+                "{x:Bind ViewModel.FileStacksEnabled, Mode=TwoWay}"));
         Assert.Equal(
             1,
             CountOccurrences(
@@ -79,7 +74,7 @@ public sealed class AotStage4E4ContractTests
             "src/DeskBox/Views/SettingsSections/FileWidgetSettingsSection.xaml");
 
         Assert.DoesNotContain("{Binding ", xaml, StringComparison.Ordinal);
-        Assert.Equal(5, CountOccurrences(xaml, "{x:Bind ViewModel."));
+        Assert.Equal(4, CountOccurrences(xaml, "{x:Bind ViewModel."));
     }
 
     [Fact]
@@ -113,8 +108,7 @@ public sealed class AotStage4E4ContractTests
             "src/DeskBox/ViewModels/SettingsViewModel.SelectionOptions.cs");
 
         Assert.Contains("OnPropertyChanged(nameof(FileStackSettingsSummaryText));", fileStack, StringComparison.Ordinal);
-        Assert.Contains("OnPropertyChanged(nameof(SelectedFileStackMode));", fileStack, StringComparison.Ordinal);
-        Assert.Contains("OnPropertyChanged(nameof(AvailableFileStackModeOptions));", fileStack, StringComparison.Ordinal);
+        Assert.Contains("OnPropertyChanged(nameof(FileStackAutoStacking));", fileStack, StringComparison.Ordinal);
         Assert.Contains("SetProperty(", featureOptions, StringComparison.Ordinal);
         Assert.Contains("_selectedFileWidgetFolderOpenBehavior", featureOptions, StringComparison.Ordinal);
         Assert.Contains(

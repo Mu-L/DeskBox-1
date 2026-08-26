@@ -156,19 +156,19 @@ public sealed class AotStage5B4B1ContractTests
             weatherData,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ItemsSource=\"{x:Bind ViewModel.AvailableFileStackModeOptionItems, Mode=OneWay}\"",
+            "IsOn=\"{x:Bind ViewModel.FileStacksEnabled, Mode=TwoWay}\"",
             fileWidgetXaml,
             StringComparison.Ordinal);
         Assert.Contains(
             "ItemsSource=\"{x:Bind ViewModel.AvailableFileWidgetFolderOpenBehaviorOptionItems, Mode=OneWay}\"",
             fileWidgetXaml,
             StringComparison.Ordinal);
-        Assert.Contains("AvailableFileStackModeOptions.Cast<object>().ToArray()", fileStackOptions, StringComparison.Ordinal);
+        Assert.Contains("AvailableFileStackPopoverLayoutOptions", fileStackOptions, StringComparison.Ordinal);
         Assert.Contains(
             "AvailableFileWidgetFolderOpenBehaviorOptions.Cast<object>().ToArray()",
             featureOptions,
             StringComparison.Ordinal);
-        Assert.Contains("nameof(AvailableFileStackModeOptionItems)", selectionOptions, StringComparison.Ordinal);
+        Assert.Contains("nameof(AvailableFileWidgetFolderOpenBehaviorOptionItems)", selectionOptions, StringComparison.Ordinal);
         Assert.Contains(
             "nameof(AvailableFileWidgetFolderOpenBehaviorOptionItems)",
             selectionOptions,
@@ -191,7 +191,7 @@ public sealed class AotStage5B4B1ContractTests
             "ItemsSource=\"{x:Bind ViewModel.FileStackCustomRules, Mode=OneWay}\"",
             xaml,
             StringComparison.Ordinal);
-        Assert.Equal(303, CountOccurrences(bindableViewModel, "nameof("));
+        Assert.Equal(304, CountOccurrences(bindableViewModel, "nameof("));
         Assert.Contains("nameof(SelectedWidgetCapsuleBarPlacement)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(ResetAllCapsuleOverridesCommand)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(ResetCapsuleWidthOverridesCommand)", bindableViewModel, StringComparison.Ordinal);
