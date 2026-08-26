@@ -35,6 +35,7 @@ public sealed partial class QuickCaptureSurfaceContent :
     IWidgetHostViewportContent,
     IWidgetInteractiveResizeContent,
     IWidgetAddActionContent,
+    IWidgetGroupContentCacheable,
     IDisposable
 {
     private const string MasterPaneWidthMetadataKey = "QuickCaptureMasterPaneWidth";
@@ -70,6 +71,7 @@ public sealed partial class QuickCaptureSurfaceContent :
     private long _detailSavedRevision;
     private long _detailImageLoadVersion;
     private string? _detailPrimaryImagePath;
+    private string? _detailAttachmentRenderKey;
     private bool _isSynchronizingViewSelection;
     private long _viewSwitchRevision;
     private QuickCaptureItemViewModel? _detailItem;
@@ -145,6 +147,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         _detailAutoSaveTimer.IsRepeating = false;
         _detailAutoSaveTimer.Tick += DetailAutoSaveTimer_Tick;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
         ActualThemeChanged += QuickCaptureSurfaceContent_ActualThemeChanged;
         UpdateSelectedViewVisual();
     }
@@ -160,6 +163,8 @@ public sealed partial class QuickCaptureSurfaceContent :
     public WidgetKind WidgetKind => WidgetKind.QuickCapture;
 
     public FrameworkElement View => this;
+
+    public bool IsReadyForReuse => _isInitialized && !_isDisposed;
 
     public async Task InitializeAsync()
     {
@@ -362,8 +367,23 @@ public sealed partial class QuickCaptureSurfaceContent :
         UpdateSelectedViewVisual();
         ApplyPendingFocus();
         ApplyResponsiveLayout();
+        if (_isInitialized && !_isCreatingDetail)
+        {
+            ReconcileDetailSelection();
+        }
         RefreshItemMaterialSurfaces();
         QueueSegmentedRestore();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        // A cached group member can be detached before its former host settles
+        // a responsive transition. Those flags only describe the old visual
+        // attachment and must not keep the reader hidden when it is reattached.
+        CancelSegmentedRestore();
+        _isResponsiveLayoutTransitionActive = false;
+        _isInteractiveResizeActive = false;
+        _deferDetailReaderUntilTransitionCompletes = false;
     }
 
     private void ResponsiveContentGrid_SizeChanged(
@@ -500,6 +520,15 @@ public sealed partial class QuickCaptureSurfaceContent :
                 item => item.Id == _detailItem.Id);
             if (refreshed is not null)
             {
+                // Cached group members are detached and reattached without
+                // changing their item instances. Reopening the same detail
+                // would rebuild attachment projections and, for image notes,
+                // clear and decode the same 1200px preview again.
+                if (ReferenceEquals(refreshed, _detailItem))
+                {
+                    return;
+                }
+
                 if (_isDetailEditing || _detailHasUnsavedChanges)
                 {
                     _detailItem = refreshed;
@@ -515,9 +544,19 @@ public sealed partial class QuickCaptureSurfaceContent :
             }
         }
 
-        if (ViewModel.Items.FirstOrDefault() is { } first)
+        QuickCaptureItemViewModel? selected =
+            ViewModel.Items.FirstOrDefault(item => item.IsDetailSelected);
+        if (selected is null &&
+            ItemsList.SelectedItem is QuickCaptureItemViewModel listSelection)
         {
-            OpenDetail(first);
+            selected = ViewModel.Items.FirstOrDefault(item =>
+                string.Equals(item.Id, listSelection.Id, StringComparison.Ordinal));
+        }
+
+        selected ??= ViewModel.Items.FirstOrDefault();
+        if (selected is not null)
+        {
+            OpenDetail(selected);
         }
         else
         {
@@ -1109,7 +1148,6 @@ public sealed partial class QuickCaptureSurfaceContent :
                 !isReadOnly && _detailContentFormat == TextContentFormat.Markdown;
             DetailMarkdownEditor.ShowFormattingToolbar =
                 _detailContentFormat == TextContentFormat.Markdown;
-            DispatcherQueue.TryEnqueue(DetailMarkdownView.Refresh);
         }
     }
 
@@ -1727,6 +1765,16 @@ public sealed partial class QuickCaptureSurfaceContent :
                     Type = AttachmentStorageService.GetAttachmentType(file.Path)
                 }))
                 .ToArray();
+        string attachmentRenderKey = CreateDetailAttachmentRenderKey();
+        if (!string.Equals(
+                _detailAttachmentRenderKey,
+                attachmentRenderKey,
+                StringComparison.Ordinal))
+        {
+            _detailAttachmentRenderKey = attachmentRenderKey;
+            DetailMarkdownView.Refresh();
+        }
+
         // ItemsSource crosses the WinRT object-valued dependency-property ABI.
         // Project the typed read-only list to a concrete object array so the
         // empty and populated attachment states both remain Native AOT safe.
@@ -1742,6 +1790,23 @@ public sealed partial class QuickCaptureSurfaceContent :
             ? _detailItem!.ImagePath
             : null;
         _ = RefreshDetailPrimaryImageAsync(primaryImagePath);
+    }
+
+    private string CreateDetailAttachmentRenderKey()
+    {
+        if (_detailItem is { } item)
+        {
+            return item.Id + "\u001D" + string.Join(
+                "\u001F",
+                item.Attachments.Select(attachment =>
+                    attachment.Id + "\u001E" + attachment.FilePath));
+        }
+
+        return _isCreatingDetail
+            ? "new\u001D" + string.Join(
+                "\u001F",
+                _pendingDetailAttachments.Select(attachment => attachment.Path))
+            : string.Empty;
     }
 
     private async Task RefreshDetailPrimaryImageAsync(string? imagePath)
@@ -2413,10 +2478,18 @@ public sealed partial class QuickCaptureSurfaceContent :
             e.DataView.Contains(StandardDataFormats.Text) ||
             e.DataView.Contains(StandardDataFormats.WebLink))
         {
-            e.AcceptedOperation = DeskBoxDragData.HasDroppedFiles(e.DataView)
+            bool hasFiles = DeskBoxDragData.HasDroppedFiles(e.DataView);
+            e.AcceptedOperation = hasFiles
                 ? DeskBoxDragData.GetFileAssociationOperation(e.DataView)
                 : DataPackageOperation.Copy;
-            e.DragUIOverride.IsCaptionVisible = false;
+            if (hasFiles)
+            {
+                ApplyFileAssociationDragFeedback(e);
+            }
+            else
+            {
+                e.DragUIOverride.IsCaptionVisible = false;
+            }
             e.Handled = true;
         }
     }
@@ -2511,8 +2584,68 @@ public sealed partial class QuickCaptureSurfaceContent :
         e.Handled = true;
         e.AcceptedOperation =
             DeskBoxDragData.GetFileAssociationOperation(e.DataView);
-        e.DragUIOverride.IsGlyphVisible = true;
+        ApplyFileAssociationDragFeedback(e);
         ApplyQuickCaptureItemDropState(border, active: true);
+    }
+
+    private void ApplyFileAssociationDragFeedback(DragEventArgs e)
+    {
+        if (!DeskBoxDragData.IsInternalFileDrag(e.DataView))
+        {
+            SuppressNativeFileDragOverride(e);
+            return;
+        }
+
+        e.DragUIOverride.IsContentVisible = true;
+        e.DragUIOverride.IsGlyphVisible = true;
+        e.DragUIOverride.IsCaptionVisible = true;
+        e.DragUIOverride.Caption = T(
+            "Widget.Compact.QuickCaptureDropHint");
+    }
+
+    private static void SuppressNativeFileDragOverride(DragEventArgs e)
+    {
+        e.DragUIOverride.IsContentVisible = false;
+        e.DragUIOverride.IsGlyphVisible = false;
+        e.DragUIOverride.IsCaptionVisible = false;
+    }
+
+    internal async Task<bool> ImportNativeDroppedFilesAsync(
+        IReadOnlyList<DroppedFilePath> files,
+        QuickCaptureItemViewModel? targetItem)
+    {
+        if (files.Count == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            QuickCaptureItemViewModel? imported = targetItem is null
+                ? await ViewModel.AddItemWithAttachmentsAsync(files)
+                : await ViewModel.AddAttachmentsAsync(targetItem, files);
+            if (imported is null)
+            {
+                return false;
+            }
+
+            RaiseFeedback(
+                T("QuickCapture.Dropped"),
+                WidgetFeedbackSeverity.Success,
+                targetItem is null ? "quick-native-drop" : "quick-native-attach");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[WidgetSurface] Quick Capture native file drop failed " +
+                $"id={WidgetId}: {ex}");
+            RaiseFeedback(
+                T("Common.OperationFailedRetry"),
+                WidgetFeedbackSeverity.Error,
+                "quick-native-drop-error");
+            return false;
+        }
     }
 
     private void QuickCaptureItem_DragLeave(
@@ -3122,6 +3255,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         DetailPrimaryImage.Source = null;
         CancelSegmentedRestore();
         Loaded -= OnLoaded;
+        Unloaded -= OnUnloaded;
         ActualThemeChanged -= QuickCaptureSurfaceContent_ActualThemeChanged;
         if (_detailAutoSaveTimer is not null)
         {

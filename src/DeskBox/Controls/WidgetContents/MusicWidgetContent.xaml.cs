@@ -337,8 +337,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         StopTitleMarquee();
         StopRecordVinylRotation();
         StopRecordHorizontalVinylRotation();
-        if (!ContinuousDecorativeAnimationsEnabled() ||
-            !IsLoaded ||
+        if (!IsLoaded ||
             !_isHostWindowVisible ||
             _isHostCompactCollapsed)
         {
@@ -745,7 +744,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostCompactCollapsed &&
             RecordLayout.Visibility == Visibility.Visible &&
             ViewModel?.IsPlaying == true &&
-            ContinuousDecorativeAnimationsEnabled() &&
+            VinylRotationAnimationsEnabled() &&
             AreSystemAnimationsEnabled();
         if (shouldRotate == _isRecordVinylRotating)
         {
@@ -847,7 +846,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostCompactCollapsed &&
             RecordHorizontalLayout.Visibility == Visibility.Visible &&
             ViewModel?.IsPlaying == true &&
-            ContinuousDecorativeAnimationsEnabled() &&
+            VinylRotationAnimationsEnabled() &&
             AreSystemAnimationsEnabled();
         if (shouldRotate == _isRecordHorizontalVinylRotating)
         {
@@ -1313,7 +1312,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
             ViewModel?.IsPlaying != true ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !TextMarqueeAnimationsEnabled() ||
             !AreSystemAnimationsEnabled())
         {
             return;
@@ -1332,7 +1331,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
             ViewModel?.IsPlaying != true ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !TextMarqueeAnimationsEnabled() ||
             !AreSystemAnimationsEnabled())
         {
             return;
@@ -1347,7 +1346,7 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
             !_isHostWindowVisible ||
             _isHostCompactCollapsed ||
             ViewModel?.IsPlaying != true ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !TextMarqueeAnimationsEnabled() ||
             !AreSystemAnimationsEnabled())
         {
             return;
@@ -1425,12 +1424,20 @@ public sealed partial class MusicWidgetContent : UserControl, IDisposable
         return WindowsCompatibilityService.ShouldAnimate;
     }
 
-    private static bool ContinuousDecorativeAnimationsEnabled()
+    private static bool TextMarqueeAnimationsEnabled()
     {
         return Application.Current is not App app ||
             app.SettingsService is null ||
             PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings)
-                .AllowContinuousDecorativeAnimations;
+                .AllowTextMarqueeAnimations;
+    }
+
+    private static bool VinylRotationAnimationsEnabled()
+    {
+        return Application.Current is not App app ||
+            app.SettingsService is null ||
+            PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings)
+                .AllowVinylRotationAnimations;
     }
 
     private double MeasureTitleWidth()

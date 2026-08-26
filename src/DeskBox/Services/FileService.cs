@@ -56,10 +56,16 @@ public sealed partial class FileService
         "A folder cannot be copied or moved into itself or one of its subfolders.";
     private static readonly TimeSpan ShortcutMetadataTimeout =
         TimeSpan.FromMilliseconds(1500);
+    internal const int MaxShellKindCacheEntries = 4096;
     private readonly LocalizationService? _localizationService;
     private static readonly ConcurrentDictionary<string, string> s_shellKindCache =
         new(StringComparer.OrdinalIgnoreCase);
-    private sealed record TransferOperation(string SourcePath, string DestinationPath);
+    private static readonly Queue<string> s_shellKindCacheOrder = new();
+    private static readonly object s_shellKindCacheGate = new();
+    private sealed record TransferOperation(
+        string SourcePath,
+        string DestinationPath,
+        bool SourceIsDirectory = false);
 
     private sealed record FileSystemEntrySnapshot(
         string Path,
@@ -75,6 +81,68 @@ public sealed partial class FileService
 
     public sealed record FileTransferResult(string SourcePath, string DestinationPath);
 
+    public interface IFileTransferWithCompletedResults
+    {
+        IReadOnlyList<FileTransferResult> CompletedResults { get; }
+    }
+
+    public sealed class FileTransferSourceCleanupException : IOException,
+        IFileTransferWithCompletedResults
+    {
+        internal FileTransferSourceCleanupException(
+            string sourcePath,
+            string destinationPath,
+            Exception innerException)
+            : base(
+                "The files were copied successfully, but source cleanup did " +
+                "not finish. The complete destination was kept to protect " +
+                "the data.",
+                innerException)
+        {
+            CompletedResults =
+            [
+                new FileTransferResult(sourcePath, destinationPath)
+            ];
+        }
+
+        public IReadOnlyList<FileTransferResult> CompletedResults { get; }
+    }
+
+    public sealed class FileTransferCanceledException : OperationCanceledException,
+        IFileTransferWithCompletedResults
+    {
+        internal FileTransferCanceledException(
+            IReadOnlyList<FileTransferResult> completedResults,
+            CancellationToken cancellationToken)
+            : base(
+                "The Windows file operation was canceled after completing " +
+                $"{completedResults.Count} item(s).",
+                innerException: null,
+                cancellationToken)
+        {
+            CompletedResults = completedResults;
+        }
+
+        public IReadOnlyList<FileTransferResult> CompletedResults { get; }
+    }
+
+    public sealed class FileTransferPartialFailureException : IOException,
+        IFileTransferWithCompletedResults
+    {
+        internal FileTransferPartialFailureException(
+            IReadOnlyList<FileTransferResult> completedResults,
+            Exception? innerException = null)
+            : base(
+                "The Windows file operation completed only part of the " +
+                $"request ({completedResults.Count} item(s) completed).",
+                innerException)
+        {
+            CompletedResults = completedResults;
+        }
+
+        public IReadOnlyList<FileTransferResult> CompletedResults { get; }
+    }
+
     private const uint FoMove = 0x0001;
     private const uint FoDelete = 0x0003;
     private const ushort FofNoConfirmMkDir = 0x0200;
@@ -89,6 +157,13 @@ public sealed partial class FileService
     {
         _localizationService = localizationService;
     }
+
+    /// <summary>
+    /// Tracks active copy and move operations for all file surfaces that share
+    /// this service instance. The registry is UI-only state and never owns a
+    /// filesystem handle.
+    /// </summary>
+    public FileTransferSessionRegistry TransferSessions { get; } = new();
 
     /// <summary>
     /// Enumerate all files and folders in a directory and create WidgetItem models.
@@ -622,8 +697,40 @@ public sealed partial class FileService
         }
 
         kind = kind.Trim().ToLowerInvariant();
-        s_shellKindCache[path] = kind;
+        CacheShellKind(path, kind);
         return kind;
+    }
+
+    internal static int ShellKindCacheEntryCount => s_shellKindCache.Count;
+
+    internal static void CacheShellKind(string path, string kind)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(kind);
+
+        lock (s_shellKindCacheGate)
+        {
+            if (!s_shellKindCache.TryAdd(path, kind))
+            {
+                return;
+            }
+
+            s_shellKindCacheOrder.Enqueue(path);
+            while (s_shellKindCache.Count > MaxShellKindCacheEntries &&
+                   s_shellKindCacheOrder.TryDequeue(out string? oldestPath))
+            {
+                s_shellKindCache.TryRemove(oldestPath, out _);
+            }
+        }
+    }
+
+    internal static void ClearShellKindCache()
+    {
+        lock (s_shellKindCacheGate)
+        {
+            s_shellKindCache.Clear();
+            s_shellKindCacheOrder.Clear();
+        }
     }
 
     public Task<int> CountVisibleChildrenAsync(string folderPath)
@@ -911,7 +1018,9 @@ public sealed partial class FileService
         string destinationFolder,
         bool move,
         IProgress<FileTransferProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool useShellProgress = false,
+        IntPtr ownerWindowHandle = default)
     {
         // Directory.Exists/File.Exists can block for a disconnected UNC or
         // network provider. Keep all planning and probing off the UI thread.
@@ -947,6 +1056,8 @@ public sealed partial class FileService
         return await ExecuteTransferPlanAsync(
             plans,
             move,
+            useShellProgress: useShellProgress,
+            ownerWindowHandle: ownerWindowHandle,
             progress: progress,
             cancellationToken: cancellationToken);
     }
@@ -967,9 +1078,14 @@ public sealed partial class FileService
             cancellationToken.ThrowIfCancellationRequested();
             var plannedOperations = plans
                 .Where(plan => !string.IsNullOrWhiteSpace(plan.SourcePath) && !string.IsNullOrWhiteSpace(plan.DestinationPath))
-                .Select(plan => new TransferOperation(
-                    Path.GetFullPath(plan.SourcePath),
-                    Path.GetFullPath(plan.DestinationPath)))
+                .Select(plan =>
+                {
+                    string sourcePath = Path.GetFullPath(plan.SourcePath);
+                    return new TransferOperation(
+                        sourcePath,
+                        Path.GetFullPath(plan.DestinationPath),
+                        Directory.Exists(sourcePath));
+                })
                 .Where(operation =>
                     (File.Exists(operation.SourcePath) || Directory.Exists(operation.SourcePath)) &&
                     !string.Equals(operation.SourcePath, operation.DestinationPath, StringComparison.OrdinalIgnoreCase))
@@ -978,6 +1094,40 @@ public sealed partial class FileService
             EnsureSafeDirectoryTransfers(plannedOperations);
             return plannedOperations;
         }, cancellationToken);
+
+        using FileTransferSessionLease transferSession =
+            TransferSessions.Begin(
+                operations.Select(operation => new FileTransferRegistration(
+                    operation.SourcePath,
+                    operation.DestinationPath,
+                    operation.SourceIsDirectory)),
+                move);
+
+        if (useShellProgress)
+        {
+#if !DESKBOX_NATIVE_AOT
+            // Interactive imports use the modern Windows Shell operation on a
+            // dedicated STA thread. It owns enumeration, conflicts, errors,
+            // cancellation and the native progress window for both copy and
+            // move operations.
+            return await ExecuteModernShellTransferPlanAsync(
+                operations,
+                move,
+                ownerWindowHandle,
+                progress,
+                cancellationToken);
+#else
+            // The staged Native AOT profile still uses the validated legacy
+            // move bridge. Copy operations fall through to the safe managed
+            // engine until a source-generated/native Shell bridge is gated.
+            if (move)
+            {
+                return await ExecuteShellMovePlanAsync(
+                    operations,
+                    ownerWindowHandle);
+            }
+#endif
+        }
 
         if (progress is not null || cancellationToken.CanBeCanceled)
         {
@@ -991,13 +1141,6 @@ public sealed partial class FileService
                     progress,
                     cancellationToken),
                 CancellationToken.None);
-        }
-
-        if (move && useShellProgress)
-        {
-            return await ExecuteShellMovePlanAsync(
-                operations,
-                ownerWindowHandle);
         }
 
         if (move && operations.Any(operation => !CanUseAtomicMove(
@@ -1817,35 +1960,26 @@ public sealed partial class FileService
         {
         }
 
-        Directory.CreateDirectory(destinationDirectory);
-
-        var completedChildOperations = new List<TransferOperation>();
+        // Keep the source tree intact until a complete destination tree exists.
+        // A recursive child-by-child move can leave an untracked split tree if
+        // deleting a source directory fails after its children were moved.
+        await CopyDirectoryAsync(sourceDirectory, destinationDirectory);
         try
         {
-            foreach (string filePath in Directory.EnumerateFiles(sourceDirectory))
-            {
-                string destinationFilePath = GetAvailableDestinationPath(destinationDirectory, Path.GetFileName(filePath));
-                await MoveFileAsync(filePath, destinationFilePath);
-                completedChildOperations.Add(new TransferOperation(filePath, destinationFilePath));
-            }
-
-            foreach (string subDirectory in Directory.EnumerateDirectories(sourceDirectory))
-            {
-                string folderName = Path.GetFileName(subDirectory);
-                string destinationSubDirectory = GetAvailableDestinationPath(destinationDirectory, folderName);
-                await MoveDirectoryAsync(subDirectory, destinationSubDirectory);
-                completedChildOperations.Add(new TransferOperation(subDirectory, destinationSubDirectory));
-            }
+            await Task.Run(
+                () => Directory.Delete(sourceDirectory, recursive: true));
         }
-        catch
+        catch (Exception ex) when (
+            ex is UnauthorizedAccessException or IOException)
         {
-            await RollbackTransfersAsync(completedChildOperations, move: true);
-            throw;
-        }
-
-        if (!Directory.EnumerateFileSystemEntries(sourceDirectory).Any())
-        {
-            Directory.Delete(sourceDirectory, recursive: false);
+            App.Log(
+                $"[FileTransfer] Directory copy completed but source cleanup " +
+                $"failed source='{sourceDirectory}' " +
+                $"destination='{destinationDirectory}': {ex}");
+            throw new FileTransferSourceCleanupException(
+                sourceDirectory,
+                destinationDirectory,
+                ex);
         }
     }
 

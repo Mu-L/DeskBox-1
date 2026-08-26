@@ -13,8 +13,14 @@ public sealed partial class QuickCaptureWidgetViewModel
 {
     private void OnQuickCaptureChanged()
     {
-        if (_isDisposed || !_isWindowRefreshEnabled)
+        if (_isDisposed)
         {
+            return;
+        }
+
+        if (!_isWindowRefreshEnabled)
+        {
+            Interlocked.Exchange(ref _windowRefreshDirty, 1);
             return;
         }
 
@@ -183,29 +189,6 @@ public sealed partial class QuickCaptureWidgetViewModel
 
         _cachedData = data;
         await RefreshFromDataAsync(data);
-    }
-
-    private void RefreshVisibleItemsFromCacheOrService()
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        if (!_dispatcherQueue.HasThreadAccess)
-        {
-            _dispatcherQueue.TryEnqueue(RefreshVisibleItemsFromCacheOrService);
-            return;
-        }
-
-        _searchRefreshTimer.Stop();
-        if (_cachedData is { } data)
-        {
-            _ = RefreshFromDataAsync(data);
-            return;
-        }
-
-        RefreshVisibleItemsAsync().LogQuickCaptureFailure();
     }
 
     private void ScheduleVisibleItemsRefresh()

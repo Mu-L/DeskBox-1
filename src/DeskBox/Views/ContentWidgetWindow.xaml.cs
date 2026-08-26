@@ -34,7 +34,6 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
     private readonly WidgetShellContentHost _contentHost;
     private readonly ContentWidgetTitleViewModel _titleViewModel;
     private readonly Task _contentLoadTask;
-    private const int CachedGroupContentCapacity = 2;
     private const int RevealCompletedBackgroundDelayMs = 240;
     private readonly Dictionary<string, IWidgetContent> _cachedGroupContents =
         new(StringComparer.Ordinal);

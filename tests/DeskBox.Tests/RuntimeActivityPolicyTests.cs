@@ -15,8 +15,29 @@ public sealed class RuntimeActivityPolicyTests
         Assert.False(tracker.Observe(start, isEligible: true));
         Assert.False(tracker.Observe(start.AddSeconds(29), isEligible: true));
         Assert.True(tracker.Observe(start.AddSeconds(30), isEligible: true));
+        tracker.CommitMaintenance(start.AddSeconds(30));
         Assert.False(tracker.Observe(start.AddSeconds(89), isEligible: true));
         Assert.True(tracker.Observe(start.AddSeconds(90), isEligible: true));
+    }
+
+    [Fact]
+    public void VisibleIdleMemoryTracker_DueObservationDoesNotConsumeCooldown()
+    {
+        var tracker = new VisibleIdleMemoryTracker(
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(60));
+        DateTimeOffset start = new(2026, 8, 11, 10, 0, 0, TimeSpan.Zero);
+
+        Assert.False(tracker.Observe(start, isEligible: true));
+        Assert.True(tracker.Observe(start.AddSeconds(30), isEligible: true));
+
+        // The caller found no useful maintenance work. The next five-second
+        // timer tick must be allowed to retry instead of waiting a full cooldown.
+        Assert.True(tracker.Observe(start.AddSeconds(35), isEligible: true));
+
+        tracker.CommitMaintenance(start.AddSeconds(35));
+        Assert.False(tracker.Observe(start.AddSeconds(94), isEligible: true));
+        Assert.True(tracker.Observe(start.AddSeconds(95), isEligible: true));
     }
 
     [Fact]
@@ -32,6 +53,25 @@ public sealed class RuntimeActivityPolicyTests
         Assert.False(tracker.Observe(start.AddSeconds(21), isEligible: true));
         Assert.False(tracker.Observe(start.AddSeconds(50), isEligible: true));
         Assert.True(tracker.Observe(start.AddSeconds(51), isEligible: true));
+    }
+
+    [Fact]
+    public void VisibleIdleMemoryTracker_ReconfigureRestartsTheIdleWindow()
+    {
+        var tracker = new VisibleIdleMemoryTracker(
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(60));
+        DateTimeOffset start = new(2026, 8, 11, 10, 0, 0, TimeSpan.Zero);
+
+        Assert.False(tracker.Observe(start, isEligible: true));
+        tracker.Configure(
+            TimeSpan.FromMinutes(10),
+            TimeSpan.FromMinutes(10));
+        Assert.False(tracker.Observe(start.AddMinutes(10), isEligible: true));
+        Assert.False(tracker.Observe(
+            start.AddMinutes(19).AddSeconds(59),
+            isEligible: true));
+        Assert.True(tracker.Observe(start.AddMinutes(20), isEligible: true));
     }
 
     [Fact]
@@ -155,6 +195,45 @@ public sealed class RuntimeActivityPolicyTests
     }
 
     [Fact]
+    public void VisibleIdleWorkingSetTrim_RequiresBothThresholdsAndNoVisualWork()
+    {
+        var snapshot = new MemoryCleanupActivitySnapshot(
+            HasVisibleWidgets: true,
+            IsWidgetInteractionActive: false,
+            IsSettingsOpen: false,
+            IsOnboardingOpen: false,
+            IsSearchPopupVisible: false,
+            IsDeskBoxForeground: false,
+            IsPointerOverDeskBox: false);
+
+        Assert.True(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
+            snapshot,
+            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
+            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
+            hasActiveVisualWork: false));
+        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
+            snapshot,
+            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes - 1,
+            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
+            hasActiveVisualWork: false));
+        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
+            snapshot,
+            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
+            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold - 1,
+            hasActiveVisualWork: false));
+        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
+            snapshot,
+            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
+            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
+            hasActiveVisualWork: true));
+        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
+            snapshot with { IsPointerOverDeskBox = true },
+            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
+            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
+            hasActiveVisualWork: false));
+    }
+
+    [Fact]
     public void WidgetCompactWarmupPolicy_AllowsReadyIdleCollapsedWindow()
     {
         Assert.True(WidgetCompactWarmupPolicy.CanRun(CreateWarmupSnapshot()));
@@ -199,6 +278,40 @@ public sealed class RuntimeActivityPolicyTests
         Assert.False(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
             snapshot,
             MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes - 1));
+    }
+
+    [Fact]
+    public void ResourceSaverWorkingSetTrim_RequiresInactiveUiAndHighUsageOrPressure()
+    {
+        var snapshot = new MemoryCleanupActivitySnapshot(
+            HasVisibleWidgets: false,
+            IsWidgetInteractionActive: false,
+            IsSettingsOpen: false,
+            IsOnboardingOpen: false,
+            IsSearchPopupVisible: false,
+            IsDeskBoxForeground: false,
+            IsPointerOverDeskBox: false);
+
+        Assert.True(MemoryCleanupPolicy.ShouldTrimResourceSaverHiddenWorkingSet(
+            snapshot,
+            MemoryCleanupPolicy.ResourceSaverWorkingSetTrimHighBytes,
+            memoryLoadBytes: 0,
+            highMemoryLoadThresholdBytes: 1_000));
+        Assert.True(MemoryCleanupPolicy.ShouldTrimResourceSaverHiddenWorkingSet(
+            snapshot,
+            MemoryCleanupPolicy.ResourceSaverWorkingSetTrimMinimumBytes,
+            memoryLoadBytes: 850,
+            highMemoryLoadThresholdBytes: 1_000));
+        Assert.False(MemoryCleanupPolicy.ShouldTrimResourceSaverHiddenWorkingSet(
+            snapshot,
+            MemoryCleanupPolicy.ResourceSaverWorkingSetTrimMinimumBytes,
+            memoryLoadBytes: 849,
+            highMemoryLoadThresholdBytes: 1_000));
+        Assert.False(MemoryCleanupPolicy.ShouldTrimResourceSaverHiddenWorkingSet(
+            snapshot with { HasVisibleWidgets = true },
+            MemoryCleanupPolicy.ResourceSaverWorkingSetTrimHighBytes,
+            memoryLoadBytes: 1_000,
+            highMemoryLoadThresholdBytes: 1_000));
     }
 
     [Theory]

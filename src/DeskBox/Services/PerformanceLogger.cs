@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using DeskBox.Helpers;
 
 namespace DeskBox.Services;
 
@@ -52,6 +54,13 @@ public static class PerformanceLogger
     /// <summary>Music cover decode count since launch.</summary>
     public static int MusicCoverDecodeCount => Volatile.Read(ref s_musicCoverDecodeCount);
 
+    /// <summary>Markdown visual-tree rebuild count since launch.</summary>
+    public static int MarkdownRenderCount => Volatile.Read(ref s_markdownRenderCount);
+
+    /// <summary>Markdown inline bitmap creation count since launch.</summary>
+    public static int MarkdownInlineImageDecodeCount =>
+        Volatile.Read(ref s_markdownInlineImageDecodeCount);
+
     /// <summary>Active music progress timer count.</summary>
     public static int ActiveMusicTimerCount { get; set; }
 
@@ -71,12 +80,24 @@ public static class PerformanceLogger
     public static int MusicProgressTimerIntervalMs { get; set; }
 
     private static int s_musicCoverDecodeCount;
+    private static int s_markdownRenderCount;
+    private static int s_markdownInlineImageDecodeCount;
     private static int s_transientUiTimerCreatedCount;
     private static int s_transientUiTimerReleasedCount;
 
     public static void RecordMusicCoverDecode()
     {
         Interlocked.Increment(ref s_musicCoverDecodeCount);
+    }
+
+    public static void RecordMarkdownRender()
+    {
+        Interlocked.Increment(ref s_markdownRenderCount);
+    }
+
+    public static void RecordMarkdownInlineImageDecode()
+    {
+        Interlocked.Increment(ref s_markdownInlineImageDecodeCount);
     }
 
     public static void RecordTransientUiTimerCreated()
@@ -140,6 +161,9 @@ public static class PerformanceLogger
             LastGcHeapSize = gcInfo.HeapSizeBytes;
             LastGcFragmentedBytes = gcInfo.FragmentedBytes;
             LastGcMemoryLoad = gcInfo.MemoryLoadBytes;
+            long lohSizeBytes = gcInfo.GenerationInfo.Length > 3
+                ? gcInfo.GenerationInfo[3].SizeAfterBytes
+                : 0;
 
             var app = App.Current;
             string everythingState = app.EverythingSearchService?.CurrentSnapshot.State.ToString()
@@ -149,6 +173,21 @@ public static class PerformanceLogger
                 DeskBox.Models.WidgetKind.Search);
             int loadedWidgetCount = app.WidgetManager?.LoadedWidgetCount ?? 0;
             int visibleWidgetCount = app.WidgetManager?.VisibleWidgetCount ?? 0;
+            int surfaceSwitchGateCount =
+                app.WidgetManager?.SurfaceSwitchGateCount ?? 0;
+            int activeFolderWatcherCount =
+                app.WidgetManager?.ActiveFolderWatcherCount ?? 0;
+            int cachedGroupContentCount =
+                app.WidgetManager?.CachedGroupContentCount ?? 0;
+            EffectivePerformanceSettings performance =
+                PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings);
+#if DESKBOX_NATIVE_AOT
+            const string runtimeProfile = "native-aot";
+#else
+            string runtimeProfile = RuntimeFeature.IsDynamicCodeSupported
+                ? "managed-jit"
+                : "managed-aot";
+#endif
 
             int windowCount = 0;
             foreach (var kv in s_windowCounts)
@@ -158,19 +197,28 @@ public static class PerformanceLogger
 
             App.Log(
                 $"[Perf] MemorySample " +
+                $"pid={proc.Id} " +
+                $"version={typeof(PerformanceLogger).Assembly.GetName().Version} " +
+                $"runtime={runtimeProfile} " +
+                $"performanceMode={performance.Mode} " +
+                $"cacheBudget={IconHelper.CurrentPerformanceCacheBudget} " +
                 $"workingSetMB={LastWorkingSet / (1024.0 * 1024):F1} " +
                 $"privateMB={LastPrivateMemory / (1024.0 * 1024):F1} " +
                 $"managedHeapMB={LastManagedHeap / (1024.0 * 1024):F1} " +
                 $"gcHeapMB={LastGcHeapSize / (1024.0 * 1024):F1} " +
                 $"gcFragmentedMB={LastGcFragmentedBytes / (1024.0 * 1024):F1} " +
+                $"lohMB={lohSizeBytes / (1024.0 * 1024):F1} " +
                 $"gcMemoryLoadMB={LastGcMemoryLoad / (1024.0 * 1024):F1} " +
                 $"handles={LastHandleCount} " +
                 $"thumbCache={ThumbnailCacheCount} " +
                 $"thumbCacheMB={ThumbnailEstimatedBytes / (1024.0 * 1024):F1} " +
                 $"iconCache={IconCacheCount} " +
+                $"shellKindCache={FileService.ShellKindCacheEntryCount} " +
                 $"decodedBitmapCache={DecodedBitmapCacheCount} " +
                 $"decodedBitmapMB={DecodedBitmapEstimatedBytes / (1024.0 * 1024):F1} " +
                  $"musicCoverDecodes={MusicCoverDecodeCount} " +
+                 $"markdownRenders={MarkdownRenderCount} " +
+                 $"markdownImageDecodes={MarkdownInlineImageDecodeCount} " +
                  $"musicTimers={ActiveMusicTimerCount} " +
                  $"musicTimerIntervalMs={MusicProgressTimerIntervalMs} " +
                  $"transientUiTimers={ActiveTransientUiTimerCount} " +
@@ -178,8 +226,11 @@ public static class PerformanceLogger
                  $"transientUiTimersReleased={TransientUiTimerReleasedCount} " +
                  $"windows={windowCount} " +
                 $"loadedWidgets={loadedWidgetCount} " +
-                $"visibleWidgets={visibleWidgetCount} " +
-                 $"searchEnabled={searchEnabled} " +
+                 $"visibleWidgets={visibleWidgetCount} " +
+                 $"surfaceSwitchGates={surfaceSwitchGateCount} " +
+                 $"activeFolderWatchers={activeFolderWatcherCount} " +
+                 $"cachedGroupContents={cachedGroupContentCount} " +
+                  $"searchEnabled={searchEnabled} " +
                  $"everythingState={everythingState} " +
                  $"everythingConnected={app.IsEverythingSearchConnected} " +
                  $"searchPopupCreated={app.IsSearchPopupCreated} " +

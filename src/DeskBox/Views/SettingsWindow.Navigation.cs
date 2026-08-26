@@ -1074,6 +1074,24 @@ public sealed partial class SettingsWindow
             ViewModel.ToggleWeatherDisplayOption);
     }
 
+    private void ContinuousDecorativeAnimationsDropDown_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not DropDownButton button)
+        {
+            return;
+        }
+
+        SettingsMultiSelectMenu.Show(
+            button,
+            ViewModel.AvailableContinuousDecorativeAnimationOptions,
+            ViewModel.GetContinuousDecorativeAnimationDisplayName,
+            ViewModel.IsContinuousDecorativeAnimationSelected,
+            _ => true,
+            ViewModel.ToggleContinuousDecorativeAnimation);
+    }
+
     private void HoverButtonActionsDropDown_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not DropDownButton button)

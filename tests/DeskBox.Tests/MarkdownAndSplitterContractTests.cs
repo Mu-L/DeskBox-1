@@ -146,8 +146,9 @@ public sealed class MarkdownAndSplitterContractTests
 
         Assert.Contains("UpdateForegrounds();", reader, StringComparison.Ordinal);
         Assert.Contains("_documentText.Foreground = _contentForeground", reader, StringComparison.Ordinal);
+        Assert.Contains("ForegroundProperty,", reader, StringComparison.Ordinal);
         Assert.Contains(
-            "RegisterPropertyChangedCallback(ForegroundProperty",
+            "InvalidateRenderForAppearanceChange(\"foreground\")",
             reader,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -242,6 +243,41 @@ public sealed class MarkdownAndSplitterContractTests
     }
 
     [Fact]
+    public void Reader_ReusesItsVisualTreeUntilContentOrWidthDependentLayoutChanges()
+    {
+        string reader = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/MarkdownDocumentView.cs"));
+        string quickCapture = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+
+        Assert.Contains("private bool _renderInvalidated = true", reader, StringComparison.Ordinal);
+        Assert.Contains("if (!_renderInvalidated || !_isLoaded || _renderQueued)", reader, StringComparison.Ordinal);
+        Assert.Contains("QueueWidthDependentRender(args.NewSize.Width)", reader, StringComparison.Ordinal);
+        Assert.Contains("WidthRenderDebounceMilliseconds = 160", reader, StringComparison.Ordinal);
+        Assert.Contains("_renderDependsOnWidth = true;", reader, StringComparison.Ordinal);
+        Assert.Contains("public void Refresh() => InvalidateRender(\"explicit-refresh\");", reader, StringComparison.Ordinal);
+        Assert.Contains("_renderInvalidationRequiresRender", reader, StringComparison.Ordinal);
+        Assert.Contains("GetRenderState().Equals(_lastRenderedState)", reader, StringComparison.Ordinal);
+        Assert.Contains("private readonly record struct MarkdownRenderState", reader, StringComparison.Ordinal);
+        Assert.Contains("PerformanceLogger.RecordMarkdownRender();", reader, StringComparison.Ordinal);
+        Assert.Contains("PerformanceLogger.RecordMarkdownInlineImageDecode();", reader, StringComparison.Ordinal);
+        Assert.Contains("CreateDetailAttachmentRenderKey", quickCapture, StringComparison.Ordinal);
+
+        int presentationStart = quickCapture.IndexOf(
+            "private void RefreshDetailPresentation()",
+            StringComparison.Ordinal);
+        int presentationEnd = quickCapture.IndexOf(
+            "private void DetailEditButton_Click",
+            presentationStart,
+            StringComparison.Ordinal);
+        Assert.True(presentationStart >= 0 && presentationEnd > presentationStart);
+        Assert.DoesNotContain(
+            "DetailMarkdownView.Refresh",
+            quickCapture[presentationStart..presentationEnd],
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SegmentedTabs_LeaveWidthCalculationToToolkitDuringResponsiveLayout()
     {
         string helper = File.ReadAllText(TestPaths.FromRepository(
@@ -295,8 +331,8 @@ public sealed class MarkdownAndSplitterContractTests
 
         Assert.Contains("completionFallback", shell, StringComparison.Ordinal);
         Assert.Contains("profile.DurationMilliseconds + 250", shell, StringComparison.Ordinal);
-        Assert.Contains("completionFallback.Tick", shell, StringComparison.Ordinal);
-        Assert.Contains("completionFallback?.Stop()", shell, StringComparison.Ordinal);
+        Assert.Contains("Task.Delay(completionFallbackDelay)", shell, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueue.TryEnqueue(() => Settle(cancelled: false))", shell, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -568,6 +604,45 @@ public sealed class MarkdownAndSplitterContractTests
             itemSyncCode.IndexOf("SetViewSwitchLoading(false);", StringComparison.Ordinal) <
             itemSyncCode.IndexOf("ItemsViewTransitionToken++;", StringComparison.Ordinal),
             "The completed view state must be visible before detail subscribers reconcile the empty tab.");
+    }
+
+    [Fact]
+    public void QuickCapture_ReattachKeepsListStillAndRestoresSelectedDetail()
+    {
+        string xaml = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml"));
+        string code = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/QuickCaptureSurfaceContent.xaml.cs"));
+        XNamespace xamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement itemsList = XDocument.Parse(xaml)
+            .Descendants()
+            .Single(element =>
+                string.Equals(
+                    (string?)element.Attribute(xamlNamespace + "Name"),
+                    "ItemsList",
+                    StringComparison.Ordinal));
+        XElement transitions = itemsList.Elements()
+            .Single(element =>
+                string.Equals(
+                    element.Name.LocalName,
+                    "ListView.ItemContainerTransitions",
+                    StringComparison.Ordinal));
+
+        Assert.Equal("TransitionCollection", transitions.Elements().Single().Name.LocalName);
+        Assert.Empty(transitions.Elements().Single().Elements());
+        Assert.Contains("Unloaded += OnUnloaded", code, StringComparison.Ordinal);
+        Assert.Contains("Unloaded -= OnUnloaded", code, StringComparison.Ordinal);
+        Assert.Contains("_deferDetailReaderUntilTransitionCompletes = false;", code, StringComparison.Ordinal);
+        Assert.Contains("if (_isInitialized && !_isCreatingDetail)", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "ViewModel.Items.FirstOrDefault(item => item.IsDetailSelected)",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (ReferenceEquals(refreshed, _detailItem))",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains("ItemsList.SelectedItem is QuickCaptureItemViewModel listSelection", code, StringComparison.Ordinal);
     }
 
     [Fact]

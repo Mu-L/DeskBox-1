@@ -125,4 +125,37 @@ public sealed class Windows10WidgetMotionContractTests
         Assert.Contains("Win32Helper.DeferWindowPos", trayDriver, StringComparison.Ordinal);
         Assert.Contains("TrySetHighResolutionTimer", clockBoost, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TrayToggleQueue_WaitsForBatchCompletion_AndHotkeyRegistersAfterRestore()
+    {
+        string trayDriver = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetTrayBatchAnimationDriver.cs"));
+        string widgetManager = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetManager.cs"));
+        string trayAnimation = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Services/WidgetManager.TrayAnimation.cs"));
+        string app = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/App.xaml.cs"));
+
+        Assert.Contains("public Task WaitForIdleAsync()", trayDriver, StringComparison.Ordinal);
+        Assert.Contains("idleCompletion?.TrySetResult();", trayDriver, StringComparison.Ordinal);
+        Assert.Contains(
+            "await _trayBatchAnimationDriver.WaitForIdleAsync();",
+            widgetManager,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await _trayBatchAnimationDriver.WaitForIdleAsync();",
+            trayAnimation,
+            StringComparison.Ordinal);
+
+        int restoreIndex = app.IndexOf(
+            "await WidgetManager.RestoreWidgetsAsync();",
+            StringComparison.Ordinal);
+        int hotkeyIndex = app.IndexOf(
+            "InitializeGlobalHotkeyService(localizationService);",
+            StringComparison.Ordinal);
+        Assert.True(restoreIndex >= 0);
+        Assert.True(hotkeyIndex > restoreIndex);
+    }
 }

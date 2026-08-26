@@ -23,6 +23,32 @@ public sealed class WidgetCompactInteractionPolicyTests
                 hasRecentRoutedEvidence));
     }
 
+    [Theory]
+    [InlineData(true, true, true, false, false, true)]
+    [InlineData(false, true, true, false, false, false)]
+    [InlineData(true, false, true, false, false, false)]
+    [InlineData(true, true, false, false, false, false)]
+    [InlineData(true, true, true, true, false, false)]
+    [InlineData(true, true, true, false, true, false)]
+    public void HoverSuppression_ReleasesOnlyForNewIntentOnSettledCapsule(
+        bool establishesNewIntent,
+        bool targetCollapsed,
+        bool shellCollapsed,
+        bool boundsTransitionActive,
+        bool shellTransitionActive,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WidgetCompactInteractionPolicy
+                .CanReleaseHoverSuppressionAfterRoutedPointerIntent(
+                    establishesNewIntent,
+                    targetCollapsed,
+                    shellCollapsed,
+                    boundsTransitionActive,
+                    shellTransitionActive));
+    }
+
     [Fact]
     public void RoutedPointerAuthorityLifetime_CoversLongestHoverDelayAndTwoRecoveryProbes()
     {

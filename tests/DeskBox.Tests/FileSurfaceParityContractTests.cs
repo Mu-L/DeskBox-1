@@ -214,6 +214,45 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
+    public void InteractiveImports_DelegateCopyAndMoveToModernWindowsShell()
+    {
+        string root = FindRepositoryRoot();
+        string fileService = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/FileService.cs"));
+        string shellTransfer = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/FileService.ShellTransfer.cs"));
+        string surface = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+        string itemVisuals = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs"));
+        string progressUi = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ImportProgress.cs"));
+
+        Assert.Contains(
+            "ExecuteModernShellTransferPlanAsync(",
+            fileService,
+            StringComparison.Ordinal);
+        Assert.Contains("IFileOperationNative", shellTransfer, StringComparison.Ordinal);
+        Assert.Contains("thread.SetApartmentState(ApartmentState.STA)", shellTransfer, StringComparison.Ordinal);
+        Assert.Contains("fileOperation.SetOwnerWindow(ownerWindowHandle)", shellTransfer, StringComparison.Ordinal);
+        Assert.Contains("useShellProgress: true", surface, StringComparison.Ordinal);
+        Assert.Contains("useShellProgress: true", itemVisuals, StringComparison.Ordinal);
+        Assert.Contains(
+            "case FileService.FileTransferPhase.DelegatedToShell:",
+            progressUi,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ImportProgressCard.Visibility = Visibility.Collapsed",
+            progressUi,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void HeadlessCrossVolumeMoves_UseManagedChunkedTransfer()
     {
         string source = File.ReadAllText(Path.Combine(
@@ -349,11 +388,11 @@ public sealed class FileSurfaceParityContractTests
         Assert.DoesNotContain("GetSurfaceDropCaption", surface, StringComparison.Ordinal);
         Assert.DoesNotContain("HideExternalDragContent", surface, StringComparison.Ordinal);
         Assert.Contains(
-            "if (payload.IsInternalReorder)",
+            "if (payload.IsDeskBoxFileDrag)",
             itemVisuals,
             StringComparison.Ordinal);
         Assert.Contains(
-            "if (!payload.IsInternalReorder && payload.HasSurfacePathData)",
+            "if (!payload.IsDeskBoxFileDrag && payload.HasSurfacePathData)",
             itemVisuals,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -866,8 +905,12 @@ public sealed class FileSurfaceParityContractTests
             "ApplyStackPopoverLayout(stack)",
             stackPopover,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "filter.Visibility = layout.ShowFilter",
+        Assert.DoesNotContain(
+            "StackPopoverFilter",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SearchPlaceholder",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -875,7 +918,7 @@ public sealed class FileSurfaceParityContractTests
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
-            "UpdateStackPopoverScrollPolicy(visible.Length)",
+            "UpdateStackPopoverScrollPolicy(_stackPopoverMembers.Length)",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(

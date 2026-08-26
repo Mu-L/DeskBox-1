@@ -20,7 +20,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -34,6 +34,7 @@ public sealed class SettingsMigrationPipeline
         _migrations.Add(new Migration_4_To_5());
         _migrations.Add(new Migration_5_To_6());
         _migrations.Add(new Migration_6_To_7());
+        _migrations.Add(new Migration_7_To_8());
     }
 
     /// <summary>
@@ -235,5 +236,50 @@ internal sealed class Migration_6_To_7 : ISettingsMigration
         settings.SearchEverythingEnabled = false;
         settings.SearchEverythingExecutablePath = string.Empty;
         settings.SearchEverythingAdvancedSyntaxEnabled = false;
+    }
+}
+
+/// <summary>
+/// Replaces the legacy all-or-nothing decorative-animation switch with
+/// individually selectable effects, and repairs retired unbounded performance
+/// values to finite choices.
+/// </summary>
+internal sealed class Migration_7_To_8 : ISettingsMigration
+{
+    public int FromVersion => 7;
+
+    public void Migrate(AppSettings settings)
+    {
+        bool legacyAnimationsEnabled =
+            settings.EnableContinuousDecorativeAnimations;
+        settings.EnableTextMarqueeAnimations = legacyAnimationsEnabled;
+        settings.EnableVinylRotationAnimations = legacyAnimationsEnabled;
+        settings.EnableCompactAmbientAnimations = legacyAnimationsEnabled;
+
+        // Glance image rotation was independent of the retired switch. Preserve
+        // the existing user-visible behavior during upgrade.
+        settings.EnableGlanceImageAutoRotation = true;
+
+        bool retiredBestVisual = string.Equals(
+                settings.PerformanceMode,
+                PerformanceSettingsPolicy.ModeBestVisual,
+                StringComparison.OrdinalIgnoreCase);
+        if (retiredBestVisual)
+        {
+            PerformanceSettingsPolicy.ApplyPreset(
+                settings,
+                PerformanceSettingsPolicy.ModeBalanced);
+            return;
+        }
+
+        settings.HiddenCacheCleanupDelaySeconds =
+            PerformanceSettingsPolicy.NormalizeHiddenCacheCleanupDelaySeconds(
+                settings.HiddenCacheCleanupDelaySeconds);
+        settings.VisibleIdleCacheCleanupDelaySeconds =
+            PerformanceSettingsPolicy.NormalizeVisibleIdleCacheCleanupDelaySeconds(
+                settings.VisibleIdleCacheCleanupDelaySeconds);
+        settings.TransientWindowReleaseDelaySeconds =
+            PerformanceSettingsPolicy.NormalizeTransientWindowReleaseDelaySeconds(
+                settings.TransientWindowReleaseDelaySeconds);
     }
 }

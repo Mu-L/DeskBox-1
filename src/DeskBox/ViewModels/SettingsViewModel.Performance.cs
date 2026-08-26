@@ -9,44 +9,110 @@ public partial class SettingsViewModel
         PerformanceSettingsPolicy.DefaultMode;
     private int _selectedHiddenCacheCleanupDelaySeconds =
         PerformanceSettingsPolicy.DefaultHiddenCacheCleanupDelaySeconds;
-    private bool _enableContinuousDecorativeAnimations =
-        PerformanceSettingsPolicy.DefaultContinuousDecorativeAnimationsEnabled;
+    private int _selectedVisibleIdleCacheCleanupDelaySeconds =
+        PerformanceSettingsPolicy.DefaultVisibleIdleCacheCleanupDelaySeconds;
+    private int _selectedTransientWindowReleaseDelaySeconds =
+        PerformanceSettingsPolicy.DefaultTransientWindowReleaseDelaySeconds;
+    private string _selectedPerformanceCacheBudget =
+        PerformanceSettingsPolicy.DefaultCacheBudget;
+    private bool _enableTextMarqueeAnimations =
+        PerformanceSettingsPolicy.DefaultTextMarqueeAnimationsEnabled;
+    private bool _enableVinylRotationAnimations =
+        PerformanceSettingsPolicy.DefaultVinylRotationAnimationsEnabled;
+    private bool _enableGlanceImageAutoRotation =
+        PerformanceSettingsPolicy.DefaultGlanceImageAutoRotationEnabled;
+    private bool _enableCompactAmbientAnimations =
+        PerformanceSettingsPolicy.DefaultCompactAmbientAnimationsEnabled;
 
-    public IReadOnlyList<SettingsOption> AvailablePerformanceModeOptions =>
-    [
-        new(
-            PerformanceSettingsPolicy.ModeBestVisual,
-            _localizationService.T("Settings.Performance.Mode.BestVisual")),
-        new(
-            PerformanceSettingsPolicy.ModeBalanced,
-            _localizationService.T("Settings.Performance.Mode.Balanced")),
-        new(
-            PerformanceSettingsPolicy.ModeResourceSaver,
-            _localizationService.T("Settings.Performance.Mode.ResourceSaver")),
-        new(
-            PerformanceSettingsPolicy.ModeCustom,
-            _localizationService.T("Settings.Performance.Mode.Custom"))
-    ];
+    public IReadOnlyList<SettingsOption> AvailablePerformanceModeOptions
+    {
+        get
+        {
+            var options = new List<SettingsOption>
+            {
+                new(
+                    PerformanceSettingsPolicy.ModeBalanced,
+                    _localizationService.T("Settings.Performance.Mode.Balanced")),
+                new(
+                    PerformanceSettingsPolicy.ModeResourceSaver,
+                    _localizationService.T("Settings.Performance.Mode.ResourceSaver"))
+            };
+            if (string.Equals(
+                    _selectedPerformanceMode,
+                    PerformanceSettingsPolicy.ModeCustom,
+                    StringComparison.Ordinal))
+            {
+                options.Add(new(
+                    PerformanceSettingsPolicy.ModeCustom,
+                    _localizationService.T("Settings.Performance.Mode.Custom")));
+            }
+
+            return options;
+        }
+    }
 
     public IReadOnlyList<SettingsOption>
         AvailableHiddenCacheCleanupDelayOptions =>
     [
-        new(
+        CreateCleanupDelayOption(
             PerformanceSettingsPolicy.CleanupAfter30Seconds,
-            _localizationService.T(
-                "Settings.Performance.HiddenCleanup.30Seconds")),
-        new(
+            "Settings.Performance.HiddenCleanup.30Seconds"),
+        CreateCleanupDelayOption(
             PerformanceSettingsPolicy.CleanupAfter1Minute,
-            _localizationService.T(
-                "Settings.Performance.HiddenCleanup.1Minute")),
-        new(
+            "Settings.Performance.HiddenCleanup.1Minute"),
+        CreateCleanupDelayOption(
             PerformanceSettingsPolicy.CleanupAfter5Minutes,
-            _localizationService.T(
-                "Settings.Performance.HiddenCleanup.5Minutes")),
+            "Settings.Performance.HiddenCleanup.5Minutes")
+    ];
+
+    public IReadOnlyList<SettingsOption>
+        AvailableVisibleIdleCacheCleanupDelayOptions =>
+    [
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter30Seconds,
+            "Settings.Performance.HiddenCleanup.30Seconds"),
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter1Minute,
+            "Settings.Performance.HiddenCleanup.1Minute"),
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter5Minutes,
+            "Settings.Performance.HiddenCleanup.5Minutes"),
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter10Minutes,
+            "Settings.Performance.HiddenCleanup.10Minutes"),
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter15Minutes,
+            "Settings.Performance.HiddenCleanup.15Minutes")
+    ];
+
+    public IReadOnlyList<SettingsOption>
+        AvailableTransientWindowReleaseDelayOptions =>
+    [
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter30Seconds,
+            "Settings.Performance.HiddenCleanup.30Seconds"),
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter1Minute,
+            "Settings.Performance.HiddenCleanup.1Minute"),
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter2Minutes,
+            "Settings.Performance.HiddenCleanup.2Minutes"),
+        CreateCleanupDelayOption(
+            PerformanceSettingsPolicy.CleanupAfter10Minutes,
+            "Settings.Performance.HiddenCleanup.10Minutes")
+    ];
+
+    public IReadOnlyList<SettingsOption> AvailablePerformanceCacheBudgetOptions =>
+    [
         new(
-            PerformanceSettingsPolicy.CleanupNever,
-            _localizationService.T(
-                "Settings.Performance.HiddenCleanup.Never"))
+            PerformanceSettingsPolicy.CacheBudgetSmall,
+            _localizationService.T("Settings.Performance.CacheBudget.Small")),
+        new(
+            PerformanceSettingsPolicy.CacheBudgetBalanced,
+            _localizationService.T("Settings.Performance.CacheBudget.Balanced")),
+        new(
+            PerformanceSettingsPolicy.CacheBudgetLarge,
+            _localizationService.T("Settings.Performance.CacheBudget.Large"))
     ];
 
     public string SelectedPerformanceMode
@@ -59,6 +125,8 @@ public partial class SettingsViewModel
             {
                 return;
             }
+
+            OnPropertyChanged(nameof(AvailablePerformanceModeOptions));
 
             if (_isRestoringDefaults)
             {
@@ -87,40 +155,158 @@ public partial class SettingsViewModel
                 return;
             }
 
-            if (_isRestoringDefaults)
-            {
-                return;
-            }
-
-            AppSettings settings = _settingsService.Settings;
-            settings.HiddenCacheCleanupDelaySeconds = normalized;
-            SwitchPerformanceModeToCustom(settings);
-            _settingsService.SaveDebounced();
+            UpdateCustomPerformanceSetting(settings =>
+                settings.HiddenCacheCleanupDelaySeconds = normalized);
         }
     }
 
-    public bool EnableContinuousDecorativeAnimations
+    public int SelectedVisibleIdleCacheCleanupDelaySeconds
     {
-        get => _enableContinuousDecorativeAnimations;
+        get => _selectedVisibleIdleCacheCleanupDelaySeconds;
         set
         {
+            int normalized = PerformanceSettingsPolicy
+                .NormalizeVisibleIdleCacheCleanupDelaySeconds(value);
             if (!SetProperty(
-                    ref _enableContinuousDecorativeAnimations,
-                    value))
+                    ref _selectedVisibleIdleCacheCleanupDelaySeconds,
+                    normalized))
             {
                 return;
             }
 
-            if (_isRestoringDefaults)
-            {
-                return;
-            }
-
-            AppSettings settings = _settingsService.Settings;
-            settings.EnableContinuousDecorativeAnimations = value;
-            SwitchPerformanceModeToCustom(settings);
-            _settingsService.SaveDebounced();
+            UpdateCustomPerformanceSetting(settings =>
+                settings.VisibleIdleCacheCleanupDelaySeconds = normalized);
         }
+    }
+
+    public int SelectedTransientWindowReleaseDelaySeconds
+    {
+        get => _selectedTransientWindowReleaseDelaySeconds;
+        set
+        {
+            int normalized = PerformanceSettingsPolicy
+                .NormalizeTransientWindowReleaseDelaySeconds(value);
+            if (!SetProperty(
+                    ref _selectedTransientWindowReleaseDelaySeconds,
+                    normalized))
+            {
+                return;
+            }
+
+            UpdateCustomPerformanceSetting(settings =>
+                settings.TransientWindowReleaseDelaySeconds = normalized);
+        }
+    }
+
+    public string SelectedPerformanceCacheBudget
+    {
+        get => _selectedPerformanceCacheBudget;
+        set
+        {
+            string normalized =
+                PerformanceSettingsPolicy.NormalizeCacheBudget(value);
+            if (!SetProperty(ref _selectedPerformanceCacheBudget, normalized))
+            {
+                return;
+            }
+
+            UpdateCustomPerformanceSetting(settings =>
+                settings.PerformanceCacheBudget = normalized);
+        }
+    }
+
+    public IReadOnlyList<string> AvailableContinuousDecorativeAnimationOptions =>
+        PerformanceSettingsPolicy.SupportedDecorativeAnimationOptions;
+
+    public string ContinuousDecorativeAnimationsSummaryText
+    {
+        get
+        {
+            string[] selected = AvailableContinuousDecorativeAnimationOptions
+                .Where(IsContinuousDecorativeAnimationSelected)
+                .ToArray();
+            if (selected.Length == 0)
+            {
+                return _localizationService.T("Common.Off");
+            }
+
+            if (selected.Length == AvailableContinuousDecorativeAnimationOptions.Count)
+            {
+                return _localizationService.T(
+                    "Settings.Performance.DecorativeAnimations.All");
+            }
+
+            return string.Join(
+                _localizationService.IsChinese ? "、" : ", ",
+                selected.Select(GetContinuousDecorativeAnimationDisplayName));
+        }
+    }
+
+    public bool IsContinuousDecorativeAnimationSelected(string option) =>
+        option switch
+        {
+            PerformanceSettingsPolicy.DecorativeAnimationTextMarquee =>
+                _enableTextMarqueeAnimations,
+            PerformanceSettingsPolicy.DecorativeAnimationVinylRotation =>
+                _enableVinylRotationAnimations,
+            PerformanceSettingsPolicy.DecorativeAnimationGlanceRotation =>
+                _enableGlanceImageAutoRotation,
+            PerformanceSettingsPolicy.DecorativeAnimationCompactAmbient =>
+                _enableCompactAmbientAnimations,
+            _ => false
+        };
+
+    public string GetContinuousDecorativeAnimationDisplayName(string option) =>
+        option switch
+        {
+            PerformanceSettingsPolicy.DecorativeAnimationTextMarquee =>
+                _localizationService.T(
+                    "Settings.Performance.DecorativeAnimations.Marquee"),
+            PerformanceSettingsPolicy.DecorativeAnimationVinylRotation =>
+                _localizationService.T(
+                    "Settings.Performance.DecorativeAnimations.Vinyl"),
+            PerformanceSettingsPolicy.DecorativeAnimationGlanceRotation =>
+                _localizationService.T(
+                    "Settings.Performance.DecorativeAnimations.GlanceRotation"),
+            PerformanceSettingsPolicy.DecorativeAnimationCompactAmbient =>
+                _localizationService.T(
+                    "Settings.Performance.DecorativeAnimations.Ambient"),
+            _ => option
+        };
+
+    public void ToggleContinuousDecorativeAnimation(string option)
+    {
+        switch (option)
+        {
+            case PerformanceSettingsPolicy.DecorativeAnimationTextMarquee:
+                _enableTextMarqueeAnimations = !_enableTextMarqueeAnimations;
+                break;
+            case PerformanceSettingsPolicy.DecorativeAnimationVinylRotation:
+                _enableVinylRotationAnimations = !_enableVinylRotationAnimations;
+                break;
+            case PerformanceSettingsPolicy.DecorativeAnimationGlanceRotation:
+                _enableGlanceImageAutoRotation = !_enableGlanceImageAutoRotation;
+                break;
+            case PerformanceSettingsPolicy.DecorativeAnimationCompactAmbient:
+                _enableCompactAmbientAnimations = !_enableCompactAmbientAnimations;
+                break;
+            default:
+                return;
+        }
+
+        OnPropertyChanged(nameof(ContinuousDecorativeAnimationsSummaryText));
+        UpdateCustomPerformanceSetting(settings =>
+        {
+            settings.EnableTextMarqueeAnimations = _enableTextMarqueeAnimations;
+            settings.EnableVinylRotationAnimations = _enableVinylRotationAnimations;
+            settings.EnableGlanceImageAutoRotation = _enableGlanceImageAutoRotation;
+            settings.EnableCompactAmbientAnimations = _enableCompactAmbientAnimations;
+            settings.EnableContinuousDecorativeAnimations =
+                _enableTextMarqueeAnimations &&
+                _enableVinylRotationAnimations &&
+                _enableGlanceImageAutoRotation &&
+                _enableCompactAmbientAnimations;
+        });
     }
 
     private void InitializePerformanceSettings(AppSettings settings)
@@ -130,8 +316,12 @@ public partial class SettingsViewModel
         _selectedPerformanceMode = effective.Mode;
         _selectedHiddenCacheCleanupDelaySeconds =
             effective.HiddenCacheCleanupDelaySeconds;
-        _enableContinuousDecorativeAnimations =
-            effective.AllowContinuousDecorativeAnimations;
+        _selectedVisibleIdleCacheCleanupDelaySeconds =
+            effective.VisibleIdleCacheCleanupDelaySeconds;
+        _selectedTransientWindowReleaseDelaySeconds =
+            effective.TransientWindowReleaseDelaySeconds;
+        _selectedPerformanceCacheBudget = effective.CacheBudget;
+        ApplyContinuousDecorativeAnimationSelection(effective);
     }
 
     private void ApplyPerformanceSettingsSnapshot(AppSettings settings)
@@ -141,8 +331,12 @@ public partial class SettingsViewModel
         SelectedPerformanceMode = effective.Mode;
         SelectedHiddenCacheCleanupDelaySeconds =
             effective.HiddenCacheCleanupDelaySeconds;
-        EnableContinuousDecorativeAnimations =
-            effective.AllowContinuousDecorativeAnimations;
+        SelectedVisibleIdleCacheCleanupDelaySeconds =
+            effective.VisibleIdleCacheCleanupDelaySeconds;
+        SelectedTransientWindowReleaseDelaySeconds =
+            effective.TransientWindowReleaseDelaySeconds;
+        SelectedPerformanceCacheBudget = effective.CacheBudget;
+        ApplyContinuousDecorativeAnimationSelection(effective);
     }
 
     private void RefreshPerformanceSelectionProperties(
@@ -155,29 +349,46 @@ public partial class SettingsViewModel
 
         OnPropertyChanged(nameof(AvailablePerformanceModeOptions));
         OnPropertyChanged(nameof(AvailableHiddenCacheCleanupDelayOptions));
+        OnPropertyChanged(nameof(AvailableVisibleIdleCacheCleanupDelayOptions));
+        OnPropertyChanged(nameof(AvailableTransientWindowReleaseDelayOptions));
+        OnPropertyChanged(nameof(AvailablePerformanceCacheBudgetOptions));
+        OnPropertyChanged(nameof(ContinuousDecorativeAnimationsSummaryText));
     }
 
     private void SynchronizePerformanceDetailSelection(AppSettings settings)
     {
         EffectivePerformanceSettings effective =
             PerformanceSettingsPolicy.Resolve(settings);
-        if (_selectedHiddenCacheCleanupDelaySeconds !=
-            effective.HiddenCacheCleanupDelaySeconds)
+        SynchronizePerformanceProperty(
+            ref _selectedHiddenCacheCleanupDelaySeconds,
+            effective.HiddenCacheCleanupDelaySeconds,
+            nameof(SelectedHiddenCacheCleanupDelaySeconds));
+        SynchronizePerformanceProperty(
+            ref _selectedVisibleIdleCacheCleanupDelaySeconds,
+            effective.VisibleIdleCacheCleanupDelaySeconds,
+            nameof(SelectedVisibleIdleCacheCleanupDelaySeconds));
+        SynchronizePerformanceProperty(
+            ref _selectedTransientWindowReleaseDelaySeconds,
+            effective.TransientWindowReleaseDelaySeconds,
+            nameof(SelectedTransientWindowReleaseDelaySeconds));
+        SynchronizePerformanceProperty(
+            ref _selectedPerformanceCacheBudget,
+            effective.CacheBudget,
+            nameof(SelectedPerformanceCacheBudget));
+        ApplyContinuousDecorativeAnimationSelection(effective);
+    }
+
+    private void UpdateCustomPerformanceSetting(Action<AppSettings> update)
+    {
+        if (_isRestoringDefaults)
         {
-            _selectedHiddenCacheCleanupDelaySeconds =
-                effective.HiddenCacheCleanupDelaySeconds;
-            OnPropertyChanged(
-                nameof(SelectedHiddenCacheCleanupDelaySeconds));
+            return;
         }
 
-        if (_enableContinuousDecorativeAnimations !=
-            effective.AllowContinuousDecorativeAnimations)
-        {
-            _enableContinuousDecorativeAnimations =
-                effective.AllowContinuousDecorativeAnimations;
-            OnPropertyChanged(
-                nameof(EnableContinuousDecorativeAnimations));
-        }
+        AppSettings settings = _settingsService.Settings;
+        update(settings);
+        SwitchPerformanceModeToCustom(settings);
+        _settingsService.SaveDebounced();
     }
 
     private void SwitchPerformanceModeToCustom(AppSettings settings)
@@ -192,6 +403,42 @@ public partial class SettingsViewModel
         }
 
         _selectedPerformanceMode = PerformanceSettingsPolicy.ModeCustom;
+        OnPropertyChanged(nameof(AvailablePerformanceModeOptions));
         OnPropertyChanged(nameof(SelectedPerformanceMode));
+    }
+
+    private void SynchronizePerformanceProperty<T>(
+        ref T field,
+        T value,
+        string propertyName)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        OnPropertyChanged(propertyName);
+    }
+
+    private SettingsOption CreateCleanupDelayOption(int value, string key) =>
+        new(value, _localizationService.T(key));
+
+    private void ApplyContinuousDecorativeAnimationSelection(
+        EffectivePerformanceSettings effective)
+    {
+        bool changed =
+            _enableTextMarqueeAnimations != effective.AllowTextMarqueeAnimations ||
+            _enableVinylRotationAnimations != effective.AllowVinylRotationAnimations ||
+            _enableGlanceImageAutoRotation != effective.AllowGlanceImageAutoRotation ||
+            _enableCompactAmbientAnimations != effective.AllowCompactAmbientAnimations;
+        _enableTextMarqueeAnimations = effective.AllowTextMarqueeAnimations;
+        _enableVinylRotationAnimations = effective.AllowVinylRotationAnimations;
+        _enableGlanceImageAutoRotation = effective.AllowGlanceImageAutoRotation;
+        _enableCompactAmbientAnimations = effective.AllowCompactAmbientAnimations;
+        if (changed)
+        {
+            OnPropertyChanged(nameof(ContinuousDecorativeAnimationsSummaryText));
+        }
     }
 }

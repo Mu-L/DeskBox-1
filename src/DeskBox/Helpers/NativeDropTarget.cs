@@ -5,6 +5,23 @@ using DeskBox.Services;
 namespace DeskBox.Helpers;
 
 /// <summary>
+/// Complete intent information captured at the native OLE Drop boundary.
+/// The legacy <see cref="NativeDropTarget.DropEvent"/> remains available for
+/// consumers that only need copy/move, while this event preserves modifier
+/// state for asynchronous imports.
+/// </summary>
+public sealed record NativeDropIntentEventArgs(
+    IReadOnlyList<string> Paths,
+    int ScreenX,
+    int ScreenY,
+    bool ContainsTemporaryFiles,
+    bool CopyRequested,
+    bool ShortcutRequested,
+    bool RightButtonDrag,
+    uint FeedbackEffect,
+    uint KeyState);
+
+/// <summary>
 /// COM IDropTarget implementation that bridges native OLE drag-drop to .NET events.
 /// Replaces the legacy WM_DROPFILES approach, providing real-time drag-over feedback.
 /// </summary>
@@ -116,6 +133,7 @@ public sealed class NativeDropTarget : IDisposable
     private readonly IntPtr _hwnd;
     private readonly NativeDropTargetComObject _comObject;
     private readonly Func<bool> _defaultMoveProvider;
+    private readonly Func<bool>? _followWindowsProvider;
     private readonly Func<uint, NativeDropDescriptionText?>? _dropDescriptionProvider;
     private readonly Func<bool>? _useShellVisualProvider;
     private readonly NativeDropImageManager? _dropImageManager;
@@ -125,6 +143,7 @@ public sealed class NativeDropTarget : IDisposable
     private NativeDropDescriptionText? _lastDropDescriptionText;
     private bool _shellVisualActive;
     private bool _registered;
+    private bool _rightButtonDragActive;
 
     private sealed record ShellApplicationDropItem(
         string AppUserModelId,
@@ -141,6 +160,13 @@ public sealed class NativeDropTarget : IDisposable
 
     /// <summary>Fired when files are dropped. Provides the list of file paths and screen coordinates.</summary>
     public event Action<IReadOnlyList<string>, int, int, bool, bool>? DropEvent;
+
+    /// <summary>
+    /// Fired with the complete native drop intent. This is preferred by
+    /// asynchronous consumers that need Alt/Ctrl+Shift shortcut and right
+    /// button drag state after the OLE callback has released its data object.
+    /// </summary>
+    public event Action<NativeDropIntentEventArgs>? DropIntentEvent;
 
     /// <summary>
     /// Whether the current drag payload contains file drop data (CF_HDROP).
@@ -181,7 +207,8 @@ public sealed class NativeDropTarget : IDisposable
             hwnd,
             defaultMoveProvider,
             dropDescriptionProvider: null,
-            useShellVisualProvider: null)
+            useShellVisualProvider: null,
+            followWindowsProvider: null)
     {
     }
 
@@ -189,10 +216,12 @@ public sealed class NativeDropTarget : IDisposable
         IntPtr hwnd,
         Func<bool>? defaultMoveProvider,
         Func<uint, NativeDropDescriptionText?>? dropDescriptionProvider,
-        Func<bool>? useShellVisualProvider = null)
+        Func<bool>? useShellVisualProvider = null,
+        Func<bool>? followWindowsProvider = null)
     {
         _hwnd = hwnd;
         _defaultMoveProvider = defaultMoveProvider ?? (() => true);
+        _followWindowsProvider = followWindowsProvider;
         _dropDescriptionProvider = dropDescriptionProvider;
         _useShellVisualProvider = useShellVisualProvider;
         _comObject = new NativeDropTargetComObject(this);
@@ -265,6 +294,8 @@ public sealed class NativeDropTarget : IDisposable
         ref uint effect)
     {
         EndNativeDragVisual();
+        _rightButtonDragActive =
+            NativeDropEffectPolicy.IsRightButtonDrag(keyState);
         uint allowedEffects = effect;
         InspectDragData(dataObject);
         DragEnterEvent?.Invoke(point.X, point.Y, HasFileData);
@@ -275,7 +306,8 @@ public sealed class NativeDropTarget : IDisposable
             keyState,
             allowedEffects,
             HasShellApplicationData,
-            _defaultMoveProvider());
+            _defaultMoveProvider(),
+            followWindows: GetFollowWindowsSetting());
         if (HasFileData)
         {
             RetainActiveDataObject(dataObject);
@@ -290,6 +322,8 @@ public sealed class NativeDropTarget : IDisposable
         ref uint effect)
     {
         uint allowedEffects = effect;
+        _rightButtonDragActive |=
+            NativeDropEffectPolicy.IsRightButtonDrag(keyState);
         DragOverEvent?.Invoke(point.X, point.Y);
 
         effect = NativeDropEffectPolicy.ResolveFeedbackEffect(
@@ -298,7 +332,8 @@ public sealed class NativeDropTarget : IDisposable
             keyState,
             allowedEffects,
             HasShellApplicationData,
-            _defaultMoveProvider());
+            _defaultMoveProvider(),
+            followWindows: GetFollowWindowsSetting());
         UpdateShellVisual(point, effect);
         return S_OK;
     }
@@ -307,6 +342,7 @@ public sealed class NativeDropTarget : IDisposable
     {
         EndNativeDragVisual();
         ResetDragDataState();
+        _rightButtonDragActive = false;
         DragLeaveEvent?.Invoke();
         return S_OK;
     }
@@ -319,14 +355,19 @@ public sealed class NativeDropTarget : IDisposable
     {
         uint allowedEffects = effect;
         bool shellApplicationDrop = HasShellApplicationData;
+        bool virtualFileDrop = HasVirtualFileData;
+        bool defaultMove = _defaultMoveProvider();
+        bool followWindows = GetFollowWindowsSetting();
+        bool rightButtonDrag = _rightButtonDragActive ||
+            NativeDropEffectPolicy.IsRightButtonDrag(keyState);
         uint feedbackEffect = NativeDropEffectPolicy.ResolveFeedbackEffect(
             hasFileData: true,
             HasVirtualFileData,
             keyState,
             allowedEffects,
             shellApplicationDrop,
-            _defaultMoveProvider());
-        bool copyRequested = feedbackEffect != NativeDropEffectPolicy.Move;
+            defaultMove,
+            followWindows: followWindows);
         IReadOnlyList<string> paths = shellApplicationDrop
             ? TryExtractShellApplicationShortcuts(dataObject)
             : [];
@@ -336,6 +377,15 @@ public sealed class NativeDropTarget : IDisposable
         {
             (paths, containsTemporaryFiles) = TryExtractFilePaths(dataObject);
         }
+        bool copyRequested = NativeDropEffectPolicy.ShouldCopyMappedTransfer(
+            containsTemporaryFiles,
+            keyState,
+            defaultMove,
+            followWindows: followWindows);
+        bool shortcutRequested = createdShellApplicationLinks ||
+            NativeDropEffectPolicy.ShouldCreateMappedShortcut(
+                containsTemporaryFiles,
+                keyState);
         if (_shellVisualActive)
         {
             _dropImageManager?.Drop(
@@ -346,15 +396,29 @@ public sealed class NativeDropTarget : IDisposable
         ClearActiveDropDescriptionAndReleaseDataObject();
         _shellVisualActive = false;
         ResetDragDataState();
+        _rightButtonDragActive = false;
 
         // Always log so we can tell whether the native OLE drop target receives
         // CF_HDROP drops (WeChat / Explorer) at all, and what it extracted.
         App.Log(
             $"[DropTarget] NativeDrop received count={paths.Count} " +
-            $"temp={containsTemporaryFiles} shellApps={createdShellApplicationLinks}");
+            $"temp={containsTemporaryFiles} shellApps={createdShellApplicationLinks} " +
+            $"allowed={allowedEffects} feedback={feedbackEffect} " +
+            $"keyState={keyState} virtual={virtualFileDrop} " +
+            $"defaultMove={defaultMove} copyRequested={copyRequested}");
 
         if (paths.Count > 0)
         {
+            DropIntentEvent?.Invoke(new NativeDropIntentEventArgs(
+                paths,
+                point.X,
+                point.Y,
+                containsTemporaryFiles,
+                copyRequested,
+                shortcutRequested,
+                rightButtonDrag,
+                feedbackEffect,
+                keyState));
             DropEvent?.Invoke(
                 paths,
                 point.X,
@@ -374,10 +438,25 @@ public sealed class NativeDropTarget : IDisposable
         return S_OK;
     }
 
+    private bool GetFollowWindowsSetting()
+    {
+        try
+        {
+            return _followWindowsProvider?.Invoke() == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private void InspectDragData(nint dataObject)
     {
         bool hasHDropData = TryHasHDropData(dataObject);
-        HasVirtualFileData = TryHasVirtualFileData(dataObject);
+        bool hasVirtualDescriptorData = TryHasVirtualFileData(dataObject);
+        HasVirtualFileData = NativeDropEffectPolicy.IsVirtualOnlyFileData(
+            hasHDropData,
+            hasVirtualDescriptorData);
         HasShellApplicationData =
             !hasHDropData && TryHasShellApplicationData(dataObject);
         HasFileData =

@@ -11,12 +11,31 @@ namespace DeskBox.Helpers;
 /// </summary>
 public static class IconHelper
 {
-    private const int MaxIconCacheEntries = 200;
-    private const long MaxIconCacheBytes = 32L * 1024 * 1024;
-    private const int MaxDecodedBitmapCacheEntries = 160;
-    private const long MaxDecodedBitmapCacheBytes = 48L * 1024 * 1024;
-    private const int MaxThumbnailCacheEntries = 128;
-    private const long MaxThumbnailCacheBytes = 32L * 1024 * 1024;
+    private const int BaseMaxIconCacheEntries = 200;
+    private const long BaseMaxIconCacheBytes = 32L * 1024 * 1024;
+    private const int BaseMaxDecodedBitmapCacheEntries = 160;
+    private const long BaseMaxDecodedBitmapCacheBytes = 48L * 1024 * 1024;
+    private const int BaseMaxThumbnailCacheEntries = 128;
+    private const long BaseMaxThumbnailCacheBytes = 32L * 1024 * 1024;
+    private const int SmallCacheBudgetPercent = 50;
+    private const int BalancedCacheBudgetPercent = 100;
+    private const int LargeCacheBudgetPercent = 150;
+    private static int s_cacheBudgetPercent = BalancedCacheBudgetPercent;
+    private static string s_cacheBudget =
+        PerformanceSettingsPolicy.CacheBudgetBalanced;
+
+    private static int MaxIconCacheEntries =>
+        ScaleCacheEntryLimit(BaseMaxIconCacheEntries);
+    private static long MaxIconCacheBytes =>
+        ScaleCacheByteLimit(BaseMaxIconCacheBytes);
+    private static int MaxDecodedBitmapCacheEntries =>
+        ScaleCacheEntryLimit(BaseMaxDecodedBitmapCacheEntries);
+    private static long MaxDecodedBitmapCacheBytes =>
+        ScaleCacheByteLimit(BaseMaxDecodedBitmapCacheBytes);
+    private static int MaxThumbnailCacheEntries =>
+        ScaleCacheEntryLimit(BaseMaxThumbnailCacheEntries);
+    private static long MaxThumbnailCacheBytes =>
+        ScaleCacheByteLimit(BaseMaxThumbnailCacheBytes);
     private const string SharedCacheScope = "shared";
     private const int MaxIconSourceTimeoutEntries = 256;
     private const long IconSourceTimeoutRetryMs = 30_000;
@@ -741,7 +760,9 @@ public static class IconHelper
     /// decoded images and icon bytes so the 30-second cleanup is meaningful.
     /// Live XAML image sources remain valid because they own their own reference.
     /// </summary>
-    internal static IdleIconCacheReleaseResult ReleaseIdleCaches(bool allWidgetsHidden)
+    internal static IdleIconCacheReleaseResult ReleaseIdleCaches(
+        bool allWidgetsHidden,
+        bool clearVisibleCaches = false)
     {
         int thumbnailCountBefore;
         int thumbnailCountAfter;
@@ -751,8 +772,9 @@ public static class IconHelper
         {
             thumbnailCountBefore = s_thumbCache.Count;
             thumbnailBytesBefore = s_totalThumbnailEstimatedBytes;
-            int targetCount = allWidgetsHidden ? 0 : MaxThumbnailCacheEntries / 2;
-            long targetBytes = allWidgetsHidden ? 0 : MaxThumbnailCacheBytes / 2;
+            bool clearCache = allWidgetsHidden || clearVisibleCaches;
+            int targetCount = clearCache ? 0 : MaxThumbnailCacheEntries / 2;
+            long targetBytes = clearCache ? 0 : MaxThumbnailCacheBytes / 2;
             while ((s_thumbCache.Count > targetCount ||
                     s_totalThumbnailEstimatedBytes > targetBytes) &&
                    s_thumbLru.Last is { } oldest)
@@ -760,7 +782,7 @@ public static class IconHelper
                 RemoveThumbnailCacheEntry(oldest.Value);
             }
 
-            if (allWidgetsHidden && s_thumbCache.Count > 0)
+            if (clearCache && s_thumbCache.Count > 0)
             {
                 s_thumbCache.Clear();
                 s_thumbLru.Clear();
@@ -783,8 +805,9 @@ public static class IconHelper
         {
             bitmapCountBefore = s_bitmapImageCache.Count;
             bitmapBytesBefore = s_totalBitmapEstimatedBytes;
-            int targetCount = allWidgetsHidden ? 0 : MaxDecodedBitmapCacheEntries / 2;
-            long targetBytes = allWidgetsHidden ? 0 : MaxDecodedBitmapCacheBytes / 2;
+            bool clearCache = allWidgetsHidden || clearVisibleCaches;
+            int targetCount = clearCache ? 0 : MaxDecodedBitmapCacheEntries / 2;
+            long targetBytes = clearCache ? 0 : MaxDecodedBitmapCacheBytes / 2;
             while ((s_bitmapImageCache.Count > targetCount ||
                     s_totalBitmapEstimatedBytes > targetBytes) &&
                    s_bitmapLru.Last is { } oldest)
@@ -792,7 +815,7 @@ public static class IconHelper
                 RemoveDecodedBitmap(oldest.Value);
             }
 
-            if (allWidgetsHidden && s_bitmapImageCache.Count > 0)
+            if (clearCache && s_bitmapImageCache.Count > 0)
             {
                 s_bitmapImageCache.Clear();
                 s_bitmapLru.Clear();
@@ -807,10 +830,16 @@ public static class IconHelper
         }
 
         int iconByteEntriesBefore = s_iconBytesCache.Count;
-        if (allWidgetsHidden)
+        if (allWidgetsHidden || clearVisibleCaches)
         {
             s_iconBytesCache.Clear();
             PerformanceLogger.IconCacheCount = 0;
+        }
+        else
+        {
+            TrimIconByteCacheTo(
+                Math.Max(1, MaxIconCacheEntries / 2),
+                Math.Max(1, MaxIconCacheBytes / 2));
         }
 
         return new IdleIconCacheReleaseResult(
@@ -819,6 +848,44 @@ public static class IconHelper
             Math.Max(0, iconByteEntriesBefore - s_iconBytesCache.Count),
             Math.Max(0, thumbnailBytesBefore - thumbnailBytesAfter) +
                 Math.Max(0, bitmapBytesBefore - bitmapBytesAfter));
+    }
+
+    internal static string CurrentPerformanceCacheBudget =>
+        Volatile.Read(ref s_cacheBudget);
+
+    internal static void ConfigurePerformanceCacheBudget(string? cacheBudget)
+    {
+        string normalized =
+            PerformanceSettingsPolicy.NormalizeCacheBudget(cacheBudget);
+        int budgetPercent = normalized switch
+        {
+            PerformanceSettingsPolicy.CacheBudgetSmall =>
+                SmallCacheBudgetPercent,
+            PerformanceSettingsPolicy.CacheBudgetLarge =>
+                LargeCacheBudgetPercent,
+            _ => BalancedCacheBudgetPercent
+        };
+
+        Volatile.Write(ref s_cacheBudget, normalized);
+        Volatile.Write(ref s_cacheBudgetPercent, budgetPercent);
+
+        lock (s_thumbLock)
+        {
+            EvictThumbnailCacheIfNeeded();
+            PerformanceLogger.ThumbnailCacheCount = s_thumbCache.Count;
+        }
+
+        lock (s_bitmapCacheLock)
+        {
+            while ((s_bitmapImageCache.Count > MaxDecodedBitmapCacheEntries ||
+                    s_totalBitmapEstimatedBytes > MaxDecodedBitmapCacheBytes) &&
+                   s_bitmapLru.Last is { } oldest)
+            {
+                RemoveDecodedBitmap(oldest.Value);
+            }
+        }
+
+        EvictIconCachesIfNeeded();
     }
 
     /// <summary>
@@ -1734,33 +1801,54 @@ public static class IconHelper
         if (s_iconBytesCache.Count > MaxIconCacheEntries ||
             cachedBytes > MaxIconCacheBytes)
         {
-            int targetCount = MaxIconCacheEntries / 2;
-            long targetBytes = MaxIconCacheBytes / 2;
-            foreach (var (key, bytes) in s_iconBytesCache)
-            {
-                if (s_iconBytesCache.Count <= targetCount &&
-                    cachedBytes <= targetBytes)
-                {
-                    break;
-                }
-
-                if (s_iconBytesCache.TryRemove(key, out _))
-                {
-                    cachedBytes -= bytes?.LongLength ?? 0;
-                }
-
-                string bitmapCacheMarker = $"|{key}:decode=";
-                foreach (string bitmapKey in s_bitmapImageCache.Keys.Where(
-                             candidate => candidate.Contains(
-                                  bitmapCacheMarker,
-                                  StringComparison.OrdinalIgnoreCase)))
-                {
-                    RemoveDecodedBitmap(bitmapKey);
-                }
-            }
+            TrimIconByteCacheTo(
+                Math.Max(1, MaxIconCacheEntries / 2),
+                Math.Max(1, MaxIconCacheBytes / 2));
         }
 
         // Update diagnostics
         PerformanceLogger.IconCacheCount = s_iconBytesCache.Count;
+    }
+
+    private static void TrimIconByteCacheTo(int targetCount, long targetBytes)
+    {
+        long cachedBytes = s_iconBytesCache.Values.Sum(
+            bytes => bytes?.LongLength ?? 0);
+        foreach (var (key, bytes) in s_iconBytesCache)
+        {
+            if (s_iconBytesCache.Count <= targetCount &&
+                cachedBytes <= targetBytes)
+            {
+                break;
+            }
+
+            if (s_iconBytesCache.TryRemove(key, out _))
+            {
+                cachedBytes -= bytes?.LongLength ?? 0;
+            }
+
+            string bitmapCacheMarker = $"|{key}:decode=";
+            foreach (string bitmapKey in s_bitmapImageCache.Keys.Where(
+                         candidate => candidate.Contains(
+                             bitmapCacheMarker,
+                             StringComparison.OrdinalIgnoreCase)))
+            {
+                RemoveDecodedBitmap(bitmapKey);
+            }
+        }
+
+        PerformanceLogger.IconCacheCount = s_iconBytesCache.Count;
+    }
+
+    private static int ScaleCacheEntryLimit(int baseline)
+    {
+        int percent = Volatile.Read(ref s_cacheBudgetPercent);
+        return Math.Max(1, baseline * percent / BalancedCacheBudgetPercent);
+    }
+
+    private static long ScaleCacheByteLimit(long baseline)
+    {
+        int percent = Volatile.Read(ref s_cacheBudgetPercent);
+        return Math.Max(1, baseline * percent / BalancedCacheBudgetPercent);
     }
 }

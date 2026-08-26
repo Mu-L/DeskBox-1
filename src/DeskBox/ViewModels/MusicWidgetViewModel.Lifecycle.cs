@@ -81,7 +81,30 @@ public sealed partial class MusicWidgetViewModel
 
         _isWindowRevealCompleted = true;
         UpdateProgressTimerState();
-        _ = RefreshAsync();
+        bool hasHiddenChanges =
+            Interlocked.Exchange(ref _hiddenMediaStateDirty, 0) != 0;
+        long lastRefreshTicks =
+            Interlocked.Read(ref _lastFullRefreshCompletedUtcTicks);
+        DateTime lastRefreshUtc = lastRefreshTicks > 0
+            ? new DateTime(lastRefreshTicks, DateTimeKind.Utc)
+            : DateTime.MinValue;
+        if (ShouldRefreshAfterReveal(
+                DateTime.UtcNow,
+                lastRefreshUtc,
+                hasHiddenChanges))
+        {
+            _ = RefreshAsync();
+        }
+    }
+
+    internal static bool ShouldRefreshAfterReveal(
+        DateTime utcNow,
+        DateTime lastRefreshUtc,
+        bool hasHiddenChanges)
+    {
+        return hasHiddenChanges ||
+            lastRefreshUtc == DateTime.MinValue ||
+            utcNow - lastRefreshUtc >= RevealFullRefreshFreshness;
     }
 
     /// <summary>

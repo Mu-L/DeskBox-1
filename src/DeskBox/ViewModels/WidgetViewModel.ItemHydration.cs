@@ -251,10 +251,68 @@ public partial class WidgetViewModel
 
     private void StartItemHydration()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
         int generation = Interlocked.Increment(ref _itemHydrationGeneration);
-        _ = HydrateIconsWithRetryAsync(generation);
-        _ = HydrateFolderItemCountsAsync(generation);
-        _ = HydrateShortcutTargetsThenShellKindsAsync(generation);
+        var cancellation = new CancellationTokenSource();
+        CancelItemHydration(
+            Interlocked.Exchange(
+                ref _itemHydrationCancellation,
+                cancellation));
+        _ = RunItemHydrationAsync(generation, cancellation);
+    }
+
+    private static void CancelItemHydration(
+        CancellationTokenSource? cancellation)
+    {
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The previous generation completed and disposed its source while
+            // a new snapshot was being scheduled.
+        }
+    }
+
+    private async Task RunItemHydrationAsync(
+        int generation,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.WhenAll(
+                HydrateIconsWithRetryAsync(generation, cancellation.Token),
+                HydrateFolderItemCountsAsync(generation, cancellation.Token),
+                HydrateShortcutTargetsThenShellKindsAsync(
+                    generation,
+                    cancellation.Token));
+        }
+        catch (OperationCanceledException) when (
+            cancellation.IsCancellationRequested)
+        {
+            // A newer folder snapshot owns hydration now. Cancellation is
+            // expected and avoids retaining stale item batches during rapid
+            // stack/folder navigation.
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[ItemHydration] Generation failed for widget '{Name}' " +
+                $"({Config.Id}): {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.CompareExchange(
+                ref _itemHydrationCancellation,
+                null,
+                cancellation);
+            cancellation.Dispose();
+        }
     }
 
     private void ClearCurrentItemIconCache()
@@ -275,24 +333,39 @@ public partial class WidgetViewModel
         StartItemHydration();
     }
 
-    private async Task HydrateIconsWithRetryAsync(int generation)
+    private async Task HydrateIconsWithRetryAsync(
+        int generation,
+        CancellationToken cancellationToken)
     {
-        await HydrateIconsAsync(generation, clearCacheBeforeLoad: false);
+        await HydrateIconsAsync(
+            generation,
+            clearCacheBeforeLoad: false,
+            cancellationToken: cancellationToken);
 
         for (int retry = 0; retry < IconHydrationRetryCount; retry++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (generation != Volatile.Read(ref _itemHydrationGeneration) ||
                 !Items.Any(item => item.Icon is null))
             {
                 return;
             }
 
-            await Task.Delay(s_iconHydrationRetryDelays[Math.Min(retry, s_iconHydrationRetryDelays.Length - 1)]);
-            await HydrateIconsAsync(generation, clearCacheBeforeLoad: true);
+            await Task.Delay(
+                s_iconHydrationRetryDelays[
+                    Math.Min(retry, s_iconHydrationRetryDelays.Length - 1)],
+                cancellationToken);
+            await HydrateIconsAsync(
+                generation,
+                clearCacheBeforeLoad: true,
+                cancellationToken: cancellationToken);
         }
     }
 
-    private async Task HydrateIconsAsync(int generation, bool clearCacheBeforeLoad)
+    private async Task HydrateIconsAsync(
+        int generation,
+        bool clearCacheBeforeLoad,
+        CancellationToken cancellationToken)
     {
         var items = Items
             .Where(item => item.Icon is null)
@@ -302,6 +375,7 @@ public partial class WidgetViewModel
 
         for (int start = 0; start < items.Count; start += IconHydrationBatchSize)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (generation != Volatile.Read(ref _itemHydrationGeneration))
             {
                 return;
@@ -311,7 +385,11 @@ public partial class WidgetViewModel
                 .Skip(start)
                 .Take(IconHydrationBatchSize)
                 .Where(item => Items.Contains(item) && !string.IsNullOrWhiteSpace(item.Path))
-                .Select(item => HydrateIconAsync(item, generation, clearCacheBeforeLoad))
+                .Select(item => HydrateIconAsync(
+                    item,
+                    generation,
+                    clearCacheBeforeLoad,
+                    cancellationToken))
                 .ToArray();
             var results = await Task.WhenAll(batch);
 
@@ -332,13 +410,15 @@ public partial class WidgetViewModel
             }
 
             await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 
     private async Task<(WidgetItem? Item, Microsoft.UI.Xaml.Media.Imaging.BitmapImage? Icon)> HydrateIconAsync(
         WidgetItem item,
         int generation,
-        bool clearCacheBeforeLoad)
+        bool clearCacheBeforeLoad,
+        CancellationToken cancellationToken)
     {
         string path = item.Path;
         if (string.IsNullOrWhiteSpace(path))
@@ -354,11 +434,17 @@ public partial class WidgetViewModel
             }
 
             var icon = await _fileService.GetIconAsync(
-                path,
-                _hideShortcutArrowOverlay,
-                _showImageFilesAsIcons,
-                _iconDecodePixelWidth);
+                    path,
+                    _hideShortcutArrowOverlay,
+                    _showImageFilesAsIcons,
+                    _iconDecodePixelWidth)
+                .WaitAsync(cancellationToken);
             return (item, icon);
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -367,7 +453,9 @@ public partial class WidgetViewModel
         }
     }
 
-    private async Task HydrateFolderItemCountsAsync(int generation)
+    private async Task HydrateFolderItemCountsAsync(
+        int generation,
+        CancellationToken cancellationToken)
     {
         var folders = Items
             .Where(item => item.IsFolder && !item.IsFolderItemCountLoaded)
@@ -376,6 +464,7 @@ public partial class WidgetViewModel
 
         foreach (var item in folders)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (generation != Volatile.Read(ref _itemHydrationGeneration) ||
                 !Items.Contains(item) ||
                 !Directory.Exists(item.Path))
@@ -386,8 +475,15 @@ public partial class WidgetViewModel
             string path = item.Path;
             try
             {
-                int count = await _fileService.CountVisibleChildrenAsync(path);
+                int count = await _fileService
+                    .CountVisibleChildrenAsync(path)
+                    .WaitAsync(cancellationToken);
                 SetFolderItemCount(item, count, path, generation);
+            }
+            catch (OperationCanceledException) when (
+                cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -399,18 +495,24 @@ public partial class WidgetViewModel
 
             if (processed % FolderCountHydrationBatchSize == 0)
             {
-                await Task.Delay(FolderCountHydrationYieldMs);
+                await Task.Delay(
+                    FolderCountHydrationYieldMs,
+                    cancellationToken);
             }
         }
     }
 
-    private async Task HydrateShortcutTargetsThenShellKindsAsync(int generation)
+    private async Task HydrateShortcutTargetsThenShellKindsAsync(
+        int generation,
+        CancellationToken cancellationToken)
     {
-        await HydrateShortcutTargetsAsync(generation);
-        await HydrateShellKindsAsync(generation);
+        await HydrateShortcutTargetsAsync(generation, cancellationToken);
+        await HydrateShellKindsAsync(generation, cancellationToken);
     }
 
-    private async Task HydrateShortcutTargetsAsync(int generation)
+    private async Task HydrateShortcutTargetsAsync(
+        int generation,
+        CancellationToken cancellationToken)
     {
         var shortcuts = Items
             .Where(item => item.IsShortcut)
@@ -419,6 +521,7 @@ public partial class WidgetViewModel
 
         for (int start = 0; start < shortcuts.Count; start += ShortcutTargetHydrationBatchSize)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (generation != Volatile.Read(ref _itemHydrationGeneration))
             {
                 return;
@@ -431,7 +534,9 @@ public partial class WidgetViewModel
                 .Select(async item =>
                 {
                     string expectedPath = item.Path;
-                    string targetPath = await _fileService.GetStoredShortcutTargetAsync(expectedPath);
+                    string targetPath = await _fileService
+                        .GetStoredShortcutTargetAsync(expectedPath)
+                        .WaitAsync(cancellationToken);
                     return (Item: item, ExpectedPath: expectedPath, TargetPath: targetPath);
                 })
                 .ToArray();
@@ -447,10 +552,13 @@ public partial class WidgetViewModel
             }
 
             await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 
-    private async Task HydrateShellKindsAsync(int generation)
+    private async Task HydrateShellKindsAsync(
+        int generation,
+        CancellationToken cancellationToken)
     {
         var items = Items
             .Where(item => !item.IsShellKindLoaded)
@@ -459,6 +567,7 @@ public partial class WidgetViewModel
 
         for (int start = 0; start < items.Count; start += ShellKindHydrationBatchSize)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (generation != Volatile.Read(ref _itemHydrationGeneration))
             {
                 return;
@@ -471,7 +580,9 @@ public partial class WidgetViewModel
                 .Select(async item =>
                 {
                     string expectedPath = item.Path;
-                    string kind = await _fileService.GetShellKindAsync(item);
+                    string kind = await _fileService
+                        .GetShellKindAsync(item)
+                        .WaitAsync(cancellationToken);
                     return (Item: item, ExpectedPath: expectedPath, Kind: kind);
                 })
                 .ToArray();
@@ -487,6 +598,7 @@ public partial class WidgetViewModel
             }
 
             await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 

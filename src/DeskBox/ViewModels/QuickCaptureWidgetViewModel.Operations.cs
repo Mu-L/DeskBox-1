@@ -53,7 +53,12 @@ public sealed partial class QuickCaptureWidgetViewModel
         }
 
         _isWindowRefreshEnabled = true;
-        RefreshVisibleItemsFromCacheOrService();
+        bool hasHiddenChanges =
+            Interlocked.Exchange(ref _windowRefreshDirty, 0) != 0;
+        if (hasHiddenChanges || _cachedData is null)
+        {
+            RefreshVisibleItemsImmediately();
+        }
     }
 
     public void SuspendWindowRefresh()

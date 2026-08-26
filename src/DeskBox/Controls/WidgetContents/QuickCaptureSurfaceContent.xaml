@@ -167,6 +167,9 @@
                     KeyDown="ItemsList_KeyDown"
                     SelectionMode="Extended"
                     Visibility="{Binding ListVisibility}">
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection />
+                    </ListView.ItemContainerTransitions>
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
                             <Setter Property="Padding" Value="0" />

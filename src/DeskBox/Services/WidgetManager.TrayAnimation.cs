@@ -160,6 +160,7 @@ public sealed partial class WidgetManager
                 ActivateIdleHighestWindow(shownWindows);
             }
             SaveBatchVisibilityState();
+            await _trayBatchAnimationDriver.WaitForIdleAsync();
             App.LogVerbose($"[TrayBatch] Raise completed raised={_widgetsRaisedFromTray} prepared={windowsToRaise.Count} shown={shownWindows.Count} animated={windowsToAnimate.Count}");
             return _widgetsRaisedFromTray;
         }

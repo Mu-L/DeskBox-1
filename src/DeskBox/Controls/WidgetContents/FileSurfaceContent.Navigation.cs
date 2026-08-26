@@ -16,6 +16,7 @@ public sealed partial class FileSurfaceContent
     private CancellationTokenSource? _folderNavigationLoadingDelayCancellation;
     private bool _isFolderNavigationOperationActive;
     private bool _folderNavigationVisualPrepared;
+    private Visual? _folderNavigationAnimatedVisual;
 
     private void InitializeFolderNavigationPresentation()
     {
@@ -32,6 +33,11 @@ public sealed partial class FileSurfaceContent
 
     private async Task ActivateItemAsync(WidgetItem item)
     {
+        if (TryBlockTransferOpen(item))
+        {
+            return;
+        }
+
         if (IsItemInStackPopover(item) ||
             !item.IsFolder ||
             !ViewModel.IsEmbeddedFolderNavigationEnabled)
@@ -265,6 +271,8 @@ public sealed partial class FileSurfaceContent
             true);
         Visual contentVisual =
             ElementCompositionPreview.GetElementVisual(activeView);
+        StopPreviousFolderNavigationVisual(contentVisual);
+        _folderNavigationAnimatedVisual = contentVisual;
         Compositor compositor = contentVisual.Compositor;
         if (!_folderNavigationVisualPrepared)
         {
@@ -299,6 +307,8 @@ public sealed partial class FileSurfaceContent
         ElementCompositionPreview.SetIsTranslationEnabled(activeView, true);
         Visual contentVisual =
             ElementCompositionPreview.GetElementVisual(activeView);
+        StopPreviousFolderNavigationVisual(contentVisual);
+        _folderNavigationAnimatedVisual = contentVisual;
         contentVisual.StopAnimation("Translation");
         contentVisual.StopAnimation("Opacity");
         SetFolderNavigationStartState(contentVisual, navigatingUp);
@@ -321,10 +331,54 @@ public sealed partial class FileSurfaceContent
         ElementCompositionPreview.SetIsTranslationEnabled(activeView, true);
         Visual contentVisual =
             ElementCompositionPreview.GetElementVisual(activeView);
+        Visual? previousVisual = _folderNavigationAnimatedVisual;
+        if (previousVisual is not null &&
+            !ReferenceEquals(previousVisual, contentVisual))
+        {
+            ResetFolderNavigationVisual(previousVisual);
+        }
+        _folderNavigationAnimatedVisual = contentVisual;
         contentVisual.StopAnimation("Translation");
         contentVisual.StopAnimation("Opacity");
         contentVisual.Properties.InsertVector3("Translation", Vector3.Zero);
         contentVisual.Opacity = 1;
+        _folderNavigationVisualPrepared = false;
+    }
+
+    private void StopPreviousFolderNavigationVisual(Visual currentVisual)
+    {
+        if (_folderNavigationAnimatedVisual is { } previousVisual &&
+            !ReferenceEquals(previousVisual, currentVisual))
+        {
+            ResetFolderNavigationVisual(previousVisual);
+        }
+    }
+
+    private static void ResetFolderNavigationVisual(Visual visual)
+    {
+        try
+        {
+            visual.StopAnimation("Translation");
+            visual.StopAnimation("Opacity");
+            visual.Properties.InsertVector3("Translation", Vector3.Zero);
+            visual.Opacity = 1;
+        }
+        catch (Exception)
+        {
+            // The visual can be torn down between Unloaded and the lifecycle
+            // callback. There is no retained managed state to clean in that
+            // case, so leaving the native visual alone is safe.
+        }
+    }
+
+    private void StopFolderNavigationVisuals()
+    {
+        if (_folderNavigationAnimatedVisual is { } visual)
+        {
+            ResetFolderNavigationVisual(visual);
+        }
+
+        _folderNavigationAnimatedVisual = null;
         _folderNavigationVisualPrepared = false;
     }
 

@@ -33,6 +33,52 @@ public sealed class FileInteractionPolicyTests
     }
 
     [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, false)]
+    public void DropIntent_AltOrCtrlShiftCreatesShortcutForMappedFiles(
+        bool altDown,
+        bool controlDown,
+        bool shiftDown)
+    {
+        Assert.Equal(
+            FileDropIntent.Shortcut,
+            FileDropIntentPolicy.ResolveMappedTransfer(
+                hasMappedFolder: true,
+                forceCopy: false,
+                controlDown,
+                shiftDown,
+                defaultMove: true,
+                altDown: altDown,
+                canLink: true));
+    }
+
+    [Fact]
+    public void DropIntent_FollowWindowsUsesCopyAcrossVolumes()
+    {
+        Assert.Equal(
+            FileDropIntent.Copy,
+            FileDropIntentPolicy.ResolveMappedTransfer(
+                hasMappedFolder: true,
+                forceCopy: false,
+                controlDown: false,
+                shiftDown: false,
+                defaultMove: true,
+                followWindows: true,
+                sameVolume: false));
+        Assert.Equal(
+            FileDropIntent.Move,
+            FileDropIntentPolicy.ResolveMappedTransfer(
+                hasMappedFolder: true,
+                forceCopy: false,
+                controlDown: false,
+                shiftDown: false,
+                defaultMove: false,
+                followWindows: true,
+                sameVolume: true));
+    }
+
+    [Theory]
     [InlineData(24, 1, 28)]
     [InlineData(32, 1, 36)]
     [InlineData(40, -1, 36)]

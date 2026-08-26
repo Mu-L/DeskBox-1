@@ -209,6 +209,7 @@ public sealed class SettingsService
         });
     public const string ManagedDropActionMove = "Move";
     public const string ManagedDropActionCopy = "Copy";
+    public const string ManagedDropActionFollowWindows = "FollowWindows";
 
     public const string AttachmentStorageModeLink = "Link";
     public const string AttachmentStorageModeCopy = "Copy";
@@ -395,8 +396,22 @@ public const int DefaultSearchMaxResults = 100;
         settings.PerformanceMode = PerformanceSettingsPolicy.DefaultMode;
         settings.HiddenCacheCleanupDelaySeconds =
             PerformanceSettingsPolicy.DefaultHiddenCacheCleanupDelaySeconds;
+        settings.VisibleIdleCacheCleanupDelaySeconds =
+            PerformanceSettingsPolicy.DefaultVisibleIdleCacheCleanupDelaySeconds;
+        settings.TransientWindowReleaseDelaySeconds =
+            PerformanceSettingsPolicy.DefaultTransientWindowReleaseDelaySeconds;
+        settings.PerformanceCacheBudget =
+            PerformanceSettingsPolicy.DefaultCacheBudget;
         settings.EnableContinuousDecorativeAnimations =
             PerformanceSettingsPolicy.DefaultContinuousDecorativeAnimationsEnabled;
+        settings.EnableTextMarqueeAnimations =
+            PerformanceSettingsPolicy.DefaultTextMarqueeAnimationsEnabled;
+        settings.EnableVinylRotationAnimations =
+            PerformanceSettingsPolicy.DefaultVinylRotationAnimationsEnabled;
+        settings.EnableGlanceImageAutoRotation =
+            PerformanceSettingsPolicy.DefaultGlanceImageAutoRotationEnabled;
+        settings.EnableCompactAmbientAnimations =
+            PerformanceSettingsPolicy.DefaultCompactAmbientAnimationsEnabled;
         settings.DefaultWidgetWidth = DefaultWidgetWidth;
         settings.DefaultWidgetHeight = DefaultWidgetHeight;
         settings.WidgetCornerPreference = WidgetCornerPreferenceRound;
@@ -2320,7 +2335,8 @@ settings.FocusClickedWidgetOnRaise = false;
         }
 
         if (!string.Equals(settings.ManagedDropAction, ManagedDropActionMove, StringComparison.Ordinal) &&
-            !string.Equals(settings.ManagedDropAction, ManagedDropActionCopy, StringComparison.Ordinal))
+            !string.Equals(settings.ManagedDropAction, ManagedDropActionCopy, StringComparison.Ordinal) &&
+            !string.Equals(settings.ManagedDropAction, ManagedDropActionFollowWindows, StringComparison.Ordinal))
         {
             settings.ManagedDropAction = ManagedDropActionMove;
             changed = true;

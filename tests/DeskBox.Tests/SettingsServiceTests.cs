@@ -57,6 +57,37 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_CurrentSchemaRepairsRetiredNeverCleanupValues()
+    {
+        string settingsPath = Path.Combine(_settingsRoot, "settings.json");
+        var settings = new AppSettings
+        {
+            SchemaVersion = SettingsMigrationPipeline.CurrentSchemaVersion,
+            PerformanceMode = PerformanceSettingsPolicy.ModeCustom,
+            HiddenCacheCleanupDelaySeconds = PerformanceSettingsPolicy.CleanupNever,
+            VisibleIdleCacheCleanupDelaySeconds = PerformanceSettingsPolicy.CleanupNever,
+            TransientWindowReleaseDelaySeconds = PerformanceSettingsPolicy.CleanupNever
+        };
+        await File.WriteAllTextAsync(
+            settingsPath,
+            JsonSerializer.Serialize(settings, s_jsonOptions));
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(5 * 60, service.Settings.HiddenCacheCleanupDelaySeconds);
+        Assert.Equal(15 * 60, service.Settings.VisibleIdleCacheCleanupDelaySeconds);
+        Assert.Equal(10 * 60, service.Settings.TransientWindowReleaseDelaySeconds);
+        using JsonDocument persisted = JsonDocument.Parse(
+            await File.ReadAllTextAsync(settingsPath));
+        Assert.Equal(
+            5 * 60,
+            persisted.RootElement
+                .GetProperty("hiddenCacheCleanupDelaySeconds")
+                .GetInt32());
+    }
+
+    [Fact]
     public async Task SaveAsync_PreservesDisabledStateForIndividualGlanceWidgets()
     {
         var service = new SettingsService(_settingsRoot);
@@ -605,6 +636,21 @@ public sealed class SettingsServiceTests : IDisposable
             service.Settings.TodoEditorEnterBehavior);
         Assert.Equal(SettingsService.ManagedDropActionCopy, service.Settings.ManagedDropAction);
         Assert.Equal(SettingsService.TodoLayoutModeAuto, service.Settings.TodoLayoutMode);
+    }
+
+    [Fact]
+    public async Task LoadAsync_PreservesFollowWindowsDropAction()
+    {
+        await File.WriteAllTextAsync(
+            Path.Combine(_settingsRoot, "settings.json"),
+            "{\"managedDropAction\":\"FollowWindows\"}");
+
+        var service = new SettingsService(_settingsRoot);
+        await service.LoadAsync();
+
+        Assert.Equal(
+            SettingsService.ManagedDropActionFollowWindows,
+            service.Settings.ManagedDropAction);
     }
 
     [Fact]

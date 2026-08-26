@@ -9,6 +9,8 @@ public sealed partial class ContentWidgetWindow
 {
     internal int LiveMemberCount => _contentHost.LiveContentCount;
 
+    internal int CachedGroupContentCount => _cachedGroupContents.Count;
+
     internal bool HasPresentableContentFrame =>
         ContentWidgetShell.HasPresentableContentFrame;
 
@@ -82,7 +84,6 @@ public sealed partial class ContentWidgetWindow
         AttachFeedbackSource(content);
         AttachHostContextMenuSource(content);
         ApplyLocalizedTitleActionTooltips();
-        ApplyTitleBarLayout();
         ApplyAppearancePreview();
         RefreshCompactPresentation();
         RefreshWidgetGroupPresentation(
@@ -93,6 +94,7 @@ public sealed partial class ContentWidgetWindow
 
     internal IWidgetContent? TakeCachedGroupContent(string widgetId)
     {
+        TrimCachedGroupContentsToCapacity(GetCachedGroupContentCapacity());
         if (string.IsNullOrWhiteSpace(widgetId) ||
             !_cachedGroupContents.Remove(widgetId, out IWidgetContent? content))
         {
@@ -106,7 +108,9 @@ public sealed partial class ContentWidgetWindow
 
     private bool TryRetainGroupContent(IWidgetContent content)
     {
+        int capacity = GetCachedGroupContentCapacity();
         if (IsClosing ||
+            capacity <= 0 ||
             content is not IWidgetGroupContentCacheable ||
             string.IsNullOrWhiteSpace(content.WidgetId))
         {
@@ -119,7 +123,27 @@ public sealed partial class ContentWidgetWindow
             DisposeCachedGroupContent(replaced);
         }
 
-        while (_cachedGroupContents.Count >= CachedGroupContentCapacity &&
+        TrimCachedGroupContentsToCapacity(capacity - 1);
+
+        content.OnWindowLongHidden();
+        _cachedGroupContents[content.WidgetId] = content;
+        _cachedGroupContentOrder.AddLast(content.WidgetId);
+        App.LogVerbose($"[WidgetGroup] Cached inactive content member={content.WidgetId}");
+        return true;
+    }
+
+    private int GetCachedGroupContentCapacity()
+    {
+        EffectivePerformanceSettings performance =
+            PerformanceSettingsPolicy.Resolve(SettingsService.Settings);
+        return PerformanceSettingsPolicy.ResolveInactiveGroupContentCacheCapacity(
+            performance.CacheBudget);
+    }
+
+    private void TrimCachedGroupContentsToCapacity(int capacity)
+    {
+        capacity = Math.Max(0, capacity);
+        while (_cachedGroupContents.Count > capacity &&
                _cachedGroupContentOrder.First is { } oldest)
         {
             _cachedGroupContentOrder.RemoveFirst();
@@ -128,11 +152,19 @@ public sealed partial class ContentWidgetWindow
                 DisposeCachedGroupContent(evicted);
             }
         }
+    }
 
-        _cachedGroupContents[content.WidgetId] = content;
-        _cachedGroupContentOrder.AddLast(content.WidgetId);
-        App.LogVerbose($"[WidgetGroup] Cached inactive content member={content.WidgetId}");
-        return true;
+    internal int ReleaseLongHiddenContentResources()
+    {
+        if (Visible || IsClosing)
+        {
+            return 0;
+        }
+
+        _contentHost.CurrentContent?.OnWindowLongHidden();
+        int releasedCachedContents = _cachedGroupContents.Count;
+        DisposeCachedGroupContents();
+        return releasedCachedContents;
     }
 
     private void DisposeCachedGroupContents()

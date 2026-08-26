@@ -79,39 +79,87 @@ public partial class WidgetViewModel
         }
 
         string destinationFolderPath = CurrentFolderPath!;
-        bool shouldMove = moveWhenMapped ?? ShouldMoveManagedItems();
-        var historyEntry = await _organizerService.OrganizeDropAsync(
-            Config,
-            Name,
+        bool shouldMove = moveWhenMapped ?? ShouldMoveManagedItems(
             normalizedPaths,
-            shouldMove,
-            useShellProgress,
-            ownerWindowHandle,
-            progress,
-            cancellationToken,
             destinationFolderPath);
+        OrganizationHistoryEntry historyEntry;
+        try
+        {
+            historyEntry = await _organizerService.OrganizeDropAsync(
+                Config,
+                Name,
+                normalizedPaths,
+                shouldMove,
+                useShellProgress,
+                ownerWindowHandle,
+                progress,
+                cancellationToken,
+                destinationFolderPath);
+        }
+        catch (Exception ex) when (
+            ex is FileService.IFileTransferWithCompletedResults partial)
+        {
+            await ApplyImportedTransferResultsAsync(
+                partial.CompletedResults,
+                shouldMove,
+                destinationFolderPath);
+            throw;
+        }
+
+        await ApplyImportedTransferResultsAsync(
+            historyEntry.Items.Select(item => new FileService.FileTransferResult(
+                item.SourcePath,
+                item.DestinationPath)),
+            shouldMove,
+            destinationFolderPath);
+
+        return historyEntry.Items
+            .Select(item => Path.GetFullPath(item.SourcePath))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private async Task ApplyImportedTransferResultsAsync(
+        IEnumerable<FileService.FileTransferResult> results,
+        bool shouldMove,
+        string destinationFolderPath)
+    {
+        FileService.FileTransferResult[] materialized = results
+            .Where(result =>
+                !string.IsNullOrWhiteSpace(result.SourcePath) &&
+                !string.IsNullOrWhiteSpace(result.DestinationPath))
+            .GroupBy(
+                result => result.SourcePath,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last())
+            .ToArray();
 
         if (shouldMove)
         {
-            foreach (var sourcePath in historyEntry.Items.Select(item => item.SourcePath))
+            foreach (string sourcePath in materialized.Select(
+                         result => result.SourcePath))
             {
-                if (Path.GetDirectoryName(sourcePath)?.Equals(destinationFolderPath, StringComparison.OrdinalIgnoreCase) == true)
+                if (Path.GetDirectoryName(sourcePath)?.Equals(
+                        destinationFolderPath,
+                        StringComparison.OrdinalIgnoreCase) == true)
                 {
                     RemoveItemByPath(sourcePath);
                 }
             }
         }
 
-        foreach (var destinationPath in historyEntry.Items.Select(item => item.DestinationPath))
+        foreach (string destinationPath in materialized.Select(
+                     result => result.DestinationPath))
         {
+            if (!File.Exists(destinationPath) &&
+                !Directory.Exists(destinationPath))
+            {
+                continue;
+            }
+
             RecordFileAddedAt(destinationPath, DateTimeOffset.Now);
             await UpsertFolderItemAsync(destinationPath);
         }
-
-        return historyEntry.Items
-            .Select(item => Path.GetFullPath(item.SourcePath))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 
     internal async Task<IReadOnlyList<string>> GetConfirmedMissingPathsAsync(

@@ -27,4 +27,20 @@ public sealed class WidgetSurfaceSwitchGatePoolTests
         first.Release();
         second.Release();
     }
+
+    [Fact]
+    public void RetiredSurface_RemovesItsStableGateWithoutDisposingActiveLease()
+    {
+        var pool = new WidgetSurfaceSwitchGatePool();
+        SemaphoreSlim retired = pool.Get("retired-surface");
+        retired.Wait();
+
+        Assert.True(pool.Remove("retired-surface"));
+        Assert.Equal(0, pool.Count);
+
+        retired.Release();
+        SemaphoreSlim replacement = pool.Get("retired-surface");
+        Assert.NotSame(retired, replacement);
+        Assert.Equal(1, pool.Count);
+    }
 }

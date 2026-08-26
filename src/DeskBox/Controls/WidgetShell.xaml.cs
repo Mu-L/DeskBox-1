@@ -38,6 +38,81 @@ public sealed class WidgetMenuRequestedEventArgs : EventArgs
 
 public sealed partial class WidgetShell : UserControl
 {
+    // WinUI keeps the animation clocks associated with a storyboard until the
+    // storyboard is stopped and its children are detached.  Compact pointer
+    // feedback is triggered frequently, so every short-lived storyboard gets
+    // one reusable slot with explicit completion cleanup.
+    private sealed class StoryboardSlot
+    {
+        private EventHandler<object>? _completed;
+        private object? _key;
+
+        public Storyboard? Active { get; private set; }
+
+        public bool IsActiveFor(object? key) =>
+            Active is not null && Equals(_key, key);
+
+        public void Begin(
+            Storyboard storyboard,
+            object? key = null,
+            Action? onCompleted = null)
+        {
+            StopAndClear();
+
+            EventHandler<object>? completed = null;
+            completed = (_, _) =>
+            {
+                storyboard.Completed -= completed;
+                storyboard.Stop();
+                storyboard.Children.Clear();
+                if (!ReferenceEquals(Active, storyboard))
+                {
+                    return;
+                }
+
+                Active = null;
+                _completed = null;
+                _key = null;
+                onCompleted?.Invoke();
+            };
+
+            Active = storyboard;
+            _completed = completed;
+            _key = key;
+            storyboard.Completed += completed;
+            try
+            {
+                storyboard.Begin();
+            }
+            catch
+            {
+                StopAndClear();
+                throw;
+            }
+        }
+
+        public void StopAndClear()
+        {
+            Storyboard? storyboard = Active;
+            EventHandler<object>? completed = _completed;
+            Active = null;
+            _completed = null;
+            _key = null;
+            if (storyboard is null)
+            {
+                return;
+            }
+
+            if (completed is not null)
+            {
+                storyboard.Completed -= completed;
+            }
+
+            storyboard.Stop();
+            storyboard.Children.Clear();
+        }
+    }
+
     private const double MoreMenuPointerOffsetDips = 4;
     private const long MoreMenuPointerMaximumAgeMilliseconds = 1000;
     private const double CompactMarqueeGap = 32;
@@ -160,10 +235,18 @@ public sealed partial class WidgetShell : UserControl
 
     private Storyboard? _showButtonsStoryboard;
     private Storyboard? _hideButtonsStoryboard;
-    private Storyboard? _overlayHandleVisualStoryboard;
-    private Storyboard? _compactLiveStoryboard;
-    private Storyboard? _compactUpdateStoryboard;
-    private Storyboard? _compactReorderHandleStoryboard;
+    private readonly StoryboardSlot _overlayHandleVisualStoryboard = new();
+    private readonly StoryboardSlot _compactLiveStoryboard = new();
+    private readonly StoryboardSlot _compactUpdateStoryboard = new();
+    private readonly StoryboardSlot _compactReorderHandleStoryboard = new();
+    private readonly StoryboardSlot _compactFullBleedVisibilityStoryboard = new();
+    private readonly StoryboardSlot _compactEdgeGlowFlashStoryboard = new();
+    private readonly StoryboardSlot _compactActionVisibilityStoryboard = new();
+    private readonly StoryboardSlot _compactDragGripStoryboard = new();
+    private readonly StoryboardSlot _compactTextHoverStoryboard = new();
+    private readonly StoryboardSlot _compactIdentityHighlightStoryboard = new();
+    private readonly StoryboardSlot _compactActionHighlightStoryboard = new();
+    private bool _compactTextViewportUpdateQueued;
     private ScalarKeyFrameAnimation? _groupDropBreathingAnimation;
     private DispatcherQueueTimer? _compactMarqueeDelayTimer;
     private Storyboard? _compactMarqueeStoryboard;
@@ -342,8 +425,8 @@ public sealed partial class WidgetShell : UserControl
             ReleaseCompactMarqueeDelayTimer();
             StopCompactVisualTimers();
             StopCompactVinylRotation();
-            _compactLiveStoryboard?.Stop();
-            _compactUpdateStoryboard?.Stop();
+            StopTransientCompactStoryboards();
+            _compactTextViewportUpdateQueued = false;
             StopGroupDropPreviewBreathing();
             EndShellDragSession(notifyCompact: true);
             ClearPendingMoreMenuPointerPosition();
@@ -378,8 +461,7 @@ public sealed partial class WidgetShell : UserControl
         StopCompactMarquee();
         StopCompactVisualTimers();
         StopCompactVinylRotation();
-        _compactLiveStoryboard?.Stop();
-        _compactUpdateStoryboard?.Stop();
+        StopTransientCompactStoryboards();
     }
 
     internal void ApplyPerformanceSettings()
@@ -387,6 +469,7 @@ public sealed partial class WidgetShell : UserControl
         StopCompactMarquee();
         StopCompactVisualTimers();
         StopCompactVinylRotation();
+        StopTransientCompactStoryboards();
         if (_hostedContent is IWidgetPerformanceAwareContent performanceAware)
         {
             performanceAware.ApplyPerformanceSettings();
@@ -399,6 +482,21 @@ public sealed partial class WidgetShell : UserControl
 
         QueueCompactMarquee();
         RestartCompactVisualTimers();
+    }
+
+    private void StopTransientCompactStoryboards()
+    {
+        _overlayHandleVisualStoryboard.StopAndClear();
+        _compactLiveStoryboard.StopAndClear();
+        _compactUpdateStoryboard.StopAndClear();
+        _compactReorderHandleStoryboard.StopAndClear();
+        _compactFullBleedVisibilityStoryboard.StopAndClear();
+        _compactEdgeGlowFlashStoryboard.StopAndClear();
+        _compactActionVisibilityStoryboard.StopAndClear();
+        _compactDragGripStoryboard.StopAndClear();
+        _compactTextHoverStoryboard.StopAndClear();
+        _compactIdentityHighlightStoryboard.StopAndClear();
+        _compactActionHighlightStoryboard.StopAndClear();
     }
 
     public bool ShowHoverButtons
@@ -537,13 +635,17 @@ public sealed partial class WidgetShell : UserControl
         _isCompactKeyboardFocused = false;
         ResetCompactInteractionRegions();
 
-        // Replace any still-active hover animation with a zero-duration value.
-        // Setting only the backing property is insufficient while a Storyboard
-        // is holding its previous PointerOver value.
-        SetOpacityImmediately(CompactIdentityRegionHighlight, 0);
-        SetOpacityImmediately(CompactActionRegionHighlight, 0);
-        SetOpacityImmediately(CompactTextHoverBackground, 0);
-        SetOpacityImmediately(CompactDragGripIndicator, 0);
+        // Detach any active hover clocks before assigning the resting values.
+        // Direct property writes avoid creating a zero-duration storyboard for
+        // every native hide/show cycle.
+        _compactIdentityHighlightStoryboard.StopAndClear();
+        _compactActionHighlightStoryboard.StopAndClear();
+        _compactTextHoverStoryboard.StopAndClear();
+        _compactDragGripStoryboard.StopAndClear();
+        CompactIdentityRegionHighlight.Opacity = 0;
+        CompactActionRegionHighlight.Opacity = 0;
+        CompactTextHoverBackground.Opacity = 0;
+        CompactDragGripIndicator.Opacity = 0;
         CompactReorderGlyph.Opacity = 0.58;
         ApplyCompactActionVisibility(animate: false);
         UpdateCompactReorderHandleVisual(animate: false);
@@ -596,6 +698,13 @@ public sealed partial class WidgetShell : UserControl
     public bool IsCollapsed => _isCollapsed;
 
     public bool IsCompactMoveHandlePress => _isCompactMoveHandlePress;
+
+    internal bool HasActiveVisualWork =>
+        _isCompactTransitionActive ||
+        _isContentSnapshotTransitionActive ||
+        _isResponsiveLayoutTransitionActive ||
+        OutgoingContentPresenter.Content is not null ||
+        _groupDropBreathingAnimation is not null;
 
     public bool HasWidgetGroup => _groupPresentation is not null;
 
@@ -1124,15 +1233,7 @@ public sealed partial class WidgetShell : UserControl
             return Task.CompletedTask;
         }
 
-        bool animationsEnabled;
-        try
-        {
-            animationsEnabled = new UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            animationsEnabled = true;
-        }
+        bool animationsEnabled = SystemAnimationsEnabled();
 
         WidgetContentTransitionProfile profile =
             WidgetContentTransitionProfile.Create(
@@ -1233,11 +1334,9 @@ public sealed partial class WidgetShell : UserControl
 
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        Microsoft.UI.Dispatching.DispatcherQueueTimer? completionFallback =
-            DispatcherQueue.CreateTimer();
-        completionFallback.IsRepeating = false;
-        completionFallback.Interval = TimeSpan.FromMilliseconds(
+        TimeSpan completionFallbackDelay = TimeSpan.FromMilliseconds(
             Math.Max(250, profile.DurationMilliseconds + 250));
+        EventHandler<object>? storyboardCompleted = null;
         bool settled = false;
         void Settle(bool cancelled)
         {
@@ -1247,9 +1346,12 @@ public sealed partial class WidgetShell : UserControl
             }
 
             settled = true;
-            completionFallback?.Stop();
-            completionFallback = null;
+            if (storyboardCompleted is not null)
+            {
+                storyboard.Completed -= storyboardCompleted;
+            }
             storyboard.Stop();
+            storyboard.Children.Clear();
             SetContentTransitionVisuals(incomingVisible: !cancelled);
             if (cancelled)
             {
@@ -1261,8 +1363,14 @@ public sealed partial class WidgetShell : UserControl
             }
         }
 
-        storyboard.Completed += (_, _) => Settle(cancelled: false);
-        completionFallback.Tick += (_, _) => Settle(cancelled: false);
+        async Task RunCompletionFallbackAsync()
+        {
+            await Task.Delay(completionFallbackDelay).ConfigureAwait(false);
+            DispatcherQueue.TryEnqueue(() => Settle(cancelled: false));
+        }
+
+        storyboardCompleted = (_, _) => Settle(cancelled: false);
+        storyboard.Completed += storyboardCompleted;
         CancellationTokenRegistration registration = cancellationToken.Register(
             () => DispatcherQueue.TryEnqueue(() => Settle(cancelled: true)));
         _ = completion.Task.ContinueWith(
@@ -1271,7 +1379,7 @@ public sealed partial class WidgetShell : UserControl
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
         storyboard.Begin();
-        completionFallback?.Start();
+        _ = RunCompletionFallbackAsync();
         return completion.Task;
     }
 
@@ -1499,6 +1607,7 @@ public sealed partial class WidgetShell : UserControl
     public void SetCollapsed(bool collapsed, string contentMode)
     {
         ResetCompactTransitionVisuals();
+        StopTransientCompactStoryboards();
         bool stateChanged = _isCollapsed != collapsed;
         _isCollapsed = collapsed;
         _hostedContent?.OnCompactStateChanged(collapsed);
@@ -1842,7 +1951,7 @@ public sealed partial class WidgetShell : UserControl
         }
         catch (Exception ex)
         {
-            StopCompactCompositionTransitionAnimations();
+            StopCompactCompositionTransitionAnimations(force: true);
             App.LogVerbose($"[Compact] Composition visual fallback: {ex.Message}");
             return false;
         }
@@ -1904,8 +2013,13 @@ public sealed partial class WidgetShell : UserControl
         return (expandingOpacity, Lerp(1, 1.02, 1 - expandingOpacity));
     }
 
-    private void StopCompactCompositionTransitionAnimations()
+    private void StopCompactCompositionTransitionAnimations(bool force = false)
     {
+        if (!force && !_isCompactCompositionTransitionActive)
+        {
+            return;
+        }
+
         foreach (FrameworkElement element in new FrameworkElement[]
         {
             CollapsedChromeLayer,
@@ -1934,7 +2048,9 @@ public sealed partial class WidgetShell : UserControl
         SetBackgroundCornerRadius(collapsed
             ? _compactOuterCornerRadius
             : _expandedOuterCornerRadius);
-        ResetCompactTransitionVisuals();
+        // SetCollapsed performs the single final visual reset. Calling it both
+        // here and there repeatedly resolves/stops the same Composition visuals
+        // at the end of every capsule transition.
         SetCollapsed(collapsed, contentMode);
     }
 
@@ -2274,7 +2390,28 @@ public sealed partial class WidgetShell : UserControl
 
         UpdateCompactActionRegionWidth();
         ApplyCompactTextVisibility();
-        DispatcherQueue.TryEnqueue(UpdateCompactTextViewportWidths);
+        QueueCompactTextViewportWidths();
+    }
+
+    private void QueueCompactTextViewportWidths()
+    {
+        if (_compactTextViewportUpdateQueued)
+        {
+            return;
+        }
+
+        _compactTextViewportUpdateQueued = true;
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            _compactTextViewportUpdateQueued = false;
+            if (IsLoaded)
+            {
+                UpdateCompactTextViewportWidths();
+            }
+        }))
+        {
+            _compactTextViewportUpdateQueued = false;
+        }
     }
 
     private void EnsureCompactVinylRotationStoryboard()
@@ -2310,7 +2447,7 @@ public sealed partial class WidgetShell : UserControl
             _isCollapsed &&
             CompactVinylHost.Visibility == Visibility.Visible &&
             isPlaying &&
-            ContinuousDecorativeAnimationsEnabled() &&
+            VinylRotationAnimationsEnabled() &&
             SystemAnimationsEnabled();
         if (shouldRotate == _isCompactVinylRotating)
         {
@@ -2654,7 +2791,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !CompactAmbientAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopCompactLiveIndeterminate();
@@ -2731,7 +2868,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !CompactAmbientAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopCompactLiveBreathing();
@@ -2776,8 +2913,15 @@ public sealed partial class WidgetShell : UserControl
         double targetBgOpacity = visible ? 1 : 0;
         double targetOverlayOpacity = visible ? ResolveFullBleedOverlayOpacity() : 0;
 
+        if (SystemAnimationsEnabled() &&
+            _compactFullBleedVisibilityStoryboard.IsActiveFor(visible))
+        {
+            return;
+        }
+
         if (!SystemAnimationsEnabled())
         {
+            _compactFullBleedVisibilityStoryboard.StopAndClear();
             CompactFullBleedBackground.Opacity = targetBgOpacity;
             CompactFullBleedOverlay.Opacity = targetOverlayOpacity;
             return;
@@ -2807,7 +2951,7 @@ public sealed partial class WidgetShell : UserControl
         Storyboard.SetTargetProperty(overlayAnim, "Opacity");
         storyboard.Children.Add(overlayAnim);
 
-        storyboard.Begin();
+        _compactFullBleedVisibilityStoryboard.Begin(storyboard, visible);
     }
 
     private double ResolveFullBleedOverlayOpacity() => Math.Clamp(
@@ -2907,7 +3051,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !CompactAmbientAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopEdgeGlowPulse();
@@ -2986,7 +3130,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            !ContinuousDecorativeAnimationsEnabled())
+            !CompactAmbientAnimationsEnabled())
         {
             StopParticles();
             return;
@@ -3078,7 +3222,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !CompactAmbientAnimationsEnabled() ||
             !SystemAnimationsEnabled() ||
             generation != _particleAnimationGeneration)
         {
@@ -3199,7 +3343,7 @@ public sealed partial class WidgetShell : UserControl
         particle.Batch = null;
         particle.Animation = null;
         if (!_isHostVisualActivityEnabled ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !CompactAmbientAnimationsEnabled() ||
             !SystemAnimationsEnabled() ||
             particle.Generation != _particleAnimationGeneration ||
             _activeParticleKind == CompactParticleKind.None)
@@ -3234,7 +3378,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !CompactAmbientAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopBottomGlow();
@@ -3291,7 +3435,7 @@ public sealed partial class WidgetShell : UserControl
         if (!_isHostVisualActivityEnabled ||
             !IsLoaded ||
             !_isCollapsed ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !CompactAmbientAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             StopBreathBorder();
@@ -3384,13 +3528,12 @@ public sealed partial class WidgetShell : UserControl
         Storyboard.SetTarget(anim, CompactEdgeGlow);
         Storyboard.SetTargetProperty(anim, "Opacity");
         sb.Children.Add(anim);
-        sb.Begin();
+        _compactEdgeGlowFlashStoryboard.Begin(sb);
     }
 
     private void TriggerCapsuleBounce()
     {
         if (!SystemAnimationsEnabled()) return;
-        _compactUpdateStoryboard?.Stop();
         CompactIdentityPulseTransform.ScaleX = 0.92;
         CompactIdentityPulseTransform.ScaleY = 0.92;
         var animX = new DoubleAnimation
@@ -3414,8 +3557,7 @@ public sealed partial class WidgetShell : UserControl
         var sb = new Storyboard();
         sb.Children.Add(animX);
         sb.Children.Add(animY);
-        _compactUpdateStoryboard = sb;
-        sb.Begin();
+        _compactUpdateStoryboard.Begin(sb);
     }
 
     private void AnimateCompactLiveChange()
@@ -3425,7 +3567,6 @@ public sealed partial class WidgetShell : UserControl
             return;
         }
 
-        _compactLiveStoryboard?.Stop();
         CompactLiveEventIndicator.Opacity = 0;
         CompactTextHost.Opacity = 1;
         CompactTextTransform.X = 0;
@@ -3484,14 +3625,14 @@ public sealed partial class WidgetShell : UserControl
         storyboard.Children.Add(indicatorAnimation);
         storyboard.Children.Add(textOpacityAnimation);
         storyboard.Children.Add(textOffsetAnimation);
-        storyboard.Completed += (_, _) =>
+        _compactLiveStoryboard.Begin(
+            storyboard,
+            onCompleted: () =>
         {
             CompactLiveEventIndicator.Opacity = 0;
             CompactTextHost.Opacity = 1;
             CompactTextTransform.X = 0;
-        };
-        _compactLiveStoryboard = storyboard;
-        storyboard.Begin();
+        });
     }
 
     private void QueueCompactMarquee(int delayMs = 300)
@@ -3503,7 +3644,7 @@ public sealed partial class WidgetShell : UserControl
             _compactPresentation?.EnableMarquee != true ||
             ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !TextMarqueeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             return;
@@ -3538,7 +3679,7 @@ public sealed partial class WidgetShell : UserControl
             _compactPresentation?.EnableMarquee != true ||
             ShouldSuspendCompactMarquee() ||
             IsPointerOverCompactActionRegion() ||
-            !ContinuousDecorativeAnimationsEnabled() ||
+            !TextMarqueeAnimationsEnabled() ||
             !SystemAnimationsEnabled())
         {
             return;
@@ -3661,8 +3802,13 @@ public sealed partial class WidgetShell : UserControl
         {
             _compactMarqueeDelayTimer?.Stop();
         }
-        _compactMarqueeStoryboard?.Stop();
+        Storyboard? storyboard = _compactMarqueeStoryboard;
         _compactMarqueeStoryboard = null;
+        if (storyboard is not null)
+        {
+            storyboard.Stop();
+            storyboard.Children.Clear();
+        }
         ResetCompactMarqueeTarget();
     }
 
@@ -4093,8 +4239,16 @@ public sealed partial class WidgetShell : UserControl
         bool visible = _isCollapsed &&
             (IsPointerOverCompactActionRegion() || _isCompactKeyboardFocused);
         CompactActionHost.IsHitTestVisible = visible;
+        if (animate &&
+            SystemAnimationsEnabled() &&
+            _compactActionVisibilityStoryboard.IsActiveFor(visible))
+        {
+            return;
+        }
+
         if (!animate || !SystemAnimationsEnabled())
         {
+            _compactActionVisibilityStoryboard.StopAndClear();
             CompactActionHost.Opacity = visible ? 1 : 0;
             CompactActionHostTransform.X =
                 visible ? 0 : WidgetMotion.TranslationDistance;
@@ -4130,7 +4284,7 @@ public sealed partial class WidgetShell : UserControl
         Storyboard.SetTargetProperty(opacityAnim, "Opacity");
         Storyboard.SetTarget(slideAnim, CompactActionHostTransform);
         Storyboard.SetTargetProperty(slideAnim, "X");
-        storyboard.Begin();
+        _compactActionVisibilityStoryboard.Begin(storyboard, visible);
     }
 
     private void UpdateCompactReorderHandleVisual(bool animate = true)
@@ -4141,9 +4295,16 @@ public sealed partial class WidgetShell : UserControl
         CompactReorderHandle.IsHitTestVisible = _isCompactReorderEnabled && _isCollapsed;
         double targetOpacity = visible ? 1 : 0;
 
-        _compactReorderHandleStoryboard?.Stop();
+        if (animate &&
+            SystemAnimationsEnabled() &&
+            _compactReorderHandleStoryboard.IsActiveFor(visible))
+        {
+            return;
+        }
+
         if (!animate || !SystemAnimationsEnabled())
         {
+            _compactReorderHandleStoryboard.StopAndClear();
             CompactReorderHandle.Opacity = targetOpacity;
             return;
         }
@@ -4164,8 +4325,7 @@ public sealed partial class WidgetShell : UserControl
         Storyboard.SetTarget(animation, CompactReorderHandle);
         Storyboard.SetTargetProperty(animation, "Opacity");
         storyboard.Children.Add(animation);
-        _compactReorderHandleStoryboard = storyboard;
-        storyboard.Begin();
+        _compactReorderHandleStoryboard.Begin(storyboard, visible);
     }
 
     private static bool SystemAnimationsEnabled()
@@ -4173,12 +4333,28 @@ public sealed partial class WidgetShell : UserControl
         return WindowsCompatibilityService.ShouldAnimate;
     }
 
-    private static bool ContinuousDecorativeAnimationsEnabled()
+    private static bool TextMarqueeAnimationsEnabled()
     {
         return Application.Current is not App app ||
             app.SettingsService is null ||
             PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings)
-                .AllowContinuousDecorativeAnimations;
+                .AllowTextMarqueeAnimations;
+    }
+
+    private static bool VinylRotationAnimationsEnabled()
+    {
+        return Application.Current is not App app ||
+            app.SettingsService is null ||
+            PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings)
+                .AllowVinylRotationAnimations;
+    }
+
+    private static bool CompactAmbientAnimationsEnabled()
+    {
+        return Application.Current is not App app ||
+            app.SettingsService is null ||
+            PerformanceSettingsPolicy.Resolve(app.SettingsService.Settings)
+                .AllowCompactAmbientAnimations;
     }
 
     private void CollapseButton_Click(object sender, RoutedEventArgs e) => CollapseRequested?.Invoke(this, e);
@@ -4243,8 +4419,15 @@ public sealed partial class WidgetShell : UserControl
     private void AnimateDragGripIndicator(bool show)
     {
         show = show && _groupPresentation is null;
+        if (SystemAnimationsEnabled() &&
+            _compactDragGripStoryboard.IsActiveFor(show))
+        {
+            return;
+        }
+
         if (!_isHostVisualActivityEnabled || !SystemAnimationsEnabled())
         {
+            _compactDragGripStoryboard.StopAndClear();
             CompactDragGripIndicator.Opacity = show ? 0.7 : 0;
             return;
         }
@@ -4265,7 +4448,7 @@ public sealed partial class WidgetShell : UserControl
         Storyboard.SetTarget(animation, CompactDragGripIndicator);
         Storyboard.SetTargetProperty(animation, "Opacity");
         storyboard.Children.Add(animation);
-        storyboard.Begin();
+        _compactDragGripStoryboard.Begin(storyboard, show);
     }
 
     private void CompactReorderHandle_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -4361,8 +4544,15 @@ public sealed partial class WidgetShell : UserControl
     private void AnimateTextHoverBackground(bool show)
     {
         double targetOpacity = show ? 0.5 : 0;
+        if (SystemAnimationsEnabled() &&
+            _compactTextHoverStoryboard.IsActiveFor(show))
+        {
+            return;
+        }
+
         if (!SystemAnimationsEnabled())
         {
+            _compactTextHoverStoryboard.StopAndClear();
             CompactTextHoverBackground.Opacity = targetOpacity;
             return;
         }
@@ -4381,22 +4571,38 @@ public sealed partial class WidgetShell : UserControl
         Storyboard.SetTarget(animation, CompactTextHoverBackground);
         Storyboard.SetTargetProperty(animation, "Opacity");
         storyboard.Children.Add(animation);
-        storyboard.Begin();
+        _compactTextHoverStoryboard.Begin(storyboard, show);
     }
 
     private void UpdateCompactInteractionRegionHighlights()
     {
         double identityTarget = _isCollapsed && _isPointerOverCompactIdentity ? 1 : 0;
         double actionTarget = _isCollapsed && IsPointerOverCompactActionRegion() ? 1 : 0;
-        AnimateOpacity(CompactIdentityRegionHighlight, identityTarget);
-        AnimateOpacity(CompactActionRegionHighlight, actionTarget);
+        AnimateOpacity(
+            CompactIdentityRegionHighlight,
+            identityTarget,
+            _compactIdentityHighlightStoryboard);
+        AnimateOpacity(
+            CompactActionRegionHighlight,
+            actionTarget,
+            _compactActionHighlightStoryboard);
     }
 
-    private void AnimateOpacity(UIElement element, double target)
+    private static void AnimateOpacity(
+        UIElement element,
+        double target,
+        StoryboardSlot storyboardSlot)
     {
         if (Math.Abs(element.Opacity - target) < 0.01) return;
+        if (SystemAnimationsEnabled() &&
+            storyboardSlot.IsActiveFor(target))
+        {
+            return;
+        }
+
         if (!SystemAnimationsEnabled())
         {
+            storyboardSlot.StopAndClear();
             element.Opacity = target;
             return;
         }
@@ -4411,22 +4617,7 @@ public sealed partial class WidgetShell : UserControl
         Storyboard.SetTarget(anim, element);
         Storyboard.SetTargetProperty(anim, "Opacity");
         sb.Children.Add(anim);
-        sb.Begin();
-    }
-
-    private static void SetOpacityImmediately(UIElement element, double target)
-    {
-        var storyboard = new Storyboard();
-        var animation = new DoubleAnimation
-        {
-            To = target,
-            Duration = TimeSpan.Zero
-        };
-        Storyboard.SetTarget(animation, element);
-        Storyboard.SetTargetProperty(animation, "Opacity");
-        storyboard.Children.Add(animation);
-        storyboard.Begin();
-        element.Opacity = target;
+        storyboardSlot.Begin(sb, target);
     }
 
     private void ResetCompactInteractionRegions()
@@ -4976,9 +5167,15 @@ public sealed partial class WidgetShell : UserControl
         double leftAngle = showCollapseCue ? -13 : 0;
         double rightAngle = showCollapseCue ? 13 : 0;
 
-        _overlayHandleVisualStoryboard?.Stop();
+        if (SystemAnimationsEnabled() &&
+            _overlayHandleVisualStoryboard.IsActiveFor(showCollapseCue))
+        {
+            return;
+        }
+
         if (!animate || !SystemAnimationsEnabled())
         {
+            _overlayHandleVisualStoryboard.StopAndClear();
             OverlayDragGrip.Opacity = gripOpacity;
             OverlayDragGripLeftRotation.Angle = leftAngle;
             OverlayDragGripRightRotation.Angle = rightAngle;
@@ -4995,8 +5192,7 @@ public sealed partial class WidgetShell : UserControl
             storyboard,
             OverlayDragGripRightRotation,
             rightAngle);
-        _overlayHandleVisualStoryboard = storyboard;
-        storyboard.Begin();
+        _overlayHandleVisualStoryboard.Begin(storyboard, showCollapseCue);
     }
 
     private static void AddHandleAngleAnimation(

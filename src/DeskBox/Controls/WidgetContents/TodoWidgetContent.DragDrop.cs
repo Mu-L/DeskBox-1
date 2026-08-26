@@ -204,7 +204,7 @@ public sealed partial class TodoWidgetContent
             e.Handled = true;
             e.AcceptedOperation =
                 DeskBoxDragData.GetFileAssociationOperation(e.DataView);
-            e.DragUIOverride.IsGlyphVisible = true;
+            ApplyFileAssociationDragFeedback(e);
             SetTodoItemHoverState(sender as DependencyObject, true);
         }
     }
@@ -755,8 +755,37 @@ public sealed partial class TodoWidgetContent
                 ? DeskBoxDragData.GetFileAssociationOperation(e.DataView)
                 : DataPackageOperation.Copy
             : DataPackageOperation.None;
-        e.DragUIOverride.IsGlyphVisible = supported;
+        if (DeskBoxDragData.HasDroppedFiles(e.DataView))
+        {
+            ApplyFileAssociationDragFeedback(e);
+        }
+        else
+        {
+            e.DragUIOverride.IsGlyphVisible = supported;
+        }
         e.Handled = supported;
+    }
+
+    private static void SuppressNativeFileDragOverride(DragEventArgs e)
+    {
+        e.DragUIOverride.IsContentVisible = false;
+        e.DragUIOverride.IsGlyphVisible = false;
+        e.DragUIOverride.IsCaptionVisible = false;
+    }
+
+    private static void ApplyFileAssociationDragFeedback(DragEventArgs e)
+    {
+        if (!DeskBoxDragData.IsInternalFileDrag(e.DataView))
+        {
+            SuppressNativeFileDragOverride(e);
+            return;
+        }
+
+        e.DragUIOverride.IsContentVisible = true;
+        e.DragUIOverride.IsGlyphVisible = true;
+        e.DragUIOverride.IsCaptionVisible = true;
+        e.DragUIOverride.Caption = App.Current.LocalizationService.T(
+            "Widget.Compact.TodoDropHint");
     }
 
     private async void RootGrid_Drop(object sender, DragEventArgs e)
@@ -854,6 +883,51 @@ public sealed partial class TodoWidgetContent
         finally
         {
             ResetTodoReorderVisualState();
+        }
+    }
+
+    internal async Task<bool> ImportNativeDroppedFilesAsync(
+        IReadOnlyList<DroppedFilePath> files,
+        TodoItemViewModel? targetItem)
+    {
+        if (files.Count == 0 || ViewModel is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            TodoItemViewModel? item = targetItem ??
+                (ViewModel.IsDetailPageOpen
+                    ? ViewModel.SelectedDetailItem
+                    : await ViewModel.AddItemAsync(BuildDroppedTodoTitle(files)));
+            if (item is null)
+            {
+                return false;
+            }
+
+            int addedCount = await ViewModel.AddDroppedAttachmentsAsync(
+                item.Id,
+                files);
+            if (addedCount <= 0)
+            {
+                return false;
+            }
+
+            ShowUndoToast(
+                App.Current.LocalizationService.T("Todo.Dropped"),
+                durationMs: CopyToastMs,
+                clearUndoOnHide: false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[Todo] Failed to import native dropped files: {ex}");
+            ShowUndoToast(
+                App.Current.LocalizationService.T("Todo.DropFailed"),
+                durationMs: UndoToastMs,
+                clearUndoOnHide: false);
+            return false;
         }
     }
 

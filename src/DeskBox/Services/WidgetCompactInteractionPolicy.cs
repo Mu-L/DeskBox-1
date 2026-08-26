@@ -145,6 +145,24 @@ internal static class WidgetCompactInteractionPolicy
             (nativeRootCanReceivePointer || hasRecentRoutedPointerEvidence);
     }
 
+    public static bool CanReleaseHoverSuppressionAfterRoutedPointerIntent(
+        bool establishesNewPointerIntent,
+        bool isTargetCollapsed,
+        bool isShellCollapsed,
+        bool isBoundsTransitionActive,
+        bool isShellTransitionActive)
+    {
+        // PointerEntered/PointerMoved is authoritative only after the native
+        // bounds and shell have both reached the settled capsule. Releasing the
+        // guard any earlier lets the shrinking HWND expand again beneath a
+        // stationary pointer.
+        return establishesNewPointerIntent &&
+            isTargetCollapsed &&
+            isShellCollapsed &&
+            !isBoundsTransitionActive &&
+            !isShellTransitionActive;
+    }
+
     public static bool CanAutoCollapse(
         WidgetCollapseBehavior behavior,
         WidgetCompactInteractionSnapshot snapshot)

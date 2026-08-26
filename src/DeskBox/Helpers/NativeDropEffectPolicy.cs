@@ -11,8 +11,18 @@ internal static class NativeDropEffectPolicy
     internal const uint Copy = 1;
     internal const uint Move = 2;
     internal const uint Link = 4;
-    private const uint ControlKeyState = 0x0008;
-    private const uint ShiftKeyState = 0x0004;
+    internal const uint ControlKeyState = 0x0008;
+    internal const uint ShiftKeyState = 0x0004;
+    // OLE IDropTarget key-state flags (MK_* in oleidl.h).
+    internal const uint RightButtonKeyState = 0x0002;
+    internal const uint AltKeyState = 0x0020;
+
+    public static bool IsVirtualOnlyFileData(
+        bool hasPhysicalPathData,
+        bool hasVirtualDescriptorData)
+    {
+        return !hasPhysicalPathData && hasVirtualDescriptorData;
+    }
 
     public static uint ResolveFeedbackEffect(
         bool hasFileData,
@@ -20,7 +30,9 @@ internal static class NativeDropEffectPolicy
         uint keyState,
         uint allowedEffects,
         bool hasShellApplicationData = false,
-        bool defaultMove = true)
+        bool defaultMove = true,
+        bool followWindows = false,
+        bool sameVolume = true)
     {
         if (hasShellApplicationData)
         {
@@ -45,15 +57,59 @@ internal static class NativeDropEffectPolicy
             forceCopy: hasVirtualFileData,
             controlDown: (keyState & ControlKeyState) != 0,
             shiftDown: (keyState & ShiftKeyState) != 0,
-            defaultMove,
+            defaultMove: defaultMove,
             canCopy: (allowedEffects & Copy) != 0,
-            canMove: (allowedEffects & Move) != 0);
+            canMove: (allowedEffects & Move) != 0,
+            altDown: (keyState & AltKeyState) != 0,
+            followWindows: followWindows,
+            sameVolume: sameVolume,
+            // The native source may omit DROPEFFECT_LINK even though DeskBox
+            // can safely create a local .lnk from the extracted path. The
+            // visual still falls back to Copy when Link is not advertised.
+            canLink: true);
         return intent switch
         {
             FileDropIntent.Copy => Copy,
             FileDropIntent.Move => Move,
+            FileDropIntent.Shortcut when (allowedEffects & Link) != 0 => Link,
+            FileDropIntent.Shortcut when (allowedEffects & Copy) != 0 => Copy,
+            FileDropIntent.Shortcut when (allowedEffects & Move) != 0 => Move,
             _ => None
         };
+    }
+
+    public static bool ShouldCopyMappedTransfer(
+        bool containsTemporaryFiles,
+        uint keyState,
+        bool defaultMove,
+        bool followWindows = false,
+        bool sameVolume = true)
+    {
+        FileDropIntent intent = FileDropIntentPolicy.ResolveMappedTransfer(
+            hasMappedFolder: true,
+            forceCopy: containsTemporaryFiles,
+            controlDown: (keyState & ControlKeyState) != 0,
+            shiftDown: (keyState & ShiftKeyState) != 0,
+            defaultMove: defaultMove,
+            altDown: (keyState & AltKeyState) != 0,
+            followWindows: followWindows,
+            sameVolume: sameVolume);
+        return intent != FileDropIntent.Move;
+    }
+
+    public static bool ShouldCreateMappedShortcut(
+        bool containsTemporaryFiles,
+        uint keyState)
+    {
+        return !containsTemporaryFiles &&
+               ((keyState & AltKeyState) != 0 ||
+                (keyState & (ControlKeyState | ShiftKeyState)) ==
+                    (ControlKeyState | ShiftKeyState));
+    }
+
+    public static bool IsRightButtonDrag(uint keyState)
+    {
+        return (keyState & RightButtonKeyState) != 0;
     }
 
     public static uint ResolveCompletionEffect(

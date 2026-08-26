@@ -24,7 +24,10 @@ public sealed record FileItemMenuActions(
     Action<IReadOnlyList<WidgetItem>> CreateManualStack,
     Func<WidgetItem, bool> CanRemoveFromStack,
     Action<WidgetItem> RemoveFromStack,
-    Action ClearSelection);
+    Action ClearSelection,
+    Action<WidgetItem>? ShowSystemContextMenu = null,
+    Func<WidgetItem, bool>? CanRunAsAdministrator = null,
+    Func<WidgetItem, Task>? RunAsAdministratorAsync = null);
 
 public static class FileItemMenuBuilder
 {
@@ -44,6 +47,21 @@ public static class FileItemMenuBuilder
             await actions.OpenItemAsync(item);
         };
         flyout.Items.Add(open);
+
+        if (actions.CanRunAsAdministrator?.Invoke(item) == true &&
+            actions.RunAsAdministratorAsync is not null)
+        {
+            MenuFlyoutItem runAsAdministrator = actions.CreateMenuItem(
+                "Widget.RunAsAdministrator",
+                "\uE7EF");
+            runAsAdministrator.Click += async (_, _) =>
+            {
+                flyout.Hide();
+                await actions.RunAsAdministratorAsync(item);
+            };
+            flyout.Items.Add(runAsAdministrator);
+        }
+
         flyout.Items.Add(new MenuFlyoutSeparator());
 
         MenuFlyoutItem cut = actions.CreateMenuItem(
@@ -91,16 +109,6 @@ public static class FileItemMenuBuilder
         };
         flyout.Items.Add(copyPath);
 
-        MenuFlyoutItem showInExplorer = actions.CreateMenuItem(
-            "Widget.ShowInExplorer",
-            "\uE838");
-        showInExplorer.Click += (_, _) =>
-        {
-            flyout.Hide();
-            actions.ShowInExplorer(item);
-        };
-        flyout.Items.Add(showInExplorer);
-
         MenuFlyoutItem properties = actions.CreateMenuItem(
             "Common.Properties",
             "\uE946");
@@ -111,6 +119,19 @@ public static class FileItemMenuBuilder
             actions.ShowProperties(item);
         };
         flyout.Items.Add(properties);
+
+        if (actions.ShowSystemContextMenu is not null)
+        {
+            MenuFlyoutItem moreSystemOperations = actions.CreateMenuItem(
+                "Widget.MoreSystemOperations",
+                "\uE712");
+            moreSystemOperations.Click += (_, _) =>
+            {
+                flyout.Hide();
+                actions.ShowSystemContextMenu(item);
+            };
+            flyout.Items.Add(moreSystemOperations);
+        }
 
         if (actions.CanRemoveFromStack(item))
         {
@@ -125,6 +146,16 @@ public static class FileItemMenuBuilder
             };
             flyout.Items.Add(removeFromStack);
         }
+
+        MenuFlyoutItem showInExplorer = actions.CreateMenuItem(
+            "Widget.ShowInExplorer",
+            "\uE838");
+        showInExplorer.Click += (_, _) =>
+        {
+            flyout.Hide();
+            actions.ShowInExplorer(item);
+        };
+        flyout.Items.Add(showInExplorer);
 
         if (actions.CanMoveItemsBackToDesktop())
         {

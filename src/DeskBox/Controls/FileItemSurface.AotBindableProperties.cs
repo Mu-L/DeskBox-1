@@ -3,14 +3,20 @@ namespace DeskBox.Controls;
 
 // ElementName bindings inside FileItemSurface resolve these calculated
 // presentation properties through ICustomProperty under NativeAOT. Keep the
-// generated provider limited to the six properties proven by the real surface.
+// generated provider limited to properties consumed by the real surface.
 [WinRT.GeneratedBindableCustomProperty([
     nameof(IconLayoutVisibility),
     nameof(ListLayoutVisibility),
     nameof(SurfaceHorizontalAlignment),
     nameof(SurfaceMargin),
     nameof(SurfaceMaxWidth),
-    nameof(SurfacePadding)
+    nameof(SurfacePadding),
+    nameof(TransferBadgeVisibility),
+    nameof(IsTransferActive),
+    nameof(TransferStatusVisibility),
+    nameof(TransferStatusText),
+    nameof(PathTooltipVisibility),
+    nameof(ToolTipEnabled)
 ], [])]
 public sealed partial class FileItemSurface
 {

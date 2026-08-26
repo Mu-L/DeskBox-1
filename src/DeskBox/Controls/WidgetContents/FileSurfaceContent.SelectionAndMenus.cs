@@ -29,6 +29,7 @@ public sealed partial class FileSurfaceContent
     private Windows.Foundation.Point _selectionCurrentPoint;
     private List<WidgetItem> _selectionSnapshot = [];
     private List<SelectionHit> _selectionHits = [];
+    private (int X, int Y)? _lastItemContextScreenPoint;
 
     private void Items_PointerPressed(
         object sender,
@@ -402,7 +403,13 @@ public sealed partial class FileSurfaceContent
                 () => CopySelectionToClipboardAsync(cut)),
             RenameItemAsync,
             CopySelectedPathsToClipboard,
-            item => ViewModel.ShowInExplorer(item),
+            item =>
+            {
+                if (!TryBlockTransferOpen(item))
+                {
+                    ViewModel.ShowInExplorer(item);
+                }
+            },
             ShowFileProperties,
             CanMoveItemsBackToDesktop,
             _ => MoveSelectedItemsBackToDesktopAsync(),
@@ -411,17 +418,38 @@ public sealed partial class FileSurfaceContent
             CanCreateManualStack: true,
             items =>
             {
+                if (TryBlockTransferMutation(items))
+                {
+                    return;
+                }
+
                 ApplyStackProjectionChange(() =>
                     _ = ViewModel.CreateManualStack(items));
             },
             ViewModel.CanRemoveItemFromStack,
-            item => ApplyStackProjectionChange(() =>
-                _ = ViewModel.RemoveItemFromStack(item)),
-            ClearSelection);
+            item =>
+            {
+                if (TryBlockTransferMutation(item))
+                {
+                    return;
+                }
+
+                ApplyStackProjectionChange(() =>
+                    _ = ViewModel.RemoveItemFromStack(item));
+            },
+            ClearSelection,
+            ShowSystemContextMenu,
+            ElevatedFileLauncher.CanRunAsAdministrator,
+            RunAsAdministratorAsync);
     }
 
     private void ShowFileProperties(WidgetItem item)
     {
+        if (TryBlockTransferOpen(item))
+        {
+            return;
+        }
+
         if (!ShellContextMenuHelper.ShowProperties(
                 _hostWindowHandle,
                 item.Path))
@@ -430,6 +458,123 @@ public sealed partial class FileSurfaceContent
                 T("Widget.Error.OperationIncomplete"),
                 WidgetFeedbackSeverity.Warning,
                 "file-properties"));
+        }
+    }
+
+    private void ShowSystemContextMenu(WidgetItem item)
+    {
+        if (TryBlockTransferOpen(item))
+        {
+            return;
+        }
+
+        (int screenX, int screenY) = GetContextMenuScreenPoint(item);
+        _lastItemContextScreenPoint = null;
+        ShellContextMenuHelper.NativeMenuResult result =
+            ShellContextMenuHelper.ShowContextMenu(
+                _hostWindowHandle,
+                item.Path,
+                screenX,
+                screenY);
+        if (result == ShellContextMenuHelper.NativeMenuResult.Failed)
+        {
+            ShowFeedback(new WidgetFeedbackRequest(
+                T("Widget.Error.OperationIncomplete"),
+                WidgetFeedbackSeverity.Warning,
+                "system-context-menu"));
+        }
+    }
+
+    private async Task RunAsAdministratorAsync(WidgetItem item)
+    {
+        if (TryBlockTransferOpen(item))
+        {
+            return;
+        }
+
+        ElevatedFileLaunchResult result =
+            ElevatedFileLauncher.RunAsAdministrator(
+            _hostWindowHandle,
+            item);
+        switch (result.Status)
+        {
+            case ElevatedFileLaunchStatus.Launched:
+            case ElevatedFileLaunchStatus.Cancelled:
+                break;
+
+            case ElevatedFileLaunchStatus.AlreadyRunningUnelevated:
+            case ElevatedFileLaunchStatus.NoNewProcess:
+                ShowFeedback(new WidgetFeedbackRequest(
+                    T("Widget.RunAsAdministrator.AlreadyRunning"),
+                    WidgetFeedbackSeverity.Warning,
+                    "run-as-administrator-existing"));
+                break;
+
+            case ElevatedFileLaunchStatus.NotElevated:
+                ShowFeedback(new WidgetFeedbackRequest(
+                    T("Widget.RunAsAdministrator.NotElevated"),
+                    WidgetFeedbackSeverity.Warning,
+                    "run-as-administrator-not-elevated"));
+                break;
+
+            default:
+                ShowFeedback(new WidgetFeedbackRequest(
+                    T("Widget.Error.OperationIncomplete"),
+                    WidgetFeedbackSeverity.Warning,
+                    "run-as-administrator"));
+                break;
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private (int ScreenX, int ScreenY) GetContextMenuScreenPoint(
+        WidgetItem item)
+    {
+        if (_lastItemContextScreenPoint is { } previous)
+        {
+            return (previous.X, previous.Y);
+        }
+
+        if (Win32Helper.GetCursorPos(out Win32Helper.POINT cursor) &&
+            IsScreenPointInsideElement(Root, cursor.X, cursor.Y))
+        {
+            return (cursor.X, cursor.Y);
+        }
+
+        FrameworkElement? target = FindItemSurface(item);
+        Win32Helper.RECT windowBounds = default;
+        bool hasWindowBounds = Win32Helper.GetWindowRect(
+            _hostWindowHandle,
+            out windowBounds);
+        if (target is null ||
+            target.XamlRoot is null ||
+            !hasWindowBounds)
+        {
+            return hasWindowBounds
+                ? (windowBounds.Left, windowBounds.Top)
+                : (0, 0);
+        }
+
+        try
+        {
+            Windows.Foundation.Point topLeft = target.TransformToVisual(null)
+                .TransformPoint(new Windows.Foundation.Point(0, 0));
+            double scale = target.XamlRoot.RasterizationScale;
+            if (scale <= 0)
+            {
+                scale = 1;
+            }
+
+            return (
+                windowBounds.Left + (int)Math.Round(
+                    (topLeft.X + target.ActualWidth / 2) * scale),
+                windowBounds.Top + (int)Math.Round(
+                    (topLeft.Y + target.ActualHeight / 2) * scale));
+        }
+        catch (InvalidOperationException)
+        {
+            return (windowBounds.Left, windowBounds.Top);
         }
     }
 
@@ -591,6 +736,11 @@ public sealed partial class FileSurfaceContent
     {
         if (string.IsNullOrWhiteSpace(
                 ViewModel.CurrentFolderPath))
+        {
+            return;
+        }
+
+        if (TryBlockTransferMutation(ViewModel.CurrentFolderPath))
         {
             return;
         }
@@ -1100,13 +1250,19 @@ public sealed partial class FileSurfaceContent
     private bool CanMoveItemsBackToDesktop()
     {
         return !string.IsNullOrWhiteSpace(
-            ViewModel.MappedFolderPath);
+                ViewModel.MappedFolderPath) &&
+            !TryGetSelectedTransferState(out _);
     }
 
     private async Task MoveSelectedItemsBackToDesktopAsync()
     {
         IReadOnlyList<WidgetItem> items = GetSelectedItems();
         if (items.Count == 0)
+        {
+            return;
+        }
+
+        if (TryBlockTransferMutation(items))
         {
             return;
         }

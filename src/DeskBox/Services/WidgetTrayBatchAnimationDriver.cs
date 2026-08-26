@@ -56,6 +56,7 @@ public sealed class WidgetTrayBatchAnimationDriver
     private IDisposable? _clockBoostLease;
     private DispatcherQueueTimer? _windows10FrameTimer;
     private WidgetTrayAnimationFrameTracker? _frameTracker;
+    private TaskCompletionSource? _idleCompletion;
 
     public WidgetTrayBatchAnimationDriver(Action<string>? log = null)
     {
@@ -63,6 +64,18 @@ public sealed class WidgetTrayBatchAnimationDriver
     }
 
     public bool IsRunning => _isRunning;
+
+    /// <summary>
+    /// Completes after the active batch has fully stopped. Visibility request
+    /// queues use this to avoid starting a new Composition animation while the
+    /// previous batch is still rendering.
+    /// </summary>
+    public Task WaitForIdleAsync()
+    {
+        return _isRunning && _idleCompletion is not null
+            ? _idleCompletion.Task
+            : Task.CompletedTask;
+    }
 
     /// <summary>
     /// Starts a shared batch run. Any previously running batch is cancelled
@@ -88,6 +101,8 @@ public sealed class WidgetTrayBatchAnimationDriver
         _isShowing = isShowing;
         _remainingDelayFrames = Math.Max(0, startDelayFrames);
         _stopwatch = null;
+        _idleCompletion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         _isRunning = true;
         _clockBoostLease = CompositorClockBoostCoordinator.Acquire();
         StartFrameClock();
@@ -306,6 +321,8 @@ public sealed class WidgetTrayBatchAnimationDriver
 
     private void StopCore()
     {
+        TaskCompletionSource? idleCompletion = _idleCompletion;
+        _idleCompletion = null;
         _isRunning = false;
         _entries.Clear();
         _stopwatch = null;
@@ -313,6 +330,7 @@ public sealed class WidgetTrayBatchAnimationDriver
         StopFrameClock();
         _clockBoostLease?.Dispose();
         _clockBoostLease = null;
+        idleCompletion?.TrySetResult();
     }
 
     private static double Lerp(double from, double to, double progress)

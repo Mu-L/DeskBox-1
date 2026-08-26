@@ -50,12 +50,27 @@ public sealed partial class ContentWidgetWindow
                 ? DeskBoxDragData.GetFileAssociationOperation(e.DataView)
                 : DataPackageOperation.Copy
             : DataPackageOperation.None;
-        e.DragUIOverride.IsGlyphVisible = false;
-        e.DragUIOverride.Caption =
-            e.AcceptedOperation == DataPackageOperation.None
-                ? string.Empty
-                : App.Current.LocalizationService.T(
-                    "Widget.Compact.TodoDropHint");
+        if (DeskBoxDragData.HasDroppedFiles(e.DataView))
+        {
+            bool isInternalFileDrag =
+                DeskBoxDragData.IsInternalFileDrag(e.DataView);
+            e.DragUIOverride.IsContentVisible = isInternalFileDrag;
+            e.DragUIOverride.IsGlyphVisible = isInternalFileDrag;
+            e.DragUIOverride.IsCaptionVisible = isInternalFileDrag;
+            e.DragUIOverride.Caption = isInternalFileDrag
+                ? App.Current.LocalizationService.T(
+                    "Widget.Compact.TodoDropHint")
+                : string.Empty;
+        }
+        else
+        {
+            e.DragUIOverride.IsGlyphVisible = false;
+            e.DragUIOverride.Caption =
+                e.AcceptedOperation == DataPackageOperation.None
+                    ? string.Empty
+                    : App.Current.LocalizationService.T(
+                        "Widget.Compact.TodoDropHint");
+        }
         e.Handled = true;
     }
 

@@ -137,6 +137,13 @@ public sealed partial class WidgetManager
     public WidgetSessionState SessionState => _sessionManager.State;
     public bool IsWidgetInteractionActive => _sessionManager.IsInteractionActive;
 
+    internal bool HasActiveVisualWork =>
+        _trayBatchAnimationDriver.IsRunning ||
+        WidgetCompactAnimationCoordinator.HasActiveAnimations ||
+        GetLoadedDesktopWindows()
+            .OfType<WidgetWindowBase>()
+            .Any(window => window.HasActiveVisualWork);
+
     public bool HasVisibleWidgets =>
         GetLoadedDesktopWindows().Any(window => window.Visible);
 
@@ -396,6 +403,8 @@ public sealed partial class WidgetManager
         _lastWidgetLayerMode = SettingsService.NormalizeWidgetLayerModeSetting(_settingsService.Settings.WidgetLayerMode);
         _lastPerformanceSettings =
             PerformanceSettingsPolicy.Resolve(_settingsService.Settings);
+        IconHelper.ConfigurePerformanceCacheBudget(
+            _lastPerformanceSettings.CacheBudget);
         InitializeWidgetGroupPresentationDefaults();
         _settingsService.SettingsChanged += OnSettingsChanged;
         _settingsService.AppearancePreviewChanged += ApplyAppearancePreview;
@@ -549,6 +558,7 @@ public sealed partial class WidgetManager
         }
 
         _lastPerformanceSettings = current;
+        IconHelper.ConfigurePerformanceCacheBudget(current.CacheBudget);
         foreach (IDesktopWidgetWindow window in GetLoadedDesktopWindows())
         {
             window.ApplyPerformanceSettings();
@@ -1146,6 +1156,7 @@ public sealed partial class WidgetManager
             _sessionManager.MarkDesktopResting("set-all-visible");
             NormalizeIdleWidgetZOrder("set-all-visible");
             SaveBatchVisibilityState();
+            await _trayBatchAnimationDriver.WaitForIdleAsync();
             App.LogVerbose($"[TrayBatch] SetAllVisible completed visible=true prepared={windowsToShow.Count} shown={shownWindows.Count}");
             return;
         }
@@ -1192,6 +1203,7 @@ public sealed partial class WidgetManager
         _trayRaiseBatchGeneration++;
         StopTrayLayerRestoreMonitor();
         SaveBatchVisibilityState();
+        await _trayBatchAnimationDriver.WaitForIdleAsync();
         App.LogVerbose($"[TrayBatch] SetAllVisible completed visible=false prepared={windowsToHide.Count}");
         App.ScheduleBackgroundMemoryCleanup();
 
@@ -1802,6 +1814,7 @@ public sealed partial class WidgetManager
         _contentWidgets.Clear();
         _widgetWindowHandles.Clear();
         _widgetSurfaces.Clear();
+        _widgetSurfaceSwitchGates.Clear();
         _sessionManager.MarkHidden("close-all");
     }
 

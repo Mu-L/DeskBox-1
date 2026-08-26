@@ -68,6 +68,11 @@ public sealed partial class FileSurfaceContent
             // Main-surface templates already supply this value through XAML;
             // assigning the same context here is a safe fallback for both.
             surface.LayoutContext ??= ViewModel;
+            // Loaded can be raised again when a virtualized popup container is
+            // reattached without a matching unload on some WinUI versions.
+            // Make the host subscription idempotent so each item surface keeps
+            // exactly one callback to this content instance.
+            surface.VisualStateChanged -= ItemSurface_VisualStateChanged;
             surface.VisualStateChanged += ItemSurface_VisualStateChanged;
         }
 
@@ -167,12 +172,14 @@ public sealed partial class FileSurfaceContent
         }
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
-        if (!payload.IsInternalReorder && payload.HasSurfacePathData)
+        if (!payload.IsDeskBoxFileDrag && payload.HasSurfacePathData)
         {
             SuppressExternalDragOperationBadge(e);
         }
 
-        if (_isImportBusy || !payload.HasSurfacePathData)
+        if (_isImportBusy ||
+            !payload.HasSurfacePathData ||
+            HasTransferConflict(payload.Paths, targetFolder.Path))
         {
             e.AcceptedOperation = DataPackageOperation.None;
             ClearFolderDropTarget();
@@ -182,17 +189,22 @@ public sealed partial class FileSurfaceContent
         if (IsUnsafeFolderDrop(payload.Paths, targetFolder.Path))
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            if (payload.IsInternalReorder)
+            if (payload.IsDeskBoxFileDrag)
             {
-                e.DragUIOverride.IsGlyphVisible = false;
-                e.DragUIOverride.IsCaptionVisible = true;
-                e.DragUIOverride.Caption = T("Widget.CannotMoveToFolder");
+                ApplyDeskBoxFileDragFeedback(
+                    e,
+                    DataPackageOperation.None,
+                    T("Widget.CannotMoveToFolder"));
             }
             ClearFolderDropTarget();
             return;
         }
 
-        DataPackageOperation operation = ResolveFolderDropOperation(payload.DataView);
+        FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
+            payload.DataView,
+            destinationFolderPath: targetFolder.Path);
+        DataPackageOperation operation =
+            ToDataPackageOperation(resolvedIntent);
         e.AcceptedOperation = operation;
         if (operation == DataPackageOperation.None)
         {
@@ -201,15 +213,12 @@ public sealed partial class FileSurfaceContent
         }
 
         SetFolderDropTarget(border);
-        if (payload.IsInternalReorder)
+        if (payload.IsDeskBoxFileDrag)
         {
-            e.DragUIOverride.IsGlyphVisible = true;
-            e.DragUIOverride.IsCaptionVisible = true;
-            e.DragUIOverride.Caption = _localizationService.Format(
-                operation == DataPackageOperation.Copy
-                    ? "Widget.CopyToFolder"
-                    : "Widget.MoveToFolder",
-                targetFolder.Name);
+            ApplyDeskBoxFileDragFeedback(
+                e,
+                operation,
+                FormatDropCaption(resolvedIntent, targetFolder.Name));
         }
     }
 
@@ -249,9 +258,21 @@ public sealed partial class FileSurfaceContent
         ApplyDropVisual(FileDropVisualState.None);
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
-        if (_isImportBusy || !payload.HasSurfacePathData)
+        if (_isImportBusy ||
+            !payload.HasSurfacePathData ||
+            HasTransferConflict(payload.Paths, targetFolder.Path))
         {
             e.AcceptedOperation = DataPackageOperation.None;
+            if (HasTransferConflict(payload.Paths, targetFolder.Path))
+            {
+                FileTransferPathState targetState =
+                    GetTransferState(targetFolder);
+                ShowTransferBlockedFeedback(
+                    targetState.IsActive
+                        ? targetState
+                        : _fileService.TransferSessions.GetState(
+                            payload.Paths.FirstOrDefault()));
+            }
             ResetDragPayloadCache();
             return;
         }
@@ -277,9 +298,20 @@ public sealed partial class FileSurfaceContent
                 .Select(file => file.Path)
                 .ToArray();
             if (sourcePaths.Length == 0 ||
+                HasTransferConflict(sourcePaths, targetFolder.Path) ||
                 IsUnsafeFolderDrop(sourcePaths, targetFolder.Path))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
+                if (HasTransferConflict(sourcePaths, targetFolder.Path))
+                {
+                    FileTransferPathState targetState =
+                        GetTransferState(targetFolder);
+                    ShowTransferBlockedFeedback(
+                        targetState.IsActive
+                            ? targetState
+                            : _fileService.TransferSessions.GetState(
+                                sourcePaths.FirstOrDefault()));
+                }
                 if (sourcePaths.Length > 0)
                 {
                     ShowFeedback(new(
@@ -292,9 +324,13 @@ public sealed partial class FileSurfaceContent
 
             // Re-read Ctrl/Shift at Drop so releasing or pressing a modifier
             // during the drag changes the actual transfer, not only its glyph.
-            DataPackageOperation operation = ResolveFolderDropOperation(
+            FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
                 e.DataView,
-                forceCopy: droppedFiles.Any(file => file.ForceManagedCopy));
+                forceCopy: droppedFiles.Any(file => file.ForceManagedCopy),
+                destinationFolderPath: targetFolder.Path,
+                sourcePathsOverride: droppedFiles.Select(file => file.Path));
+            DataPackageOperation operation =
+                ToDataPackageOperation(resolvedIntent);
             if (operation == DataPackageOperation.None)
             {
                 return;
@@ -302,6 +338,7 @@ public sealed partial class FileSurfaceContent
 
             e.AcceptedOperation = operation;
             bool move = operation == DataPackageOperation.Move;
+            bool createShortcuts = resolvedIntent == FileDropIntent.Shortcut;
             string? sourceWidgetId = TryGetString(
                 e.DataView.Properties,
                 DeskBoxDragData.SourceWidgetIdProperty);
@@ -325,12 +362,28 @@ public sealed partial class FileSurfaceContent
                     .ToArray();
                 if (regularPaths.Length > 0)
                 {
-                    results.AddRange(await _fileService.TransferItemsWithResultAsync(
-                        regularPaths,
-                        targetFolder.Path,
-                        move,
-                        progress,
-                        ActiveImportCancellationToken));
+                    if (createShortcuts)
+                    {
+                        IReadOnlyList<string> created =
+                            await CreateShortcutFilesAsync(
+                                droppedFiles.Where(file => !file.ForceManagedCopy)
+                                    .ToArray(),
+                                targetFolder.Path,
+                                ActiveImportCancellationToken);
+                        results.AddRange(created.Select(path =>
+                            new FileService.FileTransferResult(path, path)));
+                    }
+                    else
+                    {
+                        results.AddRange(await _fileService.TransferItemsWithResultAsync(
+                            regularPaths,
+                            targetFolder.Path,
+                            move,
+                            progress,
+                            ActiveImportCancellationToken,
+                            useShellProgress: true,
+                            ownerWindowHandle: _hostWindowHandle));
+                    }
                 }
 
                 string[] forcedCopyPaths = droppedFiles
@@ -407,6 +460,7 @@ public sealed partial class FileSurfaceContent
         catch (OperationCanceledException)
         {
             App.Log($"[WidgetSurface] Folder drop canceled id={WidgetId}");
+            await RefreshAfterInterruptedFolderImportAsync();
             if (_activeImportCancellation is not null)
             {
                 await CompleteTrackedImportAsync(
@@ -416,6 +470,7 @@ public sealed partial class FileSurfaceContent
         catch (Exception ex)
         {
             App.Log($"[WidgetSurface] Folder drop failed id={WidgetId}: {ex}");
+            await RefreshAfterInterruptedFolderImportAsync();
             ShowFeedback(new(
                 $"{T("Widget.MoveToFolderFailed")}: {ex.Message}",
                 WidgetFeedbackSeverity.Error,
@@ -434,6 +489,288 @@ public sealed partial class FileSurfaceContent
             }
             ResetDragPayloadCache();
             deferral?.Complete();
+        }
+    }
+
+    private async Task<bool> ImportNativeDroppedFilesIntoFolderAsync(
+        IReadOnlyList<DroppedFilePath> droppedFiles,
+        WidgetItem targetFolder,
+        bool move,
+        FileDropIntent? intentOverride = null)
+    {
+        string[] sourcePaths = droppedFiles
+            .Select(file => file.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (HasTransferConflict(sourcePaths, targetFolder.Path))
+        {
+            FileTransferPathState targetState = GetTransferState(targetFolder);
+            ShowTransferBlockedFeedback(
+                targetState.IsActive
+                    ? targetState
+                    : _fileService.TransferSessions.GetState(
+                        sourcePaths.FirstOrDefault()));
+            return false;
+        }
+
+        if (sourcePaths.Length == 0 ||
+            IsUnsafeFolderDrop(sourcePaths, targetFolder.Path))
+        {
+            if (sourcePaths.Length > 0)
+            {
+                ShowFeedback(new(
+                    T("Widget.CannotMoveToFolder"),
+                    WidgetFeedbackSeverity.Warning,
+                    "native-folder-drop-unsafe"));
+            }
+
+            return false;
+        }
+
+        BeginTrackedImport();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        App.Log(
+            $"[Import] Native folder import start widget={WidgetId} " +
+            $"target='{targetFolder.Path}' count={sourcePaths.Length} " +
+            $"move={move}");
+        try
+        {
+            EnsureTrackedImportStarted();
+            IProgress<FileService.FileTransferProgress> progress =
+                new CallbackProgress<FileService.FileTransferProgress>(
+                    ReportImportProgress);
+            var results = new List<FileService.FileTransferResult>();
+            bool createShortcuts = intentOverride == FileDropIntent.Shortcut;
+            string[] regularPaths = droppedFiles
+                .Where(file => !file.ForceManagedCopy)
+                .Select(file => file.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (regularPaths.Length > 0)
+            {
+                if (createShortcuts)
+                {
+                    IReadOnlyList<string> created =
+                        await CreateShortcutFilesAsync(
+                            droppedFiles.Where(file => !file.ForceManagedCopy)
+                                .ToArray(),
+                            targetFolder.Path,
+                            ActiveImportCancellationToken);
+                    results.AddRange(created.Select(path =>
+                        new FileService.FileTransferResult(path, path)));
+                }
+                else
+                {
+                    results.AddRange(await _fileService.TransferItemsWithResultAsync(
+                        regularPaths,
+                        targetFolder.Path,
+                        move,
+                        progress,
+                        ActiveImportCancellationToken,
+                        useShellProgress: true,
+                        ownerWindowHandle: _hostWindowHandle));
+                }
+            }
+
+            string[] forcedCopyPaths = droppedFiles
+                .Where(file => file.ForceManagedCopy)
+                .Select(file => file.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (forcedCopyPaths.Length > 0)
+            {
+                results.AddRange(await _fileService.TransferItemsWithResultAsync(
+                    forcedCopyPaths,
+                    targetFolder.Path,
+                    move: false,
+                    progress: progress,
+                    cancellationToken: ActiveImportCancellationToken));
+            }
+
+            if (!string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
+            {
+                await ViewModel.RefreshFromConfigAsync();
+            }
+
+            if (move)
+            {
+                _cutClipboardPaths = [];
+                ApplyCutState();
+            }
+
+            if (results.Count > 0)
+            {
+                ShowFeedback(new(
+                    _localizationService.Format(
+                        move
+                            ? "Widget.MovedToFolder"
+                            : "Widget.CopiedToFolder",
+                        targetFolder.Name,
+                        results.Count),
+                    WidgetFeedbackSeverity.Success,
+                    move
+                        ? "native-folder-drop-move"
+                        : "native-folder-drop-copy"));
+            }
+
+            await CompleteTrackedImportAsync(
+                ImportCompletionState.Completed);
+            App.Log(
+                $"[Import] Native folder import completed widget={WidgetId} " +
+                $"target='{targetFolder.Path}' count={results.Count} " +
+                $"elapsedMs={stopwatch.ElapsedMilliseconds}");
+            return results.Count > 0;
+        }
+        catch (OperationCanceledException)
+        {
+            await RefreshAfterInterruptedFolderImportAsync();
+            if (_activeImportCancellation is not null)
+            {
+                await CompleteTrackedImportAsync(
+                    ImportCompletionState.Canceled);
+            }
+
+            App.Log(
+                $"[Import] Native folder import canceled widget={WidgetId} " +
+                $"target='{targetFolder.Path}' " +
+                $"elapsedMs={stopwatch.ElapsedMilliseconds}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            await RefreshAfterInterruptedFolderImportAsync();
+            if (_activeImportCancellation is not null)
+            {
+                await CompleteTrackedImportAsync(
+                    ImportCompletionState.Failed);
+            }
+
+            App.Log(
+                $"[WidgetSurface] Native folder drop failed id={WidgetId} " +
+                $"target='{targetFolder.Path}': {ex}");
+            ShowFeedback(new(
+                $"{T("Widget.MoveToFolderFailed")}: {ex.Message}",
+                WidgetFeedbackSeverity.Error,
+                "native-folder-drop-error"));
+            return false;
+        }
+        finally
+        {
+            if (_activeImportCancellation is not null)
+            {
+                CancelAndResetTrackedImport();
+            }
+        }
+    }
+
+    private async Task RefreshAfterInterruptedFolderImportAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ViewModel.MappedFolderPath))
+        {
+            return;
+        }
+
+        try
+        {
+            await ViewModel.RefreshFromConfigAsync();
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[WidgetSurface] Refresh after interrupted folder import " +
+                $"failed id={WidgetId}: {ex}");
+        }
+    }
+
+    private async Task<bool> ImportNativeDroppedFilesIntoStackAsync(
+        IReadOnlyList<DroppedFilePath> droppedFiles,
+        WidgetStackItem stack,
+        bool? moveWhenMapped,
+        FileDropIntent? intentOverride = null)
+    {
+        string[] sourcePaths = droppedFiles
+            .Select(file => file.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (HasTransferConflict(sourcePaths, ViewModel.CurrentFolderPath))
+        {
+            ShowTransferBlockedFeedback(
+                _fileService.TransferSessions.GetState(
+                    sourcePaths.FirstOrDefault()) is { IsActive: true } sourceState
+                    ? sourceState
+                    : _fileService.TransferSessions.GetState(
+                        ViewModel.CurrentFolderPath));
+            return false;
+        }
+
+        string targetStackKey = stack.StackKey;
+        string[] targetStackMemberAnchors = stack.Members
+            .Select(member => member.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
+        HashSet<string> existingPaths = ViewModel.Items
+            .Select(item => Path.GetFullPath(item.Path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        BeginTrackedImport();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        App.Log(
+            $"[Import] Native stack import start widget={WidgetId} " +
+            $"stack='{targetStackKey}' count={droppedFiles.Count} " +
+            $"move={moveWhenMapped == true}");
+        try
+        {
+            await ImportDroppedFilesAsync(
+                droppedFiles,
+                moveWhenMapped,
+                intentOverride);
+            WidgetItem[] importedItems = ViewModel.Items
+                .Where(item => !existingPaths.Contains(
+                    Path.GetFullPath(item.Path)))
+                .ToArray();
+            bool added = importedItems.Length > 0 &&
+                ViewModel.AddItemsToStack(targetStackKey, importedItems);
+            if (added)
+            {
+                ClearSelection();
+                QueueStackPopoverReconciliation(
+                    targetStackKey,
+                    targetStackMemberAnchors);
+            }
+
+            App.Log(
+                $"[Import] Native stack import completed widget={WidgetId} " +
+                $"stack='{targetStackKey}' imported={importedItems.Length} " +
+                $"added={added} elapsedMs={stopwatch.ElapsedMilliseconds}");
+            return added;
+        }
+        catch (OperationCanceledException)
+        {
+            App.Log(
+                $"[Import] Native stack import canceled widget={WidgetId} " +
+                $"stack='{targetStackKey}' " +
+                $"elapsedMs={stopwatch.ElapsedMilliseconds}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            App.Log(
+                $"[WidgetSurface] Native stack drop failed id={WidgetId} " +
+                $"stack='{targetStackKey}': {ex}");
+            ShowFeedback(new(
+                ex.Message,
+                WidgetFeedbackSeverity.Error,
+                "native-stack-drop-error"));
+            return false;
+        }
+        finally
+        {
+            if (_activeImportCancellation is not null)
+            {
+                CancelAndResetTrackedImport();
+            }
         }
     }
 
@@ -461,8 +798,13 @@ public sealed partial class FileSurfaceContent
 
     private DataPackageOperation ResolveFolderDropOperation(
         DataPackageView dataView,
-        bool forceCopy = false) =>
-        ResolveSurfaceDropOperation(dataView, forceCopy);
+        bool forceCopy = false,
+        string? destinationFolderPath = null) =>
+        ToDataPackageOperation(
+            ResolveSurfaceDropIntent(
+                dataView,
+                forceCopy,
+                destinationFolderPath));
 
     private void SetFolderDropTarget(Border border)
     {
@@ -649,7 +991,7 @@ public sealed partial class FileSurfaceContent
         }
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
-        if (!payload.IsInternalReorder && payload.HasSurfacePathData)
+        if (!payload.IsDeskBoxFileDrag && payload.HasSurfacePathData)
         {
             SuppressExternalDragOperationBadge(e);
         }
@@ -676,19 +1018,21 @@ public sealed partial class FileSurfaceContent
         {
             SetStackMemberDropTarget(border);
             e.AcceptedOperation = DataPackageOperation.Link;
-            if (payload.IsInternalReorder)
+            if (payload.IsDeskBoxFileDrag)
             {
-                e.DragUIOverride.IsGlyphVisible = true;
-                e.DragUIOverride.IsCaptionVisible = true;
-                e.DragUIOverride.Caption =
+                ApplyDeskBoxFileDragFeedback(
+                    e,
+                    DataPackageOperation.Link,
                     _localizationService.Format(
                         "Widget.Stack.DragCaption.Add",
-                        stack.Name);
+                        stack.Name));
             }
             return;
         }
 
-        if (!payload.HasSurfacePathData || _isImportBusy)
+        if (!payload.HasSurfacePathData ||
+            _isImportBusy ||
+            HasTransferConflict(payload.Paths, ViewModel.CurrentFolderPath))
         {
             e.AcceptedOperation = DataPackageOperation.None;
             ClearStackMemberDropTarget();
@@ -700,19 +1044,33 @@ public sealed partial class FileSurfaceContent
                 ViewModel.CurrentFolderPath))
         {
             e.AcceptedOperation = DataPackageOperation.None;
-            if (payload.IsInternalReorder)
+            if (payload.IsDeskBoxFileDrag)
             {
-                e.DragUIOverride.IsGlyphVisible = false;
-                e.DragUIOverride.IsCaptionVisible = true;
-                e.DragUIOverride.Caption =
-                    T("Widget.Error.UnsafeFolderTransfer");
+                ApplyDeskBoxFileDragFeedback(
+                    e,
+                    DataPackageOperation.None,
+                    T("Widget.Error.UnsafeFolderTransfer"));
             }
             ClearStackMemberDropTarget();
             return;
         }
 
         SetStackMemberDropTarget(border);
-        e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);
+        FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
+            payload.DataView,
+            destinationFolderPath: ViewModel.CurrentFolderPath);
+        e.AcceptedOperation = ToDataPackageOperation(resolvedIntent);
+        if (payload.IsDeskBoxFileDrag)
+        {
+            ApplyDeskBoxFileDragFeedback(
+                e,
+                e.AcceptedOperation,
+                resolvedIntent == FileDropIntent.Shortcut
+                    ? FormatDropCaption(resolvedIntent, stack.Name)
+                    : _localizationService.Format(
+                        "Widget.Stack.DragCaption.Add",
+                        stack.Name));
+        }
     }
 
     private void StackSurface_DragLeave(
@@ -758,6 +1116,20 @@ public sealed partial class FileSurfaceContent
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
 
+        if (HasTransferConflict(payload.Paths, ViewModel.CurrentFolderPath))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            ShowTransferBlockedFeedback(
+                _fileService.TransferSessions.GetState(
+                    payload.Paths.FirstOrDefault()) is { IsActive: true } sourceState
+                    ? sourceState
+                    : _fileService.TransferSessions.GetState(
+                        ViewModel.CurrentFolderPath));
+            ClearStackMemberDropTarget();
+            ResetDragPayloadCache();
+            return;
+        }
+
         if (payload.IsStackPopoverMemberDrag &&
             string.Equals(
                 payload.SourceStackKey,
@@ -795,9 +1167,13 @@ public sealed partial class FileSurfaceContent
             {
                 using DroppedFileBatch batch =
                     await GetSurfaceDropFilesAsync(e.DataView);
-                DataPackageOperation accepted = ResolveSurfaceDropOperation(
+                FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
                     payload.DataView,
-                    forceCopy: batch.Files.Any(file => file.ForceManagedCopy));
+                    forceCopy: batch.Files.Any(file => file.ForceManagedCopy),
+                    destinationFolderPath: ViewModel.CurrentFolderPath,
+                    sourcePathsOverride: batch.Files.Select(file => file.Path));
+                DataPackageOperation accepted =
+                    ToDataPackageOperation(resolvedIntent);
                 if (accepted == DataPackageOperation.None)
                 {
                     e.AcceptedOperation = DataPackageOperation.None;
@@ -816,7 +1192,10 @@ public sealed partial class FileSurfaceContent
                 IReadOnlyList<string> completedSourcePaths =
                     await ImportDroppedFilesAsync(
                         batch.Files,
-                        moveWhenMapped);
+                        moveWhenMapped,
+                        intentOverride: resolvedIntent == FileDropIntent.Shortcut
+                            ? FileDropIntent.Shortcut
+                            : null);
                 WidgetItem[] importedItems = ViewModel.Items
                     .Where(item => !existingPaths.Contains(
                         Path.GetFullPath(item.Path)))
@@ -1053,6 +1432,10 @@ public sealed partial class FileSurfaceContent
     private void ResetStackInteractionVisuals()
     {
         _stackTransitionGeneration++;
+        CancelStackTransition(
+            Interlocked.Exchange(
+                ref _stackTransitionCancellation,
+                null));
         _pendingStackTransitionKey = null;
         _pendingStackExpanded = null;
         StopAndRestoreStackAnimations();
@@ -1143,6 +1526,11 @@ public sealed partial class FileSurfaceContent
         WidgetItem? item =
             FileItemSurface.FindOwner(border)?.DataContext as WidgetItem ??
             border.DataContext as WidgetItem;
+        FileItemSurface? surface = FileItemSurface.FindOwner(border);
+        FileTransferPathState transferState = GetTransferState(item);
+        surface?.SetTransferState(
+            transferState,
+            GetTransferStatusText(transferState));
         bool isSelected = item is not null &&
                           item is not WidgetStackItem &&
                           GetActiveItemsView().SelectedItems.Contains(item);

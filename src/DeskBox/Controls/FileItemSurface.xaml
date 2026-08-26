@@ -47,9 +47,19 @@
         PointerReleased="SurfaceBorder_PointerReleased"
         PointerCaptureLost="SurfaceBorder_PointerCaptureLost">
         <ToolTipService.ToolTip>
+            <!-- PathTooltipVisibility is derived from LayoutContext.ShowFileItemPathTooltips. -->
             <ToolTip
-                Content="{Binding FullPath}"
-                IsEnabled="{Binding LayoutContext.ShowFileItemPathTooltips, ElementName=SurfaceRoot}" />
+                IsEnabled="{Binding ToolTipEnabled, ElementName=SurfaceRoot}">
+                <StackPanel Spacing="2">
+                    <TextBlock
+                        FontWeight="SemiBold"
+                        Text="{Binding TransferStatusText, ElementName=SurfaceRoot}"
+                        Visibility="{Binding TransferStatusVisibility, ElementName=SurfaceRoot}" />
+                    <TextBlock
+                        Text="{Binding FullPath}"
+                        Visibility="{Binding PathTooltipVisibility, ElementName=SurfaceRoot}" />
+                </StackPanel>
+            </ToolTip>
         </ToolTipService.ToolTip>
         <Grid>
         <StackPanel
@@ -69,6 +79,25 @@
                     Width="{Binding LayoutContext.IconImageSize, ElementName=SurfaceRoot}"
                     Height="{Binding LayoutContext.IconImageSize, ElementName=SurfaceRoot}"
                     Visibility="{Binding FallbackIconVisibility}" />
+                <Border
+                    Width="20"
+                    Height="20"
+                    Margin="0,1,1,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    IsHitTestVisible="False"
+                    Visibility="{Binding TransferBadgeVisibility, ElementName=SurfaceRoot}">
+                    <ProgressRing
+                        Width="13"
+                        Height="13"
+                        IsActive="{Binding IsTransferActive, ElementName=SurfaceRoot}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+                </Border>
             </Grid>
             <TextBlock
                 x:Name="IconItemNameText"
@@ -105,6 +134,25 @@
                     Width="{Binding LayoutContext.ListIconSize, ElementName=SurfaceRoot}"
                     Height="{Binding LayoutContext.ListIconSize, ElementName=SurfaceRoot}"
                     Visibility="{Binding FallbackIconVisibility}" />
+                <Border
+                    Width="18"
+                    Height="18"
+                    Margin="0,1,1,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="9"
+                    IsHitTestVisible="False"
+                    Visibility="{Binding TransferBadgeVisibility, ElementName=SurfaceRoot}">
+                    <ProgressRing
+                        Width="12"
+                        Height="12"
+                        IsActive="{Binding IsTransferActive, ElementName=SurfaceRoot}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+                </Border>
             </Grid>
             <StackPanel
                 x:Name="ListItemTextHost"

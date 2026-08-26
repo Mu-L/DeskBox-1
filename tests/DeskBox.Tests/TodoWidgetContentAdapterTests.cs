@@ -1,3 +1,4 @@
+using DeskBox.Contracts;
 using DeskBox.Controls.WidgetContents;
 using DeskBox.Models;
 using DeskBox.Services;
@@ -14,6 +15,29 @@ public sealed class TodoWidgetContentAdapterTests : IDisposable
     {
         _tempRoot = Path.Combine(Path.GetTempPath(), "DeskBox.Tests", Guid.NewGuid().ToString("N"));
         _widgetsDataRoot = Directory.CreateDirectory(Path.Combine(_tempRoot, "widgets")).FullName;
+    }
+
+    [Fact]
+    public async Task QuickCaptureAndTodo_OptIntoReusableGroupContentLifecycle()
+    {
+        Assert.True(
+            typeof(IWidgetGroupContentCacheable).IsAssignableFrom(
+                typeof(QuickCaptureSurfaceContent)));
+        Assert.True(
+            typeof(IWidgetGroupContentCacheable).IsAssignableFrom(
+                typeof(TodoWidgetContentAdapter)));
+
+        var config = CreateConfig("todo-reusable");
+        var adapter = new TodoWidgetContentAdapter(config, CreateViewModel(config));
+        var reusable = Assert.IsAssignableFrom<IWidgetGroupContentCacheable>(adapter);
+
+        Assert.False(reusable.IsReadyForReuse);
+        await adapter.InitializeAsync();
+        Assert.True(reusable.IsReadyForReuse);
+
+        adapter.Dispose();
+        Assert.False(reusable.IsReadyForReuse);
+        adapter.Dispose();
     }
 
     [Fact]
