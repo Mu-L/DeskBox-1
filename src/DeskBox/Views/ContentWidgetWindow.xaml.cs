@@ -1274,9 +1274,24 @@ IsHideAnimationRunning = true;
 
     private void OnSettingsChanged()
     {
+        bool appearanceOnly =
+            SettingsService.LastNotifiedChangeKind == SettingsChangeKind.Appearance;
         if (!DispatcherQueue.HasThreadAccess)
         {
-            DispatcherQueue.TryEnqueue(OnSettingsChanged);
+            DispatcherQueue.TryEnqueue(() => ApplySettingsChanged(appearanceOnly));
+            return;
+        }
+
+        ApplySettingsChanged(appearanceOnly);
+    }
+
+    private void ApplySettingsChanged(bool appearanceOnly)
+    {
+        if (appearanceOnly)
+        {
+            // The appearance preview channel already applied corner,
+            // foreground, backdrop, title layout, and content appearance to
+            // this window; the settings refreshed here are unchanged.
             return;
         }
 

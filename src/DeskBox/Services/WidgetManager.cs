@@ -521,6 +521,14 @@ public sealed partial class WidgetManager
 
     private void OnSettingsChanged()
     {
+        if (_settingsService.LastNotifiedChangeKind == SettingsChangeKind.Appearance)
+        {
+            // The appearance preview channel already pushed visuals to every
+            // loaded window; none of the reactions below observe
+            // appearance-dimension settings.
+            return;
+        }
+
         ApplyWidgetLayerModeIfChanged();
         ApplyCapsuleArrangementIfChanged();
 

@@ -94,5 +94,37 @@
         "privEndMb":  257.1,
         "privAfterIdleMb":  257.1,
         "csv":  "D:\\project\\wingezi\\artifacts\\memory-scenarios\\stack-toggle-20260827-030028\\samples.csv"
+    },
+    {
+        "scenario":  "stack-toggle",
+        "timestamp":  "2026-08-27 07:41:07",
+        "commit":  "1175709",
+        "cycles":  20,
+        "degraded":  false,
+        "wsStartMb":  352.9,
+        "wsPeakMb":  360.3,
+        "wsEndMb":  357.9,
+        "wsAfterIdleMb":  357.9,
+        "privStartMb":  242,
+        "privPeakMb":  246.5,
+        "privEndMb":  241.8,
+        "privAfterIdleMb":  241.8,
+        "csv":  "D:\\project\\wingezi\\artifacts\\memory-scenarios\\stack-toggle-20260827-073852\\samples.csv"
+    },
+    {
+        "scenario":  "appearance-switch",
+        "timestamp":  "2026-08-27 07:46:36",
+        "commit":  "1175709",
+        "cycles":  0,
+        "degraded":  false,
+        "wsStartMb":  357.8,
+        "wsPeakMb":  363.2,
+        "wsEndMb":  362.9,
+        "wsAfterIdleMb":  362.9,
+        "privStartMb":  241.7,
+        "privPeakMb":  246.7,
+        "privEndMb":  246.6,
+        "privAfterIdleMb":  246.6,
+        "csv":  "D:\\project\\wingezi\\artifacts\\memory-scenarios\\appearance-switch-20260827-074115\\samples.csv"
     }
 ]

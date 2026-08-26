@@ -750,7 +750,9 @@ _ = RefreshQuickAccessStateAsync();
             _settingsService.RequestAppearancePreview();
         }
 
-        _settingsService.SaveDebounced(notifySubscribers: !SuppressAppearanceNotifications);
+        _settingsService.SaveDebounced(
+            notifySubscribers: !SuppressAppearanceNotifications,
+            changeKind: SettingsChangeKind.Appearance);
     }
 
 }

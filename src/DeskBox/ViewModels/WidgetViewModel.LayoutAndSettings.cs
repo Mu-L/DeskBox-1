@@ -222,13 +222,31 @@ public partial class WidgetViewModel
 
     private void OnSettingsChanged()
     {
+        bool appearanceOnly =
+            _settingsService.LastNotifiedChangeKind == SettingsChangeKind.Appearance;
         if (_dispatcherQueue.HasThreadAccess)
         {
-            _ = ApplySettingsChangesAsync();
+            ApplySettingsChanges(appearanceOnly);
             return;
         }
 
-        _dispatcherQueue.TryEnqueue(async () => await ApplySettingsChangesAsync());
+        _dispatcherQueue.TryEnqueue(() => ApplySettingsChanges(appearanceOnly));
+    }
+
+    private void ApplySettingsChanges(bool appearanceOnly)
+    {
+        if (appearanceOnly)
+        {
+            // Window visuals are handled by the appearance preview channel;
+            // keep only the VM-level opacity mirror in sync.
+            WidgetOpacity = Math.Clamp(
+                _settingsService.Settings.WidgetOpacity,
+                SettingsService.MinWidgetOpacity,
+                SettingsService.MaxWidgetOpacity);
+            return;
+        }
+
+        _ = ApplySettingsChangesAsync();
     }
 
     private void OnLanguageChanged()

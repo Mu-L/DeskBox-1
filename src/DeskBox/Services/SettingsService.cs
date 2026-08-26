@@ -49,6 +49,17 @@ internal sealed partial class SettingsJsonContext : JsonSerializerContext
 }
 
 /// <summary>
+/// Dimension tag for SettingsChanged notifications. Appearance-only saves
+/// are fully applied to windows through the AppearancePreviewChanged channel,
+/// so general subscribers can skip their redundant re-apply work.
+/// </summary>
+public enum SettingsChangeKind
+{
+    General = 0,
+    Appearance = 1,
+}
+
+/// <summary>
 /// Manages application settings persistence using JSON files stored in the application directory.
 /// </summary>
 public sealed class SettingsService
@@ -377,6 +388,16 @@ public const int DefaultSearchMaxResults = 100;
     public event Action? SettingsChanged;
     public event Action? AppearancePreviewChanged;
     public event Action<SettingsPersistenceFailure>? PersistenceFailed;
+
+    /// <summary>
+    /// Dimension of the most recent SettingsChanged notification. Subscribers
+    /// whose work is fully covered by the appearance preview channel can skip
+    /// the redundant re-apply when this is <see cref="SettingsChangeKind.Appearance"/>.
+    /// Read it at handler entry — before any dispatcher enqueue — because a
+    /// deferred read may observe a newer notification.
+    /// </summary>
+    public SettingsChangeKind LastNotifiedChangeKind { get; private set; } =
+        SettingsChangeKind.General;
 
     public SettingsLoadRecoveryState LastLoadRecoveryState { get; private set; } =
         SettingsLoadRecoveryState.DefaultsForMissingFile;
@@ -827,11 +848,13 @@ settings.FocusClickedWidgetOnRaise = false;
     /// Save settings with debouncing (waits 1 second after last call before actually saving).
     /// Use this for frequent changes like window drag/resize.
     /// </summary>
-    public void SaveDebounced(bool notifySubscribers = true)
+    public void SaveDebounced(
+        bool notifySubscribers = true,
+        SettingsChangeKind changeKind = SettingsChangeKind.General)
     {
         if (notifySubscribers)
         {
-            NotifySettingsChangedSafely();
+            NotifySettingsChangedSafely(changeKind);
         }
 
         CancellationTokenSource debounceCts;
@@ -885,8 +908,14 @@ settings.FocusClickedWidgetOnRaise = false;
         });
     }
 
-    private void NotifySettingsChangedSafely()
+    private void NotifySettingsChangedSafely(
+        SettingsChangeKind kind = SettingsChangeKind.General)
     {
+        lock (_lock)
+        {
+            LastNotifiedChangeKind = kind;
+        }
+
         Delegate[] handlers = SettingsChanged?.GetInvocationList() ?? [];
         foreach (Action handler in handlers.Cast<Action>())
         {

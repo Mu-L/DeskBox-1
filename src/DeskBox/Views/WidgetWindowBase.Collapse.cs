@@ -1657,14 +1657,24 @@ public abstract partial class WidgetWindowBase
 
     private void CollapseSettingsChanged()
     {
+        bool appearanceOnly =
+            SettingsService.LastNotifiedChangeKind == SettingsChangeKind.Appearance;
         if (!DispatcherQueue.HasThreadAccess)
         {
-            DispatcherQueue.TryEnqueue(CollapseSettingsChanged);
+            DispatcherQueue.TryEnqueue(() => ApplyCollapseSettingsChanged(appearanceOnly));
             return;
         }
 
-        if (!_collapseInitialized || IsClosing)
+        ApplyCollapseSettingsChanged(appearanceOnly);
+    }
+
+    private void ApplyCollapseSettingsChanged(bool appearanceOnly)
+    {
+        if (appearanceOnly ||
+            !_collapseInitialized || IsClosing)
         {
+            // Compact geometry reacts to layout/compact settings only; the
+            // appearance preview channel owns visual refreshes.
             return;
         }
 
