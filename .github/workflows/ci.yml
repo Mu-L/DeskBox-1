@@ -27,7 +27,6 @@ jobs:
         shell: pwsh
         run: |
           dotnet restore .\DeskBox.sln --locked-mode -p:Platform=x64 -p:RuntimeIdentifier=win-x64
-          dotnet restore .\tools\DeskBox.SearchCore.Benchmarks\DeskBox.SearchCore.Benchmarks.csproj --locked-mode -p:Platform=x64
 
       - name: Build
         run: dotnet build .\src\DeskBox\DeskBox.csproj --configuration Release --no-restore -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -v:minimal
