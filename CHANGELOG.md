@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.4 - Unreleased
+
+### English
+
+- Fixed a Microsoft Store persistence failure that could cause settings and widget data to restart from an earlier state after reopening DeskBox.
+- When Windows cannot remove the destination during an atomic file replacement, DeskBox now retries and then uses a verified backup before safely writing through the existing file.
+
+### 中文
+
+- 修复 Microsoft Store 版本可能无法保存设置和格子数据，导致重新打开 DeskBox 后恢复到旧状态的问题。
+- Windows 无法在原子替换时删除目标文件时，DeskBox 现在会先重试，并在校验备份后通过现有文件安全写入。
+
 ## 1.4.3 - 2026-08-19
 
 ### English
