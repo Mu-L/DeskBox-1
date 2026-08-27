@@ -124,13 +124,146 @@ public partial class WidgetViewModel
             if (_expandedStackKey is not null)
             {
                 _expandedStackKey = null;
-                RebuildStackDisplayItems();
+                if (!TryCollapseExpandedStackRun())
+                {
+                    RebuildStackDisplayItems();
+                }
             }
             return;
         }
 
-        _expandedStackKey = expanded ? stack.StackKey : null;
+        string? targetKey = expanded ? stack.StackKey : null;
+        if (string.Equals(
+                _expandedStackKey,
+                targetKey,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (TryApplyStackExpansionDelta(stack, expanded))
+        {
+            return;
+        }
+
+        _expandedStackKey = targetKey;
         RebuildStackDisplayItems();
+    }
+
+    /// <summary>
+    /// Applies a pure expansion-state delta directly to the projected list.
+    /// An expand/collapse toggle never changes membership or ordering, so the
+    /// regroup/reorder pipeline can be skipped entirely; the run of visible
+    /// members must match the stack's members exactly or the caller falls
+    /// back to the full rebuild. Verification happens before any mutation.
+    /// </summary>
+    private bool TryApplyStackExpansionDelta(
+        WidgetStackItem target,
+        bool expanded)
+    {
+        if (!UsesStackProjection)
+        {
+            return false;
+        }
+
+        if (_expandedStackKey is not null)
+        {
+            if (!TryCollapseExpandedStackRun())
+            {
+                return false;
+            }
+            _expandedStackKey = null;
+        }
+
+        if (!expanded)
+        {
+            return true;
+        }
+
+        int targetIndex = IndexOfStackDisplayItem(target.StackKey);
+        if (targetIndex < 0 || target.Members.Count == 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < target.Members.Count; i++)
+        {
+            WidgetItem member = target.Members[i];
+            member.IsStackChild = true;
+            _stackDisplayItems.Insert(targetIndex + 1 + i, member);
+        }
+        target.SetExpanded(true);
+        _expandedStackKey = target.StackKey;
+        return true;
+    }
+
+    /// <summary>
+    /// Removes the visible member run of the currently expanded stack after
+    /// verifying it matches the stack's members reference-for-reference.
+    /// Returns false without mutating when the projection does not have the
+    /// expected shape.
+    /// </summary>
+    private bool TryCollapseExpandedStackRun()
+    {
+        if (_expandedStackKey is not { } key)
+        {
+            return true;
+        }
+
+        int index = IndexOfStackDisplayItem(key);
+        if (index < 0 ||
+            _stackDisplayItems[index] is not WidgetStackItem stack)
+        {
+            return false;
+        }
+
+        int runEnd = index + 1;
+        while (runEnd < _stackDisplayItems.Count &&
+               _stackDisplayItems[runEnd].IsStackChild)
+        {
+            runEnd++;
+        }
+
+        int runLength = runEnd - (index + 1);
+        if (runLength != stack.Members.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < runLength; i++)
+        {
+            if (!ReferenceEquals(
+                    _stackDisplayItems[index + 1 + i],
+                    stack.Members[i]))
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < runLength; i++)
+        {
+            _stackDisplayItems[index + 1].IsStackChild = false;
+            _stackDisplayItems.RemoveAt(index + 1);
+        }
+        stack.SetExpanded(false);
+        return true;
+    }
+
+    private int IndexOfStackDisplayItem(string stackKey)
+    {
+        for (int index = 0; index < _stackDisplayItems.Count; index++)
+        {
+            if (_stackDisplayItems[index] is WidgetStackItem stack &&
+                string.Equals(
+                    stack.StackKey,
+                    stackKey,
+                    StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>

@@ -159,6 +159,17 @@ public sealed partial class WidgetStackItem : WidgetItem
         OnPropertyChanged(nameof(ListIconSize));
     }
 
+    /// <summary>
+    /// Flips only the expansion state for the incremental projection path
+    /// (expand/collapse toggle without a membership or order change). The
+    /// full rebuild keeps ownership of <see cref="Update"/> for real changes.
+    /// </summary>
+    internal void SetExpanded(bool expanded)
+    {
+        _isExpanded = expanded;
+        RefreshPresentationState();
+    }
+
     public void RefreshPresentationState()
     {
         OnPropertyChanged(nameof(Members));
