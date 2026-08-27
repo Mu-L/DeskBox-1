@@ -126,5 +126,21 @@
         "privEndMb":  246.6,
         "privAfterIdleMb":  246.6,
         "csv":  "D:\\project\\wingezi\\artifacts\\memory-scenarios\\appearance-switch-20260827-074115\\samples.csv"
+    },
+    {
+        "scenario":  "capsule-toggle",
+        "timestamp":  "2026-08-27 08:06:08",
+        "commit":  "f3bd9be",
+        "cycles":  20,
+        "degraded":  false,
+        "wsStartMb":  38.4,
+        "wsPeakMb":  70.5,
+        "wsEndMb":  70.5,
+        "wsAfterIdleMb":  70.5,
+        "privStartMb":  298.4,
+        "privPeakMb":  298.4,
+        "privEndMb":  296.9,
+        "privAfterIdleMb":  296.9,
+        "csv":  "D:\\project\\wingezi\\artifacts\\memory-scenarios\\capsule-toggle-20260827-080348\\samples.csv"
     }
 ]
