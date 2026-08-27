@@ -1,10 +1,10 @@
-[Code]
+﻿[Code]
 const
   DotNetRuntimeUrl = 'https://builds.dotnet.microsoft.com/dotnet/Runtime/10.0.9/dotnet-runtime-10.0.9-win-x64.exe';
   DotNetRuntimeFallbackUrl = 'https://aka.ms/dotnet/10.0/dotnet-runtime-win-x64.exe';
   DotNetRuntimeInstallerName = 'dotnet-runtime-10.0.9-win-x64.exe';
-  WindowsAppRuntimeUrl = 'https://download.microsoft.com/download/097dbd99-ea76-49de-994b-eb935c72dcf1/WindowsAppRuntimeInstall-x64.exe';
-  WindowsAppRuntimeFallbackUrl = 'https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe';
+  WindowsAppRuntimeUrl = 'https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe';
+  WindowsAppRuntimeFallbackUrl = 'https://download.microsoft.com/download/097dbd99-ea76-49de-994b-eb935c72dcf1/WindowsAppRuntimeInstall-x64.exe';
   WindowsAppRuntimeInstallerName = 'WindowsAppRuntimeInstall-x64.exe';
 
 var

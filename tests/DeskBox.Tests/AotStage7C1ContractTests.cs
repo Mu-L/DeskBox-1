@@ -171,13 +171,13 @@ public sealed class AotStage7C1ContractTests
     [InlineData(
         "installer/DeskBox.Dependencies.iss",
         "X64",
-        "https://download.microsoft.com/download/097dbd99-ea76-49de-994b-eb935c72dcf1/WindowsAppRuntimeInstall-x64.exe",
-        "https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe")]
+        "https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe",
+        "https://download.microsoft.com/download/097dbd99-ea76-49de-994b-eb935c72dcf1/WindowsAppRuntimeInstall-x64.exe")]
     [InlineData(
         "installer/DeskBox.Dependencies.arm64.iss",
         "ARM64",
-        "https://download.microsoft.com/download/2f7e2917-37ac-43a3-990e-73838adaf281/WindowsAppRuntimeInstall-arm64.exe",
-        "https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-arm64.exe")]
+        "https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-arm64.exe",
+        "https://download.microsoft.com/download/2f7e2917-37ac-43a3-990e-73838adaf281/WindowsAppRuntimeInstall-arm64.exe")]
     public void DirectInstaller_RequiresWindowsAppRuntime24ForMatchingArchitecture(
         string relativePath,
         string architecture,
