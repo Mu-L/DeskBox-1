@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="DeskBox.Views.SettingsSections.SearchSettingsSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -84,6 +84,15 @@
                     </Grid>
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="EverythingAboutButton"
+                            Click="EverythingAboutButton_Click"
+                            Style="{StaticResource ActionButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Help" />
+                                <TextBlock svc:Localized.Key="Settings.Search.Everything.About.Button" />
+                            </StackPanel>
+                        </Button>
                         <Button
                             x:Name="EverythingDetectButton"
                             Click="EverythingDetectButton_Click"

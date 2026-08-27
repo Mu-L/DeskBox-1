@@ -1,4 +1,4 @@
-# DeskBox Store/MSIX 构建说明
+﻿# DeskBox Store/MSIX 构建说明
 
 本文档记录 Microsoft Store 技术分支的本地构建入口。当前 Direct/Inno 仍是默认发布通道，Store 包需要显式传入 `DeskBoxDistribution=Store`。
 
@@ -36,7 +36,7 @@ Native AOT Store 上传包：
 ```
 
 ARM64 使用同一入口，只把 `-Platform` 改为 `ARM64`。Native AOT 模式会固定启用 Rust 静态 CRT
-`deskbox_native.dll`，Store SearchCore 继续使用 managed 后端；不会把 Direct 的 Updater、
+`deskbox_native.dll`；文件搜索统一走 Everything SDK（`EverythingSdk.dll` 随包分发并受审计门禁约束）；不会把 Direct 的 Updater、
 `deskbox_search_core.dll`、`.NET` deps/runtimeconfig、PDB 或 Direct 素材放入 MSIX。主程序和 Rust PDB
 只进入 `.appxsym`。
 

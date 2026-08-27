@@ -1825,6 +1825,14 @@
   "Settings.Search.Everything.Launch": "Iniciar Everything",
   "Settings.Search.Everything.Browse": "Elegir Everything.exe",
   "Settings.Search.Everything.Download": "Descargar Everything",
+
+  "Settings.Search.Everything.About.Button": "Acerca de Everything",
+
+  "Settings.Search.Everything.About.Title": "Sobre la integración de Everything",
+
+  "Settings.Search.Everything.About.P1": "La búsqueda de archivos y carpetas en DeskBox funciona con Everything, un motor de búsqueda de escritorio gratuito de terceros. DeskBox consulta el índice existente de Everything para ofrecer resultados instantáneos y los combina con su contenido de DeskBox — notas, tareas y ajustes — en la misma ventana de búsqueda.",
+
+  "Settings.Search.Everything.About.P3": "Everything está desarrollado por voidtools y no se incluye con DeskBox. La búsqueda de archivos requiere que Everything esté instalado y en ejecución; si falta, DeskBox muestra un recordatorio en lugar de fallar.",
   "Settings.Search.Everything.SetupHelp": "Ayuda de configuración",
   "Settings.Search.Everything.Status.Unknown": "Everything aún no se ha comprobado.",
   "Settings.Search.Everything.Status.Checking": "Comprobando la instalación y la conexión locales de Everything…",

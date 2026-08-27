@@ -1813,6 +1813,14 @@
     "Settings.Search.Everything.Launch": "Everything を起動",
     "Settings.Search.Everything.Browse": "Everything.exe を選択",
     "Settings.Search.Everything.Download": "Everything をダウンロード",
+
+    "Settings.Search.Everything.About.Button": "Everything について",
+
+    "Settings.Search.Everything.About.Title": "Everything 統合について",
+
+    "Settings.Search.Everything.About.P1": "DeskBox のファイルとフォルダーの検索は、無料のサードパーティ製デスクトップ検索エンジン Everything によって動作します。DeskBox は Everything の既存のインデックスを照会して即時結果を取得し、DeskBox のコンテンツ（メモ、タスク、設定）と同じ検索ポップアップに統合します。",
+
+    "Settings.Search.Everything.About.P3": "Everything は voidtools が開発しており、DeskBox には同梱されていません。ファイル検索には Everything のインストールと実行が必要です。見つからない場合、DeskBox はエラーではなくリマインダーを表示します。",
     "Settings.Search.Everything.SetupHelp": "設定ヘルプ",
     "Settings.Search.Everything.Status.Unknown": "Everything はまだ確認されていません。",
     "Settings.Search.Everything.Status.Checking": "ローカルの Everything のインストールと接続を確認しています…",

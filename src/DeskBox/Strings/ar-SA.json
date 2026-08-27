@@ -1825,6 +1825,14 @@
   "Settings.Search.Everything.Launch": "تشغيل Everything",
   "Settings.Search.Everything.Browse": "اختيار Everything.exe",
   "Settings.Search.Everything.Download": "تنزيل Everything",
+
+  "Settings.Search.Everything.About.Button": "حول Everything",
+
+  "Settings.Search.Everything.About.Title": "حول تكامل Everything",
+
+  "Settings.Search.Everything.About.P1": "يعتمد البحث عن الملفات والمجلدات في DeskBox على Everything، وهو محرك بحث مكتبي مجاني من طرف ثالث. يستعلم DeskBox عن فهرس Everything الموجود للحصول على نتائج فورية ويدمجها مع محتوى DeskBox — الملاحظات والمهام والإعدادات — في نافذة البحث نفسها.",
+
+  "Settings.Search.Everything.About.P3": "يطوّر Everything فريق voidtools ولا يُضمَّن مع DeskBox. يتطلب البحث عن الملفات تثبيت Everything وتشغيله؛ وعند غيابه يعرض DeskBox تذكيرًا بدلاً من الفشل.",
   "Settings.Search.Everything.SetupHelp": "مساعدة الإعداد",
   "Settings.Search.Everything.Status.Unknown": "لم يتم التحقق من Everything بعد.",
   "Settings.Search.Everything.Status.Checking": "جارٍ التحقق من تثبيت Everything المحلي واتصاله…",

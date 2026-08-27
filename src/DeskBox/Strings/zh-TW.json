@@ -1812,6 +1812,14 @@
   "Settings.Search.Everything.Launch": "啟動 Everything",
   "Settings.Search.Everything.Browse": "選擇 Everything.exe",
   "Settings.Search.Everything.Download": "下載 Everything",
+
+  "Settings.Search.Everything.About.Button": "說明",
+
+  "Settings.Search.Everything.About.Title": "關於 Everything 整合",
+
+  "Settings.Search.Everything.About.P1": "DeskBox 的檔案與資料夾搜尋由 Everything 驅動——一款免費的第三方桌面搜尋引擎。DeskBox 查詢 Everything 的既有索引獲得即時結果，並與你的 DeskBox 內容（隨記、待辦、設定）合併在同一搜尋彈出視窗中。",
+
+  "Settings.Search.Everything.About.P3": "Everything 由 voidtools 開發，並未隨 DeskBox 捆綁發佈。使用檔案搜尋需要安裝 Everything 並保持其執行；未安裝時 DeskBox 會給出提示而不會出錯。",
   "Settings.Search.Everything.SetupHelp": "設定說明",
   "Settings.Search.Everything.Status.Unknown": "尚未偵測 Everything。",
   "Settings.Search.Everything.Status.Checking": "正在偵測本機 Everything 的安裝與連線狀態…",

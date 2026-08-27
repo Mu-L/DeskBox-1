@@ -1825,6 +1825,14 @@
   "Settings.Search.Everything.Launch": "Everything চালু করুন",
   "Settings.Search.Everything.Browse": "Everything.exe বেছে নিন",
   "Settings.Search.Everything.Download": "Everything ডাউনলোড করুন",
+
+  "Settings.Search.Everything.About.Button": "Everything সম্পর্কে",
+
+  "Settings.Search.Everything.About.Title": "Everything ইন্টিগ্রেশন সম্পর্কে",
+
+  "Settings.Search.Everything.About.P1": "DeskBox-এ ফাইল ও ফোল্ডার সার্চ চলে Everything নামের একটি বিনামূল্যের তৃতীয়-পক্ষ ডেস্কটপ সার্চ ইঞ্জিন দিয়ে। DeskBox Everything-এর বিদ্যমান ইনডেক্স জিজ্ঞাসা করে তাৎক্ষণিক ফলাফল আনে এবং সেগুলিকে আপনার DeskBox কনটেন্ট — নোট, টু-ডু ও সেটিংস — এর সাথে একই সার্চ পপআপে একত্রিত করে।",
+
+  "Settings.Search.Everything.About.P3": "Everything voidtools দ্বারা উন্নত এবং DeskBox-এর সাথে বান্ডেল করা নেই। ফাইল সার্চের জন্য Everything ইনস্টল ও চালু থাকা প্রয়োজন; এটি অনুপস্থিত থাকলে DeskBox ব্যর্থ না হয়ে একটি রিমাইন্ডার দেখায়।",
   "Settings.Search.Everything.SetupHelp": "সেটআপ সহায়তা",
   "Settings.Search.Everything.Status.Unknown": "Everything এখনও পরীক্ষা করা হয়নি।",
   "Settings.Search.Everything.Status.Checking": "স্থানীয় Everything ইনস্টলেশন ও সংযোগ পরীক্ষা করা হচ্ছে…",

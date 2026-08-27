@@ -1,4 +1,4 @@
-using DeskBox.Helpers;
+﻿using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
@@ -207,7 +207,48 @@ public sealed partial class SearchSettingsSection : UserControl
         _ = DispatcherQueue.TryEnqueue(() => UpdateEverythingDashboard(snapshot));
     }
 
-    private void UpdateEverythingDashboard(EverythingConnectionSnapshot snapshot)
+    private async void EverythingAboutButton_Click(object sender, RoutedEventArgs e)
+{
+    var dialog = new ContentDialog
+    {
+        Title = Localization.T("Settings.Search.Everything.About.Title"),
+        CloseButtonText = Localization.T("Settings.Dialog.SupportClose"),
+        DefaultButton = ContentDialogButton.Close,
+        XamlRoot = XamlRoot
+    };
+    var body = new StackPanel { Spacing = 12, MaxWidth = 420 };
+    body.Children.Add(new TextBlock
+    {
+        Text = Localization.T("Settings.Search.Everything.About.P1"),
+        TextWrapping = TextWrapping.Wrap
+    });
+    body.Children.Add(new TextBlock
+    {
+        Text = Localization.T("Settings.Search.Everything.SharingNotice"),
+        TextWrapping = TextWrapping.Wrap,
+        Opacity = 0.8
+    });
+    body.Children.Add(new TextBlock
+    {
+        Text = Localization.T("Settings.Search.Everything.About.P3"),
+        TextWrapping = TextWrapping.Wrap
+    });
+    var siteLink = new HyperlinkButton
+    {
+        NavigateUri = new Uri("https://www.voidtools.com/"),
+        Content = new TextBlock
+        {
+            Text = Localization.T("Settings.Search.Everything.Download"),
+            TextWrapping = TextWrapping.Wrap
+        },
+        Padding = new Thickness(0)
+    };
+    body.Children.Add(siteLink);
+    dialog.Content = body;
+    await dialog.ShowAsync();
+}
+
+private void UpdateEverythingDashboard(EverythingConnectionSnapshot snapshot)
     {
         EverythingStatusInfoBar.Title =
             Localization.T("Settings.Search.Everything.StatusTitle");

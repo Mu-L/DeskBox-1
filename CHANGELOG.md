@@ -1,8 +1,14 @@
-# Changelog
+﻿# Changelog
 
 ## 1.4.5 - Unreleased
 
 ### English
+
+#### Search powered by Everything
+
+- File search now runs on the Everything engine (free third-party utility): instant results from Everything's existing index over local IPC, merged with DeskBox content (notes, todos, settings) in the same popup.
+- The legacy self-maintained index — USN journal tracking, Windows Index integration, and the native search core — was removed; leftover index data is cleaned up automatically on first launch.
+- File search requires Everything to be installed and running (www.voidtools.com). Everything is not bundled with DeskBox.
 
 #### Native AOT compatibility and interaction
 
@@ -17,6 +23,12 @@
 - When Windows cannot remove the destination during an atomic file replacement, DeskBox retries and then uses a verified backup before safely writing through the existing file.
 
 ### 中文
+
+#### 搜索改用 Everything 引擎
+
+- 文件搜索改由 Everything 引擎驱动（免费第三方工具）：通过本机 IPC 即时读取 Everything 已有索引，并与 DeskBox 内容（随记、待办、设置）合并在同一弹窗。
+- 旧的自建索引——USN 日志跟踪、Windows 索引集成与原生搜索核心——已移除；残留索引数据会在首次启动时自动清理。
+- 文件搜索需要安装并运行 Everything（www.voidtools.com）。DeskBox 不捆绑 Everything。
 
 #### Native AOT 兼容性与交互
 

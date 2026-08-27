@@ -1825,6 +1825,14 @@
     "Settings.Search.Everything.Launch": "Start Everything",
     "Settings.Search.Everything.Browse": "Choose Everything.exe",
     "Settings.Search.Everything.Download": "Download Everything",
+
+    "Settings.Search.Everything.About.Button": "About Everything",
+
+    "Settings.Search.Everything.About.Title": "About the Everything integration",
+
+    "Settings.Search.Everything.About.P1": "File and folder search in DeskBox is powered by Everything, a free third-party desktop search engine. DeskBox queries Everything's existing index for instant results and merges them with your DeskBox content — notes, todos, and settings — in the same search popup.",
+
+    "Settings.Search.Everything.About.P3": "Everything is developed by voidtools and is not bundled with DeskBox. File search requires Everything to be installed and running; when it is missing, DeskBox shows a reminder instead of failing.",
     "Settings.Search.Everything.SetupHelp": "Setup help",
     "Settings.Search.Everything.Status.Unknown": "Everything has not been checked yet.",
     "Settings.Search.Everything.Status.Checking": "Checking the local Everything installation and connection…",
