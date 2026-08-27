@@ -1829,7 +1829,9 @@
   "Settings.Search.Everything.Status.Unknown": "Everything aún no se ha comprobado.",
   "Settings.Search.Everything.Status.Checking": "Comprobando la instalación y la conexión locales de Everything…",
   "Settings.Search.Everything.Status.NotConfirmed": "Se encontró Everything. Confirma abajo que deseas compartir el índice local.",
-  "Settings.Search.Everything.Status.NotInstalled": "No se encontró Everything. Descárgalo e instálalo y vuelve a ejecutar la detección.",
+  "Settings.Search.Everything.Status.NotInstalled": "No se encontró Everything. Descárguelo e instálelo desde www.voidtools.com y vuelva a ejecutar la detección automática.",
+
+  "Settings.Search.Everything.Download": "Abrir el sitio oficial de Everything para descargarlo",
   "Settings.Search.Everything.Status.NotRunning": "Everything está instalado, pero no se está ejecutando. Inícialo antes de buscar archivos.",
   "Settings.Search.Everything.Status.PermissionMismatch": "Everything y DeskBox se ejecutan con niveles de permisos distintos. Mantén DeskBox como usuario estándar y ejecuta normalmente el cliente Everything; el servicio puede estar elevado.",
   "Settings.Search.Everything.Status.IpcUnavailable": "Everything se está ejecutando, pero el IPC local no está disponible. Comprueba el IPC y la instancia predeterminada.",

@@ -1829,7 +1829,9 @@
   "Settings.Search.Everything.Status.Unknown": "Everything এখনও পরীক্ষা করা হয়নি।",
   "Settings.Search.Everything.Status.Checking": "স্থানীয় Everything ইনস্টলেশন ও সংযোগ পরীক্ষা করা হচ্ছে…",
   "Settings.Search.Everything.Status.NotConfirmed": "Everything পাওয়া গেছে। নিচে স্থানীয় ইনডেক্স ভাগ করার অনুমতি নিশ্চিত করুন।",
-  "Settings.Search.Everything.Status.NotInstalled": "Everything পাওয়া যায়নি। ডাউনলোড ও ইনস্টল করে আবার শনাক্ত করুন।",
+  "Settings.Search.Everything.Status.NotInstalled": "Everything পাওয়া যায়নি। www.voidtools.com থেকে ডাউনলোড করে ইনস্টল করুন, তারপর স্বয়ংক্রিয় সনাক্তকরণ আবার চালান।",
+
+  "Settings.Search.Everything.Download": "ডাউনলোড করতে Everything-এর অফিসিয়াল সাইট খুলুন",
   "Settings.Search.Everything.Status.NotRunning": "Everything ইনস্টল আছে, কিন্তু চলছে না। ফাইল খোঁজার আগে এটি চালু করুন।",
   "Settings.Search.Everything.Status.PermissionMismatch": "Everything ও DeskBox ভিন্ন অনুমতি স্তরে চলছে। DeskBox-কে সাধারণ ব্যবহারকারী হিসেবে রাখুন এবং Everything ক্লায়েন্ট স্বাভাবিকভাবে চালান; সেবা উচ্চ অনুমতিতে চলতে পারে।",
   "Settings.Search.Everything.Status.IpcUnavailable": "Everything চলছে, কিন্তু স্থানীয় IPC পাওয়া যাচ্ছে না। IPC ও ডিফল্ট Everything ইনস্ট্যান্স পরীক্ষা করুন।",

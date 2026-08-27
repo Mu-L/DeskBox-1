@@ -31,6 +31,15 @@
                         IsClosable="False"
                         IsOpen="True" />
 
+                    <HyperlinkButton
+                        x:Name="EverythingDownloadLink"
+                        NavigateUri="https://www.voidtools.com/"
+                        Margin="0,-4,0,0"
+                        Padding="0"
+                        Visibility="Collapsed">
+                        <TextBlock svc:Localized.Key="Settings.Search.Everything.Download" />
+                    </HyperlinkButton>
+
                     <TextBlock
                         Style="{StaticResource SettingDescriptionTextStyle}"
                         TextWrapping="Wrap"

@@ -1817,7 +1817,9 @@
     "Settings.Search.Everything.Status.Unknown": "Everything はまだ確認されていません。",
     "Settings.Search.Everything.Status.Checking": "ローカルの Everything のインストールと接続を確認しています…",
     "Settings.Search.Everything.Status.NotConfirmed": "Everything が見つかりました。下でローカルインデックスの共有を確認してください。",
-    "Settings.Search.Everything.Status.NotInstalled": "Everything が見つかりません。ダウンロードしてインストール後、再度自動検出してください。",
+    "Settings.Search.Everything.Status.NotInstalled": "Everything が見つかりません。www.voidtools.com からダウンロードしてインストールし、自動検出をもう一度実行してください。",
+
+    "Settings.Search.Everything.Download": "Everything 公式サイトを開いてダウンロード",
     "Settings.Search.Everything.Status.NotRunning": "Everything はインストール済みですが実行されていません。先に起動してください。",
     "Settings.Search.Everything.Status.PermissionMismatch": "Everything と DeskBox の権限レベルが異なります。DeskBox は標準ユーザーのまま、Everything クライアントも通常権限で実行してください。サービスは昇格して構いません。",
     "Settings.Search.Everything.Status.IpcUnavailable": "Everything は実行中ですがローカル IPC を使用できません。IPC と既定の Everything インスタンスを確認してください。",

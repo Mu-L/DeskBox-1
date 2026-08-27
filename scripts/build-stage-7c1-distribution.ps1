@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [ValidateSet("x64", "ARM64")]
@@ -165,6 +165,8 @@ $directRequiredFiles = @(
     "DeskBox.Updater.exe",
     "DeskBox.ThumbnailProxy.exe",
     "deskbox_native.dll",
+    "EverythingSdk.dll",
+    "ThirdParty/Everything/LICENSE.txt",
     "DeskBox.pri"
 )
 $missingDirectFiles = @($directRequiredFiles | Where-Object { $directFiles -notcontains $_ })
@@ -200,9 +202,12 @@ $deskBoxMachine = Get-PeMachine -Path (Join-Path $directPublishDirectory "DeskBo
 $updaterMachine = Get-PeMachine -Path (Join-Path $directPublishDirectory "DeskBox.Updater.exe")
 $thumbnailProxyMachine = Get-PeMachine -Path (
     Join-Path $directPublishDirectory "DeskBox.ThumbnailProxy.exe")
+$everythingSdkMachine = Get-PeMachine -Path (
+    Join-Path $directPublishDirectory "EverythingSdk.dll")
 if ($deskBoxMachine -ne $expectedMachine -or
     $updaterMachine -ne $expectedMachine -or
-    $thumbnailProxyMachine -ne $expectedMachine) {
+    $thumbnailProxyMachine -ne $expectedMachine -or
+    $everythingSdkMachine -ne $expectedMachine) {
     throw "The Direct AOT executable architecture does not match $Platform."
 }
 

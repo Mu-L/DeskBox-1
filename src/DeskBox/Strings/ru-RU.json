@@ -1829,7 +1829,9 @@
   "Settings.Search.Everything.Status.Unknown": "Everything ещё не проверялся.",
   "Settings.Search.Everything.Status.Checking": "Проверка локальной установки и подключения Everything…",
   "Settings.Search.Everything.Status.NotConfirmed": "Everything найден. Подтвердите ниже совместное использование локального индекса.",
-  "Settings.Search.Everything.Status.NotInstalled": "Everything не найден. Скачайте и установите его, затем повторите автоматический поиск.",
+  "Settings.Search.Everything.Status.NotInstalled": "Everything не найден. Скачайте и установите его с сайта www.voidtools.com, затем повторите автоматическое обнаружение.",
+
+  "Settings.Search.Everything.Download": "Открыть официальный сайт Everything для скачивания",
   "Settings.Search.Everything.Status.NotRunning": "Everything установлен, но не запущен. Запустите его перед поиском файлов.",
   "Settings.Search.Everything.Status.PermissionMismatch": "Everything и DeskBox запущены с разными уровнями прав. Оставьте DeskBox обычным приложением и запускайте клиент Everything без повышения; служба может иметь повышенные права.",
   "Settings.Search.Everything.Status.IpcUnavailable": "Everything запущен, но локальный IPC недоступен. Проверьте IPC и стандартный экземпляр Everything.",

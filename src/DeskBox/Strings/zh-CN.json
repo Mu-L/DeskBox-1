@@ -1816,7 +1816,9 @@
     "Settings.Search.Everything.Status.Unknown": "尚未检测 Everything。",
     "Settings.Search.Everything.Status.Checking": "正在检测本机的 Everything 安装和连接状态…",
     "Settings.Search.Everything.Status.NotConfirmed": "已找到 Everything。请在下方确认共享本机索引后启用文件搜索。",
-    "Settings.Search.Everything.Status.NotInstalled": "未检测到 Everything。请先下载并安装，然后重新自动检测。",
+    "Settings.Search.Everything.Status.NotInstalled": "未检测到 Everything。请从 www.voidtools.com 下载并安装，然后重新自动检测。",
+
+    "Settings.Search.Everything.Download": "前往 Everything 官网下载",
     "Settings.Search.Everything.Status.NotRunning": "已安装 Everything，但程序未运行。搜索文件前请先启动 Everything。",
     "Settings.Search.Everything.Status.PermissionMismatch": "Everything 与 DeskBox 的权限级别不同。请让 DeskBox 保持普通用户权限，并以普通方式运行 Everything 客户端；Everything 服务可以使用更高权限。",
     "Settings.Search.Everything.Status.IpcUnavailable": "Everything 正在运行，但本机 IPC 不可用。请确认已启用 IPC，并且默认 Everything 实例正在运行。",

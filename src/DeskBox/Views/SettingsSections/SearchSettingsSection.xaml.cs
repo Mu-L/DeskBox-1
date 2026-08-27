@@ -252,6 +252,11 @@ public sealed partial class SearchSettingsSection : UserControl
                     : "Settings.Search.Everything.Path.Detected",
                 snapshot.ExecutablePath);
 
+        EverythingDownloadLink.Visibility =
+            snapshot.State == EverythingConnectionState.NotInstalled
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
         bool enabled = Settings.Settings.SearchEverythingEnabled;
         EverythingAdvancedSyntaxToggle.IsEnabled = enabled;
         EverythingLaunchButton.Visibility =

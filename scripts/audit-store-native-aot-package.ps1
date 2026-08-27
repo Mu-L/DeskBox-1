@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [string]$MsixPath,
@@ -206,6 +206,8 @@ $requiredFiles = @(
     "DeskBox.exe",
     "DeskBox.ThumbnailProxy.exe",
     "deskbox_native.dll",
+    "EverythingSdk.dll",
+    "ThirdParty/Everything/LICENSE.txt",
     "resources.pri",
     "Assets/Store/StoreLogo.png",
     "Assets/Store/Square44x44Logo.png",
@@ -248,6 +250,7 @@ foreach ($forbiddenFile in $forbiddenFiles) {
 $deskBoxExePath = Join-Path $layoutDirectory "DeskBox.exe"
 $thumbnailProxyPath = Join-Path $layoutDirectory "DeskBox.ThumbnailProxy.exe"
 $nativeDllPath = Join-Path $layoutDirectory "deskbox_native.dll"
+$everythingSdkPath = Join-Path $layoutDirectory "EverythingSdk.dll"
 $deskBoxPe = $null
 $thumbnailProxyPe = $null
 $nativeContract = $null
@@ -272,6 +275,16 @@ if (Test-Path -LiteralPath $thumbnailProxyPath -PathType Leaf) {
     if ($thumbnailProxyPe.HasClrHeader) {
         Add-AuditFailure "DeskBox.ThumbnailProxy.exe unexpectedly contains a CLR header."
     }
+}
+
+if (Test-Path -LiteralPath $everythingSdkPath -PathType Leaf) {
+    $everythingSdkPe = Get-PeFacts -Path $everythingSdkPath
+    if ($everythingSdkPe.Machine -ne $expectedMachine) {
+        Add-AuditFailure "EverythingSdk.dll machine '$($everythingSdkPe.MachineHex)' does not match $ExpectedPlatform."
+    }
+}
+else {
+    Add-AuditFailure "EverythingSdk.dll is missing from the Store layout."
 }
 
 $nativeExports = @(

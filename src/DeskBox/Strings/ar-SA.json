@@ -1829,7 +1829,9 @@
   "Settings.Search.Everything.Status.Unknown": "لم يتم التحقق من Everything بعد.",
   "Settings.Search.Everything.Status.Checking": "جارٍ التحقق من تثبيت Everything المحلي واتصاله…",
   "Settings.Search.Everything.Status.NotConfirmed": "تم العثور على Everything. أكّد أدناه مشاركة الفهرس المحلي.",
-  "Settings.Search.Everything.Status.NotInstalled": "لم يتم العثور على Everything. نزّله وثبّته ثم أعد الاكتشاف التلقائي.",
+  "Settings.Search.Everything.Status.NotInstalled": "لم يتم العثور على Everything. نزّله وثبّته من www.voidtools.com ثم أعد تشغيل الكشف التلقائي.",
+
+  "Settings.Search.Everything.Download": "افتح موقع Everything الرسمي للتنزيل",
   "Settings.Search.Everything.Status.NotRunning": "Everything مثبت لكنه لا يعمل. شغّله قبل البحث عن الملفات.",
   "Settings.Search.Everything.Status.PermissionMismatch": "يعمل Everything وDeskBox بمستويي أذونات مختلفين. أبقِ DeskBox كمستخدم عادي وشغّل عميل Everything بصورة عادية؛ ويمكن تشغيل الخدمة بصلاحيات مرتفعة.",
   "Settings.Search.Everything.Status.IpcUnavailable": "Everything يعمل لكن IPC المحلي غير متاح. تحقق من IPC ومن تشغيل النسخة الافتراضية من Everything.",

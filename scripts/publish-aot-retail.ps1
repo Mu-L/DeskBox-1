@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet("x64", "ARM64")]
     [string]$Platform = "x64",
@@ -237,7 +237,9 @@ $requiredFiles = @(
     "DeskBox.Updater.exe",
     "DeskBox.ThumbnailProxy.exe",
     "DeskBox.pri",
-    "deskbox_native.dll"
+    "deskbox_native.dll",
+    "EverythingSdk.dll",
+    "ThirdParty/Everything/LICENSE.txt"
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $publishDir $requiredFile) -PathType Leaf)) {
@@ -280,7 +282,8 @@ $peResults = @(
             "DeskBox.exe",
             "DeskBox.Updater.exe",
             "DeskBox.ThumbnailProxy.exe",
-            "deskbox_native.dll")) {
+            "deskbox_native.dll",
+            "EverythingSdk.dll")) {
         $path = Join-Path $publishDir $fileName
         $machine = Get-PeMachine -Path $path
         if ($machine -ne $expectedMachine) {
