@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet("x64", "ARM64")]
     [string]$Platform = "x64",
@@ -72,7 +72,16 @@ function Get-PeMachine {
 if (-not $ValidateOnly.IsPresent) {
     $cargo = (Get-Command cargo -ErrorAction Stop).Source
     $rustc = (Get-Command rustc -ErrorAction Stop).Source
-    $targetLibDirectory = @(& $rustc --print target-libdir --target $targetTriple 2>$null)
+    # PowerShell 5.1 wraps redirected native stderr as ErrorRecords, and
+    # $ErrorActionPreference = "Stop" turns the first rustup/rustc progress
+    # line (for example "info: syncing channel updates...") into a fatal
+    # RemoteException on runners without a pre-synced toolchain. Scope a
+    # tolerant preference around the probe and keep stdout strings only.
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $targetLibDirectory = @(& $rustc --print target-libdir --target $targetTriple 2>$null |
+        Where-Object { $_ -is [string] })
+    $ErrorActionPreference = $previousErrorActionPreference
     if ($LASTEXITCODE -ne 0 -or
         $targetLibDirectory.Count -ne 1 -or
         -not (Test-Path -LiteralPath $targetLibDirectory[0] -PathType Container)) {
