@@ -1,4 +1,4 @@
-using DeskBox.Helpers;
+﻿using DeskBox.Helpers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -182,13 +182,33 @@ public sealed class ShellThumbnailProxyContractTests
         string platform = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
             ? "ARM64"
             : "x64";
-        return TestPaths.FromRepository(Path.Combine(
+        // CI builds pass -p:RuntimeIdentifier=win-x64, which moves outputs
+        // into a RID-suffixed subfolder; local canonical builds use the plain
+        // output root. Prefer whichever copy exists.
+        string outputRoot = Path.Combine(
             "src",
             "DeskBox",
             "bin",
             platform,
             configuration,
-            "net10.0-windows10.0.22621.0",
+            "net10.0-windows10.0.22621.0");
+        // Prefer the canonical non-RID output (the local dev flow keeps it
+        // current); fall back to the RID-suffixed output, which is the only
+        // copy CI produces. Stale RID copies must never shadow the canonical
+        // build.
+        string canonicalPath = TestPaths.FromRepository(Path.Combine(
+            outputRoot,
+            ShellThumbnailProxy.ExecutableName));
+        if (File.Exists(canonicalPath))
+        {
+            return canonicalPath;
+        }
+
+        return TestPaths.FromRepository(Path.Combine(
+            outputRoot,
+            RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                ? "win-arm64"
+                : "win-x64",
             ShellThumbnailProxy.ExecutableName));
     }
 

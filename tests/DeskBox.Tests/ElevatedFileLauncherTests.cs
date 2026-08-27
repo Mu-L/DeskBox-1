@@ -1,4 +1,5 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
+using System.Security.Principal;
 using DeskBox.Helpers;
 using DeskBox.Models;
 
@@ -96,6 +97,15 @@ public sealed class ElevatedFileLauncherTests
     [Fact]
     public async Task RunAsAdministrator_BlocksExistingUnelevatedTarget()
     {
+        if (new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(
+                WindowsBuiltInRole.Administrator))
+        {
+            // GitHub Actions Windows runners execute the test host inside an
+            // elevated session, so a child process is never "unelevated" and
+            // the guard under test cannot be observed there.
+            return;
+        }
+
         string ping = Path.Combine(Environment.SystemDirectory, "ping.exe");
         using Process process = Process.Start(new ProcessStartInfo
         {
