@@ -1,4 +1,4 @@
-namespace DeskBox.Tests;
+﻿namespace DeskBox.Tests;
 
 public sealed class AotStage5B4B1ContractTests
 {
@@ -191,7 +191,7 @@ public sealed class AotStage5B4B1ContractTests
             "ItemsSource=\"{x:Bind ViewModel.FileStackCustomRules, Mode=OneWay}\"",
             xaml,
             StringComparison.Ordinal);
-        Assert.Equal(304, CountOccurrences(bindableViewModel, "nameof("));
+        Assert.Equal(305, CountOccurrences(bindableViewModel, "nameof("));
         Assert.Contains("nameof(SelectedWidgetCapsuleBarPlacement)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(ResetAllCapsuleOverridesCommand)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(ResetCapsuleWidthOverridesCommand)", bindableViewModel, StringComparison.Ordinal);

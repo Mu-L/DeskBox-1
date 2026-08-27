@@ -23,6 +23,29 @@ public sealed class AotStage7C1ContractTests
     }
 
     [Fact]
+    public void StoreBuild_ExcludesDonationQrAssets()
+    {
+        string project = Read("src/DeskBox/DeskBox.csproj");
+        string storeAudit = Read("scripts/audit-store-native-aot-package.ps1");
+        string about = Read("src/DeskBox/ViewModels/SettingsViewModel.AboutAndUpdates.cs");
+
+        Assert.Contains(
+            "<Content Include=\"Assets\\wechat-qrcode.jpg\" Condition=\"'$(DeskBoxDistribution)' != 'Store'\">",
+            project,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "<Content Include=\"Assets\\Support\\*.png\" Condition=\"'$(DeskBoxDistribution)' != 'Store'\" />",
+            project,
+            StringComparison.Ordinal);
+        Assert.Contains("'wechat-qrcode'", storeAudit, StringComparison.Ordinal);
+        Assert.Contains("'Assets/Support/'", storeAudit, StringComparison.Ordinal);
+        Assert.Contains(
+            "DonationQrCodeVisibility",
+            about,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReleaseGates_RequireEverythingSdkAndLicenseInEveryPayload()
     {
         string retail = Read("scripts/publish-aot-retail.ps1");

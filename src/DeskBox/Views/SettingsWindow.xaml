@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="DeskBox.Views.SettingsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -3078,7 +3078,8 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 Height="112"
                                 Padding="6"
                                 Background="White"
-                                CornerRadius="6">
+                                CornerRadius="6"
+                                Visibility="{Binding DonationQrCodeVisibility}">
                                 <Image
                                     Source="ms-appx:///Assets/wechat-qrcode.jpg"
                                     Stretch="Uniform" />
@@ -3184,6 +3185,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             CornerRadius="8">
                             <StackPanel HorizontalAlignment="Center" Spacing="8">
                                 <Border
+                                    Visibility="{Binding DonationQrCodeVisibility}"
                                     x:Name="WechatSupportQrContainer"
                                     Width="152"
                                     Height="152"
@@ -3211,6 +3213,7 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                             CornerRadius="8">
                             <StackPanel HorizontalAlignment="Center" Spacing="8">
                                 <Border
+                                    Visibility="{Binding DonationQrCodeVisibility}"
                                     x:Name="AlipaySupportQrContainer"
                                     Width="152"
                                     Height="152"

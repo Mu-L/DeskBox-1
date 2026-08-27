@@ -90,6 +90,7 @@ namespace DeskBox.ViewModels;
     nameof(CapsuleOverridesListVisibility),
     nameof(DefaultHeight),
     nameof(DefaultWidth),
+    nameof(DonationQrCodeVisibility),
     nameof(DragDropPermissionAppCompatText),
     nameof(DragDropPermissionDetailText),
     nameof(DragDropPermissionExplorerText),
