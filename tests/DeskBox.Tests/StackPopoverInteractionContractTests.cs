@@ -27,11 +27,15 @@ public sealed class StackPopoverInteractionContractTests
             popover,
             StringComparison.Ordinal);
         Assert.Contains(
-            "wrap.ItemWidth = layout.CellWidth;",
+            "itemsView.XamlRoot?.RasterizationScale ?? 1",
             popover,
             StringComparison.Ordinal);
         Assert.Contains(
-            "wrap.ItemHeight = layout.CellHeight;",
+            "wrap.ItemWidth = StackPopoverPixelCalculator.ToContainedLogicalSize(",
+            popover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "wrap.ItemHeight = StackPopoverPixelCalculator.ToContainedLogicalSize(",
             popover,
             StringComparison.Ordinal);
         Assert.Contains(

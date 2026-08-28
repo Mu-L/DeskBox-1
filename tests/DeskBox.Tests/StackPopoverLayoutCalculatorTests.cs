@@ -407,6 +407,30 @@ public sealed class StackPopoverLayoutCalculatorTests
     }
 
     [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(1.75)]
+    [InlineData(2.0)]
+    public void ItemSizing_StaysInsideLogicalSlotAtCommonDpiScales(
+        double scale)
+    {
+        const double logicalSize = 79.47;
+
+        double snappedSize =
+            StackPopoverPixelCalculator.ToContainedLogicalSize(
+                logicalSize,
+                scale);
+
+        Assert.True(snappedSize <= logicalSize);
+        Assert.True(logicalSize - snappedSize < 1 / scale);
+        Assert.Equal(
+            Math.Floor(logicalSize * scale),
+            snappedSize * scale,
+            precision: 6);
+    }
+
+    [Theory]
     [InlineData(1, 1)]
     [InlineData(2, 2)]
     [InlineData(3, 3)]

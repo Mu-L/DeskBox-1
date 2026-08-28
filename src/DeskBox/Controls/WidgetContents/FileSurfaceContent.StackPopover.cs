@@ -1061,9 +1061,21 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
+        // WinUI snaps item slots to whole physical pixels. With fractional DPI
+        // scales (1.25/1.5) the per-slot rounding grows with the column count
+        // and can push the last column out of the viewport, turning a
+        // requested 3-column grid into 2+2+1 on 2K displays. Snapping the
+        // slots down to physical pixels keeps every configured column inside
+        // the viewport at any scale.
+        double scale = itemsView.XamlRoot?.RasterizationScale ?? 1;
+
         wrap.Orientation = Orientation.Horizontal;
-        wrap.ItemWidth = layout.CellWidth;
-        wrap.ItemHeight = layout.CellHeight;
+        wrap.ItemWidth = StackPopoverPixelCalculator.ToContainedLogicalSize(
+            layout.CellWidth,
+            scale);
+        wrap.ItemHeight = StackPopoverPixelCalculator.ToContainedLogicalSize(
+            layout.CellHeight,
+            scale);
         wrap.MaximumRowsOrColumns = Math.Max(1, layout.Columns);
     }
 

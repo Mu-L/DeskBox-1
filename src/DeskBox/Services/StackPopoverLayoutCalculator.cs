@@ -29,6 +29,25 @@ internal readonly record struct StackPopoverPosition(
 
 internal static class StackPopoverPixelCalculator
 {
+    internal static double ToContainedLogicalSize(
+        double logicalSize,
+        double rasterizationScale)
+    {
+        double normalizedSize = double.IsFinite(logicalSize)
+            ? Math.Max(1, logicalSize)
+            : 1;
+        double normalizedScale =
+            double.IsFinite(rasterizationScale) && rasterizationScale > 0
+                ? rasterizationScale
+                : 1;
+        double physicalPixels = Math.Max(
+            1,
+            Math.Floor(normalizedSize * normalizedScale));
+        return Math.Min(
+            normalizedSize,
+            physicalPixels / normalizedScale);
+    }
+
     internal static int ToCoveringPhysicalPixels(
         double logicalSize,
         double rasterizationScale)
