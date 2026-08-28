@@ -1,3 +1,5 @@
+using DeskBox.Helpers;
+
 namespace DeskBox.Tests;
 
 public sealed class ShellContextMenuCompatibilityContractTests
@@ -82,6 +84,67 @@ public sealed class ShellContextMenuCompatibilityContractTests
             "InvokeCommand failed: hr=0x",
             helper,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NativeContextMenu_ForwardsOnlySupportedMenuMessages()
+    {
+        Assert.Equal(
+            ShellContextMenuHelper.ContextMenuMessageTarget.ContextMenu2,
+            ShellContextMenuHelper.GetContextMenuMessageTarget(
+                0x0117,
+                UIntPtr.Zero));
+        Assert.Equal(
+            ShellContextMenuHelper.ContextMenuMessageTarget.ContextMenu2,
+            ShellContextMenuHelper.GetContextMenuMessageTarget(
+                0x002B,
+                UIntPtr.Zero));
+        Assert.Equal(
+            ShellContextMenuHelper.ContextMenuMessageTarget.ContextMenu2,
+            ShellContextMenuHelper.GetContextMenuMessageTarget(
+                0x002C,
+                UIntPtr.Zero));
+        Assert.Equal(
+            ShellContextMenuHelper.ContextMenuMessageTarget.ContextMenu3,
+            ShellContextMenuHelper.GetContextMenuMessageTarget(
+                0x0120,
+                UIntPtr.Zero));
+
+        Assert.Equal(
+            ShellContextMenuHelper.ContextMenuMessageTarget.None,
+            ShellContextMenuHelper.GetContextMenuMessageTarget(
+                0x002B,
+                new UIntPtr(1)));
+        Assert.Equal(
+            ShellContextMenuHelper.ContextMenuMessageTarget.None,
+            ShellContextMenuHelper.GetContextMenuMessageTarget(
+                0x002C,
+                new UIntPtr(1)));
+        Assert.Equal(
+            ShellContextMenuHelper.ContextMenuMessageTarget.None,
+            ShellContextMenuHelper.GetContextMenuMessageTarget(
+                0x0200,
+                UIntPtr.Zero));
+    }
+
+    [Fact]
+    public void NativeContextMenu_SuppressesDuplicateNotificationsAndLogsNativeStages()
+    {
+        string helper = ReadRepositoryFile(
+            "src/DeskBox/Helpers/ShellContextMenuHelper.cs");
+
+        Assert.Contains("TPM_NONOTIFY = 0x0080", helper, StringComparison.Ordinal);
+        Assert.Contains(
+            "TPM_RETURNCMD | TPM_NONOTIFY",
+            helper,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_contextMenu2 = contextMenu2 != IntPtr.Zero",
+            helper,
+            StringComparison.Ordinal);
+        Assert.Contains("stage=query-begin", helper, StringComparison.Ordinal);
+        Assert.Contains("stage=track-begin", helper, StringComparison.Ordinal);
+        Assert.Contains("stage=invoke-begin", helper, StringComparison.Ordinal);
     }
 
     [Fact]

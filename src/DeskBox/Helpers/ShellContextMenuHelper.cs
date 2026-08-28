@@ -61,6 +61,7 @@ public static unsafe class ShellContextMenuHelper
 
     // TrackPopupMenuEx flags
     private const uint TPM_RETURNCMD = 0x0100;
+    private const uint TPM_NONOTIFY = 0x0080;
     private const uint TPM_LEFTALIGN = 0x0000;
     private const uint TPM_RIGHTBUTTON = 0x0002;
     private const uint TPM_VERTICAL = 0x0040;
@@ -70,6 +71,7 @@ public static unsafe class ShellContextMenuHelper
     private const uint WM_INITMENUPOPUP = 0x0117;
     private const uint WM_DRAWITEM = 0x002B;
     private const uint WM_MEASUREITEM = 0x002C;
+    private const uint WM_MENUCHAR = 0x0120;
     private const uint WM_DESTROY = 0x0002;
 
     // IIDs
@@ -110,6 +112,25 @@ public static unsafe class ShellContextMenuHelper
         Failed,
     }
 
+    internal enum ContextMenuMessageTarget
+    {
+        None,
+        ContextMenu2,
+        ContextMenu3,
+    }
+
+    internal static ContextMenuMessageTarget GetContextMenuMessageTarget(
+        uint message,
+        UIntPtr wParam) =>
+        message switch
+        {
+            WM_MENUCHAR => ContextMenuMessageTarget.ContextMenu3,
+            WM_INITMENUPOPUP => ContextMenuMessageTarget.ContextMenu2,
+            WM_DRAWITEM or WM_MEASUREITEM when wParam == UIntPtr.Zero =>
+                ContextMenuMessageTarget.ContextMenu2,
+            _ => ContextMenuMessageTarget.None,
+        };
+
     /// <summary>
     /// CMINVOKECOMMANDINFO with lpVerb as IntPtr so we can pass a numeric offset.
     /// When HIWORD(lpVerb) == 0, the shell treats LOWORD(lpVerb) as the command offset.
@@ -146,7 +167,11 @@ public static unsafe class ShellContextMenuHelper
             IntPtr contextMenu3)
         {
             _hWnd = hWnd;
-            _contextMenu2 = contextMenu2;
+            // IContextMenu3 inherits IContextMenu2, so its pointer also exposes
+            // the base HandleMenuMsg slot. Avoid a second QueryInterface/AddRef.
+            _contextMenu2 = contextMenu2 != IntPtr.Zero
+                ? contextMenu2
+                : contextMenu3;
             _contextMenu3 = contextMenu3;
             _subclassProc = SubclassProc;
             Win32Helper.SetWindowSubclass(_hWnd, _subclassProc, SubclassId, UIntPtr.Zero);
@@ -154,30 +179,63 @@ public static unsafe class ShellContextMenuHelper
 
         private IntPtr SubclassProc(IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, UIntPtr dwRefData)
         {
-            // IContextMenu3 takes priority — it has HandleMenuMsg2 which returns a result
-            if (_contextMenu3 != IntPtr.Zero)
+            try
             {
-                IntPtr result = IntPtr.Zero;
-                int hr = HandleContextMenuMessage2(
-                    _contextMenu3,
-                    msg,
-                    (IntPtr)wParam,
-                    lParam,
-                    out result);
-                if (hr == 0 && result != IntPtr.Zero)
+                switch (GetContextMenuMessageTarget(msg, wParam))
                 {
-                    return result;
+                    case ContextMenuMessageTarget.ContextMenu3
+                        when _contextMenu3 != IntPtr.Zero:
+                    {
+                        int hr = HandleContextMenuMessage2(
+                            _contextMenu3,
+                            msg,
+                            (IntPtr)wParam,
+                            lParam,
+                            out IntPtr result);
+                        if (hr == 0)
+                        {
+                            // The result can legitimately be zero. S_OK means
+                            // the extension handled the message, so do not pass
+                            // it through to the WinUI owner a second time.
+                            return result;
+                        }
+
+                        if (hr < 0)
+                        {
+                            App.Log(
+                                $"[ShellContextMenu] stage=message-handler-failed interface=IContextMenu3 msg=0x{msg:X4} hr=0x{hr:X8}");
+                        }
+
+                        break;
+                    }
+
+                    case ContextMenuMessageTarget.ContextMenu2
+                        when _contextMenu2 != IntPtr.Zero:
+                    {
+                        int hr = HandleContextMenuMessage(
+                            _contextMenu2,
+                            msg,
+                            (IntPtr)wParam,
+                            lParam);
+                        if (hr == 0)
+                        {
+                            return IntPtr.Zero;
+                        }
+
+                        if (hr < 0)
+                        {
+                            App.Log(
+                                $"[ShellContextMenu] stage=message-handler-failed interface=IContextMenu2 msg=0x{msg:X4} hr=0x{hr:X8}");
+                        }
+
+                        break;
+                    }
                 }
             }
-
-            // IContextMenu2's HandleMenuMsg — just needs to be called, no return value
-            if (_contextMenu2 != IntPtr.Zero)
+            catch (Exception ex)
             {
-                _ = HandleContextMenuMessage(
-                    _contextMenu2,
-                    msg,
-                    (IntPtr)wParam,
-                    lParam);
+                App.Log(
+                    $"[ShellContextMenu] stage=message-handler-exception msg=0x{msg:X4} exception={ex}");
             }
 
             if (msg == WM_DESTROY)
@@ -286,6 +344,9 @@ public static unsafe class ShellContextMenuHelper
 
         try
         {
+            App.Log(
+                $"[ShellContextMenu] stage=begin hwnd=0x{hwnd.ToInt64():X} point={screenX},{screenY}");
+
             // Step 1: Parse file path → PIDL
             int hr = SHParseDisplayName(filePath, IntPtr.Zero, out pidlFull, 0, out _);
             if (hr != 0 || pidlFull == IntPtr.Zero)
@@ -332,6 +393,11 @@ public static unsafe class ShellContextMenuHelper
                 : pContextMenu2Ptr != IntPtr.Zero
                     ? pContextMenu2Ptr
                     : pContextMenuPtr;
+            string activeInterface = pContextMenu3Ptr != IntPtr.Zero
+                ? "IContextMenu3"
+                : pContextMenu2Ptr != IntPtr.Zero
+                    ? "IContextMenu2"
+                    : "IContextMenu";
 
             // Step 5: Build the menu
             hMenu = CreatePopupMenu();
@@ -345,12 +411,16 @@ public static unsafe class ShellContextMenuHelper
             const uint idCmdLast = 0x7000;
             uint queryFlags = CMF_NORMAL | CMF_EXPLORE | CMF_ITEMMENU;
 
+            App.Log(
+                $"[ShellContextMenu] stage=query-begin interface={activeInterface}");
             hr = QueryContextMenu(
                 activeContextMenu,
                 hMenu,
                 idCmdFirst,
                 idCmdLast,
                 queryFlags);
+            App.Log(
+                $"[ShellContextMenu] stage=query-end interface={activeInterface} hr=0x{hr:X8}");
 
             if (hr < 0)
             {
@@ -365,8 +435,13 @@ public static unsafe class ShellContextMenuHelper
                 pContextMenu3Ptr);
 
             // Step 7: Show the menu (TPM_RETURNCMD returns the selected command ID)
-            uint tpFlags = TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_VERTICAL;
+            uint tpFlags = TPM_RETURNCMD | TPM_NONOTIFY |
+                TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_VERTICAL;
+            App.Log(
+                $"[ShellContextMenu] stage=track-begin interface={activeInterface}");
             int cmd = TrackPopupMenuEx(hMenu, tpFlags, screenX, screenY, hwnd, IntPtr.Zero);
+            App.Log(
+                $"[ShellContextMenu] stage=track-end interface={activeInterface} commandId={cmd}");
 
             // Force the shell to release its menu handle
             PostMessage(hwnd, WM_NULL, IntPtr.Zero, IntPtr.Zero);
@@ -378,14 +453,19 @@ public static unsafe class ShellContextMenuHelper
             // Step 9: Execute the selected command
             if (cmd == 0)
             {
+                App.Log("[ShellContextMenu] stage=cancelled");
                 return NativeMenuResult.Cancelled;
             }
 
             uint cmdOffset = (uint)cmd - idCmdFirst;
+            App.Log(
+                $"[ShellContextMenu] stage=invoke-begin interface={activeInterface} commandOffset={cmdOffset}");
             int invokeResult = InvokeCommand(
                 activeContextMenu,
                 hwnd,
                 cmdOffset);
+            App.Log(
+                $"[ShellContextMenu] stage=invoke-end interface={activeInterface} hr=0x{invokeResult:X8}");
             if (invokeResult < 0)
             {
                 App.Log($"[ShellContextMenu] InvokeCommand failed: hr=0x{invokeResult:X8}");
