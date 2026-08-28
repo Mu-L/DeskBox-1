@@ -50,15 +50,6 @@ public sealed partial class WidgetManager
             return 0;
         }
 
-        if (WidgetLayerService.UsesDesktopPinnedMode())
-        {
-            WidgetLayerService.MoveToDesktopBottom(windowHandle);
-            App.LogVerbose(
-                $"[ZOrder] Expanded lease skipped fixed-layer reason={reason} " +
-                $"owner=0x{windowHandle.ToInt64():X}");
-            return 0;
-        }
-
         _expandedWidgetLayerLease = WidgetExpandedLayerLeasePolicy.Acquire(
             _expandedWidgetLayerLease,
             windowHandle);

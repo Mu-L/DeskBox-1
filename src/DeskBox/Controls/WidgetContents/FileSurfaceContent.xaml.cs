@@ -816,7 +816,12 @@ public sealed partial class FileSurfaceContent :
         {
             _stackPopoverContextMenuOpen = true;
             flyout.Closed += (_, _) =>
-                CompleteStackPopoverContextMenu();
+            {
+                if (!_stackPopoverSystemContextMenuOpen)
+                {
+                    CompleteStackPopoverContextMenu();
+                }
+            };
         }
         if (item is WidgetStackItem)
         {

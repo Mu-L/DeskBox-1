@@ -54,6 +54,7 @@ public sealed partial class FileSurfaceContent
     private bool _stackPopoverPopupClosing;
     private bool _stackPopoverIsListMode;
     private bool _stackPopoverContextMenuOpen;
+    private bool _stackPopoverSystemContextMenuOpen;
     private bool _stackPopoverDragActive;
     private bool _stackPopoverCleanupPending;
     private long _stackPopoverShowGeneration;
@@ -621,6 +622,9 @@ public sealed partial class FileSurfaceContent
             // still parked, so opening a different stack never flashes the
             // previous stack's tiles before the refresh lands.
             _stackPopoverSurface.UpdateLayout();
+            ConfigureStackPopoverItemsPanel(
+                _stackPopoverItemsView,
+                layout);
             LogStackPopoverRevealReadiness(currentStack);
 
             ShowStackPopoverHost(
@@ -660,8 +664,12 @@ public sealed partial class FileSurfaceContent
             Win32Helper.GetDpiScaleForWindow(
                 _hostWindowHandle,
                 XamlRoot));
-        int width = Math.Max(1, (int)Math.Round(layout.Width * scale));
-        int height = Math.Max(1, (int)Math.Round(layout.Height * scale));
+        int width = StackPopoverPixelCalculator.ToCoveringPhysicalPixels(
+            layout.Width,
+            scale);
+        int height = StackPopoverPixelCalculator.ToCoveringPhysicalPixels(
+            layout.Height,
+            scale);
         int left;
         int top;
         if (_hostWindowHandle != IntPtr.Zero &&
@@ -886,7 +894,9 @@ public sealed partial class FileSurfaceContent
             ? $"{panel.GetType().Name} {panel.ActualWidth:0.#}x{panel.ActualHeight:0.#}"
             : "null";
         string visibleRange = view.ItemsPanelRoot is Microsoft.UI.Xaml.Controls.ItemsWrapGrid wrap
-            ? $" visible={wrap.FirstVisibleIndex}..{wrap.LastVisibleIndex}"
+            ? $" visible={wrap.FirstVisibleIndex}..{wrap.LastVisibleIndex}" +
+                $" cell={wrap.ItemWidth:0.##}x{wrap.ItemHeight:0.##}" +
+                $" max={wrap.MaximumRowsOrColumns}"
             : string.Empty;
 
         App.Log(
@@ -995,6 +1005,7 @@ public sealed partial class FileSurfaceContent
         view.AllowDrop = true;
         view.IsMultiSelectCheckBoxEnabled = false;
         view.SelectionMode = ListViewSelectionMode.Extended;
+        view.Loaded += StackPopoverItemsView_Loaded;
         ScrollViewer.SetVerticalScrollBarVisibility(
             view,
             layout.HasVerticalOverflow
@@ -1028,6 +1039,32 @@ public sealed partial class FileSurfaceContent
             handledEventsToo: true);
         RegisterScrollBarActivityTracking(view);
         return view;
+    }
+
+    private void StackPopoverItemsView_Loaded(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is ListViewBase view &&
+            _stackPopoverLayout is { } layout)
+        {
+            ConfigureStackPopoverItemsPanel(view, layout);
+        }
+    }
+
+    private static void ConfigureStackPopoverItemsPanel(
+        ListViewBase itemsView,
+        StackPopoverLayout layout)
+    {
+        if (itemsView.ItemsPanelRoot is not ItemsWrapGrid wrap)
+        {
+            return;
+        }
+
+        wrap.Orientation = Orientation.Horizontal;
+        wrap.ItemWidth = layout.CellWidth;
+        wrap.ItemHeight = layout.CellHeight;
+        wrap.MaximumRowsOrColumns = Math.Max(1, layout.Columns);
     }
 
     private Style CreateStackPopoverIconItemContainerStyle(
@@ -1981,6 +2018,7 @@ public sealed partial class FileSurfaceContent
         _stackPopoverPopupClosing = false;
         _stackPopoverCleanupPending = false;
         _stackPopoverContextMenuOpen = false;
+        _stackPopoverSystemContextMenuOpen = false;
         _stackPopoverDragActive = false;
         UpdateSelectionCommandBar();
     }
@@ -2117,6 +2155,7 @@ public sealed partial class FileSurfaceContent
         if (_stackPopoverItemsView is { } view)
         {
             DetachStackPopoverItemSurfaces(view);
+            view.Loaded -= StackPopoverItemsView_Loaded;
             view.ItemClick -= Items_ItemClick;
             view.DragItemsCompleted -= Items_DragItemsCompleted;
             view.DragItemsStarting -= Items_DragItemsStarting;
@@ -2237,6 +2276,7 @@ public sealed partial class FileSurfaceContent
         _stackPopoverPopupOpen = false;
         _stackPopoverPopupClosing = false;
         _stackPopoverContextMenuOpen = false;
+        _stackPopoverSystemContextMenuOpen = false;
         _stackPopoverDragActive = false;
         _stackPopoverCleanupPending = false;
         _pendingStackPopoverKey = null;
@@ -2679,6 +2719,7 @@ public sealed partial class FileSurfaceContent
             stack.Members.Count);
         _stackPopoverLayout = layout;
         UpdateStackPopoverIconItemContainerStyle(itemsView, layout);
+        ConfigureStackPopoverItemsPanel(itemsView, layout);
         itemsView.Width = layout.ItemsWidth;
         itemsView.MaxHeight = layout.ItemsHeight;
         surface.Width = layout.Width;
@@ -2720,8 +2761,12 @@ public sealed partial class FileSurfaceContent
             var bounds = new Windows.Graphics.RectInt32(
                 hostBounds.Left + (int)Math.Round(position.Left * scale),
                 hostBounds.Top + (int)Math.Round(position.Top * scale),
-                Math.Max(1, (int)Math.Round(layout.Width * scale)),
-                Math.Max(1, (int)Math.Round(layout.Height * scale)));
+                StackPopoverPixelCalculator.ToCoveringPhysicalPixels(
+                    layout.Width,
+                    scale),
+                StackPopoverPixelCalculator.ToCoveringPhysicalPixels(
+                    layout.Height,
+                    scale));
             _stackPopoverScreenBounds = bounds;
             _stackPopoverHostWindow.UpdateBounds(bounds);
         }

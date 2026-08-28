@@ -1,5 +1,21 @@
 ﻿# Changelog
 
+## 1.4.7 - Unreleased
+
+### English
+
+- Moved extended Windows Shell context menus into an isolated helper process, so a faulty third-party Shell extension can no longer terminate the DeskBox process.
+- Fixed 3x3 stack popovers wrapping five items as 2+2+1 at fractional DPI scales; the layout now reserves a physical-pixel-safe viewport and pins the requested row/column geometry explicitly.
+- Kept hidden desktop-layer widgets hidden during Explorer drag and activation transitions, while preserving the expected peer order for expanded capsules.
+- Restored Native AOT binding metadata for Glance calendar day decorations.
+
+### 中文
+
+- 将“更多系统操作”菜单移入独立辅助进程，第三方 Shell 扩展异常时不再连带结束 DeskBox 主进程。
+- 修复 3x3 叠放弹窗在部分 2K、高 DPI 电脑上将五个项目错误排成 2+2+1 的问题；布局会预留覆盖物理像素舍入的视口空间，并明确固定行列尺寸。
+- 修复在资源管理器桌面拖拽与激活状态切换期间，隐藏的桌面层格子偶发重新显示的问题，同时保持展开胶囊之间的正确层级。
+- 补齐时光日历日期装饰数据的 Native AOT 绑定元数据。
+
 ## 1.4.6 - 2026-08-28
 
 紧急修复了部分系统下，格子间拖动 `.lnk` 快捷方式会被误删除并进入回收站的严重问题。

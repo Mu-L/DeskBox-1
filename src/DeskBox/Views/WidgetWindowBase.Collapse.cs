@@ -84,6 +84,24 @@ public abstract partial class WidgetWindowBase
     private long _collapseAnimationGeneration;
     private long _compactLayerRestoreGeneration;
     private long _expandedWidgetLayerLeaseGeneration;
+
+    /// <summary>
+    /// True while an expanded capsule lease owns this window's layer; derived
+    /// hosts must not force-demote the window until the collapse re-beds it.
+    /// </summary>
+    protected bool HasExpandedWidgetLayerLease => _expandedWidgetLayerLeaseGeneration != 0;
+
+    /// <summary>
+    /// Ends the expanded capsule lease without touching the layer. Manager
+    /// teardown uses this: the whole group returns to its resting layer even
+    /// while a capsule is expanded, so the lease must not outlive the session.
+    /// </summary>
+    protected void EndExpandedWidgetLayerLease()
+    {
+        _expandedWidgetLayerLeaseGeneration = 0;
+        _isRaisedForExpandedState = false;
+        _restoreDesktopLayerAfterExpandedState = false;
+    }
     private long _compactExpansionRequestGeneration;
     private PendingCompactExpansion? _pendingCompactExpansion;
     private WidgetCompactAnimationFrameTracker? _compactAnimationFrameTracker;
@@ -3752,21 +3770,6 @@ public abstract partial class WidgetWindowBase
     private void RaiseForExpandedState()
     {
         CancelDeferredExpandedLayerRestore();
-        if (WidgetLayerService.UsesDesktopPinnedMode())
-        {
-            // Expanding or interacting with a fixed-layer widget must not
-            // acquire either a global or peer-only Z-order raise.
-            _isRaisedForExpandedState = false;
-            _restoreDesktopLayerAfterExpandedState = false;
-            CancelPendingDesktopLayerRestore();
-            _ = ReleaseExpandedWidgetLayerLease("fixed-layer-expanded");
-            WidgetLayerService.MoveToDesktopBottom(HWnd);
-            App.LogVerbose(
-                $"[ZOrder] RaiseForExpandedState skipped fixed-layer " +
-                $"hwnd=0x{HWnd.ToInt64():X}");
-            return;
-        }
-
         if (_isRaisedForExpandedState)
         {
             if (!WidgetLayerService.TryBringAbovePeerWidgetsAtDesktopLayer(HWnd))
