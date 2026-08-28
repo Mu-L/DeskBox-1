@@ -1,6 +1,6 @@
 ﻿# Changelog
 
-## 1.4.5 - Unreleased
+## 1.4.5 - 2026-08-28
 
 ### English
 
