@@ -1,10 +1,12 @@
 ﻿# Changelog
 
-## 1.4.5 - 2026-08-28
+## 1.4.6 - 2026-08-28
+
+紧急修复了部分系统下，格子间拖动 `.lnk` 快捷方式会被误删除并进入回收站的严重问题。
 
 ### English
 
-DeskBox 1.4.5 is a major feature, performance, and runtime update. The notes below cover everything added or changed since 1.4.3.
+DeskBox 1.4.6 is a major feature, performance, and runtime update. The notes below cover everything added or changed since 1.4.3.
 
 #### Important before updating
 
@@ -87,7 +89,7 @@ DeskBox 1.4.5 is a major feature, performance, and runtime update. The notes bel
 
 ### 中文
 
-DeskBox 1.4.5 是一次大型功能、性能与运行环境更新。以下内容为相对 1.4.3 的全部主要变化。
+DeskBox 1.4.6 是一次大型功能、性能与运行环境更新。以下内容为相对 1.4.3 的全部主要变化。
 
 #### 更新前必读
 

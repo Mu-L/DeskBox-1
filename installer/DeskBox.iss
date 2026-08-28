@@ -6,8 +6,8 @@
 ; ISCC /DDeskBoxNativeAot=1 /DMyAppReleaseDir=<publish 目录> DeskBox.iss
 
 #define MyAppName "DeskBox"
-#define MyAppVersion "1.4.5"
-#define MyAppVersionInfo "1.4.5.0"
+#define MyAppVersion "1.4.6"
+#define MyAppVersionInfo "1.4.6.0"
 #define MyAppPublisher "朱天雨"
 #define MyAppExeName "DeskBox.exe"
 #define MyAppOutputBaseName "DeskBox_Setup"
