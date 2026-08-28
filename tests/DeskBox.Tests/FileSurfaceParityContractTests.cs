@@ -277,6 +277,34 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
+    public void NativeAotInteractiveCrossVolumeMoves_BypassLegacyShellMove()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/Services/FileService.cs"));
+        int aotBranch = source.IndexOf(
+            "// The staged Native AOT profile",
+            StringComparison.Ordinal);
+        int volumeGuard = source.IndexOf(
+            "CanUseLegacyShellMove(",
+            aotBranch,
+            StringComparison.Ordinal);
+        int shellMove = source.IndexOf(
+            "ExecuteShellMovePlanAsync(",
+            volumeGuard,
+            StringComparison.Ordinal);
+        int fallbackLog = source.IndexOf(
+            "Legacy Shell move bypassed because one or",
+            shellMove,
+            StringComparison.Ordinal);
+
+        Assert.True(aotBranch >= 0);
+        Assert.True(volumeGuard > aotBranch);
+        Assert.True(shellMove > volumeGuard);
+        Assert.True(fallbackLog > shellMove);
+    }
+
+    [Fact]
     public void ExternalDrop_ShowsPreparationBeforeResolvingStorageItems()
     {
         string root = FindRepositoryRoot();
@@ -1497,7 +1525,7 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
-    public void LargeSurfaceDrop_ReleasesShellDragBeforeLongTransfer()
+    public void SurfaceDrop_ReleasesShellDragOnlyAfterTransferOutcomeIsKnown()
     {
         string root = FindRepositoryRoot();
         string surface = File.ReadAllText(Path.Combine(
@@ -1527,14 +1555,48 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
 
         Assert.True(materialize >= 0);
-        Assert.True(release > materialize);
-        Assert.True(transfer > release);
-        Assert.Contains("deferral = null;", drop, StringComparison.Ordinal);
-        Assert.Contains("deferral?.Complete();", drop, StringComparison.Ordinal);
+        Assert.True(transfer > materialize);
+        Assert.True(release > transfer);
+        Assert.DoesNotContain("deferral = null;", drop, StringComparison.Ordinal);
+        Assert.Contains("ResolveSafeDropCompletionOperation(", drop, StringComparison.Ordinal);
+        Assert.Contains(
+            "e.AcceptedOperation = DataPackageOperation.None;",
+            drop,
+            StringComparison.Ordinal);
         Assert.Contains("stage=Received", drop, StringComparison.Ordinal);
         Assert.Contains("stage=PayloadMaterialized", drop, StringComparison.Ordinal);
         Assert.Contains("stage=DeferralReleased", drop, StringComparison.Ordinal);
         Assert.Contains("stage=ImportCompleted", drop, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FolderDrop_ReleasesShellDragOnlyAfterTransferOutcomeIsKnown()
+    {
+        string visuals = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.ItemVisuals.cs"));
+        string drop = ReadPrivateMethod(
+            visuals,
+            "private async void ItemSurface_Drop(");
+        int transfer = drop.IndexOf(
+            "TransferItemsWithResultAsync(",
+            StringComparison.Ordinal);
+        int completionPolicy = drop.IndexOf(
+            "ResolveSafeDropCompletionOperation(",
+            transfer,
+            StringComparison.Ordinal);
+        int release = drop.IndexOf(
+            "deferral.Complete();",
+            completionPolicy,
+            StringComparison.Ordinal);
+
+        Assert.True(transfer >= 0);
+        Assert.True(completionPolicy > transfer);
+        Assert.True(release > completionPolicy);
+        Assert.Contains(
+            "e.AcceptedOperation = DataPackageOperation.None;",
+            drop,
+            StringComparison.Ordinal);
     }
 
     [Fact]
