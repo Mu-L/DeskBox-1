@@ -30,6 +30,14 @@ public sealed class AotStage7C1ContractTests
         string about = Read("src/DeskBox/ViewModels/SettingsViewModel.AboutAndUpdates.cs");
 
         Assert.Contains(
+            "<Content Remove=\"Assets\\wechat-qrcode.jpg\" />",
+            project,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "<Content Remove=\"Assets\\Support\\*.png\" />",
+            project,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "<Content Include=\"Assets\\wechat-qrcode.jpg\" Condition=\"'$(DeskBoxDistribution)' != 'Store'\">",
             project,
             StringComparison.Ordinal);

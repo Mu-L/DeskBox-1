@@ -219,6 +219,14 @@
   </Target>
 
   <ItemGroup>
+    <!--
+      Microsoft.WinUI.props adds every file below Assets as Content before this
+      project is evaluated. Remove the Direct-only support images first, then
+      opt them back in only for Direct builds so Store packaging cannot inherit
+      them through the SDK wildcard.
+    -->
+    <Content Remove="Assets\wechat-qrcode.jpg" />
+    <Content Remove="Assets\Support\*.png" />
     <Content Include="Assets\deskbox.ico">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
