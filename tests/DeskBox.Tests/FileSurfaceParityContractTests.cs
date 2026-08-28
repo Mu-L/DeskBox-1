@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace DeskBox.Tests;
@@ -481,6 +481,20 @@ public sealed class FileSurfaceParityContractTests
 
         Assert.Contains("ListItemDetailVisibility", xaml, StringComparison.Ordinal);
         Assert.Contains("ShowFileItemPathTooltips", xaml, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            xaml.Split(
+                "Text=\"{Binding FullPath}\"",
+                StringSplitOptions.None).Length - 1);
+        Assert.Contains(
+            "Visibility=\"{x:Bind TransferStatusVisibility, Mode=OneWay}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Visibility=\"{x:Bind PathTooltipVisibility, Mode=OneWay}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("PathOnlyTooltipVisibility", source, StringComparison.Ordinal);
         Assert.Contains(
             "DataContextChanged += FileItemSurface_DataContextChanged",
             source,
@@ -573,6 +587,9 @@ public sealed class FileSurfaceParityContractTests
         string stackPopoverRenameWindow = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Views/StackPopoverInlineRenameWindow.cs"));
+        string stackPopoverHostWindow = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/StackPopoverHostWindow.cs"));
         string widgetMaterialBackdrop = File.ReadAllText(Path.Combine(
             root,
             "src/DeskBox/Services/WidgetMaterialSystemBackdrop.cs"));
@@ -648,8 +665,54 @@ public sealed class FileSurfaceParityContractTests
             "CreateStackPopoverSurfaceBrush(",
             stackPopover,
             StringComparison.Ordinal);
+        // The popover backdrop now lives on the persistent host window; the
+        // surface file only forwards the resolved appearance to it.
         Assert.Contains(
-            "_stackPopoverMaterialBackdrop.UpdateAppearance(",
+            "_stackPopoverHostWindow?.UpdateAppearance(materialAppearance, followMaterial)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "class StackPopoverHostWindow : Window",
+            stackPopoverHostWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DeactivatedByOutsideClick",
+            stackPopoverHostWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UIElement.PreviewKeyDownEvent",
+            stackPopoverHostWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EscapeRequested",
+            stackPopoverHostWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "host.EscapeRequested += StackPopoverHost_EscapeRequested",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackPopoverPopupOpen ||",
+            source,
+            StringComparison.Ordinal);
+        // The popover entrance is deliberately animation-free: any pre-show
+        // opacity state awaiting an animation start reintroduces the
+        // busy-cursor stall when the UI thread cannot commit the first frame
+        // in time (verified twice: Storyboard AND Composition variants).
+        Assert.DoesNotContain(
+            "Storyboard",
+            stackPopoverHostWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_neutralBackdrop ??= new DesktopAcrylicBackdrop()",
+            stackPopoverHostWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "_entranceTransform",
+            stackPopoverHostWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "PopupThemeTransition",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -726,8 +789,19 @@ public sealed class FileSurfaceParityContractTests
             "RestoreInlineStackPreview(",
             stackPopover,
             StringComparison.Ordinal);
+        // Popovers must not use unconstrained XAML Popups — their top-level
+        // hwnd islands leak natively on every open/close cycle (verified
+        // 2026-08-27). The persistent host window replaces that mechanism.
+        Assert.DoesNotContain(
+            "ShouldConstrainToRootBounds",
+            stackPopover,
+            StringComparison.Ordinal);
         Assert.Contains(
-            "ShouldConstrainToRootBounds = false",
+            "ShowStackPopoverHost(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HideStackPopoverForReuse()",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -735,11 +809,19 @@ public sealed class FileSurfaceParityContractTests
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
-            "HorizontalOffset = position.Left",
+            "host.PrepareForShow(_stackPopoverScreenBounds)",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
-            "VerticalOffset = position.Top",
+            "host.RevealPrepared(_stackPopoverScreenBounds)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackPopoverHostWindow.UpdateBounds(bounds)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "top = hostBounds.Top + (int)Math.Round(position.Top * scale)",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -751,7 +833,7 @@ public sealed class FileSurfaceParityContractTests
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
-            "IsLightDismissEnabled = true",
+            "HideStackPopoverForReuse();",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -764,6 +846,14 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "titleHost.DoubleTapped += StackPopoverTitle_DoubleTapped",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackPopoverTitleHost = titleHost;",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackPopoverTitleText = title;",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -856,6 +946,18 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "ViewModel.SetStackNameOverride(stackKey, newName)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "appearanceSignature.Add(followMaterial);",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (releaseImmediately)",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_stackPopoverCleanupPending = true;",
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -1008,7 +1110,10 @@ public sealed class FileSurfaceParityContractTests
             "ViewModel.StabilizeStackDisplay()",
             source,
             StringComparison.Ordinal);
-        Assert.Contains("CanCreateManualStack: true", menus, StringComparison.Ordinal);
+        Assert.Contains(
+            "CanCreateManualStack: ViewModel.FileStacksEnabled",
+            menus,
+            StringComparison.Ordinal);
         Assert.DoesNotContain(
             "if (!FileStacksEnabled)\n        {\n            WidgetFileStackSettings.SetEnabledOverride(Config, true);",
             stackViewModel.Replace("\r\n", "\n", StringComparison.Ordinal),

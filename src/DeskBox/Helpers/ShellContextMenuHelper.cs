@@ -10,7 +10,7 @@ namespace DeskBox.Helpers;
 /// Shows the native Windows Explorer context menu for a file or folder using
 /// COM interop with IContextMenu / IContextMenu2 / IContextMenu3.
 /// </summary>
-public static class ShellContextMenuHelper
+public static unsafe class ShellContextMenuHelper
 {
     // ─── P/Invoke: shell32 ───
 
@@ -30,7 +30,7 @@ public static class ShellContextMenuHelper
         out IntPtr ppidlLast);
 
     [DllImport("shell32.dll")]
-    private static extern bool ILFree(IntPtr pidl);
+    private static extern void ILFree(IntPtr pidl);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern bool SHObjectProperties(IntPtr hwnd, uint shopObjectType, string pszObjectName, string? pszPropertyPage);
@@ -85,6 +85,18 @@ public static class ShellContextMenuHelper
 
     private const int SW_SHOWNORMAL = 1;
 
+    // Raw COM vtable slots. Native AOT cannot create runtime callable wrappers
+    // through Marshal.GetObjectForIUnknown unless a custom ComWrappers instance
+    // is registered. Calling the stable Shell COM ABI directly keeps this path
+    // usable in both Native AOT and framework-dependent builds.
+    private const int IUnknownQueryInterfaceSlot = 0;
+    private const int IUnknownReleaseSlot = 2;
+    private const int ShellFolderGetUiObjectOfSlot = 10;
+    private const int ContextMenuQuerySlot = 3;
+    private const int ContextMenuInvokeSlot = 4;
+    private const int ContextMenu2HandleMenuMessageSlot = 6;
+    private const int ContextMenu3HandleMenuMessage2Slot = 7;
+
     /// <summary>
     /// Result of showing the native context menu.
     /// </summary>
@@ -96,54 +108,6 @@ public static class ShellContextMenuHelper
         Cancelled,
         /// <summary>The native menu could not be created; caller should fall back.</summary>
         Failed,
-    }
-
-    // ─── COM Interface Definitions ───
-    // We define two versions: one with the standard IContextMenu signature for
-    // QueryContextMenu/GetCommandString, and a separate interface for InvokeCommand
-    // that accepts a raw IntPtr so we can pass lpVerb as a numeric offset.
-
-    [ComImport]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    [Guid("000214E6-0000-0000-C000-000000000046")]
-    private interface IShellFolder
-    {
-        [PreserveSig]
-        int ParseDisplayName(IntPtr hwnd, IntPtr pbc, string pszDisplayName, ref uint pchEaten, out IntPtr ppidl, ref uint pdwAttributes);
-
-        [PreserveSig]
-        int EnumObjects(IntPtr hwnd, uint grfFlags, out IntPtr ppenumIDList);
-
-        [PreserveSig]
-        int BindToObject(IntPtr pidl, IntPtr pbc, [In] ref Guid riid, out IntPtr ppv);
-
-        [PreserveSig]
-        int BindToStorage(IntPtr pidl, IntPtr pbc, [In] ref Guid riid, out IntPtr ppv);
-
-        [PreserveSig]
-        int CompareIDs(IntPtr lParam, IntPtr pidl1, IntPtr pidl2);
-
-        [PreserveSig]
-        int CreateViewObject(IntPtr hwnd, [In] ref Guid riid, out IntPtr ppv);
-
-        [PreserveSig]
-        int GetAttributesOf(uint cidl, [MarshalAs(UnmanagedType.LPArray)] IntPtr[] apidl, ref uint rgfInOut);
-
-        [PreserveSig]
-        int GetUIObjectOf(IntPtr hwndOwner, uint cidl, [MarshalAs(UnmanagedType.LPArray)] IntPtr[] apidl, [In] ref Guid riid, ref uint rgfReserved, out IntPtr ppv);
-
-        [PreserveSig]
-        int GetDisplayNameOf(IntPtr pidl, uint uFlags, out STRRET pName);
-
-        [PreserveSig]
-        int SetNameOf(IntPtr hwnd, IntPtr pidl, string pszName, uint uFlags, out IntPtr ppidlOut);
-    }
-
-    [StructLayout(LayoutKind.Explicit, Size = 8)]
-    private struct STRRET
-    {
-        [FieldOffset(0)] public uint uType;
-        [FieldOffset(4)] public IntPtr pOleStr;
     }
 
     /// <summary>
@@ -160,64 +124,8 @@ public static class ShellContextMenuHelper
         public IntPtr lpParameters;
         public IntPtr lpDirectory;
         public int nShow;
-    }
-
-    /// <summary>
-    /// IContextMenu COM interface. InvokeCommand takes a raw IntPtr so we can
-    /// pass a native CMINVOKECOMMANDINFO struct with lpVerb as a numeric offset.
-    /// </summary>
-    [ComImport]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    [Guid("000214E4-0000-0000-C000-000000000046")]
-    private interface IContextMenu
-    {
-        [PreserveSig]
-        int QueryContextMenu(IntPtr hMenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
-
-        [PreserveSig]
-        int InvokeCommand(IntPtr pici);
-
-        [PreserveSig]
-        int GetCommandString(IntPtr idCmd, uint uType, IntPtr pwReserved, IntPtr pszName, uint cchMax);
-    }
-
-    [ComImport]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    [Guid("000214F4-0000-0000-C000-000000000046")]
-    private interface IContextMenu2
-    {
-        [PreserveSig]
-        int QueryContextMenu(IntPtr hMenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
-
-        [PreserveSig]
-        int InvokeCommand(IntPtr pici);
-
-        [PreserveSig]
-        int GetCommandString(IntPtr idCmd, uint uType, IntPtr pwReserved, IntPtr pszName, uint cchMax);
-
-        [PreserveSig]
-        int HandleMenuMsg(uint uMsg, IntPtr wParam, IntPtr lParam);
-    }
-
-    [ComImport]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    [Guid("BCFCE0A0-EC17-11D0-8D10-00A0C90F2719")]
-    private interface IContextMenu3
-    {
-        [PreserveSig]
-        int QueryContextMenu(IntPtr hMenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
-
-        [PreserveSig]
-        int InvokeCommand(IntPtr pici);
-
-        [PreserveSig]
-        int GetCommandString(IntPtr idCmd, uint uType, IntPtr pwReserved, IntPtr pszName, uint cchMax);
-
-        [PreserveSig]
-        int HandleMenuMsg(uint uMsg, IntPtr wParam, IntPtr lParam);
-
-        [PreserveSig]
-        int HandleMenuMsg2(uint uMsg, IntPtr wParam, IntPtr lParam, ref IntPtr plResult);
+        public uint dwHotKey;
+        public IntPtr hIcon;
     }
 
     // ─── Subclass for IContextMenu2/3 message handling ───
@@ -226,17 +134,20 @@ public static class ShellContextMenuHelper
     {
         private readonly IntPtr _hWnd;
         private readonly Win32Helper.SubclassProc _subclassProc;
-        private readonly IContextMenu2? _cm2;
-        private readonly IContextMenu3? _cm3;
+        private readonly IntPtr _contextMenu2;
+        private readonly IntPtr _contextMenu3;
         private bool _disposed;
 
         private static readonly UIntPtr SubclassId = new(0xDDB1);
 
-        public ContextMenuSubclass(IntPtr hWnd, IContextMenu2? cm2, IContextMenu3? cm3)
+        public ContextMenuSubclass(
+            IntPtr hWnd,
+            IntPtr contextMenu2,
+            IntPtr contextMenu3)
         {
             _hWnd = hWnd;
-            _cm2 = cm2;
-            _cm3 = cm3;
+            _contextMenu2 = contextMenu2;
+            _contextMenu3 = contextMenu3;
             _subclassProc = SubclassProc;
             Win32Helper.SetWindowSubclass(_hWnd, _subclassProc, SubclassId, UIntPtr.Zero);
         }
@@ -244,10 +155,15 @@ public static class ShellContextMenuHelper
         private IntPtr SubclassProc(IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, UIntPtr dwRefData)
         {
             // IContextMenu3 takes priority — it has HandleMenuMsg2 which returns a result
-            if (_cm3 is not null)
+            if (_contextMenu3 != IntPtr.Zero)
             {
                 IntPtr result = IntPtr.Zero;
-                int hr = _cm3.HandleMenuMsg2(msg, (IntPtr)wParam, lParam, ref result);
+                int hr = HandleContextMenuMessage2(
+                    _contextMenu3,
+                    msg,
+                    (IntPtr)wParam,
+                    lParam,
+                    out result);
                 if (hr == 0 && result != IntPtr.Zero)
                 {
                     return result;
@@ -255,9 +171,13 @@ public static class ShellContextMenuHelper
             }
 
             // IContextMenu2's HandleMenuMsg — just needs to be called, no return value
-            if (_cm2 is not null)
+            if (_contextMenu2 != IntPtr.Zero)
             {
-                _cm2.HandleMenuMsg(msg, (IntPtr)wParam, lParam);
+                _ = HandleContextMenuMessage(
+                    _contextMenu2,
+                    msg,
+                    (IntPtr)wParam,
+                    lParam);
             }
 
             if (msg == WM_DESTROY)
@@ -359,13 +279,10 @@ public static class ShellContextMenuHelper
         IntPtr pidlChild = IntPtr.Zero;
         IntPtr pShellFolderPtr = IntPtr.Zero;
         IntPtr pContextMenuPtr = IntPtr.Zero;
+        IntPtr pContextMenu2Ptr = IntPtr.Zero;
+        IntPtr pContextMenu3Ptr = IntPtr.Zero;
         IntPtr hMenu = IntPtr.Zero;
         ContextMenuSubclass? subclass = null;
-
-        IContextMenu? cm = null;
-        IContextMenu2? cm2 = null;
-        IContextMenu3? cm3 = null;
-        IShellFolder? shellFolder = null;
 
         try
         {
@@ -386,13 +303,14 @@ public static class ShellContextMenuHelper
                 return NativeMenuResult.Failed;
             }
 
-            shellFolder = (IShellFolder)Marshal.GetObjectForIUnknown(pShellFolderPtr);
-
             // Step 3: Get IContextMenu
             Guid iidContextMenu = IID_IContextMenu;
-            uint reserved = 0;
-            IntPtr[] apidl = [pidlChild];
-            hr = shellFolder.GetUIObjectOf(hwnd, 1, apidl, ref iidContextMenu, ref reserved, out pContextMenuPtr);
+            hr = GetShellUiObject(
+                pShellFolderPtr,
+                hwnd,
+                pidlChild,
+                iidContextMenu,
+                out pContextMenuPtr);
             if (hr != 0 || pContextMenuPtr == IntPtr.Zero)
             {
                 App.Log($"[ShellContextMenu] GetUIObjectOf failed: hr=0x{hr:X8}");
@@ -400,12 +318,20 @@ public static class ShellContextMenuHelper
             }
 
             // Step 4: Query for IContextMenu3 / IContextMenu2 (for owner-drawn items)
-            cm3 = TryQueryInterface<IContextMenu3>(pContextMenuPtr, IID_IContextMenu3);
-            if (cm3 is null)
+            pContextMenu3Ptr = TryQueryInterface(
+                pContextMenuPtr,
+                IID_IContextMenu3);
+            if (pContextMenu3Ptr == IntPtr.Zero)
             {
-                cm2 = TryQueryInterface<IContextMenu2>(pContextMenuPtr, IID_IContextMenu2);
+                pContextMenu2Ptr = TryQueryInterface(
+                    pContextMenuPtr,
+                    IID_IContextMenu2);
             }
-            cm = (IContextMenu)Marshal.GetObjectForIUnknown(pContextMenuPtr);
+            IntPtr activeContextMenu = pContextMenu3Ptr != IntPtr.Zero
+                ? pContextMenu3Ptr
+                : pContextMenu2Ptr != IntPtr.Zero
+                    ? pContextMenu2Ptr
+                    : pContextMenuPtr;
 
             // Step 5: Build the menu
             hMenu = CreatePopupMenu();
@@ -419,19 +345,12 @@ public static class ShellContextMenuHelper
             const uint idCmdLast = 0x7000;
             uint queryFlags = CMF_NORMAL | CMF_EXPLORE | CMF_ITEMMENU;
 
-            // QueryContextMenu can be called on any of the three interfaces — use cm3/cm2 if available
-            if (cm3 is not null)
-            {
-                hr = cm3.QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, queryFlags);
-            }
-            else if (cm2 is not null)
-            {
-                hr = cm2.QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, queryFlags);
-            }
-            else
-            {
-                hr = cm.QueryContextMenu(hMenu, 0, idCmdFirst, idCmdLast, queryFlags);
-            }
+            hr = QueryContextMenu(
+                activeContextMenu,
+                hMenu,
+                idCmdFirst,
+                idCmdLast,
+                queryFlags);
 
             if (hr < 0)
             {
@@ -440,7 +359,10 @@ public static class ShellContextMenuHelper
             }
 
             // Step 6: Install subclass for owner-drawn menu messages (icons, submenus)
-            subclass = new ContextMenuSubclass(hwnd, cm2, cm3);
+            subclass = new ContextMenuSubclass(
+                hwnd,
+                pContextMenu2Ptr,
+                pContextMenu3Ptr);
 
             // Step 7: Show the menu (TPM_RETURNCMD returns the selected command ID)
             uint tpFlags = TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_VERTICAL;
@@ -460,7 +382,15 @@ public static class ShellContextMenuHelper
             }
 
             uint cmdOffset = (uint)cmd - idCmdFirst;
-            InvokeCommand(cm, cm2, cm3, hwnd, cmdOffset);
+            int invokeResult = InvokeCommand(
+                activeContextMenu,
+                hwnd,
+                cmdOffset);
+            if (invokeResult < 0)
+            {
+                App.Log($"[ShellContextMenu] InvokeCommand failed: hr=0x{invokeResult:X8}");
+                return NativeMenuResult.Failed;
+            }
 
             return NativeMenuResult.Invoked;
         }
@@ -483,21 +413,14 @@ public static class ShellContextMenuHelper
                 try { DestroyMenu(hMenu); } catch { }
             }
 
-            // 4. Release managed RCW references.
-            //    GetObjectForIUnknown added a ref; ReleaseComObject releases that ref.
-            try { if (cm3 is not null) Marshal.ReleaseComObject(cm3); } catch { }
-            try { if (cm2 is not null) Marshal.ReleaseComObject(cm2); } catch { }
-            try { if (cm is not null) Marshal.ReleaseComObject(cm); } catch { }
-            try { if (shellFolder is not null) Marshal.ReleaseComObject(shellFolder); } catch { }
+            // 4. Release every raw COM reference exactly once. QueryInterface,
+            //    GetUIObjectOf, and SHBindToParent each return an add-ref'd pointer.
+            try { ReleaseInterface(pContextMenu3Ptr); } catch { }
+            try { ReleaseInterface(pContextMenu2Ptr); } catch { }
+            try { ReleaseInterface(pContextMenuPtr); } catch { }
+            try { ReleaseInterface(pShellFolderPtr); } catch { }
 
-            // 5. Release the raw COM pointers.
-            //    SHBindToParent and GetUIObjectOf return addref'd pointers.
-            //    GetObjectForIUnknown added its own ref (released by ReleaseComObject above),
-            //    but the original ref from the COM function still needs to be released.
-            try { if (pContextMenuPtr != IntPtr.Zero) Marshal.Release(pContextMenuPtr); } catch { }
-            try { if (pShellFolderPtr != IntPtr.Zero) Marshal.Release(pShellFolderPtr); } catch { }
-
-            // 6. Free the full PIDL.
+            // 5. Free the full PIDL.
             //    CRITICAL: pidlChild from SHBindToParent is a pointer INTO pidlFull,
             //    NOT a separately allocated PIDL. We must NOT ILFree(pidlChild).
             //    Only free pidlFull.
@@ -508,75 +431,234 @@ public static class ShellContextMenuHelper
         }
     }
 
-    /// <summary>
-    /// Invokes a context menu command by numeric offset.
-    /// Builds a native CMINVOKECOMMANDINFO struct with lpVerb = offset (HIWORD = 0).
-    /// </summary>
-    private static void InvokeCommand(IContextMenu cm, IContextMenu2? cm2, IContextMenu3? cm3, IntPtr hwnd, uint cmdOffset)
+    private static int GetShellUiObject(
+        IntPtr shellFolder,
+        IntPtr ownerWindow,
+        IntPtr childItemIdList,
+        Guid interfaceId,
+        out IntPtr resultPointer)
     {
-        var info = new CMINVOKECOMMANDINFO
+        resultPointer = IntPtr.Zero;
+        if (shellFolder == IntPtr.Zero || childItemIdList == IntPtr.Zero)
         {
-            cbSize = (uint)Marshal.SizeOf<CMINVOKECOMMANDINFO>(),
-            fMask = 0,
-            hwnd = hwnd,
-            lpVerb = (IntPtr)cmdOffset,  // HIWORD = 0 → shell uses LOWORD as offset
-            lpParameters = IntPtr.Zero,
-            lpDirectory = IntPtr.Zero,
-            nShow = SW_SHOWNORMAL,
-        };
-
-        IntPtr pInfo = Marshal.AllocHGlobal(Marshal.SizeOf<CMINVOKECOMMANDINFO>());
-        try
-        {
-            Marshal.StructureToPtr(info, pInfo, false);
-
-            int hr;
-            if (cm3 is not null)
-            {
-                hr = cm3.InvokeCommand(pInfo);
-            }
-            else if (cm2 is not null)
-            {
-                hr = cm2.InvokeCommand(pInfo);
-            }
-            else
-            {
-                hr = cm.InvokeCommand(pInfo);
-            }
-
-            if (hr != 0)
-            {
-                App.Log($"[ShellContextMenu] InvokeCommand hr=0x{hr:X8}");
-            }
+            return unchecked((int)0x80004003); // E_POINTER
         }
-        finally
-        {
-            Marshal.FreeHGlobal(pInfo);
-        }
+
+        var getUiObject = (delegate* unmanaged[Stdcall]<
+            IntPtr,
+            IntPtr,
+            uint,
+            IntPtr*,
+            Guid*,
+            uint*,
+            IntPtr*,
+            int>)GetVtableEntry(
+                shellFolder,
+                ShellFolderGetUiObjectOfSlot,
+                "IShellFolder.GetUIObjectOf");
+        IntPtr child = childItemIdList;
+        Guid requestedInterface = interfaceId;
+        IntPtr localResult = IntPtr.Zero;
+        int result = getUiObject(
+            shellFolder,
+            ownerWindow,
+            1,
+            &child,
+            &requestedInterface,
+            null,
+            &localResult);
+        resultPointer = localResult;
+        return result;
+    }
+
+    private static int QueryContextMenu(
+        IntPtr contextMenu,
+        IntPtr menu,
+        uint firstCommandId,
+        uint lastCommandId,
+        uint flags)
+    {
+        var queryContextMenu = (delegate* unmanaged[Stdcall]<
+            IntPtr,
+            IntPtr,
+            uint,
+            uint,
+            uint,
+            uint,
+            int>)GetVtableEntry(
+                contextMenu,
+                ContextMenuQuerySlot,
+                "IContextMenu.QueryContextMenu");
+        return queryContextMenu(
+            contextMenu,
+            menu,
+            0,
+            firstCommandId,
+            lastCommandId,
+            flags);
     }
 
     /// <summary>
-    /// Queries for a specific COM interface from the given COM pointer.
-    /// Returns null if the interface is not available.
+    /// Invokes a context menu command by numeric offset. The complete native
+    /// CMINVOKECOMMANDINFO layout is required because handlers inspect cbSize.
     /// </summary>
-    private static T? TryQueryInterface<T>(IntPtr pUnk, Guid iid) where T : class
+    private static int InvokeCommand(
+        IntPtr contextMenu,
+        IntPtr hwnd,
+        uint cmdOffset)
     {
-        try
+        var info = new CMINVOKECOMMANDINFO
         {
-            int hr = Marshal.QueryInterface(pUnk, iid, out IntPtr pIntf);
-            if (hr != 0 || pIntf == IntPtr.Zero)
-            {
-                return null;
-            }
+            cbSize = (uint)sizeof(CMINVOKECOMMANDINFO),
+            fMask = 0,
+            hwnd = hwnd,
+            lpVerb = (IntPtr)cmdOffset,
+            lpParameters = IntPtr.Zero,
+            lpDirectory = IntPtr.Zero,
+            nShow = SW_SHOWNORMAL,
+            dwHotKey = 0,
+            hIcon = IntPtr.Zero,
+        };
+        var invokeCommand = (delegate* unmanaged[Stdcall]<
+            IntPtr,
+            CMINVOKECOMMANDINFO*,
+            int>)GetVtableEntry(
+                contextMenu,
+                ContextMenuInvokeSlot,
+                "IContextMenu.InvokeCommand");
+        return invokeCommand(contextMenu, &info);
+    }
 
-            // Marshal.GetObjectForIUnknown adds a ref, so we need to release the one from QueryInterface
-            T obj = (T)Marshal.GetObjectForIUnknown(pIntf);
-            Marshal.Release(pIntf);
-            return obj;
-        }
-        catch
+    private static int HandleContextMenuMessage(
+        IntPtr contextMenu2,
+        uint message,
+        IntPtr wParam,
+        IntPtr lParam)
+    {
+        var handleMessage = (delegate* unmanaged[Stdcall]<
+            IntPtr,
+            uint,
+            IntPtr,
+            IntPtr,
+            int>)GetVtableEntry(
+                contextMenu2,
+                ContextMenu2HandleMenuMessageSlot,
+                "IContextMenu2.HandleMenuMsg");
+        return handleMessage(contextMenu2, message, wParam, lParam);
+    }
+
+    private static int HandleContextMenuMessage2(
+        IntPtr contextMenu3,
+        uint message,
+        IntPtr wParam,
+        IntPtr lParam,
+        out IntPtr messageResult)
+    {
+        var handleMessage = (delegate* unmanaged[Stdcall]<
+            IntPtr,
+            uint,
+            IntPtr,
+            IntPtr,
+            IntPtr*,
+            int>)GetVtableEntry(
+                contextMenu3,
+                ContextMenu3HandleMenuMessage2Slot,
+                "IContextMenu3.HandleMenuMsg2");
+        IntPtr localResult = IntPtr.Zero;
+        int result = handleMessage(
+            contextMenu3,
+            message,
+            wParam,
+            lParam,
+            &localResult);
+        messageResult = localResult;
+        return result;
+    }
+
+    private static IntPtr TryQueryInterface(
+        IntPtr unknown,
+        Guid interfaceId)
+    {
+        int result = QueryInterface(
+            unknown,
+            interfaceId,
+            out IntPtr interfacePointer);
+        if (result >= 0 && interfacePointer != IntPtr.Zero)
         {
-            return null;
+            return interfacePointer;
         }
+
+        if (interfacePointer != IntPtr.Zero)
+        {
+            ReleaseInterface(interfacePointer);
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private static int QueryInterface(
+        IntPtr unknown,
+        Guid interfaceId,
+        out IntPtr resultPointer)
+    {
+        resultPointer = IntPtr.Zero;
+        if (unknown == IntPtr.Zero)
+        {
+            return unchecked((int)0x80004003); // E_POINTER
+        }
+
+        var queryInterface = (delegate* unmanaged[Stdcall]<
+            IntPtr,
+            Guid*,
+            IntPtr*,
+            int>)GetVtableEntry(
+                unknown,
+                IUnknownQueryInterfaceSlot,
+                "IUnknown.QueryInterface");
+        Guid requestedInterface = interfaceId;
+        IntPtr localResult = IntPtr.Zero;
+        int result = queryInterface(
+            unknown,
+            &requestedInterface,
+            &localResult);
+        resultPointer = localResult;
+        return result;
+    }
+
+    private static void ReleaseInterface(IntPtr unknown)
+    {
+        if (unknown == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var release = (delegate* unmanaged[Stdcall]<IntPtr, uint>)
+            GetVtableEntry(
+                unknown,
+                IUnknownReleaseSlot,
+                "IUnknown.Release");
+        _ = release(unknown);
+    }
+
+    private static IntPtr GetVtableEntry(
+        IntPtr unknown,
+        int slot,
+        string methodName)
+    {
+        if (unknown == IntPtr.Zero)
+        {
+            throw new ArgumentException(
+                $"The COM pointer for {methodName} is null.",
+                nameof(unknown));
+        }
+
+        IntPtr* vtable = *(IntPtr**)unknown;
+        if (vtable == null || vtable[slot] == IntPtr.Zero)
+        {
+            throw new InvalidOperationException(
+                $"The COM vtable does not contain {methodName} at slot {slot}.");
+        }
+
+        return vtable[slot];
     }
 }

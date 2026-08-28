@@ -1,4 +1,4 @@
-using System.Collections.Specialized;
+﻿using System.Collections.Specialized;
 using DeskBox.Controls;
 using DeskBox.Contracts;
 using DeskBox.Helpers;
@@ -394,6 +394,47 @@ public sealed partial class FileSurfaceContent :
         // rather than foreground activation. Desktop-layer groups intentionally
         // use SW_SHOWNOACTIVATE, so treating their initial inactive state as a
         // deactivation would cancel the first icon hydration pass.
+        //
+        // Selection, however, is an interaction-scoped state: leaving DeskBox
+        // (another app or the desktop takes the foreground) ends the selection
+        // gesture, so stale highlights do not survive a round trip.
+        ClearItemSelectionIfInteractionIdle();
+    }
+
+    public void OnCompactStateChanged(bool collapsed)
+    {
+        // Collapsing a widget hides its items; keeping hidden selection state
+        // would resurrect stale highlights on the next expand.
+        if (collapsed)
+        {
+            ClearItemSelectionIfInteractionIdle();
+        }
+    }
+
+    private void ClearItemSelectionIfInteractionIdle()
+    {
+        // Active gestures own their selection: the stack popover, its drag
+        // and title editing, an inline item rename, or an outbound drag all
+        // read the current selection and must not observe a surprise reset
+        // triggered by their own window activations.
+        if (IsStackPopoverInteractionActive ||
+            _stackPopoverDragActive ||
+            _stackPopoverTitleEditing ||
+            _itemRenameTarget is not null ||
+            _pendingPointerDragItems.Length > 0)
+        {
+            return;
+        }
+
+        if (ItemsGrid.SelectedItems.Count == 0 &&
+            ItemsList.SelectedItems.Count == 0 &&
+            !_isBoxSelecting)
+        {
+            return;
+        }
+
+        ResetBoxSelectionState();
+        ClearItemSelection();
     }
 
     public object? CaptureTransientState()
@@ -3215,9 +3256,10 @@ public sealed partial class FileSurfaceContent :
 
         if (e.Key == VirtualKey.Escape)
         {
-            if (_stackPopoverPopup is not null)
+            if (_stackPopoverPopupOpen ||
+                _stackPopoverHostWindow?.IsVisible == true)
             {
-                CloseStackPopover(releaseImmediately: true);
+                CloseStackPopover();
                 e.Handled = true;
                 return;
             }

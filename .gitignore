@@ -38,6 +38,7 @@ build_*.txt
 .mimocode/
 .claude/
 .workbuddy/
+.mimosa/
 
 # Local one-off analysis reports
 /内存性能分析报告.md

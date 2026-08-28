@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DeskBox.Models;
 
 /// <summary>
@@ -336,10 +338,13 @@ public class AppSettings
     public string WidgetCollapseBehavior { get; set; } = "Expanded";
 
     /// <summary>
-    /// Legacy compatibility flag derived from <see cref="WidgetCollapseBehavior"/>.
-    /// New code uses the three-state default behavior directly.
+    /// Legacy compact-mode gate retained only while reading pre-version-2
+    /// profiles. Current code uses <see cref="WidgetCollapseBehavior"/> as the
+    /// single source of truth and clears this value after migration.
     /// </summary>
-    public bool WidgetCapsuleModeEnabled { get; set; }
+    [JsonPropertyName("widgetCapsuleModeEnabled")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? LegacyWidgetCapsuleModeEnabled { get; set; }
 
     /// <summary>
     /// How compact and expanded widget widths relate to each other.
@@ -351,7 +356,7 @@ public class AppSettings
     /// Vertical direction used when a compact widget expands.
     /// Valid values: <c>"Auto"</c>, <c>"Down"</c>, <c>"Up"</c>.
     /// </summary>
-    public string WidgetCompactExpansionDirection { get; set; } = "Auto";
+    public string WidgetCompactExpansionDirection { get; set; } = "Down";
 
     /// <summary>
     /// How compact widgets are arranged on the desktop.
@@ -406,13 +411,13 @@ public class AppSettings
     public string WidgetCompactAnimationEffect { get; set; } = "Slow";
 
     /// <summary>Compact transition duration in milliseconds.</summary>
-    public int WidgetCompactAnimationDurationMs { get; set; } = 220;
+    public int WidgetCompactAnimationDurationMs { get; set; } = 360;
 
     /// <summary>Pointer hover delay before a smart compact widget expands.</summary>
-    public int WidgetCompactExpandDelayMs { get; set; } = 180;
+    public int WidgetCompactExpandDelayMs { get; set; } = 100;
 
     /// <summary>Pointer leave delay before a smart compact widget collapses.</summary>
-    public int WidgetCompactCollapseDelayMs { get; set; } = 420;
+    public int WidgetCompactCollapseDelayMs { get; set; } = 200;
 
     /// <summary>
     /// Corner treatment for media inside compact widgets.
@@ -643,7 +648,7 @@ public class AppSettings
     /// Legacy navigation style retained only so pre-title-switcher settings can
     /// be migrated without losing user intent.
     /// </summary>
-    public string WidgetGroupDefaultNavigationStyle { get; set; } = "Auto";
+    public string WidgetGroupDefaultNavigationStyle { get; set; } = "Stack";
 
     /// <summary>
     /// Default identity layout used by the title-bar member selector.

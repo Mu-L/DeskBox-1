@@ -951,8 +951,37 @@ public partial class App : Application
             {
                 Log($"[DesktopOrganization] Recovered {recoveredDesktopItems} items from an interrupted transaction.");
             }
-            WidgetManager.SyncStorageFolderEntries();
-            await WidgetManager.RestoreWidgetsAsync();
+            // A detached storage drive must not abort widget restoration.
+            bool managedStorageRootUnavailable = !WidgetManager.SyncStorageFolderEntries();
+            Task<bool>? startupDesktopLayerReadinessTask = null;
+            if (IsStartupMode)
+            {
+                WidgetLayerService.BeginStartupDesktopLayerAttachmentDeferral();
+                startupDesktopLayerReadinessTask =
+                    WidgetLayerService.WaitForDesktopIconViewReadyAsync();
+            }
+
+            try
+            {
+                await WidgetManager.RestoreWidgetsAsync();
+            }
+            catch
+            {
+                if (startupDesktopLayerReadinessTask is not null)
+                {
+                    WidgetLayerService.EndStartupDesktopLayerAttachmentDeferral();
+                }
+
+                throw;
+            }
+
+            if (startupDesktopLayerReadinessTask is not null)
+            {
+                _ = CompleteStartupDesktopLayerInitializationAsync(
+                    startupDesktopLayerReadinessTask,
+                    WidgetManager);
+            }
+
             InitializeGlobalHotkeyService(localizationService);
 
             RefreshTodoReminderService();
@@ -960,6 +989,10 @@ public partial class App : Application
             await CompleteExternalActivationInitializationAsync();
             ShowDataRestoreResultNotification(restoreResult);
             ShowSettingsLoadRecoveryNotification();
+            if (managedStorageRootUnavailable)
+            {
+                ShowManagedStorageUnavailableNotification();
+            }
             if (!hadSettingsBeforeStartup ||
                 SettingsService.LastLoadRecoveryState == SettingsLoadRecoveryState.DefaultsAfterFailure)
             {
@@ -1029,6 +1062,40 @@ public partial class App : Application
         {
             Log($"Exception in OnLaunched: {ex}");
         }
+    }
+
+    private async Task CompleteStartupDesktopLayerInitializationAsync(
+        Task<bool> readinessTask,
+        WidgetManager widgetManager)
+    {
+        bool explorerDesktopReady = false;
+        try
+        {
+            // Widget startup already has a 2.3-second temporary presentation.
+            // Let that finish independently while the read-only Explorer probe runs.
+            Task widgetPresentationSettled = Task.Delay(TimeSpan.FromMilliseconds(2400));
+            explorerDesktopReady = await readinessTask;
+            await widgetPresentationSettled;
+        }
+        catch (Exception ex)
+        {
+            Log($"[Startup] Explorer desktop readiness probe failed: {ex}");
+        }
+        finally
+        {
+            WidgetLayerService.EndStartupDesktopLayerAttachmentDeferral();
+        }
+
+        if (!ReferenceEquals(WidgetManager, widgetManager))
+        {
+            return;
+        }
+
+        Log(
+            $"[Startup] Applying deferred widget desktop layer " +
+            $"explorerReady={explorerDesktopReady}");
+        widgetManager.RefreshVisibleWidgetDesktopLayers(
+            "startup-explorer-desktop-ready");
     }
 
     private void InitializeGlobalHotkeyService(LocalizationService localizationService)
@@ -2272,6 +2339,39 @@ public partial class App : Application
         }
     }
 
+    private void ShowManagedStorageUnavailableNotification()
+    {
+        if (LocalizationService is null)
+        {
+            return;
+        }
+
+        string title = LocalizationService.T("Settings.ManagedPath.UnavailableTitle");
+        string message = LocalizationService.T("Settings.ManagedPath.UnavailableBody");
+        if (_nativeNotificationService?.TryShow(title, message) == true || _trayIcon is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _trayIcon.ShowNotification(
+                title,
+                message,
+                NotificationIcon.Warning,
+                customIconHandle: null,
+                largeIcon: false,
+                sound: false,
+                respectQuietTime: true,
+                realtime: false,
+                timeout: TimeSpan.FromSeconds(10));
+        }
+        catch (Exception ex)
+        {
+            Log($"[WidgetManager] Managed storage unavailable notification failed: {ex.Message}");
+        }
+    }
+
     private void ShowRecoverySnapshotAvailableNotification(DeskBoxBackupSnapshotInfo? snapshot)
     {
         if (snapshot is null || LocalizationService is null)
@@ -2607,12 +2707,35 @@ public partial class App : Application
     /// </summary>
     internal static long MemoryCleanupEpoch => Volatile.Read(ref s_memoryCleanupEpoch);
 
+    /// <summary>
+    /// Raised (possibly from a background thread) after a working-set trim
+    /// invalidated warmed state. Observers must marshal to their own threads.
+    /// </summary>
+    internal static event Action? MemoryCleanupEpochAdvanced;
+
     private static void AdvanceMemoryCleanupEpoch(string reason)
     {
         long cleanupEpoch = Interlocked.Increment(ref s_memoryCleanupEpoch);
         PerformanceLogger.Mark(
             "MemoryCleanupEpochAdvanced",
             $"epoch={cleanupEpoch} reason={reason}");
+        Action? handlers = MemoryCleanupEpochAdvanced;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (Action handler in handlers.GetInvocationList().Cast<Action>())
+        {
+            try
+            {
+                handler();
+            }
+            catch (Exception ex)
+            {
+                Log($"[MemoryCleanup] Epoch observer failed: {ex.Message}");
+            }
+        }
     }
 
     private void StartVisibleIdleMemoryMaintenance()
