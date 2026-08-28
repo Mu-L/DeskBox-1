@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.4.6-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.6)
+[![最新版本](https://img.shields.io/badge/release-1.4.7-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.7)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-当前线上稳定版为 DeskBox 1.4.6，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.6) 下载。
+当前线上稳定版为 DeskBox 1.4.7，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.7) 下载。
 
-- [DeskBox 1.4.6 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.6/DeskBox_Setup_1.4.6_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
-- [DeskBox 1.4.6 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.6/DeskBox_Setup_1.4.6_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
+- [DeskBox 1.4.7 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.7/DeskBox_Setup_1.4.7_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
+- [DeskBox 1.4.7 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.7/DeskBox_Setup_1.4.7_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
 
 两个安装包都是 Native AOT 构建，不再下载、也不再需要单独的 .NET 10 运行时。安装程序会检查 Windows App Runtime 2.4，只有当前架构缺少它时才联网安装；运行时安装完成后，少数电脑可能需要重启。完全离线的电脑请先手动安装对应架构的 Windows App Runtime 2.4。
 
@@ -121,8 +121,12 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
-## 1.4.6 更新亮点
+## 1.4.7 更新亮点
 
+- **更安全的“更多系统操作”。** 扩展 Windows Shell 菜单现在在独立辅助进程中运行，第三方 Shell 扩展异常不会连带结束 DeskBox。
+- **高 DPI 叠放网格稳定。** 3×3 布局放入五个文件时，在分数 DPI 缩放下仍保持第一行 3 个、第二行 2 个，不再错误排成 2+2+1。
+- **桌面层级切换更稳定。** Explorer 拖拽和激活状态变化期间，隐藏格子保持隐藏；展开胶囊仍保持正确的同层级顺序。
+- **时光日历 AOT 绑定修复。** Direct Native AOT 构建保留日历日期装饰数据的绑定元数据。
 - **修复严重的快捷方式误删。** 部分系统下把 `.lnk` 快捷方式在格子间拖动会连带删除原文件并进入回收站。修复后 DeskBox 会等文件真正搬运完成，再向系统确认这次操作的结果。
 - **性能模式与资源控制。** 新增均衡、节省资源和自定义三种模式，可控制缓存保留、临时窗口释放和各项持续动画，隐藏与非活动界面更有计划地释放资源。
 - **多显示器布局记忆。** 为不同屏幕组合分别保存布局，重新接入后恢复位置、尺寸、分组和胶囊；新显示器或缩放变化时获得限制在屏幕内的比例布局。
@@ -131,7 +135,7 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - **Everything 文件搜索。** 直接读取 Everything 已有索引并与 DeskBox 内容合并，删除了重复的自建索引；Everything 需单独安装。
 - **Native AOT 直发包。** GitHub 包不再需要单独的 .NET 10 运行时，Windows App Runtime 升级到 2.4。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.6 发布说明](docs/releases/v1.4.6.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.7 发布说明](docs/releases/v1.4.7.md)。
 
 ## 当前界面
 
@@ -240,7 +244,7 @@ ISCC.exe .\installer\DeskBox.iss
 ISCC.exe .\installer\DeskBox.arm64.iss
 ```
 
-如果目标机器完全离线，仍可构建内置专用 .NET 与 Windows App Runtime 的自包含变体；1.4.6 正式没有发布这种包：
+如果目标机器完全离线，仍可构建内置专用 .NET 与 Windows App Runtime 的自包含变体；1.4.7 正式没有发布这种包：
 
 ```powershell
 dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:DeskBoxRustNative=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -o .\artifacts\publish\DeskBox\x64-full -v:minimal
@@ -250,8 +254,8 @@ ISCC.exe /DMyAppReleaseDir=..\artifacts\publish\DeskBox\x64-full /DDeskBoxBundle
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.4.6_x64.exe
-Output\DeskBox_Setup_1.4.6_arm64.exe
+Output\DeskBox_Setup_1.4.7_x64.exe
+Output\DeskBox_Setup_1.4.7_arm64.exe
 ```
 
 ## 项目结构

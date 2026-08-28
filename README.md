@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.4.6-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.6)
+[![Latest release](https://img.shields.io/badge/release-1.4.7-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.7)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ All twelve selectable languages share the same resource-key and formatting-place
 
 ## Download
 
-The current stable release is DeskBox 1.4.6, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.6).
+The current stable release is DeskBox 1.4.7, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.7).
 
-- [DeskBox 1.4.6 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.6/DeskBox_Setup_1.4.6_x64.exe), recommended for most Intel and AMD PCs.
-- [DeskBox 1.4.6 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.6/DeskBox_Setup_1.4.6_arm64.exe), recommended for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.4.7 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.7/DeskBox_Setup_1.4.7_x64.exe), recommended for most Intel and AMD PCs.
+- [DeskBox 1.4.7 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.7/DeskBox_Setup_1.4.7_arm64.exe), recommended for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 Both packages are Native AOT builds, so no separate .NET 10 runtime is downloaded or required. Setup checks for Windows App Runtime 2.4 and downloads it only when the matching architecture is missing; Windows may request a restart after that runtime install. On a fully offline PC, install the matching x64 or ARM64 Windows App Runtime 2.4 first.
 
@@ -121,8 +121,12 @@ Every release also publishes a matching `.sha256` sidecar for each installer. Th
 - Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
 - Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
-## What's new in 1.4.6
+## What's new in 1.4.7
 
+- **Safer More system operations.** Extended Windows Shell context menus now run in an isolated helper process, so a faulty third-party Shell extension cannot terminate DeskBox.
+- **Reliable high-DPI stack grids.** A 3×3 popover with five files keeps the expected 3+2 arrangement at fractional DPI scales instead of wrapping as 2+2+1.
+- **Stable desktop-layer transitions.** Hidden widgets remain hidden during Explorer drag and activation changes, while expanded capsules retain their peer ordering.
+- **Native AOT calendar bindings.** Glance calendar day decorations retain their binding metadata in Direct Native AOT builds.
 - **Fixed a serious shortcut loss.** Dragging a `.lnk` shortcut between widgets could delete the original on some systems. DeskBox now waits for a transfer to finish before reporting the operation result to Windows, so the source is never cleaned up early.
 - **Performance modes.** Balanced, Resource saver, and Custom modes under Settings → General control cache retention, transient-window release, and individual continuous animations. Hidden and inactive surfaces release recreatable UI, icons, and decoded images.
 - **Multi-display layout memory.** Each known monitor topology keeps its own layout, so positions, sizes, groups, and capsule placement return when you reconnect a display arrangement. New or differently scaled monitors get an in-bounds proportional layout.
@@ -131,7 +135,7 @@ Every release also publishes a matching `.sha256` sidecar for each installer. Th
 - **Everything-powered file search.** DeskBox reads Everything's existing index over local IPC and merges it with notes, todos, and settings in one window, replacing the duplicate DeskBox-maintained index. Everything is not bundled.
 - **Native AOT Direct builds.** GitHub packages no longer need a separate .NET 10 runtime; Windows App Runtime moved to 2.4.
 
-Read the complete [changelog](CHANGELOG.md) or the [1.4.6 release notes](docs/releases/v1.4.6.md).
+Read the complete [changelog](CHANGELOG.md) or the [1.4.7 release notes](docs/releases/v1.4.7.md).
 
 ## Current interface
 
@@ -240,7 +244,7 @@ ISCC.exe .\installer\DeskBox.iss
 ISCC.exe .\installer\DeskBox.arm64.iss
 ```
 
-For a fully offline machine you can still build self-contained variants that bundle private .NET and Windows App Runtime components. These are not published for 1.4.6:
+For a fully offline machine you can still build self-contained variants that bundle private .NET and Windows App Runtime components. These are not published for 1.4.7:
 
 ```powershell
 dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:DeskBoxRustNative=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -o .\artifacts\publish\DeskBox\x64-full -v:minimal
@@ -250,8 +254,8 @@ ISCC.exe /DMyAppReleaseDir=..\artifacts\publish\DeskBox\x64-full /DDeskBoxBundle
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.4.6_x64.exe
-Output\DeskBox_Setup_1.4.6_arm64.exe
+Output\DeskBox_Setup_1.4.7_x64.exe
+Output\DeskBox_Setup_1.4.7_arm64.exe
 ```
 
 ## Project layout

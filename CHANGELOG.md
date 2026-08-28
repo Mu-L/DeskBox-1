@@ -1,6 +1,6 @@
 ﻿# Changelog
 
-## 1.4.7 - Unreleased
+## 1.4.7 - 2026-08-29
 
 ### English
 
