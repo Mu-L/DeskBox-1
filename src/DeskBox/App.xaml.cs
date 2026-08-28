@@ -120,6 +120,7 @@ public partial class App : Application
     private bool _externalActivationReady;
     private bool _externalActivationRequestedWhileBusy;
     private bool _externalActivationHandling;
+    private DateTimeOffset? _lastBareExternalActivationAtUtc;
     private readonly bool _processStartupLaunchDetected;
 
     public static new App Current => (App)Application.Current;
@@ -185,6 +186,23 @@ public partial class App : Application
             out bool createdNew);
         if (!createdNew)
         {
+            string? jumpListArg = nativeNotificationActivation is null &&
+                !_processStartupLaunchDetected
+                    ? JumpListService.TryGetJumpListArgument(
+                        string.Join(' ', Environment.GetCommandLineArgs()))
+                    : null;
+            string activationKind = nativeNotificationActivation is not null
+                ? "notification"
+                : _processStartupLaunchDetected
+                    ? "startup"
+                    : jumpListArg is not null
+                        ? $"jump-list:{jumpListArg}"
+                        : "bare";
+            Log(
+                $"[Activation] Secondary instance kind={activationKind} " +
+                $"argumentCount={Math.Max(0, Environment.GetCommandLineArgs().Length - 1)} " +
+                $"{GetParentProcessReport()}");
+
             if (nativeNotificationActivation is not null)
             {
                 NativeNotificationActivationEnvelopeWriteResult writeResult =
@@ -203,9 +221,6 @@ public partial class App : Application
             }
             else
             {
-                // Check for Jump List activation arguments from command line
-                string? jumpListArg = JumpListService.TryGetJumpListArgument(
-                    string.Join(' ', Environment.GetCommandLineArgs()));
                 if (jumpListArg is not null)
                 {
                     StorePendingJumpListArgument(jumpListArg);
@@ -2093,6 +2108,23 @@ public partial class App : Application
                     continue;
                 }
 
+                DateTimeOffset activationAtUtc = DateTimeOffset.UtcNow;
+                bool settingsWindowOpen = _settingsWindow is not null;
+                bool coalesceBareActivation =
+                    ExternalActivationPolicy.ShouldCoalesceBareActivation(
+                        _lastBareExternalActivationAtUtc,
+                        activationAtUtc,
+                        settingsWindowOpen);
+                _lastBareExternalActivationAtUtc = activationAtUtc;
+                if (coalesceBareActivation)
+                {
+                    Log(
+                        "[Activation] Coalesced duplicate bare activation " +
+                        $"windowMs={ExternalActivationPolicy.BareActivationDuplicateWindow.TotalMilliseconds:F0} " +
+                        "settingsOpen=true");
+                    continue;
+                }
+
                 await EnsureInitialFileWidgetSetupAsync(isInteractiveLaunch: true);
                 if (await EnsureOnboardingAsync(isInteractiveLaunch: true))
                 {
@@ -2106,22 +2138,20 @@ public partial class App : Application
                         !widget.IsDisabled &&
                         !SettingsService.Settings.DeletedWidgetIds.Contains(widget.Id));
                     bool anyLoadedVisible = WidgetManager.HasVisibleFileWidgets;
+                    BareExternalActivationAction fallbackAction =
+                        ExternalActivationPolicy.DecideBareActivation(
+                            new BareExternalActivationContext(
+                                hasConfiguredWidgets,
+                                anyLoadedVisible));
+                    Log(
+                        $"[Activation] Bare fallback action={fallbackAction} " +
+                        $"configuredFileWidgets={hasConfiguredWidgets} " +
+                        $"visibleFileWidgets={anyLoadedVisible}");
 
-                    if (hasConfiguredWidgets && !anyLoadedVisible)
+                    if (fallbackAction ==
+                        BareExternalActivationAction.RestoreAllWidgetsAndOpenSettings)
                     {
                         await WidgetManager.SetAllWidgetsVisibleAsync(true);
-                    }
-                    else
-                    {
-                        WidgetConfig? firstWidget = SettingsService.Settings.Widgets
-                            .FirstOrDefault(widget =>
-                                widget.WidgetKind == WidgetKind.File &&
-                                !widget.IsDisabled &&
-                                !SettingsService.Settings.DeletedWidgetIds.Contains(widget.Id));
-                        if (firstWidget is not null)
-                        {
-                            await WidgetManager.ShowWidgetAsync(firstWidget.Id);
-                        }
                     }
                 }
 
