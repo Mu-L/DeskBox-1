@@ -339,10 +339,10 @@ public sealed class StackPopoverLayoutCalculatorTests
 
         Assert.Equal(3, layout.Columns);
         Assert.Equal(3, layout.VisibleRows);
-        Assert.Equal(241, layout.ItemsWidth);
-        Assert.Equal(259, layout.ItemsHeight);
-        Assert.Equal(260.2, layout.Width, precision: 3);
-        Assert.Equal(314.2, layout.Height, precision: 3);
+        Assert.Equal(244, layout.ItemsWidth);
+        Assert.Equal(262, layout.ItemsHeight);
+        Assert.Equal(263.2, layout.Width, precision: 3);
+        Assert.Equal(317.2, layout.Height, precision: 3);
     }
 
     [Fact]
@@ -359,10 +359,12 @@ public sealed class StackPopoverLayoutCalculatorTests
 
         Assert.Equal(2, layout.Columns);
         Assert.Equal(2, layout.VisibleRows);
-        Assert.Equal(161, layout.ItemsWidth);
-        Assert.Equal(173, layout.ItemsHeight);
+        Assert.Equal(163, layout.ItemsWidth);
+        Assert.Equal(175, layout.ItemsHeight);
+        // The +2 reserve is absorbed by the minimum-width floor here; the
+        // interior still fits the reserved 2x2 grid.
         Assert.Equal(184, layout.Width);
-        Assert.Equal(228.2, layout.Height, precision: 3);
+        Assert.Equal(230.2, layout.Height, precision: 3);
     }
 
     [Fact]
@@ -380,8 +382,11 @@ public sealed class StackPopoverLayoutCalculatorTests
 
         Assert.Equal(3, layout.Columns);
         Assert.Equal(2, layout.VisibleRows);
+        // The reserve scales with the grid shape: one DIP per column on top
+        // of the fixed guard, covering per-item physical-pixel rounding at
+        // fractional DPI scales.
         Assert.Equal(
-            StackPopoverLayoutCalculator.ItemsViewportFitGuard,
+            StackPopoverLayoutCalculator.ItemsViewportFitGuard + layout.Columns,
             layout.ItemsWidth - (layout.Columns * layout.CellWidth),
             precision: 6);
     }

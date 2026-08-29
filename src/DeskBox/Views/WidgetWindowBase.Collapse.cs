@@ -1042,7 +1042,10 @@ public abstract partial class WidgetWindowBase
             RectInt32 compactBounds = GetStableCompactBounds(current);
             WidgetCompactExpansionLayout layout = ResolveCompactExpansionLayout(compactBounds);
             double dpiScale = Win32Helper.GetDpiScaleForWindow(HWnd, RootElement.XamlRoot);
-            string cornerPreference = SettingsService.Settings.WidgetCornerPreference;
+            string cornerPreference = WindowsCompatibilityService.ResolveEffectiveWidgetCornerPreference(
+                SettingsService.Settings.WidgetCornerPreference);
+            string mediaCornerMode = WindowsCompatibilityService.ResolveEffectiveWidgetCompactMediaCornerMode(
+                SettingsService.Settings.WidgetCompactMediaCornerMode);
 
             // Prime the small WinRT/accessibility setup work as well as the full
             // expanded XAML layout. Neither call changes the native window bounds.
@@ -1055,7 +1058,7 @@ public abstract partial class WidgetWindowBase
                 WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(cornerPreference),
                 WidgetCompactBoundsCalculator.ResolveInnerCornerRadius(cornerPreference),
                 WidgetCompactBoundsCalculator.ResolveMediaCornerRadius(
-                    SettingsService.Settings.WidgetCompactMediaCornerMode,
+                    mediaCornerMode,
                     cornerPreference),
                 SettingsService.Settings.WidgetCompactContentMode,
                 layout.Anchor);
@@ -3002,7 +3005,10 @@ public abstract partial class WidgetWindowBase
         _compactAnimationFrameTracker = new WidgetCompactAnimationFrameTracker(
             _collapseAnimationStarted,
             refreshRateHz);
-        string cornerPreference = SettingsService.Settings.WidgetCornerPreference;
+        string cornerPreference = WindowsCompatibilityService.ResolveEffectiveWidgetCornerPreference(
+            SettingsService.Settings.WidgetCornerPreference);
+        string mediaCornerMode = WindowsCompatibilityService.ResolveEffectiveWidgetCompactMediaCornerMode(
+            SettingsService.Settings.WidgetCompactMediaCornerMode);
         ApplyCompactBorderVisuals();
         _collapseAnimationVisualProfile = WidgetCompactTransitionVisualProfile.Resolve(
             SettingsService.Settings.WidgetCompactAnimationEffect,
@@ -3014,7 +3020,7 @@ public abstract partial class WidgetWindowBase
             WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(cornerPreference),
             WidgetCompactBoundsCalculator.ResolveInnerCornerRadius(cornerPreference),
             WidgetCompactBoundsCalculator.ResolveMediaCornerRadius(
-                SettingsService.Settings.WidgetCompactMediaCornerMode,
+                mediaCornerMode,
                 cornerPreference),
             _collapseAnimationVisualProfile);
         _isCollapseAnimationRendering = true;
@@ -3191,13 +3197,16 @@ public abstract partial class WidgetWindowBase
     {
         ApplyBackdropPreference();
         ApplyCompactBorderVisuals();
-        string preference = SettingsService.Settings.WidgetCornerPreference;
+        string preference = WindowsCompatibilityService.ResolveEffectiveWidgetCornerPreference(
+            SettingsService.Settings.WidgetCornerPreference);
+        string mediaCornerMode = WindowsCompatibilityService.ResolveEffectiveWidgetCompactMediaCornerMode(
+            SettingsService.Settings.WidgetCompactMediaCornerMode);
         double outerRadius = WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(preference);
         WidgetShellControl.SetCompactCornerRadii(
             outerRadius,
             WidgetCompactBoundsCalculator.ResolveInnerCornerRadius(preference),
             WidgetCompactBoundsCalculator.ResolveMediaCornerRadius(
-                SettingsService.Settings.WidgetCompactMediaCornerMode,
+                mediaCornerMode,
                 preference));
 
     }

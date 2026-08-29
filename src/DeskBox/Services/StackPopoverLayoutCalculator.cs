@@ -324,8 +324,13 @@ internal static class StackPopoverLayoutCalculator
                         ItemsViewportFitGuard) /
                 cellHeight));
         int visibleRows = Math.Min(desiredRows, rowsThatFit);
+        // Fractional DPI scales round every item container outward to whole
+        // physical pixels, costing up to 1 DIP per slot in a row (and per row
+        // in a column). A fixed 1 DIP reserve cannot absorb that at 125%/150%,
+        // which turned 3-column grids into 2+1 wraps — the reserve now scales
+        // with the grid shape.
         double itemsWidth =
-            (columns * cellWidth) + ItemsViewportFitGuard;
+            (columns * cellWidth) + ItemsViewportFitGuard + columns;
         double width = ClampToAvailable(
             Math.Max(minimumWidth, itemsWidth + HorizontalChromeWidth),
             minimumWidth,
@@ -334,7 +339,7 @@ internal static class StackPopoverLayoutCalculator
             itemsWidth,
             Math.Max(cellWidth, width - HorizontalChromeWidth));
         double itemsHeight =
-            (visibleRows * cellHeight) + ItemsViewportFitGuard;
+            (visibleRows * cellHeight) + ItemsViewportFitGuard + visibleRows;
         double height = Math.Min(
             maximumHeight,
             chromeHeight + itemsHeight);

@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.4.7-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.7)
+[![最新版本](https://img.shields.io/badge/release-1.4.8-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.8)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-当前线上稳定版为 DeskBox 1.4.7，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.7) 下载。
+当前线上稳定版为 DeskBox 1.4.8，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.8) 下载。
 
-- [DeskBox 1.4.7 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.7/DeskBox_Setup_1.4.7_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
-- [DeskBox 1.4.7 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.7/DeskBox_Setup_1.4.7_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
+- [DeskBox 1.4.8 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.8/DeskBox_Setup_1.4.8_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
+- [DeskBox 1.4.8 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.8/DeskBox_Setup_1.4.8_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
 
 两个安装包都是 Native AOT 构建，不再下载、也不再需要单独的 .NET 10 运行时。安装程序会检查 Windows App Runtime 2.4，只有当前架构缺少它时才联网安装；运行时安装完成后，少数电脑可能需要重启。完全离线的电脑请先手动安装对应架构的 Windows App Runtime 2.4。
 
@@ -121,6 +121,15 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - 支持设置备份与恢复，并可导出经过隐私过滤的一键诊断包用于排查问题。
 - 设置使用可恢复快照，退出时刷新待保存内容；保存失败会明确记录和提示，不再静默恢复默认配置。
 
+## 1.4.8 更新亮点
+
+- **更安全的收纳文件交接。** DeskBox 可以在桌面保留独立的 `DeskBox Files.lnk` 快捷方式，卸载时如果仍有收纳文件，安装程序会询问是否创建或保留这条入口。
+- **Windows 10 圆角兼容。** Windows 10 的外框和胶囊媒体内图统一使用直角；Windows 11 继续跟随用户保存的圆角设置。
+- **天气默认样式更简洁。** 新安装和恢复默认设置使用简洁的标准天气样式，丰富样式仍可手动选择。
+- **搜索键盘操作更可靠。** 上下键会同步选中结果和高亮；按 Ctrl+Tab 切换搜索 Tab 后，方向键仍用于选择文件，不会只滚动列表。
+- **搜索 Tab 更干净。** Tab 只保留文字，宽度按内容适配，文字两侧留出更舒适的间距，并使用更高的指示条。
+- **Windows 集成更稳定。** 同时包含目录联接/符号链接访问、Shell 原生确认框、文件夹监视退避、虚拟显示器恢复和高 DPI 叠放布局修复。
+
 ## 1.4.7 更新亮点
 
 - **更安全的“更多系统操作”。** 扩展 Windows Shell 菜单现在在独立辅助进程中运行，第三方 Shell 扩展异常不会连带结束 DeskBox。
@@ -135,7 +144,7 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 - **Everything 文件搜索。** 直接读取 Everything 已有索引并与 DeskBox 内容合并，删除了重复的自建索引；Everything 需单独安装。
 - **Native AOT 直发包。** GitHub 包不再需要单独的 .NET 10 运行时，Windows App Runtime 升级到 2.4。
 
-完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.7 发布说明](docs/releases/v1.4.7.md)。
+完整内容见 [更新日志](CHANGELOG.md) 和 [1.4.8 发布说明](docs/releases/v1.4.8.md)。
 
 ## 当前界面
 
@@ -163,7 +172,7 @@ DeskBox 不要求注册账号，也不依赖云同步。格子配置、待办、
 
 - 天气数据来自 MSN 天气或 Open-Meteo。
 - 更新检查访问 DeskBox 更新服务或 GitHub Releases。
-- 安装器只在缺少 Windows App Runtime 2.4 时联网下载（Native AOT 版本不需要单独的 .NET 运行时）。
+- DeskBox 1.4.8 及后续 Full 安装包内置匹配架构的 Windows App Runtime；更早的直发安装器会在缺少运行时时联网下载。
 - 从浏览器拖入远程链接时，只有确认导入的内容会被下载。
 
 胶囊隐私选项只是在收起状态下隐藏部分文字，属于展示控制，并不等同于文件加密。
@@ -172,7 +181,7 @@ DeskBox 不要求注册账号，也不依赖云同步。格子配置、待办、
 
 - Windows 10 21H2（build 19044）或更高版本；Windows 11 22H2 或更高版本可获得完整视觉效果。
 - 与安装包匹配的 x64 或 ARM64 处理器。
-- Windows App Runtime 2.4；缺少时可由安装程序自动安装。Native AOT 版本不再需要单独的 .NET 10 运行时。
+- Windows App Runtime 2.4。DeskBox 1.4.8 及后续 Full 安装包内置匹配架构的专用运行时，Native AOT 版本不再需要单独的 .NET 10 运行时。
 
 Windows 10 会自动降级不受系统支持的材质、圆角和部分动画；文件同步、拖放与格子核心功能仍按兼容基线验证。
 
@@ -205,7 +214,7 @@ DeskBox 使用 Inno Setup 安装器，默认安装到当前用户目录。覆盖
 
 ### 为什么安装时可能需要联网？
 
-正式安装包不内置 Windows App Runtime 2.4（Native AOT 版不再需要单独的 .NET 运行时）。安装器会先检查电脑，只下载当前架构缺少的依赖；完全离线的电脑请先手动安装 Windows App Runtime 2.4 再运行安装器。
+当前已发布的 1.4.7 及更早直发安装包可能会在缺少 Windows App Runtime 时联网下载。从 1.4.8 开始，标准命名的 x64、ARM64 Full 安装包会内置匹配架构的专用运行时，可在离线电脑上安装；Native AOT 版本不需要单独的 .NET 运行时。
 
 ### 关闭功能格子会删除内容吗？
 
@@ -223,39 +232,25 @@ dotnet test .\DeskBox.Tests\DeskBox.Tests.csproj --configuration Debug --no-rest
 dotnet build .\src\DeskBox\DeskBox.csproj --configuration Debug --no-restore -p:Platform=x64 -v:minimal
 ```
 
-`scripts\publish-aot-retail.ps1` 是正式零售产物的权威入口，它会发布应用与更新器、编译对应架构的 Rust DLL，并校验产物：
+`scripts\publish-aot-retail.ps1` 是正式零售产物的权威入口，它会生成 Full Native AOT 载荷、内置 Windows App Runtime、编译对应架构的 Rust DLL、生成升级清单并校验产物：
 
 ```powershell
 .\scripts\publish-aot-retail.ps1 -Platform x64
 .\scripts\publish-aot-retail.ps1 -Platform ARM64
 ```
 
-等价的手工 Native AOT 发布命令：
+发布结果同时满足 .NET Native AOT 与 Windows App SDK 自包含要求。不要用裸 `dotnet publish` 替代这个脚本，安装器需要脚本生成的 `DeskBox.InstallManifest.txt` 才能安全清理旧载荷：
 
 ```powershell
-dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:DeskBoxRustNative=true -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\x64 -v:minimal
-dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:DeskBoxRustNative=true -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\arm64 -v:minimal
-```
-
-安装 Inno Setup 6 或更高版本后，编译两个安装包：
-
-```powershell
-ISCC.exe .\installer\DeskBox.iss
-ISCC.exe .\installer\DeskBox.arm64.iss
-```
-
-如果目标机器完全离线，仍可构建内置专用 .NET 与 Windows App Runtime 的自包含变体；1.4.7 正式没有发布这种包：
-
-```powershell
-dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:DeskBoxRustNative=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -o .\artifacts\publish\DeskBox\x64-full -v:minimal
-ISCC.exe /DMyAppReleaseDir=..\artifacts\publish\DeskBox\x64-full /DDeskBoxBundledRuntime=1 /DMyAppPackageSuffix=_Full .\installer\DeskBox.iss
+ISCC.exe /DDeskBoxNativeAot=1 /DDeskBoxBundledRuntime=1 /DMyAppReleaseDir=..\.artifacts\aot-retail\win-x64\publish .\installer\DeskBox.iss
+ISCC.exe /DDeskBoxNativeAot=1 /DDeskBoxBundledRuntime=1 /DMyAppReleaseDir=..\.artifacts\aot-retail\win-arm64\publish .\installer\DeskBox.arm64.iss
 ```
 
 预期输出：
 
 ```text
-Output\DeskBox_Setup_1.4.7_x64.exe
-Output\DeskBox_Setup_1.4.7_arm64.exe
+Output\DeskBox_Setup_1.4.8_x64.exe
+Output\DeskBox_Setup_1.4.8_arm64.exe
 ```
 
 ## 项目结构

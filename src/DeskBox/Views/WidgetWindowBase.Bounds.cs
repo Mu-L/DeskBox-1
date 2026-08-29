@@ -620,7 +620,9 @@ public abstract partial class WidgetWindowBase
 
     protected void ApplyWindowCornerPreference()
     {
-        int cornerPreference = SettingsService.Settings.WidgetCornerPreference switch
+        string effectivePreference = WindowsCompatibilityService.ResolveEffectiveWidgetCornerPreference(
+            SettingsService.Settings.WidgetCornerPreference);
+        int cornerPreference = effectivePreference switch
         {
             SettingsService.WidgetCornerPreferenceSquare => Win32Helper.DWMWCP_DONOTROUND,
             SettingsService.WidgetCornerPreferenceSmall => Win32Helper.DWMWCP_ROUNDSMALL,
@@ -640,8 +642,10 @@ public abstract partial class WidgetWindowBase
 
     protected double GetCornerRadiusFromPreference()
     {
-        return WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(
+        string effectivePreference = WindowsCompatibilityService.ResolveEffectiveWidgetCornerPreference(
             SettingsService.Settings.WidgetCornerPreference);
+        return WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(
+            effectivePreference);
     }
 
     protected double GetCurrentSurfaceCornerRadius()
@@ -653,7 +657,8 @@ public abstract partial class WidgetWindowBase
 
         return IsWidgetCollapsedBoundsActive
             ? WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(
-                SettingsService.Settings.WidgetCornerPreference)
+                WindowsCompatibilityService.ResolveEffectiveWidgetCornerPreference(
+                    SettingsService.Settings.WidgetCornerPreference))
             : GetCornerRadiusFromPreference();
     }
 

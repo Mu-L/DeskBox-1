@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.4.7-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.7)
+[![Latest release](https://img.shields.io/badge/release-1.4.8-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.8)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,10 +36,10 @@ All twelve selectable languages share the same resource-key and formatting-place
 
 ## Download
 
-The current stable release is DeskBox 1.4.7, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.7).
+The current stable release is DeskBox 1.4.8, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.8).
 
-- [DeskBox 1.4.7 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.7/DeskBox_Setup_1.4.7_x64.exe), recommended for most Intel and AMD PCs.
-- [DeskBox 1.4.7 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.7/DeskBox_Setup_1.4.7_arm64.exe), recommended for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.4.8 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.8/DeskBox_Setup_1.4.8_x64.exe), recommended for most Intel and AMD PCs.
+- [DeskBox 1.4.8 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.8/DeskBox_Setup_1.4.8_arm64.exe), recommended for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
 Both packages are Native AOT builds, so no separate .NET 10 runtime is downloaded or required. Setup checks for Windows App Runtime 2.4 and downloads it only when the matching architecture is missing; Windows may request a restart after that runtime install. On a fully offline PC, install the matching x64 or ARM64 Windows App Runtime 2.4 first.
 
@@ -121,6 +121,15 @@ Every release also publishes a matching `.sha256` sidecar for each installer. Th
 - Back up and restore settings, and export a privacy-filtered diagnostics package for troubleshooting.
 - Recover settings from resilient snapshots, flush pending changes during shutdown, and report save failures instead of silently reverting to defaults.
 
+## What's new in 1.4.8
+
+- **Safer managed-storage handoff.** DeskBox can keep a standalone `DeskBox Files.lnk` shortcut to the managed storage folder, and the uninstaller offers to create one for older users when managed files remain.
+- **Windows 10 corner compatibility.** Windows 10 uses square outer and capsule media corners while Windows 11 continues to follow the saved corner preferences.
+- **Simpler weather default.** New installations and restored defaults use the Standard weather skin; the richer skin remains selectable.
+- **More reliable search keyboard navigation.** Arrow keys keep the selected result and its highlight synchronized, while Ctrl+Tab changes search tabs without leaving arrow keys controlling only the scroll view.
+- **Cleaner search tabs.** Search tabs are text-only, content-sized, and use a taller indicator with consistent horizontal spacing.
+- **Safer Windows integration.** This release also includes junction/symbolic-link traversal fixes, Shell-owned confirmation dialogs, watcher backoff, virtual-display recovery, and high-DPI stack layout fixes.
+
 ## What's new in 1.4.7
 
 - **Safer More system operations.** Extended Windows Shell context menus now run in an isolated helper process, so a faulty third-party Shell extension cannot terminate DeskBox.
@@ -135,7 +144,7 @@ Every release also publishes a matching `.sha256` sidecar for each installer. Th
 - **Everything-powered file search.** DeskBox reads Everything's existing index over local IPC and merges it with notes, todos, and settings in one window, replacing the duplicate DeskBox-maintained index. Everything is not bundled.
 - **Native AOT Direct builds.** GitHub packages no longer need a separate .NET 10 runtime; Windows App Runtime moved to 2.4.
 
-Read the complete [changelog](CHANGELOG.md) or the [1.4.7 release notes](docs/releases/v1.4.7.md).
+Read the complete [changelog](CHANGELOG.md) or the [1.4.8 release notes](docs/releases/v1.4.8.md).
 
 ## Current interface
 
@@ -163,7 +172,7 @@ Some actions intentionally use the network:
 
 - Weather requests use MSN Weather or Open-Meteo.
 - Update checks contact the DeskBox update endpoint or GitHub Releases.
-- Setup downloads .NET or Windows App Runtime only when the selected architecture is missing.
+- DeskBox 1.4.8 and later Full installers carry the matching Windows App Runtime; older Direct installers download a missing runtime when needed.
 - A remote URL dragged from a browser is downloaded only when you import it.
 
 Capsule privacy mode hides selected text in the collapsed presentation; it is a presentation control, not file encryption.
@@ -172,7 +181,7 @@ Capsule privacy mode hides selected text in the collapsed presentation; it is a 
 
 - Windows 10 version 21H2 (build 19044) or later; Windows 11 version 22H2 or later for the full visual treatment.
 - x64 or ARM64 processor matching the installer.
-- Windows App Runtime 2.4; setup installs it when missing. The Native AOT build no longer requires a separate .NET 10 runtime.
+- Windows App Runtime 2.4. DeskBox 1.4.8 and later Full installers include a private matching runtime, and Native AOT requires no separate .NET 10 runtime.
 
 On Windows 10, unsupported materials, rounded corners, and some animations automatically fall back to compatible visuals; file sync, drag-and-drop, and core widget behavior are validated against the compatibility floor.
 
@@ -205,7 +214,7 @@ Choose x64 for almost all Intel and AMD Windows PCs. Choose ARM64 for native Win
 
 ### Why can the installer need the internet?
 
-Release installers do not bundle Windows App Runtime 2.4; the Native AOT build needs no separate .NET runtime at all. Setup first checks the PC and downloads only a missing architecture-specific dependency. On a fully offline PC, install the matching Windows App Runtime 2.4 before running setup.
+The currently published 1.4.7 and earlier Direct installers can download a missing Windows App Runtime. Starting with 1.4.8, the standard x64 and ARM64 Full installers bundle the matching private runtime and can install offline; Native AOT needs no separate .NET runtime.
 
 ### Does disabling a feature widget remove its data?
 
@@ -223,39 +232,27 @@ dotnet test .\DeskBox.Tests\DeskBox.Tests.csproj --configuration Debug --no-rest
 dotnet build .\src\DeskBox\DeskBox.csproj --configuration Debug --no-restore -p:Platform=x64 -v:minimal
 ```
 
-`scripts\publish-aot-retail.ps1` is the authoritative path for retail packages; it publishes the app and updater, builds the matching Rust DLL, and audits the produced binaries:
+`scripts\publish-aot-retail.ps1` is the authoritative path for retail packages. It produces a Full Native AOT payload with private Windows App Runtime components, builds the matching Rust DLL, generates the install manifest used for safe upgrades, and audits the produced binaries:
 
 ```powershell
 .\scripts\publish-aot-retail.ps1 -Platform x64
 .\scripts\publish-aot-retail.ps1 -Platform ARM64
 ```
 
-The equivalent manual Native AOT publishes are:
+The publish output is self-contained for both .NET Native AOT and Windows App SDK deployment. Do not replace this script with a bare `dotnet publish`: the installer requires the generated `DeskBox.InstallManifest.txt` to remove files owned by older payloads without touching user-created files.
+
+With Inno Setup 6 or newer installed, compile the standard-named offline installers:
 
 ```powershell
-dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:DeskBoxRustNative=true -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\x64 -v:minimal
-dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=ARM64 -p:RuntimeIdentifier=win-arm64 -p:DeskBoxRustNative=true -p:SelfContained=false -p:WindowsAppSDKSelfContained=false -o .\artifacts\publish\DeskBox\arm64 -v:minimal
-```
-
-With Inno Setup 6 or newer installed, compile both installers:
-
-```powershell
-ISCC.exe .\installer\DeskBox.iss
-ISCC.exe .\installer\DeskBox.arm64.iss
-```
-
-For a fully offline machine you can still build self-contained variants that bundle private .NET and Windows App Runtime components. These are not published for 1.4.7:
-
-```powershell
-dotnet publish .\src\DeskBox\DeskBox.csproj --configuration Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:DeskBoxRustNative=true -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -o .\artifacts\publish\DeskBox\x64-full -v:minimal
-ISCC.exe /DMyAppReleaseDir=..\artifacts\publish\DeskBox\x64-full /DDeskBoxBundledRuntime=1 /DMyAppPackageSuffix=_Full .\installer\DeskBox.iss
+ISCC.exe /DDeskBoxNativeAot=1 /DDeskBoxBundledRuntime=1 /DMyAppReleaseDir=..\.artifacts\aot-retail\win-x64\publish .\installer\DeskBox.iss
+ISCC.exe /DDeskBoxNativeAot=1 /DDeskBoxBundledRuntime=1 /DMyAppReleaseDir=..\.artifacts\aot-retail\win-arm64\publish .\installer\DeskBox.arm64.iss
 ```
 
 Expected outputs:
 
 ```text
-Output\DeskBox_Setup_1.4.7_x64.exe
-Output\DeskBox_Setup_1.4.7_arm64.exe
+Output\DeskBox_Setup_1.4.8_x64.exe
+Output\DeskBox_Setup_1.4.8_arm64.exe
 ```
 
 ## Project layout

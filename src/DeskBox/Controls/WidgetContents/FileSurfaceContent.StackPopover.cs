@@ -239,7 +239,8 @@ public sealed partial class FileSurfaceContent
                 previewSize,
                 previewItemSize,
                 isListMode,
-                _settingsService.Settings.WidgetCornerPreference);
+                WindowsCompatibilityService.ResolveEffectiveWidgetCornerPreference(
+                    _settingsService.Settings.WidgetCornerPreference));
 
         previewHost.Width = metrics.HostSize;
         previewHost.Height = metrics.HostSize;
@@ -1776,7 +1777,8 @@ public sealed partial class FileSurfaceContent
 
     private double ResolveStackPopoverCornerRadius() =>
         WidgetCompactBoundsCalculator.ResolveOuterCornerRadius(
-            _settingsService.Settings.WidgetCornerPreference);
+            WindowsCompatibilityService.ResolveEffectiveWidgetCornerPreference(
+                _settingsService.Settings.WidgetCornerPreference));
 
     private WidgetBorderVisuals ResolveStackPopoverBorderVisuals()
     {

@@ -659,7 +659,16 @@ public sealed partial class FileSurfaceContent
             flyout.Hide();
             if (hasMappedFolder && mappedFolderPath is not null)
             {
-                Win32Helper.OpenFile(mappedFolderPath);
+                // Keep the configured junction/symlink path for persistence,
+                // but hand Explorer the physical target. RedirectionGuard can
+                // reject ShellExecute's traversal of a user-created mount
+                // point even though the target itself is accessible.
+                string pathToOpen = FileService.TryResolveExistingPathForTraversal(
+                        mappedFolderPath,
+                        out string resolvedPath)
+                    ? resolvedPath
+                    : mappedFolderPath;
+                Win32Helper.OpenFile(pathToOpen);
             }
         };
         flyout.Items.Add(openFolder);
