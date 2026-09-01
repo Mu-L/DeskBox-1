@@ -361,10 +361,7 @@ public sealed partial class ContentWidgetWindow : WidgetWindowBase, IDesktopWidg
                 usesRichSkin,
                 weather.ViewModel.CurrentTemperatureText,
                 weather.ViewModel.CurrentDescription,
-                weather.ViewModel.PrecipitationText),
-            UseLightForeground: usesRichSkin
-                ? weather.ViewModel.RichSkinUsesLightText
-                : null);
+                weather.ViewModel.PrecipitationText));
     }
 
     private WidgetCompactPresentation CreateTodoCompactPresentation(

@@ -72,6 +72,8 @@ public sealed partial class SettingsWindow : Window
     private readonly ReservedHotkeyHookService _hotkeyRecordingHook = new();
     private bool _isSubclassInstalled;
     private bool _isClosed;
+    private bool _allowRealClose;
+    private bool _hasShownOnce;
     private bool _isAppearanceSliderDragging;
     private bool _isRecordingHotkey;
     private bool _isRefreshingHotkeyControls;
@@ -213,6 +215,7 @@ public sealed partial class SettingsWindow : Window
 
         _resizeSettleTimer.Tick += ResizeSettleTimer_Tick;
         _sectionLayoutSettleTimer.Tick += SectionLayoutSettleTimer_Tick;
+        Activated += SettingsWindow_Activated;
         Closed += SettingsWindow_Closed;
         constructionStopwatch.Stop();
         LogConstructionCheckpoint("complete");
@@ -227,11 +230,48 @@ public sealed partial class SettingsWindow : Window
 
         _appWindow.Show();
         Activate();
+        if (_hasShownOnce)
+        {
+            RefreshOnReopen();
+        }
+        else
+        {
+            _hasShownOnce = true;
+        }
     }
+
+    /// <summary>
+    /// True only while the reused window is actually on screen. The instance
+    /// stays alive while hidden, so "open" checks must not test for null.
+    /// </summary>
+    public bool IsVisibleToUser => !_isClosed && _appWindow.IsVisible;
 
     public void CloseForShutdown()
     {
+        _allowRealClose = true;
         Close();
+    }
+
+    // The XAML tree of a closed window is retained by native references that
+    // outlive the managed teardown in SettingsWindow_Closed, so every
+    // open/close cycle used to leak a full settings tree. Cancelling the close
+    // and hiding instead keeps exactly one window alive for the process
+    // lifetime; real destruction only happens via CloseForShutdown.
+    private void RefreshOnReopen()
+    {
+        if (_isClosed)
+        {
+            return;
+        }
+
+        RefreshFeatureWidgetList();
+        _ = ViewModel.RefreshQuickAccessStateAsync();
+        ViewModel.RefreshGlobalHotkeyState();
+        _ = ViewModel.RefreshQuickCaptureImageCacheInfoAsync();
+        RefreshGlobalHotkeyControls();
+        UpdateResponsiveLayout(GetWindowWidth());
+        ApplyToggleSwitchContentVisibility();
+        RefreshSettingsSearchResults();
     }
 
     private void SettingsRoot_Loaded(object sender, RoutedEventArgs e)
@@ -270,7 +310,15 @@ public sealed partial class SettingsWindow : Window
             return;
         }
 
+        if (!_allowRealClose)
+        {
+            args.Handled = true;
+            _appWindow.Hide();
+            return;
+        }
+
         _isClosed = true;
+        Activated -= SettingsWindow_Activated;
         Closed -= SettingsWindow_Closed;
         SizeChanged -= SettingsWindow_SizeChanged;
         SettingsRoot.Loaded -= SettingsRoot_Loaded;
@@ -284,6 +332,7 @@ public sealed partial class SettingsWindow : Window
         _isRecordingHotkey = false;
         _hotkeyRecordingHook.Dispose();
         ClearSettingsSearchHighlight();
+        ClearFeatureSettingsExpanderCallbacks();
         Win32Helper.ClearWindowTopMost(_hWnd);
         RemoveMinimumSizeHook();
         _themeService.AppearanceChanged -= OnAppearanceChanged;
@@ -304,6 +353,9 @@ public sealed partial class SettingsWindow : Window
         ClearFeatureWidgetRows();
         ManagedStorageFolderList.Children.Clear();
         ViewModel.Dispose();
+        _settingsSearchResults = Array.Empty<SettingsSearchResult>();
+        _settingsSectionElements =
+            new Dictionary<string, FrameworkElement>(StringComparer.Ordinal);
         _settingRows.Clear();
         _metricRows.Clear();
         _pressedAppearanceSliders.Clear();

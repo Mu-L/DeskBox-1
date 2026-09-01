@@ -515,7 +515,7 @@ public sealed class FileSurfaceParityContractTests
                 "Text=\"{Binding FullPath}\"",
                 StringSplitOptions.None).Length - 1);
         Assert.Contains(
-            "Visibility=\"{x:Bind TransferStatusVisibility, Mode=OneWay}\"",
+            "Visibility=\"{x:Bind ActivityStatusVisibility, Mode=OneWay}\"",
             xaml,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -1346,6 +1346,105 @@ public sealed class FileSurfaceParityContractTests
         Assert.Contains(
             "RemoveStackMemberOverridePaths(normalizedPaths);",
             method,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RootImportInsertion_DetachesHistoricalStackMembershipBeforeResolvingUnits()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/ViewModels/WidgetViewModel.Stacks.cs"));
+
+        int methodStart = source.IndexOf(
+            "internal void ApplyImportedStackInsertion(",
+            StringComparison.Ordinal);
+        int methodEnd = source.IndexOf(
+            "public bool FileStacksEnabled",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(methodStart >= 0);
+        Assert.True(methodEnd > methodStart);
+        string method = source[methodStart..methodEnd];
+
+        int detachIndex = method.IndexOf(
+            "DetachImportedRootInsertionStackMembership(",
+            StringComparison.Ordinal);
+        int rebuildIndex = method.IndexOf(
+            "RebuildStackDisplayItems();",
+            StringComparison.Ordinal);
+        int resolveIndex = method.IndexOf(
+            ".Select(ResolveDisplayUnitOrderKey)",
+            StringComparison.Ordinal);
+        Assert.True(detachIndex >= 0);
+        Assert.True(rebuildIndex > detachIndex);
+        Assert.True(resolveIndex > rebuildIndex);
+        Assert.Contains(
+            "PersistStackCustomizations();",
+            method,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExternalDragOutReconciliation_DoesNotPruneReappearedPaths()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+
+        int methodStart = source.IndexOf(
+            "private async Task ObserveExternalDragOutAsync(",
+            StringComparison.Ordinal);
+        int methodEnd = source.IndexOf(
+            "private async Task RenameItemAsync(",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(methodStart >= 0);
+        Assert.True(methodEnd > methodStart);
+        string method = source[methodStart..methodEnd];
+        Assert.Contains("stillMissingPaths", method, StringComparison.Ordinal);
+        Assert.Contains("reappearedPaths", method, StringComparison.Ordinal);
+        Assert.Contains(
+            "HandleItemsMovedOutAsync(stillMissingPaths)",
+            method,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "HandleItemsMovedOutAsync(missingPaths)",
+            method,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MoveBackToDesktop_PrunesPersistedStackMembership()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/ViewModels/WidgetViewModel.Operations.cs"));
+
+        int singleStart = source.IndexOf(
+            "public async Task<int> MoveItemBackToDesktopAsync(",
+            StringComparison.Ordinal);
+        int batchStart = source.IndexOf(
+            "public async Task<int> MoveItemsBackToDesktopAsync(",
+            singleStart,
+            StringComparison.Ordinal);
+        Assert.True(singleStart >= 0);
+        Assert.True(batchStart > singleStart);
+        string single = source[singleStart..batchStart];
+        Assert.Contains(
+            "RemoveStackMemberOverridePaths([item.Path]);",
+            single,
+            StringComparison.Ordinal);
+
+        int batchEnd = source.IndexOf(
+            "public async Task RefreshFromConfigAsync(",
+            batchStart,
+            StringComparison.Ordinal);
+        Assert.True(batchEnd > batchStart);
+        string batch = source[batchStart..batchEnd];
+        Assert.Contains(
+            "RemoveStackMemberOverridePaths(movedSourcePaths);",
+            batch,
             StringComparison.Ordinal);
     }
 

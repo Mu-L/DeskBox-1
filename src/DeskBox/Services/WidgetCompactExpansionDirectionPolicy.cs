@@ -2,36 +2,9 @@ namespace DeskBox.Services;
 
 internal static class WidgetCompactExpansionDirectionPolicy
 {
-    public static string ApplyToPositionAnchor(
-        string? configuredDirection,
-        string? positionAnchor)
-    {
-        string direction = SettingsService.NormalizeWidgetCompactExpansionDirection(
-            configuredDirection);
-        string normalizedAnchor = positionAnchor is
-            WidgetPositionAnchors.LeftTop or
-            WidgetPositionAnchors.RightTop or
-            WidgetPositionAnchors.LeftBottom or
-            WidgetPositionAnchors.RightBottom
-                ? positionAnchor
-                : WidgetPositionAnchors.LeftTop;
-        if (direction == SettingsService.WidgetCompactExpansionDirectionAuto)
-        {
-            return normalizedAnchor;
-        }
-
-        bool anchorRight = normalizedAnchor is
-            WidgetPositionAnchors.RightTop or
-            WidgetPositionAnchors.RightBottom;
-        bool anchorBottom = direction == SettingsService.WidgetCompactExpansionDirectionUp;
-        return (anchorRight, anchorBottom) switch
-        {
-            (true, true) => WidgetPositionAnchors.RightBottom,
-            (true, false) => WidgetPositionAnchors.RightTop,
-            (false, true) => WidgetPositionAnchors.LeftBottom,
-            _ => WidgetPositionAnchors.LeftTop
-        };
-    }
+    public static bool RequiresFullSize(string? configuredDirection) =>
+        SettingsService.NormalizeWidgetCompactExpansionDirection(configuredDirection) !=
+        SettingsService.WidgetCompactExpansionDirectionAuto;
 
     public static IReadOnlyList<WidgetCompactExpansionAnchor> Apply(
         string? configuredDirection,

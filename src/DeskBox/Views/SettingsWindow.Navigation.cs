@@ -25,6 +25,7 @@ namespace DeskBox.Views;
 public sealed partial class SettingsWindow
 {
     private Storyboard? _settingsSearchHighlightStoryboard;
+    private EventHandler<object>? _settingsSearchHighlightCompletedHandler;
     private FrameworkElement? _settingsSearchHighlightTarget;
     private double _settingsSearchHighlightOriginalOpacity = 1;
     private readonly List<SettingsExpander> _featureSettingsExpanders = [];
@@ -364,8 +365,10 @@ public sealed partial class SettingsWindow
 
         var storyboard = new Storyboard();
         storyboard.Children.Add(animation);
-        storyboard.Completed += (_, _) =>
+        EventHandler<object>? completedHandler = null;
+        completedHandler = (_, _) =>
         {
+            storyboard.Completed -= completedHandler;
             if (!ReferenceEquals(_settingsSearchHighlightStoryboard, storyboard))
             {
                 return;
@@ -373,23 +376,67 @@ public sealed partial class SettingsWindow
 
             target.Opacity = _settingsSearchHighlightOriginalOpacity;
             _settingsSearchHighlightStoryboard = null;
+            _settingsSearchHighlightCompletedHandler = null;
             _settingsSearchHighlightTarget = null;
         };
+        _settingsSearchHighlightCompletedHandler = completedHandler;
+        storyboard.Completed += completedHandler;
         _settingsSearchHighlightStoryboard = storyboard;
         storyboard.Begin();
     }
 
     private void ClearSettingsSearchHighlight()
     {
-        _settingsSearchHighlightStoryboard?.Stop();
+        Storyboard? storyboard = _settingsSearchHighlightStoryboard;
+        EventHandler<object>? completedHandler =
+            _settingsSearchHighlightCompletedHandler;
+        if (storyboard is not null && completedHandler is not null)
+        {
+            storyboard.Completed -= completedHandler;
+        }
+
+        storyboard?.Stop();
+        if (storyboard is not null)
+        {
+            storyboard.Children.Clear();
+        }
         if (_settingsSearchHighlightTarget is not null)
         {
             _settingsSearchHighlightTarget.Opacity = _settingsSearchHighlightOriginalOpacity;
         }
 
         _settingsSearchHighlightStoryboard = null;
+        _settingsSearchHighlightCompletedHandler = null;
         _settingsSearchHighlightTarget = null;
         _settingsSearchHighlightOriginalOpacity = 1;
+    }
+
+    /// <summary>
+    /// Explicitly unregisters dependency-property callbacks before the window
+    /// tree is detached. WinUI's callback token is native state; leaving it on
+    /// a closed expander delays release of the complete settings tree until a
+    /// later GC/finalizer pass.
+    /// </summary>
+    private void ClearFeatureSettingsExpanderCallbacks()
+    {
+        foreach (var registration in _featureSettingsExpanderCallbacks.ToArray())
+        {
+            try
+            {
+                registration.Key.UnregisterPropertyChangedCallback(
+                    SettingsExpander.IsExpandedProperty,
+                    registration.Value);
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"[SettingsLifecycle] Expander callback unregister failed: {ex.Message}");
+            }
+        }
+
+        _featureSettingsExpanderCallbacks.Clear();
+        _featureSettingsExpanders.Clear();
+        _isSynchronizingFeatureSettingsExpanders = false;
     }
 
     private void SettingsNavigationView_BackRequested(NavigationView sender, NavigationViewBackRequestedEventArgs args)
@@ -541,6 +588,11 @@ public sealed partial class SettingsWindow
         if (sectionTag == "ManagedStorage")
         {
             RefreshManagedStorageFolderList();
+        }
+        else if (sectionTag == "FileStorageSettings")
+        {
+            RefreshManagedStorageDesktopShortcutState();
+            _ = ViewModel.RefreshQuickAccessStateAsync();
         }
         else if (sectionTag == "AppearanceDetail")
         {

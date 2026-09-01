@@ -132,6 +132,7 @@ public sealed partial class WidgetManager
     private readonly SemaphoreSlim _trayVisibilityOperationGate = new(1, 1);
     private readonly TrayToggleRequestQueue _trayToggleRequestQueue;
     private EffectivePerformanceSettings _lastPerformanceSettings;
+    private bool? _lastNativeWidgetVisibilityForMemoryCleanup;
 
     internal IReadOnlyDictionary<string, ContentWidgetWindow> ContentWidgets => _contentWidgets;
 
@@ -160,6 +161,84 @@ public sealed partial class WidgetManager
     internal int LoadedWidgetCount => _widgetSurfaces.Count;
 
     internal int VisibleWidgetCount => GetLoadedDesktopWindows().Count(window => window.Visible);
+
+    internal WidgetMemoryVisibilitySnapshot
+        CaptureMemoryCleanupVisibilitySnapshot(
+        bool? observedNativeVisibility = null)
+    {
+        IReadOnlyList<IDesktopWidgetWindow> windows =
+            GetLoadedDesktopWindows();
+        int logicalVisibleCount = windows.Count(window => window.Visible);
+        int nativeVisibleCount = windows.Count(window =>
+            window.WindowHandle != IntPtr.Zero &&
+            Win32Helper.IsWindowVisible(window.WindowHandle));
+        if (observedNativeVisibility == true && nativeVisibleCount == 0)
+        {
+            // AppWindow.Show can report its visibility change before the paired
+            // ShowWindow call becomes observable through IsWindowVisible.
+            nativeVisibleCount = 1;
+        }
+
+        return new WidgetMemoryVisibilitySnapshot(
+            windows.Count,
+            logicalVisibleCount,
+            nativeVisibleCount);
+    }
+
+    internal void ReconcileBackgroundMemoryCleanupForWidgetVisibility(
+        string reason,
+        bool forceScheduleWhenHidden = false,
+        bool? observedNativeVisibility = null)
+    {
+        if (!HasUiThreadAccess())
+        {
+            DispatcherQueue? dispatcherQueue = App.UiDispatcherQueue;
+            bool enqueued = dispatcherQueue?.TryEnqueue(() =>
+                ReconcileBackgroundMemoryCleanupForWidgetVisibility(
+                    reason,
+                    forceScheduleWhenHidden,
+                    observedNativeVisibility)) == true;
+            if (!enqueued)
+            {
+                App.Log(
+                    $"[Memory] Widget visibility reconciliation failed " +
+                    $"reason={reason} error=dispatcher-unavailable");
+            }
+
+            return;
+        }
+
+        WidgetMemoryVisibilitySnapshot visibility =
+            CaptureMemoryCleanupVisibilitySnapshot(
+                observedNativeVisibility);
+        bool hasNativeVisibleWidgets = visibility.HasNativeVisibleWidgets;
+        bool stateChanged =
+            _lastNativeWidgetVisibilityForMemoryCleanup is null ||
+            _lastNativeWidgetVisibilityForMemoryCleanup.Value !=
+                hasNativeVisibleWidgets;
+        _lastNativeWidgetVisibilityForMemoryCleanup = hasNativeVisibleWidgets;
+
+        if (!stateChanged &&
+            !(forceScheduleWhenHidden && !hasNativeVisibleWidgets))
+        {
+            return;
+        }
+
+        App.Log(
+            $"[Memory] Widget visibility state changed " +
+            $"hasNativeVisibleWidgets={hasNativeVisibleWidgets} " +
+            $"loadedCount={visibility.LoadedWindowCount} " +
+            $"logicalVisibleCount={visibility.LogicalVisibleCount} " +
+            $"nativeVisibleCount={visibility.NativeVisibleCount} " +
+            $"reason={reason} forced={forceScheduleWhenHidden}");
+        if (hasNativeVisibleWidgets)
+        {
+            App.CancelBackgroundMemoryCleanup($"widgets-visible:{reason}");
+            return;
+        }
+
+        App.ScheduleBackgroundMemoryCleanup($"widgets-hidden:{reason}");
+    }
 
     public bool IsWidgetWindow(IntPtr hwnd)
     {
@@ -1255,7 +1334,9 @@ public sealed partial class WidgetManager
         SaveBatchVisibilityState();
         await _trayBatchAnimationDriver.WaitForIdleAsync();
         App.LogVerbose($"[TrayBatch] SetAllVisible completed visible=false prepared={windowsToHide.Count}");
-        App.ScheduleBackgroundMemoryCleanup();
+        ReconcileBackgroundMemoryCleanupForWidgetVisibility(
+            "tray-batch-hidden",
+            forceScheduleWhenHidden: true);
 
         return;
     }

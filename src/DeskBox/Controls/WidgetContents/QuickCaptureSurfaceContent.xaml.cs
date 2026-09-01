@@ -71,6 +71,7 @@ public sealed partial class QuickCaptureSurfaceContent :
     private long _detailSavedRevision;
     private long _detailImageLoadVersion;
     private string? _detailPrimaryImagePath;
+    private long _detailPrimaryImageEstimatedBytes;
     private string? _detailAttachmentRenderKey;
     private bool _isSynchronizingViewSelection;
     private long _viewSwitchRevision;
@@ -1820,6 +1821,7 @@ public sealed partial class QuickCaptureSurfaceContent :
             ? null
             : imagePath;
         DetailPrimaryImage.Source = null;
+        SetDetailPrimaryImageEstimatedBytes(0);
 
         bool hasPrimaryImage = _detailPrimaryImagePath is not null;
         bool showDetailText = _isDetailEditing ||
@@ -1851,6 +1853,11 @@ public sealed partial class QuickCaptureSurfaceContent :
             }
 
             DetailPrimaryImage.Source = bitmap;
+            PerformanceLogger.RecordQuickCaptureDetailImageDecode();
+            SetDetailPrimaryImageEstimatedBytes(
+                (long)DetailImageDecodePixelWidth *
+                DetailImageDecodePixelWidth *
+                4);
             DetailPrimaryImageLoadingRing.IsActive = false;
             DetailPrimaryImageLoadingRing.Visibility = Visibility.Collapsed;
         }
@@ -1867,6 +1874,18 @@ public sealed partial class QuickCaptureSurfaceContent :
             DetailPrimaryImageLoadingRing.Visibility = Visibility.Collapsed;
             ApplyDetailPrimaryImageLayout(hasPrimaryImage: false, showDetailText: true);
             RefreshDetailPresentation();
+        }
+    }
+
+    private void SetDetailPrimaryImageEstimatedBytes(long estimatedBytes)
+    {
+        long normalizedBytes = Math.Max(0, estimatedBytes);
+        long delta = normalizedBytes - _detailPrimaryImageEstimatedBytes;
+        _detailPrimaryImageEstimatedBytes = normalizedBytes;
+        if (delta != 0)
+        {
+            PerformanceLogger.AdjustQuickCaptureDetailImageEstimatedBytes(
+                delta);
         }
     }
 
@@ -3257,6 +3276,7 @@ public sealed partial class QuickCaptureSurfaceContent :
         _isDisposed = true;
         _detailImageLoadVersion++;
         DetailPrimaryImage.Source = null;
+        SetDetailPrimaryImageEstimatedBytes(0);
         CancelSegmentedRestore();
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;

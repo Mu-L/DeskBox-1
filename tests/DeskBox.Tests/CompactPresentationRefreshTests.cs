@@ -28,6 +28,7 @@ public sealed class CompactPresentationRefreshTests
     [InlineData(nameof(WeatherWidgetViewModel.ExpandedSunriseVisibility))]
     [InlineData(nameof(WeatherWidgetViewModel.ExpandedHourlyPrecipVisibility))]
     [InlineData(nameof(WeatherWidgetViewModel.ExpandedHourlyCardHeight))]
+    [InlineData(nameof(WeatherWidgetViewModel.ExpandedHourlyDividerVisibility))]
     public void WeatherCompactPresentation_IgnoresExpandedLayoutProperties(
         string propertyName)
     {

@@ -409,6 +409,52 @@
                                         TextWrapping="Wrap"/>
                                 </Grid>
                             </Border>
+                            <Border
+                                MaxWidth="320"
+                                HorizontalAlignment="Stretch"
+                                Padding="14,12"
+                                Style="{StaticResource SettingCard}">
+                                <StackPanel Spacing="9">
+                                    <TextBlock
+                                        FontSize="12"
+                                        FontWeight="SemiBold"
+                                        svc:Localized.Key="Onboarding.Task.Step2.PathTitle"/>
+                                    <TextBlock
+                                        x:Name="TaskStep3StoragePathText"
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextTrimming="CharacterEllipsis"
+                                        ToolTipService.ToolTip="{x:Bind TaskStep3StoragePathText.Text, Mode=OneWay}"/>
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="11.5"
+                                            TextWrapping="Wrap"
+                                            svc:Localized.Key="Onboarding.Step4.PinTitle"/>
+                                        <ToggleSwitch
+                                            x:Name="TaskStep3QuickAccessToggle"
+                                            Grid.Column="1"
+                                            MinWidth="0"
+                                            OffContent=""
+                                            OnContent=""
+                                            Toggled="TaskStep3QuickAccessToggle_Toggled"/>
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="11.5"
+                                            TextWrapping="Wrap"
+                                            svc:Localized.Key="Settings.ManagedPath.DesktopShortcut.Title"/>
+                                        <ToggleSwitch
+                                            x:Name="TaskStep3DesktopShortcutToggle"
+                                            Grid.Column="1"
+                                            MinWidth="0"
+                                            OffContent=""
+                                            OnContent=""
+                                            Toggled="TaskStep3DesktopShortcutToggle_Toggled"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
                         <Border x:Name="TaskStep3VisualStage" Grid.Column="1" Style="{StaticResource TaskVisualSurface}">

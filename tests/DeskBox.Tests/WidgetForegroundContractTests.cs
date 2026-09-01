@@ -61,6 +61,36 @@ public sealed class WidgetForegroundContractTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void WeatherContent_UsesWidgetPaletteWithoutDetachedThemeOverrides()
+    {
+        string weatherCode = Read(
+            "src/DeskBox/Controls/WidgetContents/WeatherWidgetContent.xaml.cs");
+        string windowCode = Read("src/DeskBox/Views/ContentWidgetWindow.xaml.cs");
+
+        // A weather-local RequestedTheme makes ThemeResource labels resolve
+        // against framework brushes instead of the widget's mutable palette.
+        Assert.Contains(
+            "RequestedTheme = ElementTheme.Default;",
+            weatherCode,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RootGrid.RequestedTheme = ElementTheme.Default;",
+            weatherCode,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "RootGrid.RequestedTheme = !_viewModel.UsesRichSkin",
+            weatherCode,
+            StringComparison.Ordinal);
+
+        // The collapsed weather capsule must inherit the same palette as the
+        // expanded content instead of forcing a second light/dark theme.
+        Assert.DoesNotContain(
+            "UseLightForeground: usesRichSkin",
+            windowCode,
+            StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("src/DeskBox/Controls/WidgetShell.xaml")]
     [InlineData("src/DeskBox/Controls/FileItemSurface.xaml")]

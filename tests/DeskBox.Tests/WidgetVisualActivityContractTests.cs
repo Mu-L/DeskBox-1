@@ -32,19 +32,40 @@ public sealed class WidgetVisualActivityContractTests
     }
 
     [Fact]
-    public void VisibleIdleCleanup_IgnoresContinuousDecorativeActivityWithoutStoppingIt()
+    public void VisibleIdleMaintenance_PreservesInteractiveCachesAndDecoration()
     {
         string app = Read("src/DeskBox/App.xaml.cs");
         string shell = Read("src/DeskBox/Controls/WidgetShell.xaml.cs");
         string manager = Read("src/DeskBox/Services/WidgetManager.cs");
-
-        Assert.Contains("ShouldTrimVisibleIdleWorkingSet", app, StringComparison.Ordinal);
-        Assert.Contains("_visibleIdleMemoryTracker.CommitMaintenance", app, StringComparison.Ordinal);
-        Assert.Contains(
-            "(shouldTrimWorkingSet && !trimmedWorkingSet)",
+        string visibleIdleMaintenance = ExtractSection(
             app,
+            "private void VisibleIdleMemoryMaintenanceTimer_Tick(",
+            "private void StopVisibleIdleMemoryMaintenance()");
+
+        Assert.Contains(
+            "_visibleIdleMemoryTracker.CommitMaintenance",
+            visibleIdleMaintenance,
             StringComparison.Ordinal);
-        Assert.Contains("trimRetryPending={trimRetryPending}", app, StringComparison.Ordinal);
+        Assert.Contains(
+            "Localized.PruneDeadTargets();",
+            visibleIdleMaintenance,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "interactiveCacheTrim={cacheRelease.ReleasedAnything}",
+            visibleIdleMaintenance,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "warmCachePreserved=true",
+            visibleIdleMaintenance,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IconHelper.ReleaseIdleCaches(",
+            visibleIdleMaintenance,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("GC.Collect(", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryTrimCurrentProcessWorkingSet", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("_fileMetaService?.Clear()", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("FileService.ClearShellKindCache()", app, StringComparison.Ordinal);
         Assert.DoesNotContain("SuspendVisibleIdleVisualActivity", app, StringComparison.Ordinal);
 
         string shellGate = ExtractSection(
@@ -59,36 +80,345 @@ public sealed class WidgetVisualActivityContractTests
     }
 
     [Fact]
-    public void HiddenWorkingSetTrim_HasAnIndependentConfiguredDeadline()
+    public void HiddenMemoryCleanup_UsesConditionalDeepFinalizerWithoutTrimOrRebuild()
     {
         string app = Read("src/DeskBox/App.xaml.cs");
         string schedule = ExtractSection(
             app,
-            "internal static void ScheduleBackgroundMemoryCleanup()",
+            "internal static void ScheduleBackgroundMemoryCleanup(",
             "private bool CanRunBackgroundMemoryCleanup()");
 
-        Assert.Contains("RunBackgroundCacheCleanupScheduleAsync", schedule, StringComparison.Ordinal);
-        Assert.Contains("RunHiddenWorkingSetTrimScheduleAsync", schedule, StringComparison.Ordinal);
+        Assert.Contains("RunBackgroundMemoryCleanupScheduleAsync", schedule, StringComparison.Ordinal);
+        Assert.Contains("conditional-deep-finalizer", schedule, StringComparison.Ordinal);
+        Assert.DoesNotContain("RunBackgroundCacheCleanupScheduleAsync", schedule, StringComparison.Ordinal);
+        Assert.DoesNotContain("RunHiddenWorkingSetTrimScheduleAsync", schedule, StringComparison.Ordinal);
+
+        string coordinator = ExtractSection(
+            app,
+            "private async Task RunBackgroundMemoryCleanupScheduleAsync(",
+            "private bool CanArmBackgroundMemoryCleanup(");
+        int softCleanupIndex = coordinator.IndexOf(
+            "await RunBackgroundSoftMemoryCleanupAsync(",
+            StringComparison.Ordinal);
+        int maintenanceIndex = coordinator.IndexOf(
+            "RunLongHiddenNoRebuildMaintenance()",
+            StringComparison.Ordinal);
+        int deepReclaimIndex = coordinator.IndexOf(
+            "RunBackgroundDeepMemoryCleanupAsync(",
+            StringComparison.Ordinal);
+        Assert.True(
+            softCleanupIndex >= 0 &&
+            softCleanupIndex < deepReclaimIndex &&
+            deepReclaimIndex < maintenanceIndex,
+            "Cache cleanup and finalization must run before long-hidden maintenance.");
         Assert.Contains(
-            "Task.Delay(TimeSpan.FromSeconds(workingSetTrimDelaySeconds))",
-            schedule,
+            "GetCappedBackgroundRetryDelay",
+            coordinator,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Task.Delay(nextDelay.Value, cancellationToken)",
+            coordinator,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "workingSetTrimDelaySeconds - deepDelaySeconds",
-            schedule,
+            "for (int retry = 0; retry < 12; retry++)",
+            app,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("WorkingSetTrim", coordinator, StringComparison.Ordinal);
+        Assert.DoesNotContain("GC.Collect(", coordinator, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WidgetVisibilityTransition_CentrallyArmsAndCancelsHiddenCleanup()
+    {
+        string manager = Read("src/DeskBox/Services/WidgetManager.cs");
+        string app = Read("src/DeskBox/App.xaml.cs");
+        string baseWindow = Read("src/DeskBox/Views/WidgetWindowBase.Bounds.cs");
+        string surfaces = Read("src/DeskBox/Services/WidgetManager.Surfaces.cs");
+
+        string snapshot = ExtractSection(
+            manager,
+            "CaptureMemoryCleanupVisibilitySnapshot(",
+            "internal void ReconcileBackgroundMemoryCleanupForWidgetVisibility(");
+        Assert.Contains("Win32Helper.IsWindowVisible", snapshot, StringComparison.Ordinal);
+        Assert.Contains("logicalVisibleCount", snapshot, StringComparison.Ordinal);
+
+        string reconciliation = ExtractSection(
+            manager,
+            "internal void ReconcileBackgroundMemoryCleanupForWidgetVisibility(",
+            "public bool IsWidgetWindow(");
+        Assert.Contains("CaptureMemoryCleanupVisibilitySnapshot", reconciliation, StringComparison.Ordinal);
+        Assert.Contains("App.CancelBackgroundMemoryCleanup", reconciliation, StringComparison.Ordinal);
+        Assert.Contains("App.ScheduleBackgroundMemoryCleanup", reconciliation, StringComparison.Ordinal);
+
+        string canArm = ExtractSection(
+            app,
+            "private bool CanArmBackgroundMemoryCleanup(",
+            "private bool CanRunBackgroundMemoryCleanup()");
+        Assert.Contains("CaptureMemoryCleanupVisibilitySnapshot", canArm, StringComparison.Ordinal);
+        Assert.DoesNotContain("WidgetManager.HasVisibleWidgets", canArm, StringComparison.Ordinal);
+
+        string activity = ExtractSection(
+            app,
+            "private MemoryCleanupActivitySnapshot CaptureMemoryCleanupActivity()",
+            "private static void CancelBackgroundMemoryCleanupDelay()");
+        Assert.Contains("visibility.HasNativeVisibleWidgets", activity, StringComparison.Ordinal);
+        Assert.Contains("Win32Helper.IsWindowVisible(foregroundWindow)", activity, StringComparison.Ordinal);
+        Assert.Contains(
+            "ReconcileBackgroundMemoryCleanupForWidgetVisibility(",
+            baseWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "surface-unregistered",
+            surfaces,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "forceScheduleWhenHidden: true",
+            manager,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BackgroundMemoryCleanup_EmitsOneStandardOutcomeFromCoordinatorFinally()
+    {
+        string app = Read("src/DeskBox/App.xaml.cs");
+        string outcomeLogger = ExtractSection(
+            app,
+            "private static void LogBackgroundMemoryCleanupOutcome(",
+            "internal static void ScheduleBackgroundMemoryCleanup(");
+        Assert.Contains("[Memory] Background cleanup outcome", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("workingSetBeforeMB", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("privateAfterMB", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("logicalVisibleWidgets", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("nativeVisibleWidgets", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("deepReclaimResult={state.DeepReclaimResult}", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("forcedCollection={state.DeepReclaimExecuted}", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("workingSetTrimmed=false", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("fullViewRebuilds=0", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains("shortcutCacheBefore", outcomeLogger, StringComparison.Ordinal);
+        Assert.Contains(
+            "privateMinusGcHeapBeforeEstimateMB",
+            outcomeLogger,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "privateMinusGcHeapAfterEstimateMB",
+            outcomeLogger,
             StringComparison.Ordinal);
 
-        string trim = ExtractSection(
+        string coordinator = ExtractSection(
             app,
-            "private async Task TryRunHiddenWorkingSetTrimAsync(",
-            "internal static void ScheduleLightMemoryCleanup(");
-        int trimCallIndex = trim.IndexOf(
-            "await Task.Run(Win32Helper.TrimCurrentProcessWorkingSet)",
+            "private async Task RunBackgroundMemoryCleanupScheduleAsync(",
+            "private bool CanArmBackgroundMemoryCleanup(");
+        string finallySection = ExtractSection(
+            coordinator,
+            "finally",
+            "cancellationSource.Dispose();");
+        Assert.Equal(
+            1,
+            CountOccurrences(
+                finallySection,
+                "LogBackgroundMemoryCleanupOutcome("));
+    }
+
+    [Fact]
+    public void CacheDiagnostics_AggregateLookupsAndLoadLatencyWithoutPerLookupLogs()
+    {
+        string logger = Read("src/DeskBox/Services/PerformanceLogger.cs");
+        string iconHelper = Read("src/DeskBox/Helpers/IconHelper.cs");
+        string thumbnailLookup = ExtractSection(
+            logger,
+            "internal static void RecordThumbnailCacheLookup(bool hit)",
+            "internal static void RecordThumbnailCacheLoad(");
+        string decodedBitmapLookup = ExtractSection(
+            logger,
+            "internal static void RecordDecodedBitmapCacheLookup(bool hit)",
+            "internal static void RecordDecodedBitmapCacheLoad(");
+
+        Assert.Contains("if (!IsEnabled)", thumbnailLookup, StringComparison.Ordinal);
+        Assert.Contains("Interlocked.Increment", thumbnailLookup, StringComparison.Ordinal);
+        Assert.DoesNotContain("App.Log", thumbnailLookup, StringComparison.Ordinal);
+        Assert.Contains("if (!IsEnabled)", decodedBitmapLookup, StringComparison.Ordinal);
+        Assert.Contains("Interlocked.Increment", decodedBitmapLookup, StringComparison.Ordinal);
+        Assert.DoesNotContain("App.Log", decodedBitmapLookup, StringComparison.Ordinal);
+        Assert.Contains(
+            "CreateThumbnailWithDiagnosticsAsync(createThumbnail)",
+            iconHelper,
             StringComparison.Ordinal);
-        int cooldownIndex = trim.IndexOf(
-            "_lastHiddenWorkingSetTrimAt = now;",
+        Assert.Contains(
+            "LoadBitmapImageWithDiagnosticsAsync(",
+            iconHelper,
             StringComparison.Ordinal);
-        Assert.True(trimCallIndex >= 0 && trimCallIndex < cooldownIndex);
+        Assert.Contains("thumbHitRatePercent", logger, StringComparison.Ordinal);
+        Assert.Contains("thumbLoadAvgMs", logger, StringComparison.Ordinal);
+        Assert.Contains("decodedBitmapHitRatePercent", logger, StringComparison.Ordinal);
+        Assert.Contains("decodedBitmapLoadAvgMs", logger, StringComparison.Ordinal);
+        Assert.Contains("privateMinusGcHeapEstimateMB", logger, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AutomaticCleanup_HasNoForcedGcWorkingSetTrimOrHeapCompaction()
+    {
+        string helper = Read("src/DeskBox/Helpers/Win32Helper.cs");
+        string app = Read("src/DeskBox/App.xaml.cs");
+        string reclaimer = Read("src/DeskBox/Services/MemoryReclaimer.cs");
+
+        Assert.DoesNotContain("EmptyWorkingSet", helper, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryTrimCurrentProcessWorkingSet", helper, StringComparison.Ordinal);
+        Assert.DoesNotContain("GC.Collect(", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("GC.WaitForPendingFinalizers", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("LargeObjectHeapCompactionMode", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("HeapSetInformation", app, StringComparison.Ordinal);
+        Assert.Contains("GC.Collect(", reclaimer, StringComparison.Ordinal);
+        Assert.Contains("GC.WaitForPendingFinalizers", reclaimer, StringComparison.Ordinal);
+        Assert.Contains("MinimumCooldownSeconds", reclaimer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DelayedCleanup_PrunesDeadTargetsWithoutCreatingAStopTheWorldPause()
+    {
+        string app = Read("src/DeskBox/App.xaml.cs");
+        string delayedCleanup = ExtractSection(
+            app,
+            "internal static void ScheduleLightMemoryCleanup(",
+            "public async Task ShutdownForUpdateAsync()");
+
+        Assert.Contains("bool enqueued = dispatcherQueue?.TryEnqueue", delayedCleanup, StringComparison.Ordinal);
+        Assert.Contains("if (!enqueued)", delayedCleanup, StringComparison.Ordinal);
+        Assert.Contains("Localized.PruneDeadTargets();", delayedCleanup, StringComparison.Ordinal);
+        Assert.Contains("deepReclaimRequested={completedHeavyOperation}", delayedCleanup, StringComparison.Ordinal);
+        Assert.Contains("RunHeavyOperationDeepMemoryCleanupAsync", delayedCleanup, StringComparison.Ordinal);
+        Assert.Contains(
+            "reason=widgets-restored",
+            delayedCleanup,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("GC.Collect(", delayedCleanup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.Run(", delayedCleanup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SettingsWindow_UnregistersNativeCallbacksBeforeDetachingItsTree()
+    {
+        string window = Read("src/DeskBox/Views/SettingsWindow.xaml.cs");
+        string navigation = Read("src/DeskBox/Views/SettingsWindow.Navigation.cs");
+        string app = Read("src/DeskBox/App.xaml.cs");
+
+        Assert.Contains(
+            "ClearFeatureSettingsExpanderCallbacks();",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UnregisterPropertyChangedCallback",
+            navigation,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_settingsSearchResults = Array.Empty<SettingsSearchResult>();",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SettingsWindow_ClosedForApp",
+            app,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "_settingsWindow.Closed += (_, _)",
+            app,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LongHiddenMaintenance_PreservesViewsWatchersAndSearchMaterial()
+    {
+        string app = Read("src/DeskBox/App.xaml.cs");
+        string contentSwitching = Read(
+            "src/DeskBox/Views/ContentWidgetWindow.ContentSwitching.cs");
+        string fileSurface = Read(
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs");
+        string fileViewModel = Read("src/DeskBox/ViewModels/WidgetViewModel.cs");
+        string searchPopup = Read("src/DeskBox/Views/SearchPopupWindow.xaml.cs");
+        string settings = Read("src/DeskBox/Views/SettingsWindow.xaml");
+        string iconHelper = Read("src/DeskBox/Helpers/IconHelper.cs");
+
+        string longHidden = ExtractSection(
+            contentSwitching,
+            "internal void RunLongHiddenNoRebuildMaintenance()",
+            "internal int ReleaseLongHiddenContentResources()");
+        Assert.Contains("_contentHost.CurrentContent?.OnWindowLongHidden();", longHidden, StringComparison.Ordinal);
+        Assert.DoesNotContain("DisposeCachedGroupContents", longHidden, StringComparison.Ordinal);
+        string longHiddenRelease = ExtractSection(
+            contentSwitching,
+            "internal int ReleaseLongHiddenContentResources()",
+            "private void DisposeCachedGroupContents()");
+        Assert.Contains("DisposeCachedGroupContents();", longHiddenRelease, StringComparison.Ordinal);
+        Assert.Contains("if (Visible || IsClosing)", longHiddenRelease, StringComparison.Ordinal);
+        Assert.DoesNotContain("OnWindowLongHidden()", fileSurface, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReleaseBackgroundActivityForLongHide", fileViewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResumeBackgroundActivityAsync", fileViewModel, StringComparison.Ordinal);
+
+        string searchHide = ExtractSection(
+            searchPopup,
+            "private void OnPopupHideCompleted(",
+            "public void TogglePopup()");
+        Assert.Contains("_appWindow?.Hide();", searchHide, StringComparison.Ordinal);
+        Assert.DoesNotContain("DisposeAcrylicController", searchHide, StringComparison.Ordinal);
+        Assert.DoesNotContain("DisposeMicaController", searchHide, StringComparison.Ordinal);
+        Assert.DoesNotContain("DisableAccentPolicy", searchHide, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("ScheduleTransientWindowRelease", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectedTransientWindowReleaseDelaySeconds", settings, StringComparison.Ordinal);
+
+        string idleCacheTrim = ExtractSection(
+            iconHelper,
+            "internal static IdleIconCacheReleaseResult ReleaseIdleCaches()",
+            "internal static IdleIconCacheReleaseResult ReleaseHiddenCaches()");
+        Assert.Contains("MaxThumbnailCacheEntries / 2", idleCacheTrim, StringComparison.Ordinal);
+        Assert.Contains("MaxDecodedBitmapCacheEntries / 2", idleCacheTrim, StringComparison.Ordinal);
+        Assert.Contains("MaxIconCacheEntries / 2", idleCacheTrim, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Clear();", idleCacheTrim, StringComparison.Ordinal);
+        string hiddenCacheTrim = ExtractSection(
+            iconHelper,
+            "internal static IdleIconCacheReleaseResult ReleaseHiddenCaches()",
+            "internal static string CurrentPerformanceCacheBudget");
+        Assert.Contains("IsCompleted", hiddenCacheTrim, StringComparison.Ordinal);
+        Assert.Contains("ShellThumbnailProxy.ClearTransientFailures", hiddenCacheTrim, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CacheEviction_UsesLruAndProtectsRecentOrInflightEntries()
+    {
+        string iconHelper = Read("src/DeskBox/Helpers/IconHelper.cs");
+        string shortcutHelper = Read("src/DeskBox/Helpers/ShortcutHelper.cs");
+        string fileMeta = Read("src/DeskBox/Services/FileMetaService.cs");
+
+        string idleCacheTrim = ExtractSection(
+            iconHelper,
+            "internal static IdleIconCacheReleaseResult ReleaseIdleCaches()",
+            "internal static IdleIconCacheReleaseResult ReleaseHiddenCaches()");
+        Assert.Contains("IdleCacheMinimumAge", iconHelper, StringComparison.Ordinal);
+        Assert.Contains("coldOnly: true", idleCacheTrim, StringComparison.Ordinal);
+        Assert.Contains(
+            "FindOldestEvictableThumbnailNode",
+            idleCacheTrim,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "FindOldestEvictableDecodedBitmapNode",
+            idleCacheTrim,
+            StringComparison.Ordinal);
+        Assert.Contains("if (!task.IsCompleted)", iconHelper, StringComparison.Ordinal);
+        Assert.Contains("s_iconBytesLastAccess", iconHelper, StringComparison.Ordinal);
+
+        Assert.Contains("s_storedMetadataLru", shortcutHelper, StringComparison.Ordinal);
+        Assert.Contains(
+            "TouchStoredMetadataCacheEntry",
+            shortcutHelper,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ReleaseHiddenMetadataCache",
+            shortcutHelper,
+            StringComparison.Ordinal);
+        Assert.Contains("s_storedMetadataCache.Clear()", shortcutHelper, StringComparison.Ordinal);
+
+        Assert.Contains("_iconCacheLru", fileMeta, StringComparison.Ordinal);
+        Assert.Contains("task.IsCompleted", fileMeta, StringComparison.Ordinal);
+        Assert.DoesNotContain("_iconCache.Keys.Take", fileMeta, StringComparison.Ordinal);
+        Assert.Contains("ReleaseHiddenCaches", fileMeta, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -221,6 +551,9 @@ public sealed class WidgetVisualActivityContractTests
 
     private static string Read(string relativePath) =>
         File.ReadAllText(TestPaths.FromRepository(relativePath));
+
+    private static int CountOccurrences(string source, string value) =>
+        source.Split(value, StringSplitOptions.None).Length - 1;
 
     private static string ExtractSection(string source, string startMarker, string endMarker)
     {

@@ -66,6 +66,18 @@ public sealed partial class SearchPopupWindow : Window
     private const int MinPopupWidth = 400;
     private const int MinPopupHeight = 300;
 
+    // Close-path forensics: DeskBox never closes this window on its own except via
+    // an explicit service dispose (which logs "[Search] Services disposed"), so a
+    // WM_CLOSE here means an external sender or a framework teardown. The next
+    // diagnostics export can then distinguish "hidden by managed code" (Popup
+    // hidden), "closed via WM_CLOSE" (external WM_CLOSE), and "destroyed without
+    // WM_CLOSE" (WinUI/DWM teardown).
+    private const uint WmClose = 0x0010;
+    private const uint WmDestroy = 0x0002;
+    private static readonly UIntPtr PopupCloseWatcherSubclassId = new(0x5E4C);
+    private readonly Win32Helper.SubclassProc _popupCloseWatcherProc;
+    private bool _isPopupCloseWatcherInstalled;
+
     // The popup uses the same pointer-capture interaction model as widget windows,
     // avoiding the visible native WS_THICKFRAME border.
     private FrameworkElement? _windowInteractionElement;
@@ -151,6 +163,37 @@ public sealed partial class SearchPopupWindow : Window
             _themeService.AppearanceChanged += OnThemeServiceAppearanceChanged;
         Activated += OnWindowActivated;
         Closed += OnWindowClosed;
+        _popupCloseWatcherProc = PopupCloseWatcherSubclassProc;
+        _isPopupCloseWatcherInstalled = Win32Helper.SetWindowSubclass(
+            _hwnd,
+            _popupCloseWatcherProc,
+            PopupCloseWatcherSubclassId,
+            UIntPtr.Zero);
+        App.Log(
+            $"[Search] Popup close watcher installed hwnd=0x{_hwnd.ToInt64():X} " +
+            $"subclass={_isPopupCloseWatcherInstalled}");
+    }
+
+    private IntPtr PopupCloseWatcherSubclassProc(
+        IntPtr hWnd,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr subclassId,
+        UIntPtr refData)
+    {
+        if (message == WmClose)
+        {
+            App.Log(
+                $"[Search] Popup WM_CLOSE received hwnd=0x{hWnd.ToInt64():X} " +
+                $"visible={IsPopupVisible}");
+        }
+        else if (message == WmDestroy)
+        {
+            App.Log($"[Search] Popup WM_DESTROY hwnd=0x{hWnd.ToInt64():X}");
+        }
+
+        return Win32Helper.DefSubclassProc(hWnd, message, wParam, lParam);
     }
 
     public IntPtr WindowHandle => _hwnd;
@@ -344,6 +387,7 @@ public sealed partial class SearchPopupWindow : Window
             return;
         }
 
+        App.Log("[Search] Popup hidden");
         IsPopupVisible = false;
         _viewModel.OnPopupHidden();
         _searchDebounceTimer?.Stop();
@@ -380,11 +424,9 @@ public sealed partial class SearchPopupWindow : Window
         if (!IsPopupVisible)
         {
             _appWindow?.Hide();
-            // Retain the initialized XAML shell for fast reopening, while releasing
-            // native backdrop/compositor resources during the hidden interval.
-            DisposeAcrylicController();
-            DisposeMicaController();
-            Win32Helper.DisableAccentPolicy(_hwnd);
+            // Keep the initialized XAML shell and its material controllers warm.
+            // Recreating these resources on the next hotkey press shifts memory
+            // savings into a visible input delay and a transient material flash.
         }
     }
 
@@ -4348,6 +4390,9 @@ public sealed partial class SearchPopupWindow : Window
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
+        App.Log(
+            $"[Search] Popup window closed visible={IsPopupVisible} " +
+            $"hwnd=0x{_hwnd.ToInt64():X}");
         _viewModel.ActionRequested -= OnViewModelActionRequested;
         _viewModel.ContentRequested -= OnViewModelContentRequested;
         _viewModel.QueryApplied -= OnViewModelQueryApplied;

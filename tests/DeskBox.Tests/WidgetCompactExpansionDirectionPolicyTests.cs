@@ -70,28 +70,16 @@ public sealed class WidgetCompactExpansionDirectionPolicyTests
     }
 
     [Theory]
-    [InlineData(
-        SettingsService.WidgetCompactExpansionDirectionAuto,
-        WidgetPositionAnchors.RightBottom,
-        WidgetPositionAnchors.RightBottom)]
-    [InlineData(
-        SettingsService.WidgetCompactExpansionDirectionDown,
-        WidgetPositionAnchors.RightBottom,
-        WidgetPositionAnchors.RightTop)]
-    [InlineData(
-        SettingsService.WidgetCompactExpansionDirectionUp,
-        WidgetPositionAnchors.LeftTop,
-        WidgetPositionAnchors.LeftBottom)]
-    public void PositionAnchor_UsesTheSameVerticalEdgeAsExpansion(
+    [InlineData(SettingsService.WidgetCompactExpansionDirectionAuto, false)]
+    [InlineData(SettingsService.WidgetCompactExpansionDirectionDown, true)]
+    [InlineData(SettingsService.WidgetCompactExpansionDirectionUp, true)]
+    public void DirectionPolicy_OnlyMarksFixedDirectionsAsStrict(
         string direction,
-        string currentAnchor,
-        string expected)
+        bool expected)
     {
         Assert.Equal(
             expected,
-            WidgetCompactExpansionDirectionPolicy.ApplyToPositionAnchor(
-                direction,
-                currentAnchor));
+            WidgetCompactExpansionDirectionPolicy.RequiresFullSize(direction));
     }
 
     [Fact]

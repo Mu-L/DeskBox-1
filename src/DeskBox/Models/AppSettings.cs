@@ -48,8 +48,19 @@ public class AppSettings
     /// <summary>Finite delay before releasing idle caches after every widget is fully hidden.</summary>
     public int HiddenCacheCleanupDelaySeconds { get; set; } = 30;
 
+    /// <summary>Hidden cleanup scope. Valid values: <c>Warm</c>, <c>AllRecreatable</c>.</summary>
+    public string HiddenCacheCleanupScope { get; set; } = "AllRecreatable";
+
     /// <summary>Finite delay before shrinking recreatable caches while visible widgets are inactive.</summary>
     public int VisibleIdleCacheCleanupDelaySeconds { get; set; } = 10 * 60;
+
+    /// <summary>
+    /// Trim the process working set after the fully-hidden idle deep cleanup
+    /// completes. Mirrors the pre-1.4.5 behaviour users remember as low idle
+    /// memory: pages are paged out and fault back in on demand, so it never
+    /// runs while widgets are visible or the user is interacting.
+    /// </summary>
+    public bool IdleWorkingSetTrimEnabled { get; set; } = true;
 
     /// <summary>Finite delay before closing a hidden transient window such as Search.</summary>
     public int TransientWindowReleaseDelaySeconds { get; set; } = 10 * 60;
@@ -544,7 +555,7 @@ public class AppSettings
     /// managed storage root. The shortcut is intentionally independent of the
     /// application executable so it remains useful after uninstalling.
     /// </summary>
-    public bool ManagedStorageDesktopShortcutEnabled { get; set; } = true;
+    public bool ManagedStorageDesktopShortcutEnabled { get; set; }
 
     /// <summary>
     /// Absolute path of the desktop shortcut created by DeskBox. Tracking the

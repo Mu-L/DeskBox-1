@@ -489,7 +489,7 @@ public partial class WidgetViewModel
                 changeType == WatcherChangeTypes.Renamed);
     }
 
-    private async Task UpsertFolderItemAsync(
+    private async Task<bool> UpsertFolderItemAsync(
         string path,
         int? preferredManualIndex = null)
     {
@@ -507,19 +507,45 @@ public partial class WidgetViewModel
             // A null result can also mean an ACL/provider race. Incremental
             // callers classify explicit deletion before reaching this method,
             // so preserving the current item is the only safe fallback.
-            return;
+            return false;
         }
 
         int existingIndex = FindItemIndexByPath(path);
         if (Config.SortMode == WidgetSortMode.Manual && existingIndex >= 0)
         {
             AssignAddedAt(item);
-            item.SortOrder = existingIndex;
-            Items[existingIndex] = item;
+            if (preferredManualIndex is { } requestedIndex)
+            {
+                // A file can leave the widget and later be dropped back in
+                // before the watcher has removed its old item. In that race
+                // the normal replacement path used to preserve the stale
+                // index, ignoring the insertion line the user just chose.
+                // Replace the object and move it as one operation so a
+                // re-import always honors the current drop position.
+                Items.RemoveAt(existingIndex);
+                int adjustedIndex = requestedIndex;
+                if (existingIndex < adjustedIndex)
+                {
+                    adjustedIndex--;
+                }
+
+                adjustedIndex = Math.Clamp(
+                    adjustedIndex,
+                    0,
+                    Items.Count);
+                item.SortOrder = adjustedIndex;
+                Items.Insert(adjustedIndex, item);
+            }
+            else
+            {
+                item.SortOrder = existingIndex;
+                Items[existingIndex] = item;
+            }
+
             NormalizeSortOrder();
             PersistManualOrderSnapshotIfChanged();
             StartItemHydration();
-            return;
+            return true;
         }
 
         if (existingIndex >= 0)
@@ -537,6 +563,7 @@ public partial class WidgetViewModel
         NormalizeSortOrder();
         PersistManualOrderSnapshotIfChanged();
         StartItemHydration();
+        return true;
     }
 
     private void RemoveItemByPath(string path, bool persistManualOrder = true)
@@ -623,23 +650,6 @@ public partial class WidgetViewModel
         }
         target.IsShortcut = source.IsShortcut;
         target.IsFolder = source.IsFolder;
-    }
-
-    private string BuildRenameFileName(string sanitizedName, string extension)
-    {
-        if (string.IsNullOrWhiteSpace(extension))
-        {
-            return sanitizedName;
-        }
-
-        if (_showFileExtensions)
-        {
-            return sanitizedName.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
-                ? sanitizedName
-                : sanitizedName + extension;
-        }
-
-        return sanitizedName + extension;
     }
 
     private int CompareItems(WidgetItem left, WidgetItem right)

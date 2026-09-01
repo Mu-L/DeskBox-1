@@ -425,10 +425,14 @@ public const int DefaultSearchMaxResults = 100;
         settings.PerformanceMode = PerformanceSettingsPolicy.DefaultMode;
         settings.HiddenCacheCleanupDelaySeconds =
             PerformanceSettingsPolicy.DefaultHiddenCacheCleanupDelaySeconds;
+        settings.HiddenCacheCleanupScope =
+            PerformanceSettingsPolicy.DefaultHiddenCacheCleanupScope;
         settings.VisibleIdleCacheCleanupDelaySeconds =
             PerformanceSettingsPolicy.DefaultVisibleIdleCacheCleanupDelaySeconds;
         settings.TransientWindowReleaseDelaySeconds =
             PerformanceSettingsPolicy.DefaultTransientWindowReleaseDelaySeconds;
+        settings.IdleWorkingSetTrimEnabled =
+            PerformanceSettingsPolicy.DefaultIdleWorkingSetTrimEnabled;
         settings.PerformanceCacheBudget =
             PerformanceSettingsPolicy.DefaultCacheBudget;
         settings.EnableContinuousDecorativeAnimations =

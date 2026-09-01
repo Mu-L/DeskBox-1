@@ -295,8 +295,11 @@ mod windows_proxy {
             }
             // ICONONLY asks the Shell item itself to resolve PIDL/AppUserModelID
             // shortcuts. ADDOVERLAYS is deliberately omitted so DeskBox's
-            // "hide shortcut arrows" setting remains effective.
-            ExtractionMode::Icon => SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP,
+            // "hide shortcut arrows" setting remains effective. Do not request
+            // SCALEUP here: Shell can otherwise place a 32/48 px glyph inside
+            // a 256 px transparent canvas, which renders as a tiny shortcut
+            // icon in the fixed file tile.
+            ExtractionMode::Icon => SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK,
         };
         // SAFETY: The returned bitmap is owned by the caller and released by
         // BitmapGuard after its pixels have been copied.

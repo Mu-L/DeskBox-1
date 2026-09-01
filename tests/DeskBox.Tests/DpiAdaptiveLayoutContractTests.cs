@@ -5,21 +5,46 @@ namespace DeskBox.Tests;
 public sealed class DpiAdaptiveLayoutContractTests
 {
     [Fact]
-    public void FileIconTiles_UseMeasuredHeightAsTheAuthority()
+    public void FileIconTiles_UseExplicitUniformWrapGridCells()
     {
         XDocument document = XDocument.Load(TestPaths.FromRepository(
             "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         XElement itemSlot = document.Descendants()
             .Single(element => (string?)element.Attribute("Tag") == "ItemSlot");
+        XElement itemsGrid = document.Descendants()
+            .Single(element =>
+                (string?)element.Attribute(x + "Name") == "ItemsGrid");
+        XElement itemsPanel = itemsGrid.Descendants()
+            .Single(element => element.Name.LocalName == "ItemsWrapGrid");
+        string textScalingCode = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.TextScaling.cs"));
         XElement stackSurface = document.Descendants()
             .Single(element =>
                 (string?)element.Attribute("Tag") == "StackSurface" &&
                 (string?)element.Attribute("MinHeight") == "{Binding TileHeight}");
 
-        Assert.Null(itemSlot.Attribute("Height"));
+        Assert.Null(itemSlot.Attribute("MinHeight"));
         Assert.Equal(
             "{Binding DataContext.IconTileHeight, ElementName=ItemsGrid}",
-            (string?)itemSlot.Attribute("MinHeight"));
+            (string?)itemSlot.Attribute("Height"));
+        Assert.Null(itemsPanel.Attribute("ItemWidth"));
+        Assert.Null(itemsPanel.Attribute("ItemHeight"));
+        Assert.Equal(
+            "ItemsGrid_UniformPanelLoaded",
+            (string?)itemsGrid.Attribute("Loaded"));
+        Assert.Contains(
+            "panel.ItemWidth = ViewModel.IconCellWidth;",
+            textScalingCode,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "panel.ItemHeight = ViewModel.IconCellHeight;",
+            textScalingCode,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ViewModel.PropertyChanged += FileSurfaceContent_LayoutPropertyChanged;",
+            textScalingCode,
+            StringComparison.Ordinal);
         Assert.Null(stackSurface.Attribute("Height"));
         Assert.Equal("{Binding TileHeight}", (string?)stackSurface.Attribute("MinHeight"));
     }

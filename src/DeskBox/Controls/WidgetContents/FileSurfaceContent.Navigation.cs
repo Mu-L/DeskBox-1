@@ -42,7 +42,7 @@ public sealed partial class FileSurfaceContent
             !item.IsFolder ||
             !ViewModel.IsEmbeddedFolderNavigationEnabled)
         {
-            ViewModel.OpenItem(item, _hostWindowHandle);
+            await OpenFileItemAsync(item);
             return;
         }
 

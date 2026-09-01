@@ -366,6 +366,7 @@ public sealed partial class WeatherWidgetViewModel
         OnPropertyChanged(nameof(MiniPrecipVisibility));
         OnPropertyChanged(nameof(MiniLocationVisibility));
         OnPropertyChanged(nameof(MiniDescriptionVisibility));
+        OnPropertyChanged(nameof(MiniDetailsVisibility));
     }
 
     private void UpdateRichSkinColors()
@@ -496,7 +497,8 @@ public sealed partial class WeatherWidgetViewModel
                 PrecipitationText = precip > 0 ? $"{(int)precip}%" : "",
                 Emoji = WeatherCodeMapper.GetEmoji(wmoCode, isDaytime),
                 IconGlyph = WeatherCodeMapper.GetGlyph(wmoCode, isDaytime),
-                IsCurrentHour = i == 0
+                IsCurrentHour = i == 0,
+                ForecastHourTextSize = this.ForecastHourTextSize
             });
         }
 

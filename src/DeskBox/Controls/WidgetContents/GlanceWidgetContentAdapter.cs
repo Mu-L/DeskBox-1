@@ -17,6 +17,7 @@ public sealed class GlanceWidgetContentAdapter :
     private FrameworkElement? _view;
     private string? _compactBackgroundPath;
     private ImageSource? _compactBackground;
+    private long _compactBackgroundEstimatedBytes;
 
     public GlanceWidgetContentAdapter(
         WidgetConfig config,
@@ -73,6 +74,7 @@ public sealed class GlanceWidgetContentAdapter :
 
         _compactBackgroundPath = path;
         _compactBackground = null;
+        SetCompactBackgroundEstimatedBytes(0);
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
             return null;
@@ -87,6 +89,8 @@ public sealed class GlanceWidgetContentAdapter :
                 UriSource = new Uri(path, UriKind.Absolute)
             };
             _compactBackground = bitmap;
+            PerformanceLogger.RecordGlanceCompactBackgroundDecode();
+            SetCompactBackgroundEstimatedBytes(768L * 768 * 4);
         }
         catch (Exception ex)
         {
@@ -96,10 +100,23 @@ public sealed class GlanceWidgetContentAdapter :
         return _compactBackground;
     }
 
+    private void SetCompactBackgroundEstimatedBytes(long estimatedBytes)
+    {
+        long normalizedBytes = Math.Max(0, estimatedBytes);
+        long delta = normalizedBytes - _compactBackgroundEstimatedBytes;
+        _compactBackgroundEstimatedBytes = normalizedBytes;
+        if (delta != 0)
+        {
+            PerformanceLogger.AdjustGlanceCompactBackgroundEstimatedBytes(
+                delta);
+        }
+    }
+
     public void Dispose()
     {
         _compactBackground = null;
         _compactBackgroundPath = null;
+        SetCompactBackgroundEstimatedBytes(0);
         ViewModel.Dispose();
     }
 }

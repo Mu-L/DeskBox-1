@@ -41,7 +41,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _itemHydrationCancellation;
     private int _iconDecodePixelWidth;
     private bool _isDisposed;
-    private bool _surfaceBackgroundResourcesReleased;
 
     private string _name = string.Empty;
     private ViewMode _viewMode;
@@ -83,6 +82,15 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
     private double _listLabelFontSize;
     private bool _showFileExtensions;
     private bool _hideShortcutExtensionWhenShowingFileExtensions = true;
+
+    /// <summary>
+    /// Confirms a rename that changes the file extension while extensions are
+    /// visible. Receives the source and destination paths and returns true to
+    /// apply the new extension. When null, the rename is declined
+    /// conservatively. Wired by the hosting surface so the shell-owned warning
+    /// dialog gets the correct owner window.
+    /// </summary>
+    public Func<string, string, bool>? ConfirmExtensionChangeHandler;
 
     public string Name
     {
@@ -457,24 +465,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
         _surfaceActivity.Suspend();
     }
 
-    public void ReleaseBackgroundActivityForLongHide()
-    {
-        if (_isDisposed || _surfaceBackgroundResourcesReleased)
-        {
-            return;
-        }
-
-        _surfaceActivity.Suspend();
-        _surfaceBackgroundResourcesReleased = true;
-        Interlocked.Increment(ref _itemHydrationGeneration);
-        CancelItemHydration(
-            Interlocked.Exchange(
-                ref _itemHydrationCancellation,
-                null));
-        _folderWatcher.Stop();
-        _publicFolderWatcher.Stop();
-    }
-
     public bool ResumeBackgroundActivity()
     {
         if (_isDisposed || !_surfaceActivity.IsSuspended)
@@ -482,34 +472,6 @@ public partial class WidgetViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        bool requiresReconciliation = _surfaceActivity.Resume();
-        if (!_surfaceBackgroundResourcesReleased)
-        {
-            return requiresReconciliation;
-        }
-
-        _surfaceBackgroundResourcesReleased = false;
-        if (!string.IsNullOrWhiteSpace(CurrentFolderPath))
-        {
-            string folderPath = CurrentFolderPath;
-            _ = ResumeBackgroundActivityAsync(folderPath);
-            requiresReconciliation = true;
-        }
-
-        return requiresReconciliation;
-    }
-
-    private async Task ResumeBackgroundActivityAsync(string folderPath)
-    {
-        try
-        {
-            await ConfigureFolderWatchersAsync(folderPath);
-        }
-        catch (Exception ex)
-        {
-            App.Log(
-                $"[FolderRefresh] Failed to resume file widget background activity " +
-                $"id={Config.Id}: {ex.Message}");
-        }
+        return _surfaceActivity.Resume();
     }
 }

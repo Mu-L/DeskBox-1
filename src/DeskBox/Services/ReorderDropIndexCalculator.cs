@@ -269,6 +269,62 @@ public static class ReorderDropIndexCalculator
             : Math.Clamp(firstVisibleIndex, 0, list.Items.Count);
     }
 
+    /// <summary>
+    /// Returns whether the pointer is inside a realized item container. An
+    /// external drop should not advertise an insertion point over an empty
+    /// grid cell or the trailing blank area after the final item.
+    /// </summary>
+    public static bool IsPointerOverRealizedItem(
+        ListViewBase list,
+        Windows.Foundation.Point position)
+    {
+        // Walk the realized panel children instead of probing every item
+        // through ContainerFromIndex. The latter is an O(n) virtualization
+        // query on every native DragOver tick and is especially costly for a
+        // large mapped folder.
+        if (list.ItemsPanelRoot is not { } panel)
+        {
+            return false;
+        }
+
+        foreach (UIElement child in panel.Children)
+        {
+            if (child is not FrameworkElement container ||
+                container.ActualWidth <= 0 ||
+                container.ActualHeight <= 0)
+            {
+                continue;
+            }
+
+            try
+            {
+                Windows.Foundation.Rect bounds = container
+                    .TransformToVisual(list)
+                    .TransformBounds(
+                        new Windows.Foundation.Rect(
+                            0,
+                            0,
+                            container.ActualWidth,
+                            container.ActualHeight));
+                if (position.X >= bounds.Left &&
+                    position.X < bounds.Right &&
+                    position.Y >= bounds.Top &&
+                    position.Y < bounds.Bottom)
+                {
+                    return true;
+                }
+            }
+            catch (Exception ex) when (
+                ex is ArgumentException or InvalidOperationException)
+            {
+                // The item can be recycled between DragOver and layout. Treat
+                // an unstable container as an invalid preview for this tick.
+            }
+        }
+
+        return false;
+    }
+
     private static FrameworkElement? FindNearestRealizedContainer(
         ListViewBase list,
         int insertionIndex)

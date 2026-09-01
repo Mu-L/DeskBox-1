@@ -1,3 +1,4 @@
+using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
@@ -16,6 +17,7 @@ public sealed partial class OnboardingWindow
     private bool _hasCompletedFilePractice;
     private bool _hasHiddenWidgetsDuringPractice;
     private bool _hasCompletedVisibilityPractice;
+    private bool _isSynchronizingTaskStorageEntryToggles;
 
     private void SetupTaskStep1()
     {
@@ -27,6 +29,7 @@ public sealed partial class OnboardingWindow
 
     private void SetupTaskStep3()
     {
+        RefreshTaskStep3StorageEntryState();
         SetTaskStep3Status(
             _hasCompletedFilePractice
                 ? "Onboarding.Task.Step3.StatusCompleted"
@@ -37,6 +40,137 @@ public sealed partial class OnboardingWindow
         {
             _ = ShowFilePracticeWidgetAsync();
         }
+    }
+
+    private void RefreshTaskStep3StorageEntryState()
+    {
+        string storagePath = SettingsService.NormalizeManagedStorageRootPath(
+            _settingsService.Settings.DefaultManagedStorageRootPath);
+        TaskStep3StoragePathText.Text = storagePath;
+
+        _isSynchronizingTaskStorageEntryToggles = true;
+        try
+        {
+            TaskStep3QuickAccessToggle.IsOn =
+                ExplorerQuickAccessHelper.GetQuickAccessPinState(storagePath, out _) ==
+                QuickAccessPinState.Pinned;
+            TaskStep3DesktopShortcutToggle.IsOn =
+                global::DeskBox.App.Current.ManagedStorageDesktopShortcutService
+                    .HasShortcut();
+        }
+        finally
+        {
+            _isSynchronizingTaskStorageEntryToggles = false;
+        }
+    }
+
+    private async void TaskStep3QuickAccessToggle_Toggled(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_isSynchronizingTaskStorageEntryToggles ||
+            sender is not ToggleSwitch toggle)
+        {
+            return;
+        }
+
+        bool requestedState = toggle.IsOn;
+        toggle.IsEnabled = false;
+        try
+        {
+            string storagePath = SettingsService.NormalizeManagedStorageRootPath(
+                _settingsService.Settings.DefaultManagedStorageRootPath);
+            QuickAccessOperationResult result = requestedState
+                ? await ExplorerQuickAccessHelper.TryPinFolderToQuickAccessAsync(storagePath)
+                : await ExplorerQuickAccessHelper.TryUnpinFolderFromQuickAccessAsync(storagePath);
+            if (result.Succeeded)
+            {
+                return;
+            }
+
+            SetTaskStorageToggleState(toggle, !requestedState);
+            await ShowTaskStorageEntryErrorAsync(
+                "Onboarding.Step4.PinTitle",
+                requestedState
+                    ? "Onboarding.Step4.PinFailedBody"
+                    : "Common.OperationFailedRetry");
+        }
+        finally
+        {
+            toggle.IsEnabled = true;
+        }
+    }
+
+    private async void TaskStep3DesktopShortcutToggle_Toggled(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_isSynchronizingTaskStorageEntryToggles ||
+            sender is not ToggleSwitch toggle)
+        {
+            return;
+        }
+
+        bool requestedState = toggle.IsOn;
+        toggle.IsEnabled = false;
+        try
+        {
+            ManagedStorageDesktopShortcutService shortcutService =
+                global::DeskBox.App.Current.ManagedStorageDesktopShortcutService;
+            bool succeeded = requestedState
+                ? await shortcutService.CreateAsync()
+                : await shortcutService.RemoveAsync();
+            if (succeeded)
+            {
+                return;
+            }
+
+            SetTaskStorageToggleState(toggle, !requestedState);
+            await ShowTaskStorageEntryErrorAsync(
+                "Settings.ManagedPath.DesktopShortcut.Title",
+                "Common.OperationFailedRetry");
+        }
+        finally
+        {
+            toggle.IsEnabled = true;
+        }
+    }
+
+    private void SetTaskStorageToggleState(ToggleSwitch toggle, bool isOn)
+    {
+        _isSynchronizingTaskStorageEntryToggles = true;
+        try
+        {
+            toggle.IsOn = isOn;
+        }
+        finally
+        {
+            _isSynchronizingTaskStorageEntryToggles = false;
+        }
+    }
+
+    private async Task ShowTaskStorageEntryErrorAsync(
+        string titleKey,
+        string bodyKey)
+    {
+        if (RootGrid.XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = _localizationService.T(titleKey),
+            Content = new TextBlock
+            {
+                Text = _localizationService.T(bodyKey),
+                TextWrapping = TextWrapping.Wrap
+            },
+            CloseButtonText = _localizationService.T("Common.Ok"),
+            DefaultButton = ContentDialogButton.Close
+        };
+        await dialog.ShowAsync();
     }
 
     private void SetupTaskStep4()

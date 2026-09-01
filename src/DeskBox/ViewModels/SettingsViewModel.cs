@@ -114,7 +114,6 @@ private int _selectedWeatherRefreshInterval = 60;
     private bool _useSystemAccentColor;
     private string _accentColorHex = AccentColorHelper.DefaultAccentColorHex;
     private string _managedStorageRootPath = SettingsService.GetDefaultManagedStorageRootPath();
-    private bool _managedStorageDesktopShortcutEnabled = true;
     private QuickAccessPinState _quickAccessPinState = QuickAccessPinState.Unknown;
     private bool _isQuickAccessBusy;
     private bool _globalHotkeyEnabled;
@@ -123,6 +122,8 @@ private int _selectedWeatherRefreshInterval = 60;
     private string _globalHotkeyStatusKind = "Normal";
     private string _quickCaptureImageCacheText = string.Empty;
     private string _quickCaptureClipboardDiagnosticsText = string.Empty;
+    private StartupRegistrationState _autoStartState =
+        StartupRegistrationState.NotRegistered;
     private DragDropPermissionDiagnostic? _dragDropPermissionDiagnostic;
     private string _dragDropPermissionRepairStatusText = string.Empty;
     private bool _isDragDropPermissionRepairing;
@@ -170,6 +171,28 @@ private string[]? _cachedWeatherDataSourceDisplayNames;
 private string[]? _cachedWeatherRefreshIntervalDisplayNames;
 
     [ObservableProperty] public partial bool AutoStart { get; set; }
+    public string AutoStartStatusText => _autoStartState switch
+    {
+        StartupRegistrationState.DisabledByUser =>
+            _localizationService.T("Settings.AutoStart.WindowsDisabled"),
+        StartupRegistrationState.Pending =>
+            _localizationService.T("Settings.AutoStart.Pending"),
+        StartupRegistrationState.PathMismatch or
+        StartupRegistrationState.BlockedOrFailed =>
+            _localizationService.T("Settings.AutoStart.Failed"),
+        _ => string.Empty
+    };
+    public Visibility AutoStartStatusVisibility =>
+        _autoStartState is StartupRegistrationState.DisabledByUser or
+            StartupRegistrationState.Pending or
+            StartupRegistrationState.PathMismatch or
+            StartupRegistrationState.BlockedOrFailed
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    public Visibility AutoStartSystemSettingsVisibility =>
+        _autoStartState == StartupRegistrationState.DisabledByUser
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     [ObservableProperty] public partial bool AutoCheckForUpdates { get; set; } = true;
     [ObservableProperty] public partial bool DoubleClickToOpen { get; set; }
     [ObservableProperty] public partial double DefaultWidth { get; set; }
@@ -198,6 +221,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     private int _fileNameLineCount = SettingsService.DefaultFileNameLineCount;
     [ObservableProperty] public partial bool ShowFileExtensions { get; set; }
     [ObservableProperty] public partial bool HideShortcutExtensionWhenShowingFileExtensions { get; set; } = true;
+    [ObservableProperty] public partial bool IdleWorkingSetTrimEnabled { get; set; } = true;
     [ObservableProperty] public partial bool QuickCaptureEnabled { get; set; }
     [ObservableProperty] public partial bool QuickCaptureShowTabBar { get; set; } = true;
     [ObservableProperty] public partial bool QuickCaptureShowRecordsTab { get; set; } = true;
@@ -268,6 +292,9 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
 
         _useSystemAccentColor = !string.Equals(settings.AccentColorMode, ThemeService.AccentModeCustom, StringComparison.OrdinalIgnoreCase);
         AutoStart = StartupService.IsEnabled();
+        _autoStartState = AutoStart
+            ? StartupRegistrationState.Enabled
+            : StartupService.GetState();
         AutoCheckForUpdates = settings.AutoCheckForUpdates;
         DoubleClickToOpen = settings.DoubleClickToOpen;
         _selectedFileWidgetFolderOpenBehavior =
@@ -346,6 +373,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         _selectedLayoutDensity = SettingsService.ResolveLayoutDensityPreset(settings);
         ShowFileExtensions = settings.ShowFileExtensions;
         HideShortcutExtensionWhenShowingFileExtensions = settings.HideShortcutExtensionWhenShowingFileExtensions;
+        IdleWorkingSetTrimEnabled = settings.IdleWorkingSetTrimEnabled;
         QuickCaptureEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.QuickCapture);
         QuickCaptureClipboardEnabled = settings.QuickCaptureClipboardEnabled;
         QuickCaptureImageClipboardEnabled = settings.QuickCaptureImageClipboardEnabled;
@@ -419,7 +447,6 @@ _selectedWeatherRefreshInterval = Math.Clamp(
         _selectedTodoTabStyle = SettingsService.NormalizeWidgetTabStyle(settings.TodoTabStyle);
         _selectedTodoReminderOffsetMinutes = SettingsService.NormalizeTodoReminderOffsetMinutes(settings.TodoDefaultReminderOffsetMinutes);
         _managedStorageRootPath = settings.DefaultManagedStorageRootPath;
-        _managedStorageDesktopShortcutEnabled = settings.ManagedStorageDesktopShortcutEnabled;
 
         ApplyCachedUpdateResult();
         RefreshAccentPreview();

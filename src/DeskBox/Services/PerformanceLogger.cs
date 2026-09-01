@@ -36,6 +36,12 @@ public static class PerformanceLogger
 
     public static long LastGcMemoryLoad { get; private set; }
 
+    /// <summary>
+    /// Private bytes minus the GC heap size. This is only a broad estimate of
+    /// non-GC private memory; it is not a composition or graphics attribution.
+    /// </summary>
+    public static long LastPrivateMinusGcHeapEstimate { get; private set; }
+
     /// <summary>Handle count at the last sample.</summary>
     public static int LastHandleCount { get; private set; }
 
@@ -50,6 +56,24 @@ public static class PerformanceLogger
     public static int DecodedBitmapCacheCount { get; set; }
 
     public static long DecodedBitmapEstimatedBytes { get; set; }
+
+    public static int QuickCaptureDetailImageDecodeCount =>
+        Volatile.Read(ref s_quickCaptureDetailImageDecodeCount);
+
+    public static long QuickCaptureDetailImageEstimatedBytes =>
+        Math.Max(
+            0,
+            Interlocked.Read(
+                ref s_quickCaptureDetailImageEstimatedBytes));
+
+    public static int GlanceCompactBackgroundDecodeCount =>
+        Volatile.Read(ref s_glanceCompactBackgroundDecodeCount);
+
+    public static long GlanceCompactBackgroundEstimatedBytes =>
+        Math.Max(
+            0,
+            Interlocked.Read(
+                ref s_glanceCompactBackgroundEstimatedBytes));
 
     /// <summary>Music cover decode count since launch.</summary>
     public static int MusicCoverDecodeCount => Volatile.Read(ref s_musicCoverDecodeCount);
@@ -84,6 +108,22 @@ public static class PerformanceLogger
     private static int s_markdownInlineImageDecodeCount;
     private static int s_transientUiTimerCreatedCount;
     private static int s_transientUiTimerReleasedCount;
+    private static int s_quickCaptureDetailImageDecodeCount;
+    private static long s_quickCaptureDetailImageEstimatedBytes;
+    private static int s_glanceCompactBackgroundDecodeCount;
+    private static long s_glanceCompactBackgroundEstimatedBytes;
+    private static long s_thumbnailCacheLookupHitCount;
+    private static long s_thumbnailCacheLookupMissCount;
+    private static long s_thumbnailCacheLoadCount;
+    private static long s_thumbnailCacheLoadFailureCount;
+    private static long s_thumbnailCacheLoadDurationTicks;
+    private static long s_thumbnailCacheMaxLoadDurationTicks;
+    private static long s_decodedBitmapCacheLookupHitCount;
+    private static long s_decodedBitmapCacheLookupMissCount;
+    private static long s_decodedBitmapCacheLoadCount;
+    private static long s_decodedBitmapCacheLoadFailureCount;
+    private static long s_decodedBitmapCacheLoadDurationTicks;
+    private static long s_decodedBitmapCacheMaxLoadDurationTicks;
 
     public static void RecordMusicCoverDecode()
     {
@@ -100,6 +140,30 @@ public static class PerformanceLogger
         Interlocked.Increment(ref s_markdownInlineImageDecodeCount);
     }
 
+    public static void RecordQuickCaptureDetailImageDecode()
+    {
+        Interlocked.Increment(ref s_quickCaptureDetailImageDecodeCount);
+    }
+
+    public static void AdjustQuickCaptureDetailImageEstimatedBytes(long delta)
+    {
+        Interlocked.Add(
+            ref s_quickCaptureDetailImageEstimatedBytes,
+            delta);
+    }
+
+    public static void RecordGlanceCompactBackgroundDecode()
+    {
+        Interlocked.Increment(ref s_glanceCompactBackgroundDecodeCount);
+    }
+
+    public static void AdjustGlanceCompactBackgroundEstimatedBytes(long delta)
+    {
+        Interlocked.Add(
+            ref s_glanceCompactBackgroundEstimatedBytes,
+            delta);
+    }
+
     public static void RecordTransientUiTimerCreated()
     {
         Interlocked.Increment(ref s_transientUiTimerCreatedCount);
@@ -108,6 +172,85 @@ public static class PerformanceLogger
     public static void RecordTransientUiTimerReleased()
     {
         Interlocked.Increment(ref s_transientUiTimerReleasedCount);
+    }
+
+    /// <summary>
+    /// Adds one thumbnail-cache lookup to the in-memory aggregate. No log is
+    /// emitted, and the counter is disabled unless performance logging was
+    /// explicitly enabled for this process.
+    /// </summary>
+    internal static void RecordThumbnailCacheLookup(bool hit)
+    {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
+        if (hit)
+        {
+            Interlocked.Increment(ref s_thumbnailCacheLookupHitCount);
+        }
+        else
+        {
+            Interlocked.Increment(ref s_thumbnailCacheLookupMissCount);
+        }
+    }
+
+    internal static void RecordThumbnailCacheLoad(
+        TimeSpan elapsed,
+        bool succeeded)
+    {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
+        RecordCacheLoad(
+            elapsed,
+            succeeded,
+            ref s_thumbnailCacheLoadCount,
+            ref s_thumbnailCacheLoadFailureCount,
+            ref s_thumbnailCacheLoadDurationTicks,
+            ref s_thumbnailCacheMaxLoadDurationTicks);
+    }
+
+    /// <summary>
+    /// Adds one decoded-icon-cache lookup to the in-memory aggregate. It does
+    /// not write a per-lookup diagnostic line.
+    /// </summary>
+    internal static void RecordDecodedBitmapCacheLookup(bool hit)
+    {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
+        if (hit)
+        {
+            Interlocked.Increment(ref s_decodedBitmapCacheLookupHitCount);
+        }
+        else
+        {
+            Interlocked.Increment(ref s_decodedBitmapCacheLookupMissCount);
+        }
+    }
+
+    internal static void RecordDecodedBitmapCacheLoad(
+        TimeSpan elapsed,
+        bool succeeded)
+    {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
+        RecordCacheLoad(
+            elapsed,
+            succeeded,
+            ref s_decodedBitmapCacheLoadCount,
+            ref s_decodedBitmapCacheLoadFailureCount,
+            ref s_decodedBitmapCacheLoadDurationTicks,
+            ref s_decodedBitmapCacheMaxLoadDurationTicks);
     }
 
     private static readonly ConcurrentDictionary<string, int> s_windowCounts = new();
@@ -161,9 +304,14 @@ public static class PerformanceLogger
             LastGcHeapSize = gcInfo.HeapSizeBytes;
             LastGcFragmentedBytes = gcInfo.FragmentedBytes;
             LastGcMemoryLoad = gcInfo.MemoryLoadBytes;
+            LastPrivateMinusGcHeapEstimate = Math.Max(
+                0,
+                LastPrivateMemory - LastGcHeapSize);
             long lohSizeBytes = gcInfo.GenerationInfo.Length > 3
                 ? gcInfo.GenerationInfo[3].SizeAfterBytes
                 : 0;
+            CachePerformanceSnapshot cachePerformance =
+                CaptureCachePerformanceSnapshot();
 
             var app = App.Current;
             string everythingState = app.EverythingSearchService?.CurrentSnapshot.State.ToString()
@@ -206,16 +354,38 @@ public static class PerformanceLogger
                 $"privateMB={LastPrivateMemory / (1024.0 * 1024):F1} " +
                 $"managedHeapMB={LastManagedHeap / (1024.0 * 1024):F1} " +
                 $"gcHeapMB={LastGcHeapSize / (1024.0 * 1024):F1} " +
+                $"privateMinusGcHeapEstimateMB={LastPrivateMinusGcHeapEstimate / (1024.0 * 1024):F1} " +
                 $"gcFragmentedMB={LastGcFragmentedBytes / (1024.0 * 1024):F1} " +
                 $"lohMB={lohSizeBytes / (1024.0 * 1024):F1} " +
                 $"gcMemoryLoadMB={LastGcMemoryLoad / (1024.0 * 1024):F1} " +
                 $"handles={LastHandleCount} " +
                 $"thumbCache={ThumbnailCacheCount} " +
                 $"thumbCacheMB={ThumbnailEstimatedBytes / (1024.0 * 1024):F1} " +
+                $"thumbLookupHits={cachePerformance.ThumbnailLookupHits} " +
+                $"thumbLookupMisses={cachePerformance.ThumbnailLookupMisses} " +
+                $"thumbHitRatePercent={CalculateHitRatePercent(cachePerformance.ThumbnailLookupHits, cachePerformance.ThumbnailLookupMisses):F1} " +
+                $"thumbLoads={cachePerformance.ThumbnailLoads} " +
+                $"thumbLoadFailures={cachePerformance.ThumbnailLoadFailures} " +
+                $"thumbLoadAvgMs={CalculateAverageDurationMilliseconds(cachePerformance.ThumbnailLoadDurationTicks, cachePerformance.ThumbnailLoads):F1} " +
+                $"thumbLoadMaxMs={TimeSpan.FromTicks(cachePerformance.ThumbnailMaxLoadDurationTicks).TotalMilliseconds:F1} " +
                 $"iconCache={IconCacheCount} " +
                 $"shellKindCache={FileService.ShellKindCacheEntryCount} " +
+                $"shortcutMetadataCache={ShortcutHelper.StoredMetadataCacheEntryCount} " +
+                $"glanceStores={GlanceWidgetStore.CachedWidgetStoreCount} " +
+                $"weatherPathGates={WeatherCacheStore.PathGateCount} " +
                 $"decodedBitmapCache={DecodedBitmapCacheCount} " +
                 $"decodedBitmapMB={DecodedBitmapEstimatedBytes / (1024.0 * 1024):F1} " +
+                $"decodedBitmapLookupHits={cachePerformance.DecodedBitmapLookupHits} " +
+                $"decodedBitmapLookupMisses={cachePerformance.DecodedBitmapLookupMisses} " +
+                $"decodedBitmapHitRatePercent={CalculateHitRatePercent(cachePerformance.DecodedBitmapLookupHits, cachePerformance.DecodedBitmapLookupMisses):F1} " +
+                $"decodedBitmapLoads={cachePerformance.DecodedBitmapLoads} " +
+                $"decodedBitmapLoadFailures={cachePerformance.DecodedBitmapLoadFailures} " +
+                $"decodedBitmapLoadAvgMs={CalculateAverageDurationMilliseconds(cachePerformance.DecodedBitmapLoadDurationTicks, cachePerformance.DecodedBitmapLoads):F1} " +
+                $"decodedBitmapLoadMaxMs={TimeSpan.FromTicks(cachePerformance.DecodedBitmapMaxLoadDurationTicks).TotalMilliseconds:F1} " +
+                 $"quickCaptureDetailImageDecodes={QuickCaptureDetailImageDecodeCount} " +
+                 $"quickCaptureDetailImageMB={QuickCaptureDetailImageEstimatedBytes / (1024.0 * 1024):F1} " +
+                 $"glanceCompactBackgroundDecodes={GlanceCompactBackgroundDecodeCount} " +
+                 $"glanceCompactBackgroundMB={GlanceCompactBackgroundEstimatedBytes / (1024.0 * 1024):F1} " +
                  $"musicCoverDecodes={MusicCoverDecodeCount} " +
                  $"markdownRenders={MarkdownRenderCount} " +
                  $"markdownImageDecodes={MarkdownInlineImageDecodeCount} " +
@@ -282,6 +452,88 @@ public static class PerformanceLogger
             _ => false
         };
     }
+
+    internal static double CalculateHitRatePercent(long hits, long misses)
+    {
+        long lookupCount = Math.Max(0, hits) + Math.Max(0, misses);
+        return lookupCount == 0
+            ? 0
+            : Math.Max(0, hits) * 100.0 / lookupCount;
+    }
+
+    internal static double CalculateAverageDurationMilliseconds(
+        long totalDurationTicks,
+        long sampleCount) =>
+        sampleCount <= 0
+            ? 0
+            : TimeSpan.FromTicks(Math.Max(0, totalDurationTicks))
+                .TotalMilliseconds / sampleCount;
+
+    private static CachePerformanceSnapshot CaptureCachePerformanceSnapshot() =>
+        new(
+            Interlocked.Read(ref s_thumbnailCacheLookupHitCount),
+            Interlocked.Read(ref s_thumbnailCacheLookupMissCount),
+            Interlocked.Read(ref s_thumbnailCacheLoadCount),
+            Interlocked.Read(ref s_thumbnailCacheLoadFailureCount),
+            Interlocked.Read(ref s_thumbnailCacheLoadDurationTicks),
+            Interlocked.Read(ref s_thumbnailCacheMaxLoadDurationTicks),
+            Interlocked.Read(ref s_decodedBitmapCacheLookupHitCount),
+            Interlocked.Read(ref s_decodedBitmapCacheLookupMissCount),
+            Interlocked.Read(ref s_decodedBitmapCacheLoadCount),
+            Interlocked.Read(ref s_decodedBitmapCacheLoadFailureCount),
+            Interlocked.Read(ref s_decodedBitmapCacheLoadDurationTicks),
+            Interlocked.Read(ref s_decodedBitmapCacheMaxLoadDurationTicks));
+
+    private static void RecordCacheLoad(
+        TimeSpan elapsed,
+        bool succeeded,
+        ref long loadCount,
+        ref long failureCount,
+        ref long totalDurationTicks,
+        ref long maxDurationTicks)
+    {
+        long elapsedTicks = Math.Max(0, elapsed.Ticks);
+        Interlocked.Increment(ref loadCount);
+        if (!succeeded)
+        {
+            Interlocked.Increment(ref failureCount);
+        }
+
+        Interlocked.Add(ref totalDurationTicks, elapsedTicks);
+        UpdateMaximum(ref maxDurationTicks, elapsedTicks);
+    }
+
+    private static void UpdateMaximum(ref long target, long value)
+    {
+        long observed = Interlocked.Read(ref target);
+        while (value > observed)
+        {
+            long previous = Interlocked.CompareExchange(
+                ref target,
+                value,
+                observed);
+            if (previous == observed)
+            {
+                return;
+            }
+
+            observed = previous;
+        }
+    }
+
+    private readonly record struct CachePerformanceSnapshot(
+        long ThumbnailLookupHits,
+        long ThumbnailLookupMisses,
+        long ThumbnailLoads,
+        long ThumbnailLoadFailures,
+        long ThumbnailLoadDurationTicks,
+        long ThumbnailMaxLoadDurationTicks,
+        long DecodedBitmapLookupHits,
+        long DecodedBitmapLookupMisses,
+        long DecodedBitmapLoads,
+        long DecodedBitmapLoadFailures,
+        long DecodedBitmapLoadDurationTicks,
+        long DecodedBitmapMaxLoadDurationTicks);
 
     private static string FormatMessage(string operation, double? elapsedMs, string? details)
     {

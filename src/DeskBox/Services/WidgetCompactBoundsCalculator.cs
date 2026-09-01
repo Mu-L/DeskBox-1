@@ -279,6 +279,9 @@ public static class WidgetCompactBoundsCalculator
         RectInt32 bounds,
         string? expansionDirection = null)
     {
+        // Kept for source compatibility with older callers. Compact position
+        // capture is intentionally independent of expansion direction.
+        _ = expansionDirection;
         RectInt32 workArea = DisplayArea.GetFromRect(bounds, DisplayAreaFallback.Nearest).WorkArea;
         var placementConfig = new WidgetConfig
         {
@@ -293,19 +296,6 @@ public static class WidgetCompactBoundsCalculator
                 WidgetPositioningService.GetDpiScale(workArea))
         };
         WidgetPositioningService.CaptureAnchor(placementConfig, bounds, workArea);
-        string normalizedDirection =
-            SettingsService.NormalizeWidgetCompactExpansionDirection(expansionDirection);
-        if (normalizedDirection != SettingsService.WidgetCompactExpansionDirectionAuto)
-        {
-            placementConfig.PositionAnchor =
-                WidgetCompactExpansionDirectionPolicy.ApplyToPositionAnchor(
-                    normalizedDirection,
-                    placementConfig.PositionAnchor);
-            WidgetPositioningService.CaptureAnchorPreservingCurrentEdge(
-                placementConfig,
-                bounds,
-                workArea);
-        }
         WidgetPositioningService.UpdateConfigFromPhysicalBounds(placementConfig, bounds, workArea);
 
         config.CompactPlacement = new WidgetCompactPlacement

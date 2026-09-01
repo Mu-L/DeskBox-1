@@ -5,6 +5,9 @@ namespace DeskBox.Controls;
 // presentation properties through ICustomProperty under NativeAOT. Keep the
 // generated provider limited to properties consumed by the real surface.
 [WinRT.GeneratedBindableCustomProperty([
+    nameof(ActivityBadgeVisibility),
+    nameof(ActivityStatusText),
+    nameof(ActivityStatusVisibility),
     nameof(IconLayoutVisibility),
     nameof(ListLayoutVisibility),
     nameof(SurfaceHorizontalAlignment),
@@ -12,6 +15,7 @@ namespace DeskBox.Controls;
     nameof(SurfaceMaxWidth),
     nameof(SurfacePadding),
     nameof(TransferBadgeVisibility),
+    nameof(IsActivityActive),
     nameof(IsTransferActive),
     nameof(TransferStatusVisibility),
     nameof(TransferStatusText),

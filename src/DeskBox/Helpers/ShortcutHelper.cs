@@ -17,13 +17,34 @@ public static class ShortcutHelper
     private const int MAX_PATH = 260;
 #endif
     private const int MaxStoredMetadataCacheEntries = 512;
+    private const long FailedMetadataRetryDelayMilliseconds = 2_000;
     private static readonly ConcurrentDictionary<string, StoredShortcutCacheEntry>
         s_storedMetadataCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object s_storedMetadataCacheLock = new();
+    private static readonly LinkedList<string> s_storedMetadataLru = new();
+    private static readonly Dictionary<string, LinkedListNode<string>>
+        s_storedMetadataLruNodes = new(StringComparer.OrdinalIgnoreCase);
+
+    internal static int StoredMetadataCacheEntryCount =>
+        s_storedMetadataCache.Count;
+
+    internal static int ReleaseHiddenMetadataCache()
+    {
+        lock (s_storedMetadataCacheLock)
+        {
+            int released = s_storedMetadataCache.Count;
+            s_storedMetadataCache.Clear();
+            s_storedMetadataLru.Clear();
+            s_storedMetadataLruNodes.Clear();
+            return released;
+        }
+    }
 
     private sealed record StoredShortcutCacheEntry(
         long Length,
         long LastWriteTimeUtcTicks,
-        ShortcutInfo? Metadata);
+        ShortcutInfo? Metadata,
+        long ReadAtTickCount);
 
     public static bool IsShortcutPath(string? path)
     {
@@ -137,24 +158,108 @@ public static class ShortcutHelper
                 cached.Length == length &&
                 cached.LastWriteTimeUtcTicks == lastWriteTimeUtcTicks)
             {
-                return cached.Metadata;
+                if (cached.Metadata is null &&
+                    IsRecentMetadataFailure(cached.ReadAtTickCount))
+                {
+                    TouchStoredMetadataCacheEntry(normalizedPath);
+                    return null;
+                }
+
+                // A failed Shell/Rust read must not become a permanent
+                // negative cache entry. Retry it after the short backoff so a
+                // transient COM/Shell initialization failure cannot force the
+                // shortcut down the inferior Shell-item icon path forever.
+                if (cached.Metadata is null)
+                {
+                    RemoveStoredMetadataCacheEntry(normalizedPath);
+                }
+                else
+                {
+                    TouchStoredMetadataCacheEntry(normalizedPath);
+                    return cached.Metadata;
+                }
             }
 
             ShortcutInfo? metadata = ReadStoredMetadataUncached(normalizedPath);
-            if (s_storedMetadataCache.Count >= MaxStoredMetadataCacheEntries)
-            {
-                s_storedMetadataCache.Clear();
-            }
-
-            s_storedMetadataCache[normalizedPath] = new StoredShortcutCacheEntry(
-                length,
-                lastWriteTimeUtcTicks,
-                metadata);
+            StoreStoredMetadataCacheEntry(
+                normalizedPath,
+                new StoredShortcutCacheEntry(
+                    length,
+                    lastWriteTimeUtcTicks,
+                    metadata,
+                    Environment.TickCount64));
             return metadata;
         }
         catch
         {
             return null;
+        }
+    }
+
+    private static bool IsRecentMetadataFailure(long readAtTickCount)
+    {
+        long elapsed = Environment.TickCount64 - readAtTickCount;
+        return readAtTickCount > 0 &&
+               elapsed >= 0 &&
+               elapsed < FailedMetadataRetryDelayMilliseconds;
+    }
+
+    private static void StoreStoredMetadataCacheEntry(
+        string cacheKey,
+        StoredShortcutCacheEntry entry)
+    {
+        lock (s_storedMetadataCacheLock)
+        {
+            s_storedMetadataCache[cacheKey] = entry;
+            TouchStoredMetadataCacheEntryUnderLock(cacheKey);
+            while (s_storedMetadataCache.Count > MaxStoredMetadataCacheEntries &&
+                   s_storedMetadataLru.Last is { } oldest)
+            {
+                string oldestKey = oldest.Value;
+                s_storedMetadataLru.Remove(oldest);
+                s_storedMetadataLruNodes.Remove(oldestKey);
+                s_storedMetadataCache.TryRemove(oldestKey, out _);
+            }
+        }
+    }
+
+    private static void TouchStoredMetadataCacheEntry(string cacheKey)
+    {
+        lock (s_storedMetadataCacheLock)
+        {
+            if (s_storedMetadataCache.ContainsKey(cacheKey))
+            {
+                TouchStoredMetadataCacheEntryUnderLock(cacheKey);
+            }
+        }
+    }
+
+    private static void TouchStoredMetadataCacheEntryUnderLock(string cacheKey)
+    {
+        if (s_storedMetadataLruNodes.TryGetValue(
+                cacheKey,
+                out LinkedListNode<string>? existing))
+        {
+            s_storedMetadataLru.Remove(existing);
+            s_storedMetadataLru.AddFirst(existing);
+            return;
+        }
+
+        s_storedMetadataLruNodes[cacheKey] =
+            s_storedMetadataLru.AddFirst(cacheKey);
+    }
+
+    private static void RemoveStoredMetadataCacheEntry(string cacheKey)
+    {
+        s_storedMetadataCache.TryRemove(cacheKey, out _);
+        lock (s_storedMetadataCacheLock)
+        {
+            if (s_storedMetadataLruNodes.Remove(
+                    cacheKey,
+                    out LinkedListNode<string>? node))
+            {
+                s_storedMetadataLru.Remove(node);
+            }
         }
     }
 
@@ -565,11 +670,11 @@ public static class ShortcutHelper
     {
         try
         {
-            s_storedMetadataCache.TryRemove(Path.GetFullPath(shortcutPath), out _);
+            RemoveStoredMetadataCacheEntry(Path.GetFullPath(shortcutPath));
         }
         catch
         {
-            s_storedMetadataCache.TryRemove(shortcutPath, out _);
+            RemoveStoredMetadataCacheEntry(shortcutPath);
         }
     }
 

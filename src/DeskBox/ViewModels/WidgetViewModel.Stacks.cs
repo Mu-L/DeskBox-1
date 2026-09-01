@@ -7,6 +7,10 @@ using Microsoft.UI.Dispatching;
 
 namespace DeskBox.ViewModels;
 
+public readonly record struct WidgetVisibleInsertionAnchor(
+    string TargetOrderKey,
+    int VisibleIndex);
+
 public partial class WidgetViewModel
 {
     private const string LooseItemOrderKeyPrefix = "Item:";
@@ -36,6 +40,132 @@ public partial class WidgetViewModel
     // stacks. Keeping manual stacks alive with the feature disabled made the
     // master and the automatic-grouping switch indistinguishable.
     public bool UsesStackProjection => FileStacksEnabled;
+
+    /// <summary>
+    /// Captures the visible display unit immediately after an insertion point.
+    /// The external import path must use this stable key when a stack
+    /// projection is active; a visible integer index is not an index into
+    /// <see cref="Items"/> once a stack collapses multiple members.
+    /// </summary>
+    internal WidgetVisibleInsertionAnchor? CaptureVisibleInsertionAnchor(
+        IReadOnlyList<WidgetItem> visibleItems,
+        int visibleInsertionIndex)
+    {
+        if (!UsesStackProjection ||
+            visibleInsertionIndex < 0 ||
+            visibleInsertionIndex >= visibleItems.Count)
+        {
+            return null;
+        }
+
+        WidgetItem target = visibleItems[visibleInsertionIndex];
+        string? targetKey = ResolveVisibleDisplayUnitOrderKey(target);
+        return string.IsNullOrWhiteSpace(targetKey)
+            ? null
+            : new WidgetVisibleInsertionAnchor(
+                targetKey,
+                visibleInsertionIndex);
+    }
+
+    /// <summary>
+    /// Applies an external file import at the captured visible display-unit
+    /// anchor. This updates the stack order metadata separately from the raw
+    /// folder item collection, preserving the ordering the user saw in the
+    /// icon surface.
+    /// </summary>
+    internal void ApplyImportedStackInsertion(
+        IReadOnlyList<string> destinationPaths,
+        WidgetVisibleInsertionAnchor anchor)
+    {
+        if (!UsesStackProjection || destinationPaths.Count == 0)
+        {
+            return;
+        }
+
+        // A file can leave a manual stack, disappear in Explorer, and be
+        // dropped back into this widget before the source surface's delayed
+        // reconciliation runs. Remove the old membership before rebuilding
+        // the projection; otherwise ResolveDisplayUnitOrderKey resolves the
+        // re-imported file to its historical stack and the visible insertion
+        // line is silently ignored.
+        string[] detachedStackKeys =
+            DetachImportedRootInsertionStackMembership(destinationPaths);
+        RebuildStackDisplayItems();
+        List<string> movingKeys = destinationPaths
+            .Select(ResolveDisplayUnitOrderKey)
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Select(key => key!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (movingKeys.Count == 0)
+        {
+            if (detachedStackKeys.Length > 0)
+            {
+                PersistStackCustomizations();
+            }
+
+            return;
+        }
+
+        // Keep unknown historical keys. They are intentionally retained so a
+        // temporarily unavailable item can recover its prior position. Only
+        // the explicitly imported units are removed and reinserted.
+        List<string> order;
+        if (detachedStackKeys.Length > 0)
+        {
+            // Removing the last members of a manual stack can dissolve its
+            // display unit. In that case the old _stackOrder no longer
+            // contains the newly loose members, so start from the rebuilt
+            // visible order and retain only genuinely unknown historical
+            // keys as a recovery tail.
+            HashSet<string> currentKeys = GetCurrentDisplayUnitOrder()
+                .ToHashSet(StringComparer.Ordinal);
+            HashSet<string> detachedKeys = detachedStackKeys
+                .ToHashSet(StringComparer.Ordinal);
+            order = GetCurrentDisplayUnitOrder();
+            order.AddRange(_stackOrder.Where(key =>
+                !currentKeys.Contains(key) &&
+                !detachedKeys.Contains(key)));
+        }
+        else
+        {
+            order = _stackOrder.Count > 0
+                ? _stackOrder.ToList()
+                : GetCurrentDisplayUnitOrder();
+        }
+        order.RemoveAll(key => movingKeys.Contains(key, StringComparer.Ordinal));
+
+        int insertionIndex = order.IndexOf(anchor.TargetOrderKey);
+        if (insertionIndex < 0)
+        {
+            // A projection can rebuild between DragOver and import. The
+            // captured visible index is only a bounded fallback when its
+            // stable neighbor disappeared during that refresh.
+            insertionIndex = Math.Clamp(
+                anchor.VisibleIndex,
+                0,
+                order.Count);
+        }
+
+        order.InsertRange(
+            Math.Clamp(insertionIndex, 0, order.Count),
+            movingKeys);
+        _stackOrder = order;
+        if (detachedStackKeys.Length > 0)
+        {
+            PersistStackCustomizations();
+        }
+        else
+        {
+            PersistStackDisplayOrder();
+        }
+
+        App.LogVerbose(
+            $"[FileStack] Root import insertion widget={Config.Id} " +
+            $"paths={destinationPaths.Count} movingUnits={movingKeys.Count} " +
+            $"detachedStacks={string.Join(',', detachedStackKeys)} " +
+            $"anchor={anchor.TargetOrderKey} index={anchor.VisibleIndex}");
+    }
 
     public bool FileStacksEnabled
     {
@@ -1217,6 +1347,40 @@ public partial class WidgetViewModel
             ? stack.StackKey
             : GetLooseItemOrderKey(item);
 
+    private string? ResolveVisibleDisplayUnitOrderKey(
+        WidgetItem item)
+    {
+        if (item is WidgetStackItem stack)
+        {
+            return stack.StackKey;
+        }
+
+        if (item.IsStackChild)
+        {
+            return FindContainingStack(item)?.StackKey;
+        }
+
+        return GetLooseItemOrderKey(item);
+    }
+
+    private string? ResolveDisplayUnitOrderKey(
+        string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        WidgetItem? item = Items.FirstOrDefault(candidate =>
+            string.Equals(
+                candidate.Path,
+                path,
+                StringComparison.OrdinalIgnoreCase));
+        return item is null
+            ? null
+            : ResolveVisibleDisplayUnitOrderKey(item);
+    }
+
     private static string GetLooseItemOrderKey(WidgetItem item)
     {
         string path;
@@ -1363,6 +1527,15 @@ public partial class WidgetViewModel
         var stackOrder = WidgetFileStackSettings.GetStackOrder(Config);
         var stackMemberOverrides =
             WidgetFileStackSettings.GetStackMemberOverrides(Config);
+
+        if (projectionWasEnabled && !enabled)
+        {
+            // A disabled projection exposes the raw Items collection. Flatten
+            // the currently visible stack order first so switching the mode
+            // does not suddenly reveal an older, unrelated Items order.
+            SynchronizeItemsOrderFromStackProjection();
+        }
+
         FileStacksEnabled = enabled;
         FileStackGroupBy = groupBy;
         FileStackThreshold = threshold;
@@ -1396,6 +1569,70 @@ public partial class WidgetViewModel
         OnPropertyChanged(nameof(FileStackOrderByFollowsGlobal));
         OnPropertyChanged(nameof(FileStackOpenModeFollowsGlobal));
         OnPropertyChanged(nameof(HasDisabledStacks));
+    }
+
+    private void SynchronizeItemsOrderFromStackProjection()
+    {
+        if (_stackDisplayItems.Count == 0)
+        {
+            return;
+        }
+
+        // Automatic sort modes remain governed by their selected comparator;
+        // only Manual mode needs the visual stack order flattened into the
+        // underlying collection.
+        if (Config.SortMode != WidgetSortMode.Manual)
+        {
+            SortItems();
+            return;
+        }
+
+        var desired = new List<WidgetItem>(Items.Count);
+        var included = new HashSet<WidgetItem>();
+        foreach (WidgetItem projected in _stackDisplayItems)
+        {
+            if (projected is WidgetStackItem stack)
+            {
+                foreach (WidgetItem member in stack.Members)
+                {
+                    if (Items.Contains(member) && included.Add(member))
+                    {
+                        desired.Add(member);
+                    }
+                }
+
+                continue;
+            }
+
+            if (!projected.IsStackChild &&
+                Items.Contains(projected) &&
+                included.Add(projected))
+            {
+                desired.Add(projected);
+            }
+        }
+
+        // A provider or watcher can add an item between projection rebuilds.
+        // Preserve such items instead of dropping them during normalization.
+        foreach (WidgetItem item in Items)
+        {
+            if (included.Add(item))
+            {
+                desired.Add(item);
+            }
+        }
+
+        for (int targetIndex = 0; targetIndex < desired.Count; targetIndex++)
+        {
+            int currentIndex = Items.IndexOf(desired[targetIndex]);
+            if (currentIndex >= 0 && currentIndex != targetIndex)
+            {
+                Items.Move(currentIndex, targetIndex);
+            }
+        }
+
+        NormalizeSortOrder();
+        PersistManualOrderSnapshotIfChanged();
     }
 
     private void RebuildStackDisplayItems()
@@ -1724,6 +1961,32 @@ public partial class WidgetViewModel
                 RemoveManualStackCustomization(stackKey);
             }
         }
+    }
+
+    private string[] DetachImportedRootInsertionStackMembership(
+        IEnumerable<string> paths)
+    {
+        HashSet<string> normalizedPaths = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeStackMemberPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (normalizedPaths.Count == 0 || _stackMemberOverrides.Count == 0)
+        {
+            return [];
+        }
+
+        string[] detachedStackKeys = _stackMemberOverrides
+            .Where(entry => entry.Value.Any(path => normalizedPaths.Contains(
+                NormalizeStackMemberPath(path))))
+            .Select(entry => entry.Key)
+            .ToArray();
+        if (detachedStackKeys.Length == 0)
+        {
+            return [];
+        }
+
+        RemoveMemberOverrides(normalizedPaths);
+        return detachedStackKeys;
     }
 
     private void UpdateStackMemberOverridePath(

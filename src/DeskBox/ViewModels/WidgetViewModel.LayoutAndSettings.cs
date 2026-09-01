@@ -11,6 +11,42 @@ namespace DeskBox.ViewModels;
 
 public partial class WidgetViewModel
 {
+    private double _systemTextScaleFactor =
+        WindowsCompatibilityService.MinSystemTextScaleFactor;
+    private double _iconCellWidth;
+    private double _iconCellHeight;
+
+    /// <summary>
+    /// Uniform slot dimensions consumed by the main ItemsWrapGrid. They
+    /// include the item's outer margin so the panel never derives its global
+    /// cell size from whichever file happens to be realized first.
+    /// </summary>
+    public double IconCellWidth
+    {
+        get => _iconCellWidth;
+        private set => SetProperty(ref _iconCellWidth, value);
+    }
+
+    public double IconCellHeight
+    {
+        get => _iconCellHeight;
+        private set => SetProperty(ref _iconCellHeight, value);
+    }
+
+    internal void UpdateSystemTextScaleFactor(double textScaleFactor)
+    {
+        double normalized =
+            WindowsCompatibilityService.NormalizeSystemTextScaleFactor(
+                textScaleFactor);
+        if (Math.Abs(normalized - _systemTextScaleFactor) < 0.001)
+        {
+            return;
+        }
+
+        _systemTextScaleFactor = normalized;
+        ApplyLayoutSettings();
+    }
+
     private void UpdateDependentProperties()
     {
         string mappedFolderName = GetMappedFolderDisplayName();
@@ -120,18 +156,6 @@ public partial class WidgetViewModel
         double labelMaxWidth = Math.Max(iconSize, Lerp(iconSize, textSize * 10.5, nameWidthT));
         IconLabelMaxWidth = labelMaxWidth;
         IconTileWidth = Math.Max(iconSize + Lerp(6, 28, horizontalT), labelMaxWidth + Lerp(4, 16, horizontalT));
-        double twoLineTileHeight = iconSize + Lerp(24, 70, verticalT);
-        double oneLineTileHeight = Math.Max(
-            iconSize + textSize + 8,
-            twoLineTileHeight - textSize - 3);
-        IconTileHeight = fileNameLineCount switch
-        {
-            SettingsService.HiddenFileNameLineCount => Math.Max(
-                iconSize + 8,
-                oneLineTileHeight - textSize - 3),
-            SettingsService.MinFileNameLineCount => oneLineTileHeight,
-            _ => twoLineTileHeight
-        };
         IconTileMargin = new Thickness(
             Lerp(0, 2, horizontalT),
             Lerp(0, 2, verticalT),
@@ -149,6 +173,16 @@ public partial class WidgetViewModel
         IconLabelVisibility = fileNameLineCount == SettingsService.HiddenFileNameLineCount
             ? Visibility.Collapsed
             : Visibility.Visible;
+        IconTileHeight = ResolveIconTileHeight(
+            iconSize,
+            textSize,
+            fileNameLineCount,
+            verticalT,
+            _systemTextScaleFactor);
+        IconCellWidth = Math.Ceiling(
+            IconTileWidth + IconTileMargin.Left + IconTileMargin.Right);
+        IconCellHeight = Math.Ceiling(
+            IconTileHeight + IconTileMargin.Top + IconTileMargin.Bottom);
         _iconDecodePixelWidth = ResolveIconDecodePixelWidth(iconSize);
 
         double listScale = Lerp(0.68, 0.90, densityT);
@@ -173,6 +207,58 @@ public partial class WidgetViewModel
         return Math.Abs(max - min) < 0.0001
             ? 0
             : (value - min) / (max - min);
+    }
+
+    internal static double ResolveIconTileHeight(
+        double iconSize,
+        double textSize,
+        int fileNameLineCount,
+        double verticalScale,
+        double systemTextScaleFactor)
+    {
+        int normalizedLineCount =
+            SettingsService.NormalizeFileNameLineCount(fileNameLineCount);
+        double normalizedVerticalScale = Math.Clamp(verticalScale, 0, 1);
+        double normalizedTextScale =
+            WindowsCompatibilityService.NormalizeSystemTextScaleFactor(
+                systemTextScaleFactor);
+
+        // Keep the established density curve as the visual minimum, then
+        // reserve the actual configured number of text lines. The latter is
+        // what allows Windows' 100-225% text-size accessibility setting to
+        // grow without being clipped by an old fixed tile height.
+        double twoLineVisualMinimum =
+            iconSize + Lerp(24, 70, normalizedVerticalScale);
+        double oneLineVisualMinimum = Math.Max(
+            iconSize + textSize + 8,
+            twoLineVisualMinimum - textSize - 3);
+        double visualMinimum = normalizedLineCount switch
+        {
+            SettingsService.HiddenFileNameLineCount => Math.Max(
+                iconSize + 8,
+                oneLineVisualMinimum - textSize - 3),
+            SettingsService.MinFileNameLineCount => oneLineVisualMinimum,
+            _ => twoLineVisualMinimum
+        };
+
+        double verticalPadding = Lerp(1, 6, normalizedVerticalScale) * 2;
+        double contentSpacing = normalizedLineCount ==
+            SettingsService.HiddenFileNameLineCount
+                ? 0
+                : Lerp(1, 7, normalizedVerticalScale);
+        double reservedLabelHeight = normalizedLineCount ==
+            SettingsService.HiddenFileNameLineCount
+                ? 0
+                : Math.Ceiling(textSize * 1.4 * normalizedTextScale) *
+                  normalizedLineCount;
+        double measuredContentMinimum =
+            verticalPadding +
+            iconSize +
+            contentSpacing +
+            reservedLabelHeight +
+            2;
+
+        return Math.Ceiling(Math.Max(visualMinimum, measuredContentMinimum));
     }
 
     private static int ResolveIconDecodePixelWidth(double iconSize)

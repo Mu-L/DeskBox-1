@@ -13,8 +13,7 @@ public readonly record struct EffectivePerformanceSettings(
     int VisibleIdleCacheCleanupDelaySeconds,
     int TransientWindowReleaseDelaySeconds,
     string CacheBudget,
-    int HiddenIdleWorkingSetTrimDelaySeconds,
-    bool ClearVisibleIdleCaches)
+    string HiddenCacheCleanupScope)
 {
     public bool AllowContinuousDecorativeAnimations =>
         AllowTextMarqueeAnimations ||
@@ -53,6 +52,10 @@ public static class PerformanceSettingsPolicy
     public const string CacheBudgetBalanced = "Balanced";
     public const string CacheBudgetLarge = "Large";
 
+    public const string HiddenCacheCleanupScopeWarm = "Warm";
+    public const string HiddenCacheCleanupScopeAllRecreatable =
+        "AllRecreatable";
+
     public const int CleanupNever = -1;
     public const int CleanupAfter30Seconds = 30;
     public const int CleanupAfter1Minute = 60;
@@ -66,6 +69,9 @@ public static class PerformanceSettingsPolicy
     public const int DefaultVisibleIdleCacheCleanupDelaySeconds = CleanupAfter10Minutes;
     public const int DefaultTransientWindowReleaseDelaySeconds = CleanupAfter10Minutes;
     public const string DefaultCacheBudget = CacheBudgetBalanced;
+    public const string DefaultHiddenCacheCleanupScope =
+        HiddenCacheCleanupScopeAllRecreatable;
+    public const bool DefaultIdleWorkingSetTrimEnabled = true;
     public const bool DefaultContinuousDecorativeAnimationsEnabled = true;
     public const bool DefaultTextMarqueeAnimationsEnabled = true;
     public const bool DefaultVinylRotationAnimationsEnabled = true;
@@ -106,6 +112,19 @@ public static class PerformanceSettingsPolicy
         }
 
         return CacheBudgetBalanced;
+    }
+
+    public static string NormalizeHiddenCacheCleanupScope(string? scope)
+    {
+        if (string.Equals(
+                scope,
+                HiddenCacheCleanupScopeWarm,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return HiddenCacheCleanupScopeWarm;
+        }
+
+        return HiddenCacheCleanupScopeAllRecreatable;
     }
 
     public static int ResolveInactiveGroupContentCacheCapacity(
@@ -165,29 +184,27 @@ public static class PerformanceSettingsPolicy
                 mode,
                 CleanupAfter30Seconds,
                 CleanupAfter1Minute,
-                false,
-                false,
-                false,
-                false,
+                settings.EnableTextMarqueeAnimations,
+                settings.EnableVinylRotationAnimations,
+                settings.EnableGlanceImageAutoRotation,
+                settings.EnableCompactAmbientAnimations,
                 CleanupAfter5Minutes,
                 CleanupAfter2Minutes,
                 CacheBudgetSmall,
-                CleanupAfter10Minutes,
-                true),
+                HiddenCacheCleanupScopeAllRecreatable),
             ModeCustom => ResolveCustom(settings),
             _ => new(
                 ModeBalanced,
                 CleanupAfter30Seconds,
                 CleanupAfter5Minutes,
-                true,
-                true,
-                true,
-                true,
+                settings.EnableTextMarqueeAnimations,
+                settings.EnableVinylRotationAnimations,
+                settings.EnableGlanceImageAutoRotation,
+                settings.EnableCompactAmbientAnimations,
                 CleanupAfter10Minutes,
                 CleanupAfter10Minutes,
                 CacheBudgetBalanced,
-                CleanupNever,
-                false)
+                HiddenCacheCleanupScopeAllRecreatable)
         };
     }
 
@@ -203,6 +220,8 @@ public static class PerformanceSettingsPolicy
         int transientWindowDelay = NormalizeTransientWindowReleaseDelaySeconds(
             settings.TransientWindowReleaseDelaySeconds);
         string cacheBudget = NormalizeCacheBudget(settings.PerformanceCacheBudget);
+        string hiddenCleanupScope = NormalizeHiddenCacheCleanupScope(
+            settings.HiddenCacheCleanupScope);
         bool allowTextMarqueeAnimations =
             settings.EnableTextMarqueeAnimations;
         bool allowVinylRotationAnimations =
@@ -219,10 +238,7 @@ public static class PerformanceSettingsPolicy
             visibleIdleDelay = preset.VisibleIdleCacheCleanupDelaySeconds;
             transientWindowDelay = preset.TransientWindowReleaseDelaySeconds;
             cacheBudget = preset.CacheBudget;
-            allowTextMarqueeAnimations = preset.AllowTextMarqueeAnimations;
-            allowVinylRotationAnimations = preset.AllowVinylRotationAnimations;
-            allowGlanceImageAutoRotation = preset.AllowGlanceImageAutoRotation;
-            allowCompactAmbientAnimations = preset.AllowCompactAmbientAnimations;
+            hiddenCleanupScope = preset.HiddenCacheCleanupScope;
         }
 
         bool changed = false;
@@ -244,6 +260,10 @@ public static class PerformanceSettingsPolicy
             settings.PerformanceCacheBudget,
             cacheBudget,
             value => settings.PerformanceCacheBudget = value);
+        changed |= SetIfChanged(
+            settings.HiddenCacheCleanupScope,
+            hiddenCleanupScope,
+            value => settings.HiddenCacheCleanupScope = value);
         changed |= SetIfChanged(
             settings.EnableTextMarqueeAnimations,
             allowTextMarqueeAnimations,
@@ -293,6 +313,9 @@ public static class PerformanceSettingsPolicy
                     settings.TransientWindowReleaseDelaySeconds);
             settings.PerformanceCacheBudget =
                 NormalizeCacheBudget(settings.PerformanceCacheBudget);
+            settings.HiddenCacheCleanupScope =
+                NormalizeHiddenCacheCleanupScope(
+                    settings.HiddenCacheCleanupScope);
             settings.EnableContinuousDecorativeAnimations =
                 settings.EnableTextMarqueeAnimations &&
                 settings.EnableVinylRotationAnimations &&
@@ -310,19 +333,12 @@ public static class PerformanceSettingsPolicy
         settings.TransientWindowReleaseDelaySeconds =
             preset.TransientWindowReleaseDelaySeconds;
         settings.PerformanceCacheBudget = preset.CacheBudget;
-        settings.EnableTextMarqueeAnimations =
-            preset.AllowTextMarqueeAnimations;
-        settings.EnableVinylRotationAnimations =
-            preset.AllowVinylRotationAnimations;
-        settings.EnableGlanceImageAutoRotation =
-            preset.AllowGlanceImageAutoRotation;
-        settings.EnableCompactAmbientAnimations =
-            preset.AllowCompactAmbientAnimations;
+        settings.HiddenCacheCleanupScope = preset.HiddenCacheCleanupScope;
         settings.EnableContinuousDecorativeAnimations =
-            preset.AllowTextMarqueeAnimations &&
-            preset.AllowVinylRotationAnimations &&
-            preset.AllowGlanceImageAutoRotation &&
-            preset.AllowCompactAmbientAnimations;
+            settings.EnableTextMarqueeAnimations &&
+            settings.EnableVinylRotationAnimations &&
+            settings.EnableGlanceImageAutoRotation &&
+            settings.EnableCompactAmbientAnimations;
     }
 
     private static EffectivePerformanceSettings ResolvePreset(string mode)
@@ -359,11 +375,8 @@ public static class PerformanceSettingsPolicy
             NormalizeTransientWindowReleaseDelaySeconds(
                 settings.TransientWindowReleaseDelaySeconds),
             cacheBudget,
-            hiddenDelay,
-            string.Equals(
-                cacheBudget,
-                CacheBudgetSmall,
-                StringComparison.Ordinal));
+            NormalizeHiddenCacheCleanupScope(
+                settings.HiddenCacheCleanupScope));
     }
 
     private static bool SetIfChanged<T>(

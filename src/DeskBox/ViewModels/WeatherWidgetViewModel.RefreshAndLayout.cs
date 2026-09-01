@@ -275,6 +275,25 @@ public sealed partial class WeatherWidgetViewModel
         ApplyLayoutModeForSize(width, height, previousState);
     }
 
+    internal void UpdateSystemTextScaleFactor(double textScaleFactor)
+    {
+        double normalized =
+            WindowsCompatibilityService.NormalizeSystemTextScaleFactor(
+                textScaleFactor);
+        if (Math.Abs(normalized - _systemTextScaleFactor) < 0.001)
+        {
+            return;
+        }
+
+        WeatherLayoutPresentationState previousState =
+            CaptureLayoutPresentationState();
+        _systemTextScaleFactor = normalized;
+        ApplyLayoutModeForSize(
+            _lastAvailableWidth,
+            _lastAvailableHeight,
+            previousState);
+    }
+
     internal void BeginResponsiveLayoutTransition(
         double targetWidth,
         double targetHeight,
@@ -316,7 +335,12 @@ public sealed partial class WeatherWidgetViewModel
         double height,
         WeatherLayoutPresentationState previousState)
     {
-        string newLayout = DetermineLayoutMode(width, height, _layoutMode);
+        string newLayout = DetermineLayoutMode(
+            width,
+            height,
+            _layoutMode,
+            TextSize,
+            _systemTextScaleFactor);
         if (!string.Equals(newLayout, _layoutMode, StringComparison.Ordinal))
         {
             LayoutMode = newLayout;
@@ -358,6 +382,36 @@ public sealed partial class WeatherWidgetViewModel
             OnPropertyChanged(nameof(ExpandedSecondaryMetricsVisibility));
         }
 
+        if (previousState.ExpandedHourlyDividerVisibility != currentState.ExpandedHourlyDividerVisibility)
+        {
+            OnPropertyChanged(nameof(ExpandedHourlyDividerVisibility));
+        }
+
+        if (previousState.PrimaryMetricsVisibility != currentState.PrimaryMetricsVisibility)
+        {
+            OnPropertyChanged(nameof(PrimaryMetricsVisibility));
+        }
+
+        if (previousState.MiniDescriptionVisibility != currentState.MiniDescriptionVisibility)
+        {
+            OnPropertyChanged(nameof(MiniDescriptionVisibility));
+        }
+
+        if (previousState.MiniHeaderVisibility != currentState.MiniHeaderVisibility)
+        {
+            OnPropertyChanged(nameof(MiniHeaderVisibility));
+        }
+
+        if (previousState.MiniDetailsVisibility != currentState.MiniDetailsVisibility)
+        {
+            OnPropertyChanged(nameof(MiniDetailsVisibility));
+        }
+
+        if (Math.Abs(previousState.HourlyCardWidth - currentState.HourlyCardWidth) >= 0.001)
+        {
+            OnPropertyChanged(nameof(HourlyCardWidth));
+        }
+
     }
 
     private WeatherLayoutPresentationState CaptureLayoutPresentationState()
@@ -366,14 +420,26 @@ public sealed partial class WeatherWidgetViewModel
             ExpandedSunriseVisibility,
             ExpandedHourlyPrecipVisibility,
             ExpandedHourlyCardHeight,
-            ExpandedSecondaryMetricsVisibility);
+            ExpandedSecondaryMetricsVisibility,
+            ExpandedHourlyDividerVisibility,
+            PrimaryMetricsVisibility,
+            MiniHeaderVisibility,
+            MiniDescriptionVisibility,
+            MiniDetailsVisibility,
+            HourlyCardWidth);
     }
 
     private readonly record struct WeatherLayoutPresentationState(
         Visibility ExpandedSunriseVisibility,
         Visibility ExpandedHourlyPrecipVisibility,
         double ExpandedHourlyCardHeight,
-        Visibility ExpandedSecondaryMetricsVisibility);
+        Visibility ExpandedSecondaryMetricsVisibility,
+        Visibility ExpandedHourlyDividerVisibility,
+        Visibility PrimaryMetricsVisibility,
+        Visibility MiniHeaderVisibility,
+        Visibility MiniDescriptionVisibility,
+        Visibility MiniDetailsVisibility,
+        double HourlyCardWidth);
 
     /// <summary>
     /// Determines layout mode using hysteresis: once in a higher layout, the
@@ -381,14 +447,28 @@ public sealed partial class WeatherWidgetViewModel
     /// threshold. This prevents flickering and the "almost fits" problem.
     /// Three levels: Mini, Compact, Expanded (merged Standard+Detailed).
     /// </summary>
-    internal static string DetermineLayoutMode(double width, double height, string currentLayout)
+    internal static string DetermineLayoutMode(
+        double width,
+        double height,
+        string currentLayout,
+        double textSize = SettingsService.DefaultTextSize,
+        double systemTextScaleFactor =
+            WindowsCompatibilityService.MinSystemTextScaleFactor)
     {
-        // The content area excludes the standard 46px title row.
-        const double miniUpgradeW = 178, miniUpgradeH = 126;
-        const double miniDowngradeW = 168, miniDowngradeH = 116;
+        // The content area excludes the standard title row. Breakpoints grow
+        // with the effective typography, so accessibility text scaling moves
+        // to a simpler presentation before any text has to be squeezed.
+        double typographyDelta =
+            ResolveTypographyScale(textSize, systemTextScaleFactor) - 1;
+        double miniUpgradeW = 190 + (42 * typographyDelta);
+        double miniUpgradeH = 145 + (58 * typographyDelta);
+        double miniDowngradeW = 178 + (38 * typographyDelta);
+        double miniDowngradeH = 134 + (52 * typographyDelta);
 
-        const double expandedUpgradeW = 250, expandedUpgradeH = 169;
-        const double expandedDowngradeW = 230, expandedDowngradeH = 154;
+        double expandedUpgradeW = 300 + (110 * typographyDelta);
+        double expandedUpgradeH = 260 + (150 * typographyDelta);
+        double expandedDowngradeW = 280 + (96 * typographyDelta);
+        double expandedDowngradeH = 240 + (132 * typographyDelta);
 
         // Mini is always forced for very small sizes regardless of hysteresis
         if (width <= miniDowngradeW || height <= miniDowngradeH)
@@ -447,5 +527,19 @@ public sealed partial class WeatherWidgetViewModel
                 }
                 return "Mini";
         }
+    }
+
+    internal static double ResolveTypographyScale(
+        double textSize,
+        double systemTextScaleFactor)
+    {
+        double normalizedTextSize = SettingsService.NormalizeTextSize(textSize);
+        double normalizedSystemScale =
+            WindowsCompatibilityService.NormalizeSystemTextScaleFactor(
+                systemTextScaleFactor);
+        double appearanceScale = Math.Max(
+            1,
+            normalizedTextSize / SettingsService.DefaultTextSize);
+        return normalizedSystemScale * appearanceScale;
     }
 }

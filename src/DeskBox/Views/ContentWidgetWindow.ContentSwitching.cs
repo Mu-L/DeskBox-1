@@ -154,6 +154,24 @@ public sealed partial class ContentWidgetWindow
         }
     }
 
+    internal void RunLongHiddenNoRebuildMaintenance()
+    {
+        if (IsClosing)
+        {
+            return;
+        }
+
+        // Keep both the current and bounded inactive-member views warm. Disposing
+        // either here turns the next reveal or group switch into a full XAML/data
+        // reconstruction, which is more disruptive than the retained memory.
+        _contentHost.CurrentContent?.OnWindowLongHidden();
+    }
+
+    /// <summary>
+    /// Releases only inactive group members after a long hidden period. The
+    /// current content host remains alive, so the next reveal does not rebuild
+    /// the visible widget tree; a later group switch can recreate these members.
+    /// </summary>
     internal int ReleaseLongHiddenContentResources()
     {
         if (Visible || IsClosing)

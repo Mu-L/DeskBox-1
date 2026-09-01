@@ -58,11 +58,20 @@ public sealed partial class WidgetFeedbackPresenter : UserControl
             _dismissCancellation.Token);
     }
 
-    public void Clear()
+    public void Clear(string? deduplicationKey = null)
     {
         if (!DispatcherQueue.HasThreadAccess)
         {
-            DispatcherQueue.TryEnqueue(Clear);
+            DispatcherQueue.TryEnqueue(() => Clear(deduplicationKey));
+            return;
+        }
+
+        if (deduplicationKey is not null &&
+            !string.Equals(
+                _current?.DeduplicationKey,
+                deduplicationKey,
+                StringComparison.Ordinal))
+        {
             return;
         }
 

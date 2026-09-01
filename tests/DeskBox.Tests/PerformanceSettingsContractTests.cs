@@ -50,10 +50,18 @@ public sealed class PerformanceSettingsContractTests
             xaml,
             StringComparison.Ordinal);
         Assert.Contains(
-            "SelectedVisibleIdleCacheCleanupDelaySeconds",
+            "SelectedHiddenCacheCleanupScope",
             xaml,
             StringComparison.Ordinal);
         Assert.Contains(
+            "AvailableHiddenCacheCleanupScopeOptions",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SelectedVisibleIdleCacheCleanupDelaySeconds",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
             "SelectedTransientWindowReleaseDelaySeconds",
             xaml,
             StringComparison.Ordinal);
@@ -100,16 +108,36 @@ public sealed class PerformanceSettingsContractTests
             "BackgroundMemoryCleanupDisabled",
             app,
             StringComparison.Ordinal);
-        Assert.Contains(
+        Assert.DoesNotContain(
             "TryRunHiddenWorkingSetTrimAsync(",
             app,
             StringComparison.Ordinal);
-        Assert.Contains(
+        Assert.DoesNotContain(
             "ScheduleTransientWindowRelease()",
             app,
             StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "GC.Collect(",
+            app,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "TryTrimCurrentProcessWorkingSet",
+            app,
+            StringComparison.Ordinal);
         Assert.Contains(
-            "clearVisibleCaches: performance.ClearVisibleIdleCaches",
+            "RunLongHiddenNoRebuildMaintenance()",
+            app,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ReleaseHiddenCaches()",
+            app,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ReleaseHiddenShellKindCache()",
+            app,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ReleaseHiddenMetadataCache()",
             app,
             StringComparison.Ordinal);
         Assert.Contains(

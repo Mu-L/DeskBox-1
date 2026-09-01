@@ -67,6 +67,32 @@ public sealed partial class SettingsWindow
         }
 
         var result = ViewModel.RepairDragDropPermission();
+        if (result.RequiresStartupSettings)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = SettingsRoot.XamlRoot,
+                Title = _localizationService.T("Settings.AutoStart.Title"),
+                PrimaryButtonText = _localizationService.T(
+                    "Settings.AutoStart.OpenSystemSettings"),
+                CloseButtonText = _localizationService.T("Common.Cancel"),
+                DefaultButton = ContentDialogButton.Primary,
+                Content = new TextBlock
+                {
+                    Text = _localizationService.T(
+                        "Settings.AutoStart.WindowsDisabled"),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            {
+                await OpenStartupAppsSettingsAsync();
+            }
+
+            return;
+        }
+
         if (result.NeedsRelaunch)
         {
             var dialog = new ContentDialog

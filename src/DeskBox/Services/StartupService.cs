@@ -29,6 +29,18 @@ public static class StartupService
         }
     }
 
+    public static StartupRegistrationState GetState()
+    {
+        try
+        {
+            return s_current.GetState();
+        }
+        catch
+        {
+            return StartupRegistrationState.BlockedOrFailed;
+        }
+    }
+
     public static string? GetRunValue()
     {
         try
@@ -41,39 +53,48 @@ public static class StartupService
         }
     }
 
-    public static void Enable()
+    public static StartupOperationResult Enable()
     {
         try
         {
-            s_current.Enable();
+            return s_current.Enable();
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[StartupService] Failed to enable startup: {ex.Message}");
+            return new StartupOperationResult(
+                StartupRegistrationState.BlockedOrFailed,
+                ex.Message);
         }
     }
 
-    public static void Disable()
+    public static StartupOperationResult Disable()
     {
         try
         {
-            s_current.Disable();
+            return s_current.Disable();
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[StartupService] Failed to disable startup: {ex.Message}");
+            return new StartupOperationResult(
+                StartupRegistrationState.BlockedOrFailed,
+                ex.Message);
         }
     }
 
-    public static void SetEnabled(bool enabled)
+    public static StartupOperationResult SetEnabled(bool enabled)
     {
         try
         {
-            s_current.SetEnabled(enabled);
+            return s_current.SetEnabled(enabled);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[StartupService] Failed to set startup: {ex.Message}");
+            return new StartupOperationResult(
+                StartupRegistrationState.BlockedOrFailed,
+                ex.Message);
         }
     }
 }

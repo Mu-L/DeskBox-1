@@ -75,162 +75,93 @@ public sealed class RuntimeActivityPolicyTests
     }
 
     [Fact]
-    public void MemoryCleanupPolicy_AllowsTrimOnlyWhenEveryUiSurfaceIsInactive()
+    public void BackgroundMemorySchedule_AddsDeepFinalizerAfterBoundedCacheStage()
     {
-        Assert.True(MemoryCleanupPolicy.CanTrimWorkingSet(
-            new MemoryCleanupActivitySnapshot(
-                HasVisibleWidgets: false,
-                IsWidgetInteractionActive: false,
-                IsSettingsOpen: false,
-                IsOnboardingOpen: false,
-                IsSearchPopupVisible: false,
-                IsDeskBoxForeground: false,
-                IsPointerOverDeskBox: false)));
+        TimeSpan hiddenDuration = TimeSpan.FromSeconds(30);
+        BackgroundMemoryCleanupStage due =
+            MemoryCleanupPolicy.GetDueBackgroundStages(
+                hiddenDuration,
+                softDelaySeconds: 30,
+                deepDelaySeconds: 300,
+                completedStages: BackgroundMemoryCleanupStage.None);
+
+        Assert.Equal(
+            BackgroundMemoryCleanupStage.SoftCache |
+            BackgroundMemoryCleanupStage.DeepFinalizerCollection,
+            due);
+
+        BackgroundMemoryCleanupStage noStageStillDue =
+            MemoryCleanupPolicy.GetDueBackgroundStages(
+                hiddenDuration,
+                softDelaySeconds: 30,
+                deepDelaySeconds: 300,
+            completedStages: BackgroundMemoryCleanupStage.SoftCache);
+        Assert.Equal(
+            BackgroundMemoryCleanupStage.DeepFinalizerCollection,
+            noStageStillDue);
+    }
+
+    [Fact]
+    public void BackgroundMemorySchedule_WaitsForNearestOutstandingStage()
+    {
+        TimeSpan? firstDelay =
+            MemoryCleanupPolicy.GetDelayUntilNextBackgroundStage(
+                hiddenDuration: TimeSpan.FromSeconds(29),
+                softDelaySeconds: 30,
+                deepDelaySeconds: 300,
+                completedStages: BackgroundMemoryCleanupStage.None);
+        Assert.Equal(TimeSpan.FromSeconds(1), firstDelay);
+
+        TimeSpan? finalizerDelay =
+            MemoryCleanupPolicy.GetDelayUntilNextBackgroundStage(
+                hiddenDuration: TimeSpan.FromSeconds(30),
+                softDelaySeconds: 30,
+                deepDelaySeconds: 300,
+                completedStages: BackgroundMemoryCleanupStage.SoftCache);
+        Assert.Equal(TimeSpan.Zero, finalizerDelay);
+
+        TimeSpan? deepDelay =
+            MemoryCleanupPolicy.GetDelayUntilNextBackgroundStage(
+                hiddenDuration: TimeSpan.FromSeconds(30),
+                softDelaySeconds: 30,
+                deepDelaySeconds: 300,
+                completedStages: BackgroundMemoryCleanupStage.SoftCache |
+                    BackgroundMemoryCleanupStage.DeepFinalizerCollection);
+        Assert.Equal(TimeSpan.FromSeconds(270), deepDelay);
     }
 
     [Theory]
-    [InlineData(true, false, false, false, false, false, false)]
-    [InlineData(false, true, false, false, false, false, false)]
-    [InlineData(false, false, true, false, false, false, false)]
-    [InlineData(false, false, false, true, false, false, false)]
-    [InlineData(false, false, false, false, true, false, false)]
-    [InlineData(false, false, false, false, false, true, false)]
-    [InlineData(false, false, false, false, false, false, true)]
-    public void MemoryCleanupPolicy_BlocksTrimWhileAnyUiSurfaceIsActive(
-        bool hasVisibleWidgets,
-        bool isWidgetInteractionActive,
-        bool isSettingsOpen,
-        bool isOnboardingOpen,
-        bool isSearchPopupVisible,
-        bool isDeskBoxForeground,
-        bool isPointerOverDeskBox)
+    [InlineData(1, 5)]
+    [InlineData(2, 10)]
+    [InlineData(3, 20)]
+    [InlineData(4, 30)]
+    [InlineData(12, 30)]
+    public void BackgroundMemoryRetryDelay_UsesCappedExponentialBackoff(
+        int attemptNumber,
+        int expectedSeconds)
     {
-        Assert.False(MemoryCleanupPolicy.CanTrimWorkingSet(
-            new MemoryCleanupActivitySnapshot(
-                hasVisibleWidgets,
-                isWidgetInteractionActive,
-                isSettingsOpen,
-                isOnboardingOpen,
-                isSearchPopupVisible,
-                isDeskBoxForeground,
-                isPointerOverDeskBox)));
+        Assert.Equal(
+            TimeSpan.FromSeconds(expectedSeconds),
+            MemoryCleanupPolicy.GetCappedBackgroundRetryDelay(
+                attemptNumber,
+                initialDelaySeconds: 5,
+                maximumDelaySeconds: 30));
     }
 
     [Fact]
-    public void MemoryCleanupPolicy_AllowsOneManagedCollectionWithVisibleIdleWidgets()
+    public void WidgetMemoryVisibilitySnapshot_UsesNativeVisibilityForCleanup()
     {
-        Assert.True(MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
-            new MemoryCleanupActivitySnapshot(
-                HasVisibleWidgets: true,
-                IsWidgetInteractionActive: false,
-                IsSettingsOpen: false,
-                IsOnboardingOpen: false,
-                IsSearchPopupVisible: false,
-                IsDeskBoxForeground: false,
-                IsPointerOverDeskBox: false),
-            managedHeapBytes: MemoryCleanupPolicy.VisibleIdleManagedHeapThresholdBytes,
-            workingSetBytes: 0,
-            privateBytes: 0,
-            allocatedSinceLastCollection: 0,
-            hasCompletedVisibleIdleCollection: false));
-    }
+        var nativeHidden = new WidgetMemoryVisibilitySnapshot(
+            LoadedWindowCount: 1,
+            LogicalVisibleCount: 1,
+            NativeVisibleCount: 0);
+        var nativeVisible = new WidgetMemoryVisibilitySnapshot(
+            LoadedWindowCount: 1,
+            LogicalVisibleCount: 0,
+            NativeVisibleCount: 1);
 
-    [Theory]
-    [InlineData(true, false, false, false)]
-    [InlineData(false, true, false, false)]
-    [InlineData(false, false, true, false)]
-    [InlineData(false, false, false, true)]
-    public void MemoryCleanupPolicy_BlocksVisibleIdleCollectionDuringActivity(
-        bool isWidgetInteractionActive,
-        bool isSettingsOpen,
-        bool isOnboardingOpen,
-        bool isSearchPopupVisible)
-    {
-        Assert.False(MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
-            new MemoryCleanupActivitySnapshot(
-                HasVisibleWidgets: true,
-                IsWidgetInteractionActive: isWidgetInteractionActive,
-                IsSettingsOpen: isSettingsOpen,
-                IsOnboardingOpen: isOnboardingOpen,
-                IsSearchPopupVisible: isSearchPopupVisible,
-                IsDeskBoxForeground: false,
-                IsPointerOverDeskBox: false),
-            managedHeapBytes: MemoryCleanupPolicy.VisibleIdleManagedHeapThresholdBytes,
-            workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
-            privateBytes: MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
-            allocatedSinceLastCollection: MemoryCleanupPolicy.VisibleIdleMinimumAllocationBytes,
-            hasCompletedVisibleIdleCollection: false));
-    }
-
-    [Fact]
-    public void MemoryCleanupPolicy_RequiresFreshAllocationsAfterFirstVisibleIdleCollection()
-    {
-        var snapshot = new MemoryCleanupActivitySnapshot(
-            HasVisibleWidgets: true,
-            IsWidgetInteractionActive: false,
-            IsSettingsOpen: false,
-            IsOnboardingOpen: false,
-            IsSearchPopupVisible: false,
-            IsDeskBoxForeground: false,
-            IsPointerOverDeskBox: false);
-
-        Assert.False(MemoryCleanupPolicy.CanTrimWorkingSet(snapshot));
-        Assert.False(MemoryCleanupPolicy.CanTrimWorkingSet(
-            snapshot with { IsDeskBoxForeground = true }));
-
-        Assert.False(MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
-            snapshot,
-            managedHeapBytes: MemoryCleanupPolicy.VisibleIdleManagedHeapThresholdBytes,
-            workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
-            privateBytes: MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
-            allocatedSinceLastCollection: MemoryCleanupPolicy.VisibleIdleMinimumAllocationBytes - 1,
-            hasCompletedVisibleIdleCollection: true));
-        Assert.True(MemoryCleanupPolicy.ShouldCollectVisibleIdleManagedMemory(
-            snapshot,
-            managedHeapBytes: MemoryCleanupPolicy.VisibleIdleManagedHeapThresholdBytes,
-            workingSetBytes: MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
-            privateBytes: MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
-            allocatedSinceLastCollection: MemoryCleanupPolicy.VisibleIdleMinimumAllocationBytes,
-            hasCompletedVisibleIdleCollection: true));
-    }
-
-    [Fact]
-    public void VisibleIdleWorkingSetTrim_RequiresBothThresholdsAndNoVisualWork()
-    {
-        var snapshot = new MemoryCleanupActivitySnapshot(
-            HasVisibleWidgets: true,
-            IsWidgetInteractionActive: false,
-            IsSettingsOpen: false,
-            IsOnboardingOpen: false,
-            IsSearchPopupVisible: false,
-            IsDeskBoxForeground: false,
-            IsPointerOverDeskBox: false);
-
-        Assert.True(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
-            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
-            hasActiveVisualWork: false));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes - 1,
-            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
-            hasActiveVisualWork: false));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
-            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold - 1,
-            hasActiveVisualWork: false));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
-            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
-            hasActiveVisualWork: true));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimVisibleIdleWorkingSet(
-            snapshot with { IsPointerOverDeskBox = true },
-            MemoryCleanupPolicy.VisibleIdleWorkingSetThresholdBytes,
-            MemoryCleanupPolicy.VisibleIdlePrivateBytesThreshold,
-            hasActiveVisualWork: false));
+        Assert.False(nativeHidden.HasNativeVisibleWidgets);
+        Assert.True(nativeVisible.HasNativeVisibleWidgets);
     }
 
     [Fact]
@@ -261,10 +192,10 @@ public sealed class RuntimeActivityPolicyTests
     }
 
     [Fact]
-    public void MemoryCleanupPolicy_TrimsHiddenWorkingSetOnlyAboveThreshold()
+    public void MemoryCleanupPolicy_AllowsDeepCollectionOnlyWhenTransientUiIsIdle()
     {
         var snapshot = new MemoryCleanupActivitySnapshot(
-            HasVisibleWidgets: false,
+            HasVisibleWidgets: true,
             IsWidgetInteractionActive: false,
             IsSettingsOpen: false,
             IsOnboardingOpen: false,
@@ -272,46 +203,13 @@ public sealed class RuntimeActivityPolicyTests
             IsDeskBoxForeground: false,
             IsPointerOverDeskBox: false);
 
-        Assert.True(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimHiddenIdleWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.HiddenIdleWorkingSetTrimThresholdBytes - 1));
-    }
-
-    [Fact]
-    public void ResourceSaverWorkingSetTrim_RequiresInactiveUiAndHighUsageOrPressure()
-    {
-        var snapshot = new MemoryCleanupActivitySnapshot(
-            HasVisibleWidgets: false,
-            IsWidgetInteractionActive: false,
-            IsSettingsOpen: false,
-            IsOnboardingOpen: false,
-            IsSearchPopupVisible: false,
-            IsDeskBoxForeground: false,
-            IsPointerOverDeskBox: false);
-
-        Assert.True(MemoryCleanupPolicy.ShouldTrimResourceSaverHiddenWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.ResourceSaverWorkingSetTrimHighBytes,
-            memoryLoadBytes: 0,
-            highMemoryLoadThresholdBytes: 1_000));
-        Assert.True(MemoryCleanupPolicy.ShouldTrimResourceSaverHiddenWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.ResourceSaverWorkingSetTrimMinimumBytes,
-            memoryLoadBytes: 850,
-            highMemoryLoadThresholdBytes: 1_000));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimResourceSaverHiddenWorkingSet(
-            snapshot,
-            MemoryCleanupPolicy.ResourceSaverWorkingSetTrimMinimumBytes,
-            memoryLoadBytes: 849,
-            highMemoryLoadThresholdBytes: 1_000));
-        Assert.False(MemoryCleanupPolicy.ShouldTrimResourceSaverHiddenWorkingSet(
-            snapshot with { HasVisibleWidgets = true },
-            MemoryCleanupPolicy.ResourceSaverWorkingSetTrimHighBytes,
-            memoryLoadBytes: 1_000,
-            highMemoryLoadThresholdBytes: 1_000));
+        Assert.True(MemoryCleanupPolicy.IsDeepCleanupCandidate(snapshot));
+        Assert.False(MemoryCleanupPolicy.IsDeepCleanupCandidate(
+            snapshot with { IsSettingsOpen = true }));
+        Assert.False(MemoryCleanupPolicy.IsDeepCleanupCandidate(
+            snapshot with { IsWidgetInteractionActive = true }));
+        Assert.False(MemoryCleanupPolicy.IsDeepCleanupCandidate(
+            snapshot with { IsPointerOverDeskBox = true }));
     }
 
     [Theory]

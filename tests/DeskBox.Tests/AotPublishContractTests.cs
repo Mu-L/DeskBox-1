@@ -400,7 +400,7 @@ public sealed class AotPublishContractTests
         Assert.Contains("FolderShortcutWriteCreatesParentAndInvalidatesStoredMetadataCache", differentialTests, StringComparison.Ordinal);
         Assert.Contains("ResolveWithUi_ValidShortcutForwardsOwnerAndFrozenFlags", differentialTests, StringComparison.Ordinal);
         Assert.Contains("ApplicationShortcutUiResolveKeepsLinkAndInvalidatesStoredMetadataCache", differentialTests, StringComparison.Ordinal);
-        Assert.Contains("ViewModel.OpenItem(item, _hostWindowHandle)", fileNavigation, StringComparison.Ordinal);
+        Assert.Contains("await OpenFileItemAsync(item)", fileNavigation, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -430,6 +430,11 @@ public sealed class AotPublishContractTests
         Assert.Contains(
             "public static OpenItemResult OpenItem(WidgetItem item, IntPtr ownerHwnd)",
             fileService,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public static async Task<OpenItemResult> OpenItemAsync(",
+            File.ReadAllText(TestPaths.FromRepository(
+                "src/DeskBox/Services/FileService.OpenItem.cs")),
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "OpenItem(WidgetItem item, IntPtr ownerHwnd = default)",
@@ -538,7 +543,7 @@ public sealed class AotPublishContractTests
 
     [Theory]
     [InlineData("src/DeskBox/ViewModels/SearchPopupViewModel.cs", 15)]
-    [InlineData("src/DeskBox/ViewModels/SettingsViewModel.cs", 68)]
+    [InlineData("src/DeskBox/ViewModels/SettingsViewModel.cs", 69)]
     public void AotSensitiveViewModels_UseObservablePartialProperties(
         string relativePath,
         int expectedCount)

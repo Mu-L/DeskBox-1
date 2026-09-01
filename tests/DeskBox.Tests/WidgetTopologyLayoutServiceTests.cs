@@ -6,6 +6,20 @@ namespace DeskBox.Tests;
 public sealed class WidgetTopologyLayoutServiceTests
 {
     [Fact]
+    public void TopologyKey_IgnoresTransientAliasesForTheSamePhysicalMonitors()
+    {
+        WidgetDisplayTopologySnapshot initial = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1),
+            Monitor("external", @"\\.\DISPLAY2", false, 1920, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot reEnumerated = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY2", true, 0, 0, 1920, 1040, 1),
+            Monitor("external", @"\\.\DISPLAY1", false, 1920, 0, 1920, 1040, 1));
+
+        Assert.StartsWith("v3-", initial.Key, StringComparison.Ordinal);
+        Assert.Equal(initial.Key, reEnumerated.Key);
+    }
+
+    [Fact]
     public void FirstActivation_CapturesExistingGeometryWithoutChangingIt()
     {
         var widget = CreateWidget();
@@ -78,6 +92,92 @@ public sealed class WidgetTopologyLayoutServiceTests
         Assert.Equal(620, widget.Height);
         Assert.Equal(44, widget.X);
         Assert.Equal(36, widget.Y);
+    }
+
+    [Fact]
+    public void LaptopAndDualMonitorRoundTrip_RestoresEachIndependentLayout()
+    {
+        var widget = CreateWidget();
+        widget.Name = "Shared widget identity";
+        var settings = new AppSettings { Widgets = [widget] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot laptop = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot dual = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1),
+            Monitor("external", @"\\.\DISPLAY2", false, 1920, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot dualWithReassignedAliases =
+            WidgetTopologyLayoutService.CreateSnapshotForTest(
+                Monitor("panel", @"\\.\DISPLAY2", true, 0, 0, 1920, 1040, 1),
+                Monitor("external", @"\\.\DISPLAY1", false, 1920, 0, 1920, 1040, 1));
+
+        service.Activate(settings, laptop);
+        service.Activate(settings, dual);
+        PlaceOnExternalMonitor(widget, @"\\.\DISPLAY2");
+
+        service.Activate(settings, laptop);
+
+        Assert.Equal(200, widget.X);
+        Assert.Equal(160, widget.Y);
+        Assert.Equal(600, widget.Width);
+        Assert.Equal(500, widget.Height);
+        Assert.Equal(@"\\.\DISPLAY1", widget.PositionMonitorDeviceName);
+        Assert.Equal("Shared widget identity", widget.Name);
+
+        service.Activate(settings, dualWithReassignedAliases);
+
+        Assert.Equal(2140, widget.X);
+        Assert.Equal(120, widget.Y);
+        Assert.Equal(720, widget.Width);
+        Assert.Equal(600, widget.Height);
+        Assert.Equal(@"\\.\DISPLAY1", widget.PositionMonitorDeviceName);
+        Assert.Equal(false, widget.PositionMonitorWasPrimary);
+        Assert.Equal("Shared widget identity", widget.Name);
+        Assert.Equal(dual.Key, dualWithReassignedAliases.Key);
+        Assert.Equal(2, settings.WidgetTopologyLayouts.Count);
+    }
+
+    [Fact]
+    public void LegacyCompatibleDualProfile_IsRestoredAndRetainedUnderStableKey()
+    {
+        var widget = CreateWidget();
+        var settings = new AppSettings { Widgets = [widget] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot laptop = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot dual = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1),
+            Monitor("external", @"\\.\DISPLAY2", false, 1920, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot dualWithReassignedAliases =
+            WidgetTopologyLayoutService.CreateSnapshotForTest(
+                Monitor("panel", @"\\.\DISPLAY2", true, 0, 0, 1920, 1040, 1),
+                Monitor("external", @"\\.\DISPLAY1", false, 1920, 0, 1920, 1040, 1));
+
+        service.Activate(settings, laptop);
+        service.Activate(settings, dual);
+        PlaceOnExternalMonitor(widget, @"\\.\DISPLAY2");
+        service.Activate(settings, laptop);
+
+        WidgetTopologyLayoutProfile legacyLaptop = settings.WidgetTopologyLayouts[laptop.Key];
+        WidgetTopologyLayoutProfile legacyDual = settings.WidgetTopologyLayouts[dual.Key];
+        settings.WidgetTopologyLayouts = new Dictionary<string, WidgetTopologyLayoutProfile>
+        {
+            ["v1-legacy-laptop"] = legacyLaptop,
+            ["v1-legacy-dual"] = legacyDual
+        };
+        settings.ActiveWidgetTopologyKey = "v1-legacy-laptop";
+
+        service.Activate(settings, dualWithReassignedAliases);
+
+        Assert.Equal(dualWithReassignedAliases.Key, settings.ActiveWidgetTopologyKey);
+        Assert.Equal(2140, widget.X);
+        Assert.Equal(120, widget.Y);
+        Assert.Equal(720, widget.Width);
+        Assert.Equal(600, widget.Height);
+        Assert.Equal(@"\\.\DISPLAY1", widget.PositionMonitorDeviceName);
+        Assert.True(settings.WidgetTopologyLayouts.ContainsKey("v1-legacy-laptop"));
+        Assert.True(settings.WidgetTopologyLayouts.ContainsKey("v1-legacy-dual"));
+        Assert.True(settings.WidgetTopologyLayouts.ContainsKey(dualWithReassignedAliases.Key));
     }
 
     [Fact]
@@ -184,6 +284,20 @@ public sealed class WidgetTopologyLayoutServiceTests
         PositionMonitorWasPrimary = true,
         PositionMonitorKey = "0:0:3840:2080"
     };
+
+    private static void PlaceOnExternalMonitor(WidgetConfig widget, string deviceName)
+    {
+        widget.X = 2140;
+        widget.Y = 120;
+        widget.Width = 720;
+        widget.Height = 600;
+        widget.PositionAnchor = WidgetPositionAnchors.LeftTop;
+        widget.PositionMarginX = 220;
+        widget.PositionMarginY = 120;
+        widget.PositionMonitorDeviceName = deviceName;
+        widget.PositionMonitorWasPrimary = false;
+        widget.PositionMonitorKey = "1920:0:1920:1040";
+    }
 
     private static WidgetTopologyMonitorProfile Monitor(
         string stableId,

@@ -1332,19 +1332,41 @@ public sealed partial class FileSurfaceContent
 
     private void ApplyStackProjectionChange(Action change)
     {
+        _stackProjectionTransitionPending = true;
         ResetSelectionForStackProjectionChange();
         change();
-        DispatcherQueue.TryEnqueue(() =>
+        if (!DispatcherQueue.TryEnqueue(() =>
         {
             ReconcileStackPopover();
             ResetSelectionForStackProjectionChange();
+            try
+            {
+                ItemsGrid.UpdateLayout();
+                ItemsList.UpdateLayout();
+            }
+            catch (InvalidOperationException)
+            {
+                // A recycled content host can be detached during a settings
+                // transition. The next layout turn still establishes the
+                // correct containers before drag preview is enabled.
+            }
             // Collection reconciliation and container recycling can finish on
             // the following layout turn. Clear once more after that work so a
             // collapsed stack header cannot donate IsSelected to a child.
-            DispatcherQueue.TryEnqueue(
+            if (!DispatcherQueue.TryEnqueue(
                 Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                ResetSelectionForStackProjectionChange);
-        });
+                () =>
+                {
+                    ResetSelectionForStackProjectionChange();
+                    _stackProjectionTransitionPending = false;
+                }))
+            {
+                _stackProjectionTransitionPending = false;
+            }
+        }))
+        {
+            _stackProjectionTransitionPending = false;
+        }
     }
 
     private void ResetSelectionForStackProjectionChange()

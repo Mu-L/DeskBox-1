@@ -6,7 +6,7 @@ namespace DeskBox.Tests;
 public sealed class PerformanceSettingsPolicyTests
 {
     [Fact]
-    public void Defaults_ResolveToBalancedRetentionWithoutWorkingSetTrim()
+    public void Defaults_ResolveToBalancedWarmRetention()
     {
         var settings = new AppSettings();
 
@@ -24,9 +24,8 @@ public sealed class PerformanceSettingsPolicyTests
             PerformanceSettingsPolicy.CacheBudgetBalanced,
             effective.CacheBudget);
         Assert.Equal(
-            PerformanceSettingsPolicy.CleanupNever,
-            effective.HiddenIdleWorkingSetTrimDelaySeconds);
-        Assert.False(effective.ClearVisibleIdleCaches);
+            PerformanceSettingsPolicy.HiddenCacheCleanupScopeAllRecreatable,
+            effective.HiddenCacheCleanupScope);
         Assert.True(effective.AllowTextMarqueeAnimations);
         Assert.True(effective.AllowVinylRotationAnimations);
         Assert.True(effective.AllowGlanceImageAutoRotation);
@@ -35,10 +34,14 @@ public sealed class PerformanceSettingsPolicyTests
     }
 
     [Fact]
-    public void ResourceSaver_ReleasesRecreatableResourcesBeforeConditionalTrim()
+    public void ResourceSaver_UsesSmallBoundedCachesWithoutChangingInteractionAnimations()
     {
         var settings = new AppSettings
         {
+            EnableTextMarqueeAnimations = true,
+            EnableVinylRotationAnimations = false,
+            EnableGlanceImageAutoRotation = true,
+            EnableCompactAmbientAnimations = false,
             WidgetAnimationEffect = "Fade",
             WidgetAnimationSpeed = "Slow",
             WidgetCompactAnimationEffect = "Snappy",
@@ -61,13 +64,17 @@ public sealed class PerformanceSettingsPolicyTests
             PerformanceSettingsPolicy.CacheBudgetSmall,
             effective.CacheBudget);
         Assert.Equal(
-            10 * 60,
-            effective.HiddenIdleWorkingSetTrimDelaySeconds);
-        Assert.True(effective.ClearVisibleIdleCaches);
-        Assert.False(effective.AllowTextMarqueeAnimations);
+            PerformanceSettingsPolicy.HiddenCacheCleanupScopeAllRecreatable,
+            effective.HiddenCacheCleanupScope);
+        Assert.True(effective.AllowTextMarqueeAnimations);
         Assert.False(effective.AllowVinylRotationAnimations);
-        Assert.False(effective.AllowGlanceImageAutoRotation);
+        Assert.True(effective.AllowGlanceImageAutoRotation);
         Assert.False(effective.AllowCompactAmbientAnimations);
+        Assert.True(settings.EnableTextMarqueeAnimations);
+        Assert.False(settings.EnableVinylRotationAnimations);
+        Assert.True(settings.EnableGlanceImageAutoRotation);
+        Assert.False(settings.EnableCompactAmbientAnimations);
+        Assert.False(settings.EnableContinuousDecorativeAnimations);
         Assert.Equal("Fade", settings.WidgetAnimationEffect);
         Assert.Equal("Slow", settings.WidgetAnimationSpeed);
         Assert.Equal("Snappy", settings.WidgetCompactAnimationEffect);
@@ -149,35 +156,12 @@ public sealed class PerformanceSettingsPolicyTests
             PerformanceSettingsPolicy.CacheBudgetLarge,
             effective.CacheBudget);
         Assert.Equal(
-            PerformanceSettingsPolicy.CleanupAfter5Minutes,
-            effective.HiddenIdleWorkingSetTrimDelaySeconds);
+            PerformanceSettingsPolicy.HiddenCacheCleanupScopeAllRecreatable,
+            effective.HiddenCacheCleanupScope);
         Assert.False(effective.AllowTextMarqueeAnimations);
         Assert.True(effective.AllowVinylRotationAnimations);
         Assert.False(effective.AllowGlanceImageAutoRotation);
         Assert.True(effective.AllowCompactAmbientAnimations);
-        Assert.False(effective.ClearVisibleIdleCaches);
-    }
-
-    [Theory]
-    [InlineData(PerformanceSettingsPolicy.CleanupAfter30Seconds)]
-    [InlineData(PerformanceSettingsPolicy.CleanupAfter1Minute)]
-    [InlineData(PerformanceSettingsPolicy.CleanupAfter5Minutes)]
-    public void Custom_HiddenCleanupDelayAlsoSchedulesWorkingSetTrim(
-        int delaySeconds)
-    {
-        var settings = new AppSettings
-        {
-            PerformanceMode = PerformanceSettingsPolicy.ModeCustom,
-            HiddenCacheCleanupDelaySeconds = delaySeconds
-        };
-
-        EffectivePerformanceSettings effective =
-            PerformanceSettingsPolicy.Resolve(settings);
-
-        Assert.Equal(delaySeconds, effective.HiddenCacheCleanupDelaySeconds);
-        Assert.Equal(
-            delaySeconds,
-            effective.HiddenIdleWorkingSetTrimDelaySeconds);
     }
 
     [Theory]
@@ -247,11 +231,80 @@ public sealed class PerformanceSettingsPolicyTests
         Assert.Equal(
             PerformanceSettingsPolicy.CacheBudgetBalanced,
             settings.PerformanceCacheBudget);
-        Assert.True(settings.EnableTextMarqueeAnimations);
+        Assert.False(settings.EnableTextMarqueeAnimations);
+        Assert.False(settings.EnableVinylRotationAnimations);
+        Assert.False(settings.EnableGlanceImageAutoRotation);
+        Assert.False(settings.EnableCompactAmbientAnimations);
+        Assert.False(settings.EnableContinuousDecorativeAnimations);
+    }
+
+    [Fact]
+    public void Custom_AllowsWarmHiddenCacheRetention()
+    {
+        var settings = new AppSettings
+        {
+            PerformanceMode = PerformanceSettingsPolicy.ModeCustom,
+            HiddenCacheCleanupScope =
+                PerformanceSettingsPolicy.HiddenCacheCleanupScopeWarm
+        };
+
+        EffectivePerformanceSettings effective =
+            PerformanceSettingsPolicy.Resolve(settings);
+
+        Assert.Equal(
+            PerformanceSettingsPolicy.HiddenCacheCleanupScopeWarm,
+            effective.HiddenCacheCleanupScope);
+        Assert.False(PerformanceSettingsPolicy.Normalize(settings));
+    }
+
+    [Fact]
+    public void Normalize_RepairsUnknownHiddenCleanupScopeToFullRecreatable()
+    {
+        var settings = new AppSettings
+        {
+            PerformanceMode = PerformanceSettingsPolicy.ModeCustom,
+            HiddenCacheCleanupScope = "unknown"
+        };
+
+        Assert.True(PerformanceSettingsPolicy.Normalize(settings));
+        Assert.Equal(
+            PerformanceSettingsPolicy.HiddenCacheCleanupScopeAllRecreatable,
+            settings.HiddenCacheCleanupScope);
+    }
+
+    [Theory]
+    [InlineData(PerformanceSettingsPolicy.ModeBalanced)]
+    [InlineData(PerformanceSettingsPolicy.ModeResourceSaver)]
+    public void Presets_NormalizeCleanupPolicyWithoutOverwritingAnimationChoices(
+        string mode)
+    {
+        var settings = new AppSettings
+        {
+            PerformanceMode = mode,
+            HiddenCacheCleanupDelaySeconds = 17,
+            VisibleIdleCacheCleanupDelaySeconds = 18,
+            TransientWindowReleaseDelaySeconds = 19,
+            PerformanceCacheBudget = "unbounded",
+            EnableTextMarqueeAnimations = false,
+            EnableVinylRotationAnimations = true,
+            EnableGlanceImageAutoRotation = false,
+            EnableCompactAmbientAnimations = true,
+            EnableContinuousDecorativeAnimations = true
+        };
+
+        Assert.True(PerformanceSettingsPolicy.Normalize(settings));
+        EffectivePerformanceSettings effective =
+            PerformanceSettingsPolicy.Resolve(settings);
+
+        Assert.False(settings.EnableTextMarqueeAnimations);
         Assert.True(settings.EnableVinylRotationAnimations);
-        Assert.True(settings.EnableGlanceImageAutoRotation);
+        Assert.False(settings.EnableGlanceImageAutoRotation);
         Assert.True(settings.EnableCompactAmbientAnimations);
-        Assert.True(settings.EnableContinuousDecorativeAnimations);
+        Assert.False(settings.EnableContinuousDecorativeAnimations);
+        Assert.False(effective.AllowTextMarqueeAnimations);
+        Assert.True(effective.AllowVinylRotationAnimations);
+        Assert.False(effective.AllowGlanceImageAutoRotation);
+        Assert.True(effective.AllowCompactAmbientAnimations);
     }
 
     [Fact]

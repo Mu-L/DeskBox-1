@@ -31,8 +31,8 @@ public sealed partial class WeatherWidgetContent : UserControl
 
     public WeatherWidgetContent(WeatherWidgetViewModel viewModel)
     {
-        InitializeComponent();
         _viewModel = viewModel;
+        InitializeComponent();
         DataContext = _viewModel;
 
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -43,6 +43,8 @@ public sealed partial class WeatherWidgetContent : UserControl
         // Collect all refresh icon FontIcons after template is applied
         FindRefreshIcons();
     }
+
+    public WeatherWidgetViewModel ViewModel => _viewModel;
 
     private void WeatherWidgetContent_ActualThemeChanged(FrameworkElement sender, object args)
     {
@@ -91,6 +93,11 @@ public sealed partial class WeatherWidgetContent : UserControl
         UpdateWeatherViewSelection();
         App.Current.ThemeService.AppearanceChanged -= OnThemeAppearanceChanged;
         App.Current.ThemeService.AppearanceChanged += OnThemeAppearanceChanged;
+        WindowsCompatibilityService.TextScaleFactorChanged -=
+            WeatherWidgetContent_TextScaleFactorChanged;
+        WindowsCompatibilityService.TextScaleFactorChanged +=
+            WeatherWidgetContent_TextScaleFactorChanged;
+        RefreshWeatherTextScaleFactor();
         ApplySegmentedAccent();
 
         // Ensure the layout mode reflects the actual control size.
@@ -105,7 +112,31 @@ public sealed partial class WeatherWidgetContent : UserControl
     {
         _isViewLoaded = false;
         App.Current.ThemeService.AppearanceChanged -= OnThemeAppearanceChanged;
+        WindowsCompatibilityService.TextScaleFactorChanged -=
+            WeatherWidgetContent_TextScaleFactorChanged;
         try { _refreshRotationStoryboard?.Stop(); } catch { }
+    }
+
+    private void WeatherWidgetContent_TextScaleFactorChanged()
+    {
+        if (!_isViewLoaded)
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(RefreshWeatherTextScaleFactor);
+            return;
+        }
+
+        RefreshWeatherTextScaleFactor();
+    }
+
+    private void RefreshWeatherTextScaleFactor()
+    {
+        _viewModel.UpdateSystemTextScaleFactor(
+            WindowsCompatibilityService.ResolveSystemTextScaleFactor());
     }
 
     private void OnThemeAppearanceChanged()
@@ -210,14 +241,14 @@ public sealed partial class WeatherWidgetContent : UserControl
 
     private void UpdateRichSkinTextTheme()
     {
-        // Standard follows the app theme. Rich follows the gradient contrast,
-        // independently of the app theme, so a dark weather backdrop never
-        // receives dark text (and vice versa).
-        RootGrid.RequestedTheme = !_viewModel.UsesRichSkin
-            ? ElementTheme.Default
-            : _viewModel.RichSkinUsesLightText
-                ? ElementTheme.Dark
-                : ElementTheme.Light;
+        // Foreground colors are owned by the widget window.  The window applies
+        // the selected Follow theme / light / dark / custom palette to its local
+        // semantic brushes, and every weather label resolves those same brushes.
+        // Do not introduce a weather-local RequestedTheme here: a local theme
+        // boundary would make ThemeResource labels resolve to framework white
+        // brushes while inherited labels still use the user's selected color.
+        RequestedTheme = ElementTheme.Default;
+        RootGrid.RequestedTheme = ElementTheme.Default;
     }
 
     private void UserControl_SizeChanged(object sender, SizeChangedEventArgs e)

@@ -58,9 +58,19 @@ public abstract partial class WidgetWindowBase
 
         try
         {
-            Win32Helper.SetWindowTheme(HWnd, isDark);
-            Win32Helper.ApplyFullWindowFrame(HWnd);
-            ApplyDwmBorderStyle(isDark);
+            // The immersive-dark-mode attribute, sheet-of-glass frame and DWM
+            // border depend only on the theme, not the material. Re-issuing
+            // them on every material change churns DWM state natively, so they
+            // only run when the theme flipped or when no signature was applied
+            // yet (first apply / post-dispose / after a failed apply).
+            bool dwmThemeChanged = _lastAppliedBackdropSignature is not { } lastSignature ||
+                lastSignature.IsDark != isDark;
+            if (dwmThemeChanged)
+            {
+                Win32Helper.SetWindowTheme(HWnd, isDark);
+                Win32Helper.ApplyFullWindowFrame(HWnd);
+                ApplyDwmBorderStyle(isDark);
+            }
 
             int backdropType;
             bool controllerApplied = false;
@@ -440,26 +450,11 @@ public abstract partial class WidgetWindowBase
 
     private void InactiveBackdropCleanupTimer_Tick(DispatcherQueueTimer sender, object args)
     {
+        // Controllers of the inactive material family stay alive but detached.
+        // Disposing them here used to force a full controller recreation on the
+        // next material switch, which leaks native composition memory and DWM
+        // handles per switch; CleanupBase releases both on window teardown.
         sender.Stop();
-        string materialType = SettingsService.Settings.WidgetMaterialType;
-        bool releasedController = false;
-
-        if (!SettingsService.IsAcrylicMaterial(materialType) && AcrylicController is not null)
-        {
-            DisposeAcrylicController();
-            releasedController = true;
-        }
-
-        if (!SettingsService.IsMicaMaterial(materialType) && MicaController is not null)
-        {
-            DisposeMicaController();
-            releasedController = true;
-        }
-
-        if (releasedController)
-        {
-            App.ScheduleLightMemoryCleanup();
-        }
     }
 
     protected bool ApplyMicaController(
@@ -478,11 +473,10 @@ public abstract partial class WidgetWindowBase
         BackdropConfiguration.IsInputActive = true;
         BackdropConfiguration.Theme = isDark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
 
-        if (MicaController is not null && _micaControllerUsesAlt != useAlt)
-        {
-            DisposeMicaController();
-        }
-
+        // Kind is a mutable property: switching Mica/BaseAlt must reuse the
+        // controller. Recreating system backdrop controllers on every material
+        // change leaks native composition memory and DWM handles that no GC or
+        // working-set trim reclaims; detached controllers stay idle instead.
         if (MicaController is null)
         {
             DetachAcrylicControllerTarget();
@@ -490,7 +484,6 @@ public abstract partial class WidgetWindowBase
             {
                 Kind = useAlt ? MicaKind.BaseAlt : MicaKind.Base
             };
-            _micaControllerUsesAlt = useAlt;
         }
 
         DetachAcrylicControllerTarget();
@@ -541,7 +534,6 @@ public abstract partial class WidgetWindowBase
         {
             MicaController = null;
             MicaControllerAttached = false;
-            _micaControllerUsesAlt = null;
         }
     }
 
@@ -585,13 +577,6 @@ public abstract partial class WidgetWindowBase
             ? ColorHelper.FromArgb(0xFF, 0x20, 0x20, 0x20)
             : ColorHelper.FromArgb(0xFF, 0xF3, 0xF3, 0xF3);
 
-        if (AcrylicController is not null &&
-            !AcrylicController.IsClosed &&
-            _acrylicControllerUsesBase != useBase)
-        {
-            DisposeAcrylicController();
-        }
-
         if (AcrylicController is null || AcrylicController.IsClosed)
         {
             DetachMicaControllerTarget();
@@ -599,7 +584,6 @@ public abstract partial class WidgetWindowBase
             {
                 Kind = useBase ? DesktopAcrylicKind.Base : DesktopAcrylicKind.Thin
             };
-            _acrylicControllerUsesBase = useBase;
         }
 
         DetachMicaControllerTarget();
@@ -649,7 +633,6 @@ public abstract partial class WidgetWindowBase
         {
             AcrylicController = null;
             AcrylicControllerAttached = false;
-            _acrylicControllerUsesBase = null;
         }
     }
 

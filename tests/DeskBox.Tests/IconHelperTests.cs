@@ -1,9 +1,23 @@
 using DeskBox.Helpers;
+using System.Drawing;
+using System.Reflection;
 
 namespace DeskBox.Tests;
 
 public class IconHelperTests
 {
+    [Theory]
+    [InlineData("solution.sln", true)]
+    [InlineData("solution.slnx", true)]
+    [InlineData("solution.csproj", false)]
+    [InlineData("solution.sln.bak", false)]
+    public void SolutionFilePathDetection_IsLimitedToSolutionFormats(
+        string path,
+        bool expected)
+    {
+        Assert.Equal(expected, IconHelper.IsSolutionFilePath(path));
+    }
+
     [Theory]
     [InlineData("clip.mp4")]
     [InlineData("clip.MOV")]
@@ -110,5 +124,78 @@ public class IconHelperTests
             "IsVisibleBitmapPayload(output)",
             proxy,
             StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(".sln")]
+    [InlineData(".slnx")]
+    public void SolutionShortcut_ExtractsAVisibleIconWhenArrowIsHidden(
+        string extension)
+    {
+        string temporaryDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"DeskBox-solution-icon-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(temporaryDirectory);
+        try
+        {
+            string targetPath = Path.Combine(
+                temporaryDirectory,
+                $"test-solution{extension}");
+            File.Copy(
+                TestPaths.FromRepository("DeskBox.sln"),
+                targetPath,
+                overwrite: true);
+            string shortcutPath = Path.Combine(
+                temporaryDirectory,
+                $"test-solution{extension}.lnk");
+            ShortcutHelper.CreateOrUpdateFolderShortcut(
+                shortcutPath,
+                targetPath,
+                "solution icon regression");
+
+            MethodInfo resolveMethod = typeof(IconHelper).GetMethod(
+                "ResolveIconSource",
+                BindingFlags.NonPublic | BindingFlags.Static)
+                ?? throw new InvalidOperationException(
+                    "Icon source resolver was not found.");
+            object iconSource = resolveMethod.Invoke(
+                null,
+                [shortcutPath, true])
+                ?? throw new InvalidOperationException(
+                    "Icon source resolver returned null.");
+            MethodInfo loadMethod = typeof(IconHelper)
+                .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                .Single(method =>
+                    method.Name == "LoadIconBytes" &&
+                    method.GetParameters().Length == 2);
+            byte[] iconBytes = Assert.IsType<byte[]>(
+                loadMethod.Invoke(null, [iconSource, false]));
+
+            using var stream = new MemoryStream(iconBytes);
+            using var bitmap = new Bitmap(stream);
+            Assert.True(
+                HasVisiblePixels(bitmap),
+                $"The {extension} shortcut icon decoded as transparent.");
+        }
+        finally
+        {
+            Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
+    private static bool HasVisiblePixels(Bitmap bitmap)
+    {
+        for (int y = 0; y < bitmap.Height; y++)
+        {
+            for (int x = 0; x < bitmap.Width; x++)
+            {
+                if (bitmap.GetPixel(x, y).A != 0)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

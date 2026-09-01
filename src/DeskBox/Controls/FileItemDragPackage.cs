@@ -61,8 +61,8 @@ public static class FileItemDragPackage
             return false;
         }
 
-        // WinRT's StorageFile broker can reject shortcuts carrying Hidden or
-        // System attributes with UNABLE_TO_MASK_PATH. More importantly, this
+        // WinRT's StorageFile broker can reject .lnk files (including ones
+        // whose filesystem attributes look normal). More importantly, this
         // event is raised on the UI STA, so synchronously waiting for that
         // broker can deadlock the drag/drop message loop. Wrap a native Shell
         // IDataObject before attempting that broker so Explorer receives the

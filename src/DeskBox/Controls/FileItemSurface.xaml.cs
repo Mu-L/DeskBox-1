@@ -56,6 +56,8 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
     private FileItemSurfaceVisualState _visualState = FileItemSurfaceVisualState.Normal;
     private FileTransferPathState _transferState = FileTransferPathState.None;
     private string _transferStatusText = string.Empty;
+    private bool _isOpening;
+    private string _openingStatusText = string.Empty;
     private WidgetViewModel? _subscribedLayoutContext;
     private bool _isSurfaceLoaded;
 
@@ -163,13 +165,33 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
 
     public string TransferStatusText => _transferStatusText;
 
+    /// <summary>
+    /// Whether Windows Shell is currently handling an open request for this
+    /// item. It shares the existing compact activity badge with transfers so
+    /// opening a file does not add another visual tree per item.
+    /// </summary>
+    public bool IsOpening => _isOpening;
+
+    public bool IsActivityActive => IsTransferActive || IsOpening;
+
+    public Visibility ActivityBadgeVisibility =>
+        IsActivityActive ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility ActivityStatusVisibility =>
+        string.IsNullOrWhiteSpace(ActivityStatusText)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+    public string ActivityStatusText =>
+        IsTransferActive ? _transferStatusText : _openingStatusText;
+
     public Visibility PathTooltipVisibility =>
         LayoutContext?.ShowFileItemPathTooltips == true
             ? Visibility.Visible
             : Visibility.Collapsed;
 
     public bool ToolTipEnabled =>
-        TransferStatusVisibility == Visibility.Visible ||
+        ActivityStatusVisibility == Visibility.Visible ||
         PathTooltipVisibility == Visibility.Visible;
 
     public Border InteractiveBorder => SurfaceBorder;
@@ -195,14 +217,43 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
 
         _transferState = state;
         _transferStatusText = normalizedStatus;
-        AutomationProperties.SetItemStatus(
-            SurfaceBorder,
-            normalizedStatus);
         OnPropertyChanged(nameof(TransferState));
         OnPropertyChanged(nameof(IsTransferActive));
         OnPropertyChanged(nameof(TransferBadgeVisibility));
         OnPropertyChanged(nameof(TransferStatusVisibility));
         OnPropertyChanged(nameof(TransferStatusText));
+        UpdateActivityPresentation();
+    }
+
+    internal void SetOpeningState(
+        bool isOpening,
+        string? statusText)
+    {
+        string normalizedStatus = statusText ?? string.Empty;
+        if (_isOpening == isOpening &&
+            string.Equals(
+                _openingStatusText,
+                normalizedStatus,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _isOpening = isOpening;
+        _openingStatusText = normalizedStatus;
+        OnPropertyChanged(nameof(IsOpening));
+        UpdateActivityPresentation();
+    }
+
+    private void UpdateActivityPresentation()
+    {
+        AutomationProperties.SetItemStatus(
+            SurfaceBorder,
+            ActivityStatusText);
+        OnPropertyChanged(nameof(IsActivityActive));
+        OnPropertyChanged(nameof(ActivityBadgeVisibility));
+        OnPropertyChanged(nameof(ActivityStatusVisibility));
+        OnPropertyChanged(nameof(ActivityStatusText));
         OnPropertyChanged(nameof(ToolTipEnabled));
     }
 
@@ -288,6 +339,7 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
         // item without raising Loaded again. Reset pointer state and ask the
         // host to reapply all item-dependent styling, especially cut opacity.
         _visualState = FileItemSurfaceVisualState.Normal;
+        SetOpeningState(false, string.Empty);
         SetTransferState(FileTransferPathState.None, string.Empty);
         VisualStateChanged?.Invoke(
             this,
@@ -320,6 +372,7 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
     {
         _isSurfaceLoaded = false;
         DetachLayoutContextSubscription();
+        SetOpeningState(false, string.Empty);
         SetVisualState(FileItemSurfaceVisualState.Normal);
     }
 

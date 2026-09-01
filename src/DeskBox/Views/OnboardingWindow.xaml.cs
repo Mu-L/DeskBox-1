@@ -92,6 +92,7 @@ public sealed partial class OnboardingWindow : Window
         }
 
         SizeChanged += (_, _) => ApplyResponsiveLayout();
+        Activated += OnboardingWindow_Activated;
         RootGrid.KeyDown += (_, e) => OnHotkeyKeyDown(e.Key);
         RootGrid.Loaded += (_, _) =>
         {
@@ -128,6 +129,7 @@ public sealed partial class OnboardingWindow : Window
 
         Closed += (_, _) =>
         {
+            Activated -= OnboardingWindow_Activated;
             _introGeneration++;
             _introStoryboard?.Stop();
             _brandLogoShineStoryboard?.Stop();
