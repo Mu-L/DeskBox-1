@@ -62,8 +62,22 @@ public sealed class InstallerUninstallContractTests
         Assert.DoesNotContain("Format(ExpandConstant('{cm:", code, StringComparison.Ordinal);
         Assert.DoesNotContain("DelTree(GetManagedStorageRootPath", code, StringComparison.Ordinal);
         Assert.Contains("OfferManagedStorageShortcut", code, StringComparison.Ordinal);
-        Assert.Contains("managedStorageDesktopShortcutEnabled", code, StringComparison.Ordinal);
         Assert.Contains("managedStorageDesktopShortcutPath", code, StringComparison.Ordinal);
+        Assert.Contains("GetManagedStorageShortcutPath", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("managedStorageDesktopShortcutEnabled", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("if not ShortcutEnabled", code, StringComparison.Ordinal);
+        Assert.Contains("if FileExists(ExpandConstant(DeskBoxDataSettingsPath)) then", code, StringComparison.Ordinal);
+        int adminShortcutGuard = code.IndexOf(
+            "if FileExists(ExpandConstant(DeskBoxDataSettingsPath)) then",
+            code.IndexOf("if IsAdminInstallMode then", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        int adminShortcutOffer = code.IndexOf("OfferManagedStorageShortcut", adminShortcutGuard, StringComparison.Ordinal);
+        int adminBranchResult = code.IndexOf("Result := True;", adminShortcutGuard, StringComparison.Ordinal);
+        Assert.True(
+            adminShortcutGuard >= 0 &&
+            adminShortcutOffer > adminShortcutGuard &&
+            adminBranchResult > adminShortcutOffer,
+            "The default all-users uninstall path should offer the current user's managed-storage shortcut when that profile has DeskBox settings.");
         Assert.Contains("CreateOleObject('WScript.Shell')", code, StringComparison.Ordinal);
         Assert.Contains("ShortcutObject.TargetPath := FolderPath", code, StringComparison.Ordinal);
         Assert.Contains("MB_YESNO or MB_DEFBUTTON1", code, StringComparison.Ordinal);

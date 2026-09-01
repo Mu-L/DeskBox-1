@@ -48,5 +48,6 @@ public partial class App
 
         _settingsWindow?.RefreshDesktopOrganizationState();
         ScheduleLightMemoryCleanup(completedHeavyOperation: true);
+        ScheduleBackgroundMemoryCleanup("desktop-organization-closed");
     }
 }

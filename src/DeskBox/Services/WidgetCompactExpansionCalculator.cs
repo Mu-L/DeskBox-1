@@ -15,7 +15,8 @@ public readonly record struct WidgetCompactExpansionLayout(
     PointInt32 Pivot,
     RectInt32 ExpandedBounds,
     SizeInt32 RequestedSize,
-    bool IsSizeConstrained);
+    bool IsSizeConstrained,
+    bool CanExpand = true);
 
 public static class WidgetCompactExpansionCalculator
 {
@@ -31,7 +32,8 @@ public static class WidgetCompactExpansionCalculator
         RectInt32 compactBounds,
         SizeInt32 requestedSize,
         RectInt32 workArea,
-        IReadOnlyList<WidgetCompactExpansionAnchor>? anchorOrder = null)
+        IReadOnlyList<WidgetCompactExpansionAnchor>? anchorOrder = null,
+        bool requireFullSize = false)
     {
         int originalRequestedWidth = Math.Max(1, requestedSize.Width);
         int originalRequestedHeight = Math.Max(1, requestedSize.Height);
@@ -68,13 +70,18 @@ public static class WidgetCompactExpansionCalculator
             workArea,
             WidgetCompactExpansionAnchor.LeftTop,
             0);
+        bool fitsRequestedSize =
+            resolved.Bounds.Width == originalRequestedWidth &&
+            resolved.Bounds.Height == originalRequestedHeight &&
+            IsInsideWorkArea(resolved.Bounds, workArea);
+        bool canExpand = !requireFullSize || fitsRequestedSize;
         return new WidgetCompactExpansionLayout(
             resolved.Anchor,
             resolved.Pivot,
-            resolved.Bounds,
+            canExpand ? resolved.Bounds : compactBounds,
             new SizeInt32(originalRequestedWidth, originalRequestedHeight),
-            resolved.Bounds.Width != originalRequestedWidth ||
-                resolved.Bounds.Height != originalRequestedHeight);
+            !fitsRequestedSize,
+            canExpand);
     }
 
     public static RectInt32 CreateBoundsFromPivot(
@@ -197,6 +204,18 @@ public static class WidgetCompactExpansionCalculator
 
     private static int Lerp(int from, int to, double progress) =>
         (int)Math.Round(from + ((to - from) * progress));
+
+    private static bool IsInsideWorkArea(RectInt32 bounds, RectInt32 workArea)
+    {
+        long right = (long)bounds.X + bounds.Width;
+        long bottom = (long)bounds.Y + bounds.Height;
+        long workRight = (long)workArea.X + Math.Max(1, workArea.Width);
+        long workBottom = (long)workArea.Y + Math.Max(1, workArea.Height);
+        return bounds.X >= workArea.X &&
+            bounds.Y >= workArea.Y &&
+            right <= workRight &&
+            bottom <= workBottom;
+    }
 
     private readonly record struct Candidate(
         WidgetCompactExpansionAnchor Anchor,

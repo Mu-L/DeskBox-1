@@ -1,5 +1,8 @@
 using DeskBox.Helpers;
+using DeskBox.Services;
 using DeskBox.ViewModels;
+using System.Globalization;
+using System.Xml.Linq;
 
 namespace DeskBox.Tests;
 
@@ -18,9 +21,49 @@ public sealed class WeatherWidgetViewModelTests
         Assert.Equal(expectedEmoji, WeatherCodeMapper.GetEmoji(weatherCode, isDay));
     }
 
+    [Fact]
+    public void WeatherTextBlocks_DoNotUseUnreadableFixedFontSizes()
+    {
+        XDocument document = XDocument.Load(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/WeatherWidgetContent.xaml"));
+
+        XElement[] undersizedText = document.Descendants()
+            .Where(element => element.Name.LocalName == "TextBlock")
+            .Where(element =>
+                double.TryParse(
+                    (string?)element.Attribute("FontSize"),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out double fontSize) &&
+                fontSize < 12)
+            .ToArray();
+
+        Assert.Empty(undersizedText);
+    }
+
+    [Fact]
+    public void HourlyTypography_UsesAotSafeTypedBindings()
+    {
+        XDocument document = XDocument.Load(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/WeatherWidgetContent.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        XElement template = document.Descendants()
+            .Single(element =>
+                (string?)element.Attribute(x + "DataType") ==
+                "viewModels:WeatherHourViewModel");
+
+        Assert.Equal(
+            2,
+            template.Descendants()
+                .Count(element =>
+                    (string?)element.Attribute("FontSize") ==
+                    "{x:Bind ForecastHourTextSize, Mode=OneWay}"));
+    }
+
     [Theory]
     [InlineData(150, 104)]
-    [InlineData(168, 116)]
+    [InlineData(178, 134)]
     public void DetermineLayoutMode_KeepsSmallWidgetsInMini(double width, double contentHeight)
     {
         string layout = WeatherWidgetViewModel.DetermineLayoutMode(width, contentHeight, "Mini");
@@ -29,7 +72,7 @@ public sealed class WeatherWidgetViewModelTests
     }
 
     [Theory]
-    [InlineData(180, 134)]
+    [InlineData(190, 145)]
     [InlineData(200, 154)]
     public void DetermineLayoutMode_UsesCompactLayoutFromMediumWidgetSize(double width, double contentHeight)
     {
@@ -41,7 +84,7 @@ public sealed class WeatherWidgetViewModelTests
     [Fact]
     public void DetermineLayoutMode_UsesHysteresisNearMediumBoundary()
     {
-        string layout = WeatherWidgetViewModel.DetermineLayoutMode(174, 122, "Compact");
+        string layout = WeatherWidgetViewModel.DetermineLayoutMode(184, 140, "Compact");
 
         Assert.Equal("Compact", layout);
     }
@@ -79,9 +122,9 @@ public sealed class WeatherWidgetViewModelTests
     }
 
     [Theory]
-    [InlineData(250, 169)]
-    [InlineData(255, 180)]
+    [InlineData(300, 260)]
     [InlineData(320, 260)]
+    [InlineData(420, 360)]
     public void DetermineLayoutMode_UsesExpandedLayoutFromLargeWidgetSize(double width, double contentHeight)
     {
         string layout = WeatherWidgetViewModel.DetermineLayoutMode(width, contentHeight, "Compact");
@@ -92,9 +135,9 @@ public sealed class WeatherWidgetViewModelTests
     [Fact]
     public void DetermineLayoutMode_UsesHysteresisNearExpandedBoundary()
     {
-        // Between the downgrade (230x154) and upgrade (250x169) thresholds an
+        // Between the downgrade (280x240) and upgrade (300x260) thresholds an
         // already-Expanded widget stays Expanded, avoiding layout flicker.
-        string layout = WeatherWidgetViewModel.DetermineLayoutMode(240, 160, "Expanded");
+        string layout = WeatherWidgetViewModel.DetermineLayoutMode(290, 250, "Expanded");
 
         Assert.Equal("Expanded", layout);
     }
@@ -111,8 +154,8 @@ public sealed class WeatherWidgetViewModelTests
     }
 
     [Theory]
-    [InlineData(225, 150)]
-    [InlineData(230, 154)]
+    [InlineData(275, 250)]
+    [InlineData(300, 235)]
     public void DetermineLayoutMode_DowngradesExpandedToCompactWhenShrunk(double width, double contentHeight)
     {
         string layout = WeatherWidgetViewModel.DetermineLayoutMode(width, contentHeight, "Expanded");
@@ -121,9 +164,9 @@ public sealed class WeatherWidgetViewModelTests
     }
 
     [Theory]
-    [InlineData(300, 290, 92)]
-    [InlineData(300, 230, 80)]
-    [InlineData(300, 180, 64)]
+    [InlineData(320, 360, 100)]
+    [InlineData(320, 320, 88)]
+    [InlineData(320, 300, 80)]
     public void ExpandedHourlyCardHeight_AdaptsToAvailableHeight(double width, double height, double expectedCardHeight)
     {
         WeatherWidgetViewModel viewModel = CreateViewModel();
@@ -139,10 +182,23 @@ public sealed class WeatherWidgetViewModelTests
     {
         WeatherWidgetViewModel viewModel = CreateViewModel();
 
-        viewModel.UpdateAvailableSize(320, 310);
+        viewModel.UpdateAvailableSize(420, 380);
         Assert.Equal(Microsoft.UI.Xaml.Visibility.Visible, viewModel.ExpandedSunriseVisibility);
 
-        viewModel.UpdateAvailableSize(300, 290);
+        // Resizing the expanded widget down to the hourly-content height must
+        // not remove the middle sunrise/sunset track prematurely.
+        viewModel.UpdateAvailableSize(420, 340);
+        Assert.Equal(Microsoft.UI.Xaml.Visibility.Visible, viewModel.ExpandedSunriseVisibility);
+
+        viewModel.UpdateAvailableSize(420, 299);
+        Assert.Equal(
+            Microsoft.UI.Xaml.Visibility.Collapsed,
+            viewModel.ExpandedSecondaryMetricsVisibility);
+        Assert.Equal(
+            Microsoft.UI.Xaml.Visibility.Visible,
+            viewModel.ExpandedSunriseVisibility);
+
+        viewModel.UpdateAvailableSize(420, 279);
         Assert.Equal(Microsoft.UI.Xaml.Visibility.Collapsed, viewModel.ExpandedSunriseVisibility);
     }
 
@@ -151,10 +207,10 @@ public sealed class WeatherWidgetViewModelTests
     {
         WeatherWidgetViewModel viewModel = CreateViewModel();
 
-        viewModel.UpdateAvailableSize(300, 230);
+        viewModel.UpdateAvailableSize(320, 310);
         Assert.Equal(Microsoft.UI.Xaml.Visibility.Visible, viewModel.ExpandedHourlyPrecipVisibility);
 
-        viewModel.UpdateAvailableSize(300, 180);
+        viewModel.UpdateAvailableSize(320, 300);
         Assert.Equal(Microsoft.UI.Xaml.Visibility.Collapsed, viewModel.ExpandedHourlyPrecipVisibility);
     }
 
@@ -162,12 +218,12 @@ public sealed class WeatherWidgetViewModelTests
     public void UpdateAvailableSize_DoesNotNotifyWhenResponsiveValuesAreUnchanged()
     {
         WeatherWidgetViewModel viewModel = CreateViewModel();
-        viewModel.UpdateAvailableSize(300, 290);
+        viewModel.UpdateAvailableSize(420, 380);
 
         List<string?> changedProperties = [];
         viewModel.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName);
 
-        viewModel.UpdateAvailableSize(301, 291);
+        viewModel.UpdateAvailableSize(421, 381);
 
         Assert.Empty(changedProperties);
     }
@@ -176,16 +232,192 @@ public sealed class WeatherWidgetViewModelTests
     public void UpdateAvailableSize_NotifiesOnlyHeightDerivedValuesThatActuallyChange()
     {
         WeatherWidgetViewModel viewModel = CreateViewModel();
-        viewModel.UpdateAvailableSize(300, 290);
+        viewModel.UpdateAvailableSize(320, 360);
 
         List<string?> changedProperties = [];
         viewModel.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName);
 
-        viewModel.UpdateAvailableSize(300, 270);
+        viewModel.UpdateAvailableSize(320, 340);
 
         Assert.DoesNotContain(nameof(WeatherWidgetViewModel.ExpandedSunriseVisibility), changedProperties);
         Assert.DoesNotContain(nameof(WeatherWidgetViewModel.ExpandedHourlyPrecipVisibility), changedProperties);
         Assert.Contains(nameof(WeatherWidgetViewModel.ExpandedHourlyCardHeight), changedProperties);
+    }
+
+    [Fact]
+    public void ExpandedHourlyDivider_HidesAdjacentDuplicateWhenSupplementaryMetricsAreHidden()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "DeskBox.Tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsService(root);
+            settings.Settings.WeatherShowSunrise = false;
+            settings.Settings.WeatherShowUvIndex = false;
+            settings.Settings.WeatherShowPressure = false;
+
+            using var viewModel = new WeatherWidgetViewModel(
+                CreateConfig(),
+                new WeatherService(),
+                TestServices.CreateLocalizationService(),
+                settings);
+
+            viewModel.UpdateAvailableSize(320, 300);
+
+            Assert.Equal(
+                Microsoft.UI.Xaml.Visibility.Visible,
+                viewModel.PrimaryMetricsVisibility);
+            Assert.Equal(
+                Microsoft.UI.Xaml.Visibility.Collapsed,
+                viewModel.ExpandedSecondaryMetricsVisibility);
+            Assert.Equal(
+                Microsoft.UI.Xaml.Visibility.Collapsed,
+                viewModel.ExpandedSunriseVisibility);
+            Assert.Equal(
+                Microsoft.UI.Xaml.Visibility.Collapsed,
+                viewModel.ExpandedHourlyDividerVisibility);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ExpandedHourlyDivider_RemainsWhenPrimaryMetricsAreHidden()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "DeskBox.Tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsService(root);
+            settings.Settings.WeatherShowHumidity = false;
+            settings.Settings.WeatherShowWind = false;
+            settings.Settings.WeatherShowPrecipitation = false;
+            settings.Settings.WeatherShowSunrise = false;
+            settings.Settings.WeatherShowUvIndex = false;
+            settings.Settings.WeatherShowPressure = false;
+
+            using var viewModel = new WeatherWidgetViewModel(
+                CreateConfig(),
+                new WeatherService(),
+                TestServices.CreateLocalizationService(),
+                settings);
+
+            viewModel.UpdateAvailableSize(320, 300);
+
+            Assert.Equal(
+                Microsoft.UI.Xaml.Visibility.Collapsed,
+                viewModel.PrimaryMetricsVisibility);
+            Assert.Equal(
+                Microsoft.UI.Xaml.Visibility.Visible,
+                viewModel.ExpandedHourlyDividerVisibility);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(10, 9, 10, 11, 28)]
+    [InlineData(11.5, 10.5, 11.5, 12.5, 29.5)]
+    [InlineData(16, 15, 16, 17, 32)]
+    public void Typography_UsesAppearanceTextSizeAsTheBaseline(
+        double appearanceTextSize,
+        double expectedCaption,
+        double expectedBody,
+        double expectedTitle,
+        double expectedExpandedTemperature)
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "DeskBox.Tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsService(root);
+            settings.Settings.TextSize = appearanceTextSize;
+            using var viewModel = new WeatherWidgetViewModel(
+                CreateConfig(),
+                new WeatherService(),
+                TestServices.CreateLocalizationService(),
+                settings);
+
+            viewModel.ApplyAppearance();
+            // TemperatureTextSize is layout-dependent; use a comfortably
+            // expanded surface so this contract verifies the expanded weather
+            // presentation shown in the user report rather than the compact
+            // constructor fallback size.
+            viewModel.UpdateAvailableSize(420, 360);
+
+            Assert.Equal(appearanceTextSize, viewModel.TextSize);
+            Assert.Equal(expectedCaption, viewModel.CaptionTextSize);
+            Assert.Equal(expectedBody, viewModel.BodyTextSize);
+            Assert.Equal(expectedTitle, viewModel.TitleTextSize);
+            Assert.Equal(
+                expectedExpandedTemperature,
+                viewModel.TemperatureTextSize);
+            Assert.Equal(
+                viewModel.CaptionTextSize,
+                viewModel.ForecastHourTextSize);
+            Assert.Equal(
+                viewModel.BodyTextSize,
+                viewModel.ForecastTempTextSize);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void SystemTextScale_DowngradesLayoutBeforeTypographyCanBeClipped()
+    {
+        using WeatherWidgetViewModel viewModel = CreateViewModel();
+        viewModel.UpdateAvailableSize(320, 260);
+        Assert.Equal("Expanded", viewModel.LayoutMode);
+
+        viewModel.UpdateSystemTextScaleFactor(2.25);
+
+        Assert.Equal("Compact", viewModel.LayoutMode);
+        Assert.True(viewModel.ExpandedHourlyCardHeight > 88);
+
+        viewModel.UpdateAvailableSize(150, 104);
+        Assert.Equal("Mini", viewModel.LayoutMode);
+        Assert.Equal(
+            Microsoft.UI.Xaml.Visibility.Collapsed,
+            viewModel.MiniHeaderVisibility);
+    }
+
+    [Fact]
+    public void CompactLayout_HidesSecondaryMetricsWhenHeightIsTight()
+    {
+        using WeatherWidgetViewModel viewModel = CreateViewModel();
+
+        viewModel.UpdateAvailableSize(200, 154);
+        Assert.Equal("Compact", viewModel.LayoutMode);
+        Assert.Equal(
+            Microsoft.UI.Xaml.Visibility.Collapsed,
+            viewModel.PrimaryMetricsVisibility);
+
+        viewModel.UpdateAvailableSize(220, 180);
+        Assert.Equal(
+            Microsoft.UI.Xaml.Visibility.Visible,
+            viewModel.PrimaryMetricsVisibility);
     }
 
     [Fact]

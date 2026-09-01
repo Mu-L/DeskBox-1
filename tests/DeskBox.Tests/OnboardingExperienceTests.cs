@@ -60,6 +60,9 @@ public sealed class OnboardingExperienceTests
         Assert.Contains("x:Name=\"TaskStep5WeatherToggle\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep5MusicToggle\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep5GlanceToggle\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep3StoragePathText\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep3QuickAccessToggle\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TaskStep3DesktopShortcutToggle\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"TaskStep2ConfirmPathButton\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"TaskStep2StoragePathText\"", xaml, StringComparison.Ordinal);
         Assert.Contains("0 when !_hasCompletedFilePractice", codeBehind, StringComparison.Ordinal);
@@ -78,6 +81,39 @@ public sealed class OnboardingExperienceTests
         Assert.Contains("Onboarding.Task.Step5.OptionalBody", activeFlow, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TaskStep5OptionalHint\"", activeFlow, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"TaskStep5OptionalCard\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Toggled=\"TaskStep3QuickAccessToggle_Toggled\"", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Toggled=\"TaskStep3DesktopShortcutToggle_Toggled\"", activeFlow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StorageEntryChoices_AreInTheActiveFlowAndRequireUserActions()
+    {
+        string root = FindRepositoryRoot();
+        string xaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/OnboardingWindow.xaml"));
+        string taskFlow = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/OnboardingWindow.TaskFlow.cs"));
+        string appCode = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/App.xaml.cs"));
+        string shortcutService = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Services/ManagedStorageDesktopShortcutService.cs"));
+
+        string activeFlow = xaml[xaml.IndexOf(
+            "x:Name=\"TaskStep2Panel\"",
+            StringComparison.Ordinal)..xaml.IndexOf(
+            "x:Name=\"Step1Panel\"",
+            StringComparison.Ordinal)];
+        Assert.Contains("Onboarding.Step4.PinTitle", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("Settings.ManagedPath.DesktopShortcut.Title", activeFlow, StringComparison.Ordinal);
+        Assert.Contains("CreateAsync()", taskFlow, StringComparison.Ordinal);
+        Assert.Contains("RemoveAsync()", taskFlow, StringComparison.Ordinal);
+        Assert.Contains("ManagedStorageDesktopShortcutService.SyncAsync()", appCode, StringComparison.Ordinal);
+        Assert.Contains("preference instead of resurrecting", shortcutService, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShouldMaintainShortcut", shortcutService, StringComparison.Ordinal);
     }
 
     [Fact]

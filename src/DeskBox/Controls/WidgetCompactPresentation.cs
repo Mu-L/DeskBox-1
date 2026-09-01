@@ -45,8 +45,9 @@ public sealed record WidgetCompactPresentation(
     // Determinate fill ratio in [0,1]. Null means "no bar" (e.g. no
     // seekable timeline yet). Driven by SeekValue/SeekMaximum.
     double? MusicProgress = null,
-    // Null inherits the app theme. Weather Rich uses an explicit foreground
-    // theme so its text remains readable over condition-aware gradients.
+    // Null inherits the widget window's semantic foreground palette. A
+    // presentation may opt into an explicit theme only when it owns a
+    // background whose contrast cannot be represented by those brushes.
     bool? UseLightForeground = null,
     // Multiplies the standard full-bleed readability scrim. Glance feeds its
     // own None/Soft/Strong readability setting here; the default preserves

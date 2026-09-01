@@ -60,7 +60,10 @@ public partial class WidgetViewModel
         bool useShellProgress = false,
         IntPtr ownerWindowHandle = default,
         IProgress<FileService.FileTransferProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? preferredManualIndex = null,
+        bool activateManualSortOnSuccess = false,
+        WidgetVisibleInsertionAnchor? preferredStackAnchor = null)
     {
         var normalizedPaths = paths
             .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -108,7 +111,10 @@ public partial class WidgetViewModel
             await ApplyImportedTransferResultsAsync(
                 partial.CompletedResults,
                 shouldMove,
-                destinationFolderPath);
+                destinationFolderPath,
+                preferredManualIndex,
+                activateManualSortOnSuccess,
+                preferredStackAnchor);
             throw;
         }
 
@@ -117,7 +123,10 @@ public partial class WidgetViewModel
                 item.SourcePath,
                 item.DestinationPath)),
             shouldMove,
-            destinationFolderPath);
+            destinationFolderPath,
+            preferredManualIndex,
+            activateManualSortOnSuccess,
+            preferredStackAnchor);
 
         return historyEntry.Items
             .Select(item => Path.GetFullPath(item.SourcePath))
@@ -128,7 +137,10 @@ public partial class WidgetViewModel
     private async Task ApplyImportedTransferResultsAsync(
         IEnumerable<FileService.FileTransferResult> results,
         bool shouldMove,
-        string destinationFolderPath)
+        string destinationFolderPath,
+        int? preferredManualIndex = null,
+        bool activateManualSortOnSuccess = false,
+        WidgetVisibleInsertionAnchor? preferredStackAnchor = null)
     {
         FileService.FileTransferResult[] materialized = results
             .Where(result =>
@@ -154,6 +166,23 @@ public partial class WidgetViewModel
             }
         }
 
+        WidgetSortMode? originalSortMode = null;
+        bool originalSortDescending = Config.SortDescending;
+        if (activateManualSortOnSuccess &&
+            (preferredManualIndex.HasValue ||
+             preferredStackAnchor.HasValue) &&
+            Config.SortMode != WidgetSortMode.Manual)
+        {
+            originalSortMode = Config.SortMode;
+            Config.SortMode = WidgetSortMode.Manual;
+            Config.SortDescending = false;
+            NormalizeSortOrder();
+            OnPropertyChanged(nameof(SortModeLabel));
+        }
+
+        bool insertedAny = false;
+        var importedDestinationPaths = new List<string>();
+        int nextManualIndex = preferredManualIndex ?? -1;
         foreach (string destinationPath in materialized.Select(
                      result => result.DestinationPath))
         {
@@ -164,8 +193,126 @@ public partial class WidgetViewModel
             }
 
             RecordFileAddedAt(destinationPath, DateTimeOffset.Now);
-            await UpsertFolderItemAsync(destinationPath);
+            bool inserted = await UpsertFolderItemAsync(
+                destinationPath,
+                nextManualIndex >= 0 ? nextManualIndex : null);
+            if (inserted && nextManualIndex >= 0)
+            {
+                nextManualIndex++;
+            }
+
+            insertedAny |= inserted;
+            if (inserted)
+            {
+                importedDestinationPaths.Add(destinationPath);
+            }
         }
+
+        if (insertedAny &&
+            preferredStackAnchor is { } stackAnchor)
+        {
+            ApplyImportedStackInsertion(
+                importedDestinationPaths,
+                stackAnchor);
+        }
+
+        if (originalSortMode.HasValue)
+        {
+            if (insertedAny)
+            {
+                // UpsertFolderItemAsync persists a manual snapshot after the
+                // first successful result. Keep the explicit mode/order
+                // write here as a final idempotent commit for an empty or
+                // already-present destination path batch.
+                PersistManualOrder();
+            }
+            else
+            {
+                Config.SortMode = originalSortMode.Value;
+                Config.SortDescending = originalSortDescending;
+                SortItems();
+                OnPropertyChanged(nameof(SortModeLabel));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies a previously created destination batch (for example shortcut
+    /// files) at the external-drop insertion point. The automatic sort mode is
+    /// committed only when at least one destination can be represented in the
+    /// widget; an ACL/provider race therefore cannot leave a phantom Manual
+    /// mode behind.
+    /// </summary>
+    internal async Task<int> ApplyManualInsertionAsync(
+        IEnumerable<string> destinationPaths,
+        int preferredManualIndex,
+        bool activateManualSortOnSuccess,
+        WidgetVisibleInsertionAnchor? preferredStackAnchor = null)
+    {
+        string[] paths = destinationPaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (paths.Length == 0)
+        {
+            return 0;
+        }
+
+        WidgetSortMode? originalSortMode = null;
+        bool originalSortDescending = Config.SortDescending;
+        if (activateManualSortOnSuccess &&
+            Config.SortMode != WidgetSortMode.Manual)
+        {
+            originalSortMode = Config.SortMode;
+            Config.SortMode = WidgetSortMode.Manual;
+            Config.SortDescending = false;
+            NormalizeSortOrder();
+            OnPropertyChanged(nameof(SortModeLabel));
+        }
+
+        int insertedCount = 0;
+        var importedDestinationPaths = new List<string>();
+        int nextManualIndex = Math.Max(0, preferredManualIndex);
+        foreach (string path in paths)
+        {
+            if (!File.Exists(path) && !Directory.Exists(path))
+            {
+                continue;
+            }
+
+            RecordFileAddedAt(path, DateTimeOffset.Now);
+            if (await UpsertFolderItemAsync(path, nextManualIndex))
+            {
+                insertedCount++;
+                nextManualIndex++;
+                importedDestinationPaths.Add(path);
+            }
+        }
+
+        if (insertedCount > 0 &&
+            preferredStackAnchor is { } stackAnchor)
+        {
+            ApplyImportedStackInsertion(
+                importedDestinationPaths,
+                stackAnchor);
+        }
+
+        if (originalSortMode.HasValue)
+        {
+            if (insertedCount > 0)
+            {
+                PersistManualOrder();
+            }
+            else
+            {
+                Config.SortMode = originalSortMode.Value;
+                Config.SortDescending = originalSortDescending;
+                SortItems();
+                OnPropertyChanged(nameof(SortModeLabel));
+            }
+        }
+
+        return insertedCount;
     }
 
     internal async Task<IReadOnlyList<string>> GetConfirmedMissingPathsAsync(
@@ -220,6 +367,28 @@ public partial class WidgetViewModel
     }
 
     /// <summary>
+    /// Opens an item on the bounded Shell worker and applies any collection
+    /// change back on the caller's context.
+    /// </summary>
+    public async Task<FileService.OpenItemResult> OpenItemAsync(
+        WidgetItem item,
+        IntPtr ownerHwnd,
+        CancellationToken cancellationToken = default)
+    {
+        string itemPath = item.Path;
+        var result = await FileService.OpenItemAsync(
+            item,
+            ownerHwnd,
+            cancellationToken);
+        if (result == FileService.OpenItemResult.ShortcutDeleted)
+        {
+            RemoveItemByPath(itemPath);
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Reveal an item in Explorer.
     /// </summary>
     [RelayCommand]
@@ -247,6 +416,7 @@ public partial class WidgetViewModel
         if (historyEntry.Items.Any(entry => string.Equals(entry.SourcePath, item.Path, StringComparison.OrdinalIgnoreCase)))
         {
             RemoveItemByPath(item.Path);
+            RemoveStackMemberOverridePaths([item.Path]);
             return 1;
         }
 
@@ -287,6 +457,8 @@ public partial class WidgetViewModel
         {
             RemoveItemByPath(item.Path);
         }
+
+        RemoveStackMemberOverridePaths(movedSourcePaths);
 
         return movedSourcePaths.Count;
     }
@@ -480,13 +652,27 @@ public partial class WidgetViewModel
             throw new InvalidOperationException(_localizationService.T("Widget.Validation.FolderUnknown"));
         }
 
-        string extension = item.IsFolder ? string.Empty : Path.GetExtension(sourcePath);
-        string destinationName = item.IsFolder
-            ? sanitizedName
-            : BuildRenameFileName(sanitizedName, extension);
+        string destinationName = FileService.ResolveRenameDestination(
+            Path.GetFileName(sourcePath),
+            sanitizedName,
+            item.IsFolder,
+            ShortcutHelper.IsShortcutPath(sourcePath),
+            _showFileExtensions,
+            out bool requiresExtensionChangeConfirmation);
         string destinationPath = Path.Combine(parentDirectory, destinationName);
         if (string.Equals(sourcePath, destinationPath, StringComparison.Ordinal))
         {
+            return;
+        }
+
+        // Ask before any other validation so a declined extension change never
+        // surfaces follow-up errors (e.g. a name collision with the new name).
+        if (requiresExtensionChangeConfirmation &&
+            ConfirmExtensionChangeHandler?.Invoke(sourcePath, destinationPath) != true)
+        {
+            App.Log(
+                $"[Widget] Rename extension change declined " +
+                $"source='{sourcePath}' destination='{destinationPath}'");
             return;
         }
 

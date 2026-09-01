@@ -79,6 +79,8 @@ internal sealed class WeatherCacheStore
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> s_pathGates =
         new(StringComparer.OrdinalIgnoreCase);
 
+    internal static int PathGateCount => s_pathGates.Count;
+
     public static WeatherCacheStore Current { get; } = new();
 
     private readonly string _storePath;

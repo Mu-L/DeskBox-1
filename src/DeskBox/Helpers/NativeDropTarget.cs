@@ -144,6 +144,7 @@ public sealed class NativeDropTarget : IDisposable
     private bool _shellVisualActive;
     private bool _registered;
     private bool _rightButtonDragActive;
+    private IReadOnlyList<string> _dragPathHints = [];
 
     private sealed record ShellApplicationDropItem(
         string AppUserModelId,
@@ -173,6 +174,13 @@ public sealed class NativeDropTarget : IDisposable
     /// Valid between DragEnter and DragLeave/Drop.
     /// </summary>
     public bool HasFileData { get; private set; }
+
+    /// <summary>
+    /// Physical file paths exposed by CF_HDROP at DragEnter. These are a
+    /// lightweight preview hint only; the Drop callback still re-reads and
+    /// validates the authoritative payload.
+    /// </summary>
+    public IReadOnlyList<string> DragPathHints => _dragPathHints;
 
     public bool HasVirtualFileData { get; private set; }
 
@@ -298,6 +306,9 @@ public sealed class NativeDropTarget : IDisposable
             NativeDropEffectPolicy.IsRightButtonDrag(keyState);
         uint allowedEffects = effect;
         InspectDragData(dataObject);
+        _dragPathHints = HasFileData && !HasVirtualFileData
+            ? TryExtractHDropPathHints(dataObject)
+            : [];
         DragEnterEvent?.Invoke(point.X, point.Y, HasFileData);
 
         effect = NativeDropEffectPolicy.ResolveFeedbackEffect(
@@ -468,6 +479,7 @@ public sealed class NativeDropTarget : IDisposable
         HasFileData = false;
         HasVirtualFileData = false;
         HasShellApplicationData = false;
+        _dragPathHints = [];
     }
 
     private bool ShouldUseShellVisual()
@@ -654,6 +666,51 @@ public sealed class NativeDropTarget : IDisposable
     private bool TryHasVirtualFileData(IntPtr pDataObj)
     {
         return TryQueryFormat(pDataObj, s_fileGroupDescriptorFormat, TYMED_HGLOBAL, -1);
+    }
+
+    private static IReadOnlyList<string> TryExtractHDropPathHints(
+        IntPtr pDataObj)
+    {
+        if (pDataObj == IntPtr.Zero)
+        {
+            return [];
+        }
+
+        try
+        {
+            var dataObject = new NativeOleDataObject(pDataObj);
+            var format = new NativeFormatEtc
+            {
+                ClipboardFormat = (ushort)CF_HDROP,
+                TargetDevice = IntPtr.Zero,
+                Aspect = DVASPECT_CONTENT,
+                Index = -1,
+                MediumType = TYMED_HGLOBAL,
+            };
+
+            if (dataObject.GetData(
+                    ref format,
+                    out NativeStorageMedium medium) != S_OK ||
+                medium.Content == IntPtr.Zero)
+            {
+                return [];
+            }
+
+            try
+            {
+                return GetDroppedFiles(medium.Content);
+            }
+            finally
+            {
+                ReleaseStgMedium(ref medium);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogVerbose(
+                $"[DropTarget] Failed to read CF_HDROP path hints: {ex.Message}");
+            return [];
+        }
     }
 
     private static bool TryHasShellApplicationData(IntPtr pDataObj)

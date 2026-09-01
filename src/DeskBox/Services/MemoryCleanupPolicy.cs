@@ -7,17 +7,26 @@ internal readonly record struct MemoryCleanupActivitySnapshot(
     bool IsOnboardingOpen,
     bool IsSearchPopupVisible,
     bool IsDeskBoxForeground,
-    bool IsPointerOverDeskBox);
+    bool IsPointerOverDeskBox,
+    bool IsDesktopOrganizationOpen = false);
+
+[Flags]
+internal enum BackgroundMemoryCleanupStage
+{
+    None = 0,
+    SoftCache = 1,
+    DeepFinalizerCollection = 2,
+    LongHiddenMaintenance = 4
+}
 
 internal static class MemoryCleanupPolicy
 {
-    internal const long VisibleIdleManagedHeapThresholdBytes = 96L * 1024 * 1024;
+    /// <summary>
+    /// Visible-idle trims only fire once the process is genuinely bloated, so
+    /// an idle desktop never pays trim/fault churn just to keep a number low.
+    /// </summary>
     internal const long VisibleIdleWorkingSetThresholdBytes = 240L * 1024 * 1024;
     internal const long VisibleIdlePrivateBytesThreshold = 260L * 1024 * 1024;
-    internal const long VisibleIdleMinimumAllocationBytes = 32L * 1024 * 1024;
-    internal const long HiddenIdleWorkingSetTrimThresholdBytes = 220L * 1024 * 1024;
-    internal const long ResourceSaverWorkingSetTrimMinimumBytes = 256L * 1024 * 1024;
-    internal const long ResourceSaverWorkingSetTrimHighBytes = 384L * 1024 * 1024;
 
     public static bool IsVisibleIdleCandidate(MemoryCleanupActivitySnapshot snapshot)
     {
@@ -26,91 +35,160 @@ internal static class MemoryCleanupPolicy
             !snapshot.IsSettingsOpen &&
             !snapshot.IsOnboardingOpen &&
             !snapshot.IsSearchPopupVisible &&
+            !snapshot.IsDesktopOrganizationOpen &&
             !snapshot.IsDeskBoxForeground &&
             !snapshot.IsPointerOverDeskBox;
     }
 
-    public static bool CanTrimWorkingSet(MemoryCleanupActivitySnapshot snapshot)
-    {
-        return !snapshot.HasVisibleWidgets &&
-            !snapshot.IsWidgetInteractionActive &&
-            !snapshot.IsSettingsOpen &&
-            !snapshot.IsOnboardingOpen &&
-            !snapshot.IsSearchPopupVisible &&
-            !snapshot.IsDeskBoxForeground &&
-            !snapshot.IsPointerOverDeskBox;
-    }
-
-    public static bool ShouldTrimHiddenIdleWorkingSet(
-        MemoryCleanupActivitySnapshot snapshot,
-        long workingSetBytes)
-    {
-        return CanTrimWorkingSet(snapshot) &&
-            workingSetBytes >= HiddenIdleWorkingSetTrimThresholdBytes;
-    }
-
-    public static bool ShouldTrimResourceSaverHiddenWorkingSet(
-        MemoryCleanupActivitySnapshot snapshot,
-        long workingSetBytes,
-        long memoryLoadBytes,
-        long highMemoryLoadThresholdBytes)
-    {
-        if (!CanTrimWorkingSet(snapshot) ||
-            workingSetBytes < ResourceSaverWorkingSetTrimMinimumBytes)
-        {
-            return false;
-        }
-
-        bool underSystemMemoryPressure =
-            highMemoryLoadThresholdBytes > 0 &&
-            memoryLoadBytes >= highMemoryLoadThresholdBytes * 85 / 100;
-        return underSystemMemoryPressure ||
-            workingSetBytes >= ResourceSaverWorkingSetTrimHighBytes;
-    }
-
-    public static bool ShouldCollectVisibleIdleManagedMemory(
-        MemoryCleanupActivitySnapshot snapshot,
-        long managedHeapBytes,
-        long workingSetBytes,
-        long privateBytes,
-        long allocatedSinceLastCollection,
-        bool hasCompletedVisibleIdleCollection)
-    {
-        if (snapshot.IsWidgetInteractionActive ||
-            snapshot.IsSettingsOpen ||
-            snapshot.IsOnboardingOpen ||
-            snapshot.IsSearchPopupVisible ||
-            snapshot.IsDeskBoxForeground ||
-            snapshot.IsPointerOverDeskBox)
-        {
-            return false;
-        }
-
-        bool aboveMemoryThreshold =
-            managedHeapBytes >= VisibleIdleManagedHeapThresholdBytes ||
-            workingSetBytes >= VisibleIdleWorkingSetThresholdBytes ||
-            privateBytes >= VisibleIdlePrivateBytesThreshold;
-        if (!aboveMemoryThreshold)
-        {
-            return false;
-        }
-
-        // Always allow one delayed post-startup collection. Later checks require
-        // meaningful allocation growth so a native WinUI high-water mark cannot
-        // cause a forced Gen2 collection every few minutes.
-        return !hasCompletedVisibleIdleCollection ||
-            allocatedSinceLastCollection >= VisibleIdleMinimumAllocationBytes;
-    }
-
+    /// <summary>
+    /// Restores the pre-1.4.5 visible-idle working-set trim gate: the user is
+    /// fully away (idle contract in <see cref="IsVisibleIdleCandidate"/>) and
+    /// both footprints exceed the bloat thresholds. Back-faults while anything
+    /// is visible would jitter frame pacing, hence the strict presence gates.
+    /// </summary>
     public static bool ShouldTrimVisibleIdleWorkingSet(
         MemoryCleanupActivitySnapshot snapshot,
         long workingSetBytes,
-        long privateBytes,
-        bool hasActiveVisualWork)
+        long privateBytes)
     {
-        return !hasActiveVisualWork &&
-            IsVisibleIdleCandidate(snapshot) &&
+        return IsVisibleIdleCandidate(snapshot) &&
             workingSetBytes >= VisibleIdleWorkingSetThresholdBytes &&
             privateBytes >= VisibleIdlePrivateBytesThreshold;
     }
+
+    /// <summary>
+    /// Deep collection is allowed only after transient UI has gone away and
+    /// the user is not currently interacting with DeskBox. Unlike visible-idle
+    /// cache trimming, this may run while widgets remain visible, because it
+    /// only targets unreachable managed/WinRT graphs and never rebuilds a live
+    /// widget view.
+    /// </summary>
+    public static bool IsDeepCleanupCandidate(
+        MemoryCleanupActivitySnapshot snapshot)
+    {
+        return !snapshot.IsWidgetInteractionActive &&
+            !snapshot.IsSettingsOpen &&
+            !snapshot.IsOnboardingOpen &&
+            !snapshot.IsSearchPopupVisible &&
+            !snapshot.IsDesktopOrganizationOpen &&
+            !snapshot.IsDeskBoxForeground &&
+            !snapshot.IsPointerOverDeskBox;
+    }
+
+    public static BackgroundMemoryCleanupStage GetDueBackgroundStages(
+        TimeSpan hiddenDuration,
+        int softDelaySeconds,
+        int deepDelaySeconds,
+        BackgroundMemoryCleanupStage completedStages)
+    {
+        BackgroundMemoryCleanupStage due = BackgroundMemoryCleanupStage.None;
+        AddIfDue(
+            BackgroundMemoryCleanupStage.SoftCache,
+            softDelaySeconds,
+            hiddenDuration,
+            completedStages,
+            ref due);
+        AddIfDue(
+            BackgroundMemoryCleanupStage.DeepFinalizerCollection,
+            softDelaySeconds,
+            hiddenDuration,
+            completedStages,
+            ref due);
+        AddIfDue(
+            BackgroundMemoryCleanupStage.LongHiddenMaintenance,
+            deepDelaySeconds,
+            hiddenDuration,
+            completedStages,
+            ref due);
+        return due;
+    }
+
+    public static TimeSpan? GetDelayUntilNextBackgroundStage(
+        TimeSpan hiddenDuration,
+        int softDelaySeconds,
+        int deepDelaySeconds,
+        BackgroundMemoryCleanupStage completedStages)
+    {
+        TimeSpan? nextDelay = null;
+        ConsiderPendingStage(
+            BackgroundMemoryCleanupStage.SoftCache,
+            softDelaySeconds,
+            hiddenDuration,
+            completedStages,
+            ref nextDelay);
+        ConsiderPendingStage(
+            BackgroundMemoryCleanupStage.DeepFinalizerCollection,
+            softDelaySeconds,
+            hiddenDuration,
+            completedStages,
+            ref nextDelay);
+        ConsiderPendingStage(
+            BackgroundMemoryCleanupStage.LongHiddenMaintenance,
+            deepDelaySeconds,
+            hiddenDuration,
+            completedStages,
+            ref nextDelay);
+        return nextDelay;
+    }
+
+    public static TimeSpan GetCappedBackgroundRetryDelay(
+        int attemptNumber,
+        int initialDelaySeconds,
+        int maximumDelaySeconds)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(
+            initialDelaySeconds,
+            1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(
+            maximumDelaySeconds,
+            initialDelaySeconds);
+
+        int exponent = Math.Clamp(attemptNumber - 1, 0, 30);
+        long scaledDelay = (long)initialDelaySeconds << exponent;
+        return TimeSpan.FromSeconds(
+            Math.Min(maximumDelaySeconds, scaledDelay));
+    }
+
+    private static void AddIfDue(
+        BackgroundMemoryCleanupStage stage,
+        int delaySeconds,
+        TimeSpan hiddenDuration,
+        BackgroundMemoryCleanupStage completedStages,
+        ref BackgroundMemoryCleanupStage due)
+    {
+        if (delaySeconds == PerformanceSettingsPolicy.CleanupNever ||
+            completedStages.HasFlag(stage) ||
+            hiddenDuration < TimeSpan.FromSeconds(delaySeconds))
+        {
+            return;
+        }
+
+        due |= stage;
+    }
+
+    private static void ConsiderPendingStage(
+        BackgroundMemoryCleanupStage stage,
+        int delaySeconds,
+        TimeSpan hiddenDuration,
+        BackgroundMemoryCleanupStage completedStages,
+        ref TimeSpan? nextDelay)
+    {
+        if (delaySeconds == PerformanceSettingsPolicy.CleanupNever ||
+            completedStages.HasFlag(stage))
+        {
+            return;
+        }
+
+        TimeSpan remaining = TimeSpan.FromSeconds(delaySeconds) - hiddenDuration;
+        if (remaining < TimeSpan.Zero)
+        {
+            remaining = TimeSpan.Zero;
+        }
+
+        if (nextDelay is null || remaining < nextDelay.Value)
+        {
+            nextDelay = remaining;
+        }
+    }
+
 }

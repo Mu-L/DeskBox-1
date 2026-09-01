@@ -34,6 +34,10 @@ public sealed class FileMetaService : IDisposable
     // Extension → icon task. A single icon instance is shared by every result with
     // the same extension, so a list of 200 .pdf files costs exactly one extraction.
     private readonly ConcurrentDictionary<string, Task<ImageSource?>> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _iconCacheLock = new();
+    private readonly LinkedList<string> _iconCacheLru = new();
+    private readonly Dictionary<string, LinkedListNode<string>> _iconCacheLruNodes =
+        new(StringComparer.OrdinalIgnoreCase);
     private bool _isDisposed;
 
     public int CachedIconCount => _iconCache.Count;
@@ -182,21 +186,81 @@ public sealed class FileMetaService : IDisposable
             key = string.IsNullOrEmpty(extension) ? NoExtensionCacheKey : extension;
         }
 
-        TrimIconCacheIfNeeded(key);
-        return await _iconCache.GetOrAdd(key, k => LoadIconAsync(k));
+        Task<ImageSource?> iconTask =
+            _iconCache.GetOrAdd(key, k => LoadIconAsync(k));
+        TouchIconCacheEntry(key);
+        try
+        {
+            return await iconTask;
+        }
+        finally
+        {
+            TrimIconCacheIfNeeded();
+        }
     }
 
-    private void TrimIconCacheIfNeeded(string incomingKey)
+    private void TouchIconCacheEntry(string cacheKey)
     {
-        if (_iconCache.Count < MaxIconCacheEntries || _iconCache.ContainsKey(incomingKey))
+        lock (_iconCacheLock)
         {
-            return;
-        }
+            if (!_iconCache.ContainsKey(cacheKey))
+            {
+                return;
+            }
 
-        int removeCount = Math.Max(1, _iconCache.Count - (MaxIconCacheEntries / 2));
-        foreach (string key in _iconCache.Keys.Take(removeCount))
+            if (_iconCacheLruNodes.TryGetValue(
+                    cacheKey,
+                    out LinkedListNode<string>? existing))
+            {
+                _iconCacheLru.Remove(existing);
+                _iconCacheLru.AddFirst(existing);
+            }
+            else
+            {
+                _iconCacheLruNodes[cacheKey] =
+                    _iconCacheLru.AddFirst(cacheKey);
+            }
+
+            TrimIconCacheIfNeededUnderLock();
+        }
+    }
+
+    private void TrimIconCacheIfNeeded()
+    {
+        lock (_iconCacheLock)
         {
-            _iconCache.TryRemove(key, out _);
+            TrimIconCacheIfNeededUnderLock();
+        }
+    }
+
+    private void TrimIconCacheIfNeededUnderLock()
+    {
+        while (_iconCache.Count > MaxIconCacheEntries)
+        {
+            LinkedListNode<string>? oldestCompleted = null;
+            for (LinkedListNode<string>? node = _iconCacheLru.Last;
+                 node is not null;
+                 node = node.Previous)
+            {
+                if (!_iconCache.TryGetValue(
+                        node.Value,
+                        out Task<ImageSource?>? task) ||
+                    task.IsCompleted)
+                {
+                    oldestCompleted = node;
+                    break;
+                }
+            }
+
+            if (oldestCompleted is null)
+            {
+                break;
+            }
+
+            string oldestKey = oldestCompleted.Value;
+            _iconCacheLru.Remove(oldestCompleted);
+            _iconCacheLruNodes.Remove(oldestKey);
+            _iconCache.TryRemove(oldestKey, out _);
         }
     }
 
@@ -333,8 +397,34 @@ public sealed class FileMetaService : IDisposable
 
     public void Clear()
     {
-        _iconCache.Clear();
+        lock (_iconCacheLock)
+        {
+            _iconCache.Clear();
+            _iconCacheLru.Clear();
+            _iconCacheLruNodes.Clear();
+        }
+
         IconHelper.ClearCacheScope(SearchIconCacheScope);
+    }
+
+    /// <summary>
+    /// Drops search-only icon material after the search surface is hidden. The
+    /// search results themselves remain intact, so reopening the popup does not
+    /// require rebuilding its data model.
+    /// </summary>
+    internal int ReleaseHiddenCaches()
+    {
+        int released;
+        lock (_iconCacheLock)
+        {
+            released = _iconCache.Count;
+            _iconCache.Clear();
+            _iconCacheLru.Clear();
+            _iconCacheLruNodes.Clear();
+        }
+
+        IconHelper.ClearCacheScope(SearchIconCacheScope);
+        return released;
     }
 
     public void Dispose()

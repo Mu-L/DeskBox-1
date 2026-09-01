@@ -597,6 +597,12 @@ public abstract partial class WidgetWindowBase
         if (args.DidVisibilityChange)
         {
             NotifyCompactHostVisibilityChanged(sender.IsVisible);
+            App.Current?.WidgetManager?
+                .ReconcileBackgroundMemoryCleanupForWidgetVisibility(
+                    sender.IsVisible
+                        ? "native-window-shown"
+                        : "native-window-hidden",
+                    observedNativeVisibility: sender.IsVisible);
         }
 
         if (IsApplyingBounds ||

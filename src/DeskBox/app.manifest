@@ -11,6 +11,24 @@
     </security>
   </trustInfo>
 
+  <!-- Visual styles (comctl32 v6). Without this activation context, raw Win32
+       child controls created in this process — the MessageBox buttons in the
+       rename extension-change warning — render with the unthemed classic look
+       instead of matching Explorer's themed buttons. WinUI 3 controls are
+       unaffected; they draw themselves without comctl32. -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+
   <!-- Windows 10/11 compatibility -->
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>

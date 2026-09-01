@@ -38,6 +38,8 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     private string _lastWeatherCityName = string.Empty;
     private double _lastAvailableWidth = 300;
     private double _lastAvailableHeight = 200;
+    private double _systemTextScaleFactor =
+        WindowsCompatibilityService.MinSystemTextScaleFactor;
     private bool _isResponsiveLayoutTransitionActive;
 
     // Cached raw data
@@ -390,6 +392,8 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         get => _textSize;
         private set
         {
+            WeatherLayoutPresentationState previousLayoutState =
+                CaptureLayoutPresentationState();
             if (SetProperty(ref _textSize, value))
             {
                 OnPropertyChanged(nameof(TitleTextSize));
@@ -401,30 +405,42 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
                 OnPropertyChanged(nameof(WeekDayLabelTextSize));
                 OnPropertyChanged(nameof(WeekTempMaxSize));
                 OnPropertyChanged(nameof(WeekTempMinSize));
+                UpdateHourlyForecastTypography();
+                ApplyLayoutModeForSize(
+                    _lastAvailableWidth,
+                    _lastAvailableHeight,
+                    previousLayoutState);
             }
         }
     }
 
-    public double TitleTextSize => Math.Min(SettingsService.MaxTextSize + 3, TextSize + 4);
-    public double BodyTextSize => Math.Max(SettingsService.MinTextSize, TextSize);
-    public double CaptionTextSize => Math.Max(SettingsService.MinTextSize - 1, TextSize - 2);
+    // The appearance text-size setting is the baseline for every weather label.
+    // Keep the semantic ramp restrained so weather does not introduce its own
+    // oversized typography. Windows accessibility scaling is still applied by
+    // XAML on top of these logical font sizes.
+    public double TitleTextSize =>
+        Math.Min(SettingsService.MaxTextSize + 1, TextSize + 1);
+    public double BodyTextSize => TextSize;
+    public double CaptionTextSize =>
+        Math.Max(SettingsService.MinTextSize - 1, TextSize - 1);
     public double TemperatureTextSize => _layoutMode switch
     {
-        "Mini" => Math.Min(26, TextSize + 14),
-        "Compact" => Math.Min(34, TextSize + 21),
-        _ => Math.Min(38, TextSize + 23)
+        "Mini" => Math.Min(24, TextSize + 10),
+        "Compact" => Math.Min(30, TextSize + 16),
+        _ => Math.Min(32, TextSize + 18)
     };
 
     // Emoji font size scales with layout
     public double CurrentEmojiSize => _layoutMode == "Mini" ? 30 : _layoutMode == "Compact" ? 36 : 48;
     public double ForecastEmojiSize => _layoutMode == "Expanded" ? 18 : 15;
-    public double ForecastHourTextSize => Math.Max(9, TextSize - 3);
-    public double ForecastTempTextSize => Math.Max(10, TextSize - 1);
-    public double WeekDayLabelTextSize => Math.Max(11, TextSize - 1);
+    public double ForecastHourTextSize => CaptionTextSize;
+    public double ForecastTempTextSize => BodyTextSize;
+    public double WeekDayLabelTextSize => BodyTextSize;
     public double WeekEmojiSize => _layoutMode == "Expanded" ? 18 : 16;
     public double WeekTempMaxSize => WeekDayLabelTextSize;
     public double WeekTempMinSize => WeekDayLabelTextSize;
-    public double HourlyCardWidth => 52;
+    public double HourlyCardWidth => Math.Ceiling(
+        56 + (32 * (EffectiveTypographyScale - 1)));
 
     // Mini layout supplementary info — multiple chips for richer display
     public string MiniHumidityText => _humidityText;
@@ -449,32 +465,141 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
     public Visibility WindVisibility => _showWind ? Visibility.Visible : Visibility.Collapsed;
     public Visibility PressureVisibility => _showPressure ? Visibility.Visible : Visibility.Collapsed;
     public Visibility PrimaryMetricsVisibility =>
-        _showHumidity || _showWind || _showPrecipitation
+        (_showHumidity || _showWind || _showPrecipitation) &&
+        (_layoutMode switch
+        {
+            "Compact" =>
+                _lastAvailableWidth >= CompactMetricsMinimumWidth &&
+                _lastAvailableHeight >= CompactMetricsMinimumHeight,
+            "Expanded" =>
+                _lastAvailableWidth >= ExpandedMetricsMinimumWidth &&
+                _lastAvailableHeight >= ExpandedMetricsMinimumHeight,
+            _ => false
+        })
             ? Visibility.Visible
             : Visibility.Collapsed;
     public Visibility ViewSwitchVisibility => _showForecast ? Visibility.Visible : Visibility.Collapsed;
     public Visibility MiniLayoutVisibility => _layoutMode == "Mini" ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility MiniHeaderVisibility =>
+        _lastAvailableHeight >= MiniHeaderMinimumHeight
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     public Visibility MiniLocationVisibility => !string.IsNullOrEmpty(_locationDisplay) ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility MiniDescriptionVisibility => !string.IsNullOrEmpty(_currentDescription) ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility MiniDescriptionVisibility =>
+        !string.IsNullOrEmpty(_currentDescription) &&
+        _lastAvailableWidth >= MiniDescriptionMinimumWidth &&
+        _lastAvailableHeight >= MiniDescriptionMinimumHeight
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    public Visibility MiniDetailsVisibility =>
+        !string.IsNullOrEmpty(_apparentTemperatureText) &&
+        _lastAvailableHeight >= MiniDetailsMinimumHeight
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     public Visibility CompactLayoutVisibility => _layoutMode == "Compact" ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ExpandedLayoutVisibility => _layoutMode == "Expanded" ? Visibility.Visible : Visibility.Collapsed;
 
     // Expanded layout: progressive visibility based on available height
     public Visibility ExpandedSunriseVisibility =>
-        _layoutMode == "Expanded" && _showSunrise && _lastAvailableHeight >= 300 ? Visibility.Visible : Visibility.Collapsed;
+        _layoutMode == "Expanded" &&
+        _showSunrise &&
+        _lastAvailableHeight >= ExpandedSunriseMinimumHeight
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     public Visibility ExpandedHourlyPrecipVisibility =>
-        _layoutMode == "Expanded" && _lastAvailableHeight >= 220 ? Visibility.Visible : Visibility.Collapsed;
+        _layoutMode == "Expanded" &&
+        _lastAvailableHeight >= ExpandedHourlyPrecipMinimumHeight
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
-    public double ExpandedHourlyCardHeight =>
-        _lastAvailableHeight >= 280 ? 92 : (_lastAvailableHeight >= 220 ? 80 : 64);
+    /// <summary>
+    /// Keeps the hourly section from drawing a second adjacent divider when
+    /// the primary metric band is the last visible information block above it.
+    /// If the metric band is hidden, the hourly divider remains the only visual
+    /// boundary before the forecast.
+    /// </summary>
+    public Visibility ExpandedHourlyDividerVisibility =>
+        PrimaryMetricsVisibility == Visibility.Visible &&
+        ExpandedSecondaryMetricsVisibility == Visibility.Collapsed &&
+        ExpandedSunriseVisibility == Visibility.Collapsed
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+    public double ExpandedHourlyCardHeight
+    {
+        get
+        {
+            double baseHeight = _lastAvailableHeight >= 360
+                ? 100
+                : _lastAvailableHeight >= 310
+                    ? 88
+                    : 80;
+            return Math.Ceiling(
+                baseHeight + (52 * (EffectiveTypographyScale - 1)));
+        }
+    }
 
     public Visibility ExpandedSecondaryMetricsVisibility =>
         _layoutMode == "Expanded" &&
-        _lastAvailableHeight >= 300 &&
+        _lastAvailableHeight >= ExpandedSecondaryMetricsMinimumHeight &&
         (_showUvIndex || _showPressure)
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+    private double EffectiveTypographyScale => ResolveTypographyScale(
+        TextSize,
+        _systemTextScaleFactor);
+
+    private double CompactMetricsMinimumHeight =>
+        180 + (80 * (EffectiveTypographyScale - 1));
+
+    private double CompactMetricsMinimumWidth =>
+        190 + (80 * (EffectiveTypographyScale - 1));
+
+    private double ExpandedMetricsMinimumHeight =>
+        200 + (90 * (EffectiveTypographyScale - 1));
+
+    private double ExpandedMetricsMinimumWidth =>
+        300 + (170 * (EffectiveTypographyScale - 1));
+
+    private double MiniDescriptionMinimumWidth =>
+        185 + (80 * (EffectiveTypographyScale - 1));
+
+    private double MiniHeaderMinimumHeight =>
+        104 + (48 * (EffectiveTypographyScale - 1));
+
+    private double MiniDescriptionMinimumHeight =>
+        118 + (36 * (EffectiveTypographyScale - 1));
+
+    private double MiniDetailsMinimumHeight =>
+        118 + (48 * (EffectiveTypographyScale - 1));
+
+    private double ExpandedHourlyPrecipMinimumHeight =>
+        310 + (120 * (EffectiveTypographyScale - 1));
+
+    private double ExpandedSunriseMinimumHeight =>
+        // Keep the sunrise/sunset track while an expanded widget is being
+        // shortened to remove the spare space above the hourly forecast.
+        // It is more useful than the smaller supplementary metrics, so it is
+        // retained until the compact hourly card and the essential rows need
+        // the space. The scale term keeps this safe for larger system text.
+        280 + (130 * (EffectiveTypographyScale - 1));
+
+    private double ExpandedSecondaryMetricsMinimumHeight =>
+        // Release the smaller supplementary row first while the widget is
+        // being shortened. This keeps the more useful sunrise/sunset track
+        // stable as the hourly forecast consumes the remaining height.
+        300 + (120 * (EffectiveTypographyScale - 1));
+
+    private void UpdateHourlyForecastTypography()
+    {
+        double textSize = ForecastHourTextSize;
+        foreach (WeatherHourViewModel item in HourlyForecast)
+        {
+            item.ForecastHourTextSize = textSize;
+        }
+    }
 
     public bool UsesRichSkin => _skin == SettingsService.WeatherSkinRich;
     public Visibility RichSkinVisibility => UsesRichSkin ? Visibility.Visible : Visibility.Collapsed;
@@ -707,6 +832,7 @@ public sealed partial class WeatherWidgetViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(PressureVisibility));
         OnPropertyChanged(nameof(PrimaryMetricsVisibility));
         OnPropertyChanged(nameof(ExpandedSecondaryMetricsVisibility));
+        OnPropertyChanged(nameof(ExpandedHourlyDividerVisibility));
         OnPropertyChanged(nameof(ViewSwitchVisibility));
     }
 
@@ -843,6 +969,8 @@ public sealed partial class WeatherDayViewModel : ObservableObject
 /// </summary>
 public sealed partial class WeatherHourViewModel : ObservableObject
 {
+    private double _forecastHourTextSize = 9;
+
     public string HourLabel { get; set; } = string.Empty;
     public string TemperatureText { get; set; } = string.Empty;
     public string PrecipitationText { get; set; } = string.Empty;
@@ -851,4 +979,10 @@ public sealed partial class WeatherHourViewModel : ObservableObject
 
     /// <summary>Whether this is the current hour (used for highlight).</summary>
     public bool IsCurrentHour { get; set; }
+
+    public double ForecastHourTextSize
+    {
+        get => _forecastHourTextSize;
+        set => SetProperty(ref _forecastHourTextSize, value);
+    }
 }

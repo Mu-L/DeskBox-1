@@ -48,7 +48,8 @@ public sealed record DragDropPermissionRepairResult(
     bool Success,
     bool NeedsRelaunch,
     int RepairedCount,
-    string FailureMessage);
+    string FailureMessage,
+    bool RequiresStartupSettings);
 
 public static class DragDropPermissionService
 {
@@ -86,11 +87,15 @@ public static class DragDropPermissionService
         UacPolicySnapshot uacPolicy = GetUacPolicySnapshot();
         List<AppCompatEntry> appCompatEntries = GetRelevantAppCompatEntries(currentExePath);
         string? startupValue = StartupService.GetRunValue();
+        StartupRegistrationState startupState = StartupService.GetState();
         List<ShortcutProbe> shortcutProbes = GetShortcutProbes(currentExePath, localizationService);
 
         bool isUacDisabled = uacPolicy.EnableLua == 0;
         bool hasAppCompatIssue = appCompatEntries.Any(entry => ContainsIncompatibleAppCompatToken(entry.Value));
-        bool hasStartupIssue = IsStartupValueSuspicious(startupValue, currentExePath);
+        bool hasStartupIssue =
+            IsStartupValueSuspicious(startupValue, currentExePath) ||
+            startupState is StartupRegistrationState.PathMismatch or
+                StartupRegistrationState.BlockedOrFailed;
         bool hasShortcutIssue = shortcutProbes.Any(probe => probe.HasIssue);
         bool permissionMismatch =
             currentToken.IsElevated == true &&
@@ -147,7 +152,11 @@ public static class DragDropPermissionService
             FormatProcessToken("Explorer", explorerToken, localizationService),
             FormatUacPolicy(uacPolicy, localizationService),
             FormatAppCompatStatus(appCompatEntries, localizationService),
-            FormatStartupStatus(startupValue, currentExePath, localizationService),
+            FormatStartupStatus(
+                startupState,
+                startupValue,
+                currentExePath,
+                localizationService),
             FormatShortcutStatus(shortcutProbes, localizationService),
             currentToken.IsElevated == true,
             explorerToken.IsElevated == true,
@@ -164,6 +173,7 @@ public static class DragDropPermissionService
         var before = Diagnose();
         int repairedCount = 0;
         List<string> failures = [];
+        bool requiresStartupSettings = false;
 
         foreach (var entry in GetRelevantAppCompatEntries(currentExePath))
         {
@@ -193,10 +203,28 @@ public static class DragDropPermissionService
 
         try
         {
-            if (settingsService.Settings.AutoStart || StartupService.IsEnabled())
+            StartupRegistrationState startupStateBefore = StartupService.GetState();
+            if (settingsService.Settings.AutoStart ||
+                startupStateBefore == StartupRegistrationState.Enabled)
             {
-                StartupService.Enable();
-                repairedCount++;
+                StartupOperationResult startupResult = StartupService.Enable();
+                if (startupResult.State == StartupRegistrationState.Enabled)
+                {
+                    if (startupStateBefore != StartupRegistrationState.Enabled)
+                    {
+                        repairedCount++;
+                    }
+                }
+                else
+                {
+                    requiresStartupSettings =
+                        startupResult.RequiresSystemSettings;
+                    string startupFailure = string.IsNullOrWhiteSpace(
+                        startupResult.ErrorMessage)
+                        ? $"Startup remained in state {startupResult.State}."
+                        : startupResult.ErrorMessage;
+                    failures.Add($"Startup: {startupFailure}");
+                }
             }
         }
         catch (Exception ex)
@@ -227,7 +255,12 @@ public static class DragDropPermissionService
         string failureMessage = failures.Count == 0 ? string.Empty : string.Join("; ", failures);
 
         bool needsRelaunch = before.NeedsRelaunch || after.NeedsRelaunch || before.IsCurrentProcessElevated;
-        return new DragDropPermissionRepairResult(failures.Count == 0, needsRelaunch, repairedCount, failureMessage);
+        return new DragDropPermissionRepairResult(
+            failures.Count == 0,
+            needsRelaunch,
+            repairedCount,
+            failureMessage,
+            requiresStartupSettings);
     }
 
     public static bool TryRelaunchAsExplorerUser()
@@ -470,8 +503,22 @@ public static class DragDropPermissionService
             $"{entry.RootName}: {entry.Value} ({entry.ExePath})"));
     }
 
-    private static string FormatStartupStatus(string? startupValue, string currentExePath, LocalizationService? localizationService)
+    private static string FormatStartupStatus(
+        StartupRegistrationState startupState,
+        string? startupValue,
+        string currentExePath,
+        LocalizationService? localizationService)
     {
+        if (startupState == StartupRegistrationState.DisabledByUser)
+        {
+            return Text(localizationService, "Settings.AutoStart.WindowsDisabled");
+        }
+
+        if (startupState == StartupRegistrationState.Pending)
+        {
+            return Text(localizationService, "Settings.AutoStart.Pending");
+        }
+
         if (string.IsNullOrWhiteSpace(startupValue))
         {
             return Text(localizationService, "Settings.DragDropPermission.Status.StartupDisabled");

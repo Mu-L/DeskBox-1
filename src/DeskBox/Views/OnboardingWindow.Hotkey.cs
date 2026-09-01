@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
+using Windows.System;
 using Windows.UI;
 using WinRT.Interop;
 
@@ -32,9 +33,7 @@ public sealed partial class OnboardingWindow
         RefreshSearchHotkeyText();
 
         // Startup toggle
-        Step4StartupToggle.Toggled -= Step4StartupToggle_Toggled;
-        Step4StartupToggle.IsOn = StartupService.IsEnabled();
-        Step4StartupToggle.Toggled += Step4StartupToggle_Toggled;
+        RefreshStartupToggleFromSystem();
 
         // Storage path & pin
         SetupStep4Storage();
@@ -284,16 +283,100 @@ public sealed partial class OnboardingWindow
         _settingsService.SaveDebounced();
     }
 
-    private void Step4StartupToggle_Toggled(object sender, RoutedEventArgs e)
+    private void OnboardingWindow_Activated(
+        object sender,
+        WindowActivatedEventArgs args)
+    {
+        if (!_hasLoaded ||
+            args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            return;
+        }
+
+        RefreshStartupToggleFromSystem();
+    }
+
+    private void RefreshStartupToggleFromSystem()
+    {
+        StartupRegistrationState state = StartupService.GetState();
+        bool enabled = state is
+            StartupRegistrationState.Enabled or
+            StartupRegistrationState.Pending;
+
+        Step4StartupToggle.Toggled -= Step4StartupToggle_Toggled;
+        Step4StartupToggle.IsOn = enabled;
+        Step4StartupToggle.Toggled += Step4StartupToggle_Toggled;
+
+        if (_settingsService.Settings.AutoStart != enabled)
+        {
+            _settingsService.Settings.AutoStart = enabled;
+            _settingsService.SaveDebounced();
+        }
+    }
+
+    private async void Step4StartupToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (sender is not ToggleSwitch toggle)
         {
             return;
         }
 
-        StartupService.SetEnabled(toggle.IsOn);
-        _settingsService.Settings.AutoStart = toggle.IsOn;
+        bool requestedEnabled = toggle.IsOn;
+        StartupOperationResult result =
+            StartupService.SetEnabled(requestedEnabled);
+        bool effectiveEnabled = result.State is
+            StartupRegistrationState.Enabled or
+            StartupRegistrationState.Pending;
+
+        if (toggle.IsOn != effectiveEnabled)
+        {
+            toggle.Toggled -= Step4StartupToggle_Toggled;
+            toggle.IsOn = effectiveEnabled;
+            toggle.Toggled += Step4StartupToggle_Toggled;
+        }
+
+        _settingsService.Settings.AutoStart = effectiveEnabled;
         _settingsService.SaveDebounced();
+
+        if (!requestedEnabled || !result.RequiresSystemSettings)
+        {
+            return;
+        }
+
+        App.Log(
+            $"[Onboarding] Startup remains disabled by Windows: {result.ErrorMessage}");
+        if (RootGrid.XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = _localizationService.T("Settings.AutoStart.Title"),
+            PrimaryButtonText = _localizationService.T(
+                "Settings.AutoStart.OpenSystemSettings"),
+            CloseButtonText = _localizationService.T("Common.Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+            Content = new TextBlock
+            {
+                Text = _localizationService.T(
+                    "Settings.AutoStart.WindowsDisabled"),
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            try
+            {
+                await Launcher.LaunchUriAsync(new Uri("ms-settings:startupapps"));
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[Onboarding] Failed to open Startup apps settings: {ex}");
+            }
+        }
     }
 
     private void StartKeycapPulse()

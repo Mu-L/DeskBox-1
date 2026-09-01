@@ -27,6 +27,8 @@ public sealed class GlanceWidgetStore
     private static readonly ConcurrentDictionary<string, GlanceWidgetStore> WidgetStores =
         new(StringComparer.Ordinal);
 
+    internal static int CachedWidgetStoreCount => WidgetStores.Count;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _storePath;
     private readonly string? _legacyStorePath;

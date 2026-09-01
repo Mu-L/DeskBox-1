@@ -74,6 +74,28 @@ public sealed class ShellThumbnailProxyContractTests
     }
 
     [Fact]
+    public void ShortcutIconPayload_CropsClearlyPaddedCanvas()
+    {
+        byte[] payload = CreateBitmapPayload(
+            width: 256,
+            height: 256,
+            visibleLeft: 104,
+            visibleTop: 104,
+            visibleWidth: 48,
+            visibleHeight: 48,
+            alpha: 0xFF);
+
+        Assert.True(ShellThumbnailProxy.IsLikelyPaddedIconPayload(payload));
+
+        byte[] normalized = Assert.IsType<byte[]>(
+            ShellThumbnailProxy.NormalizeIconPayload(payload));
+        Assert.True(ShellThumbnailProxy.IsVisibleBitmapPayload(normalized));
+        Assert.False(ShellThumbnailProxy.IsLikelyPaddedIconPayload(normalized));
+        Assert.Equal(48, BitConverter.ToInt32(normalized, 18));
+        Assert.Equal(-48, BitConverter.ToInt32(normalized, 22));
+    }
+
+    [Fact]
     public async Task IconOnlyProxy_ReturnsVisiblePixelsForPidlShortcut()
     {
         string temporaryDirectory = Path.Combine(
@@ -214,21 +236,48 @@ public sealed class ShellThumbnailProxyContractTests
 
     private static byte[] CreateBitmapPayload(byte alpha)
     {
+        return CreateBitmapPayload(
+            width: 1,
+            height: 1,
+            visibleLeft: 0,
+            visibleTop: 0,
+            visibleWidth: 1,
+            visibleHeight: 1,
+            alpha: alpha);
+    }
+
+    private static byte[] CreateBitmapPayload(
+        int width,
+        int height,
+        int visibleLeft,
+        int visibleTop,
+        int visibleWidth,
+        int visibleHeight,
+        byte alpha)
+    {
         const int pixelOffset = 138;
-        byte[] payload = new byte[pixelOffset + 4];
+        byte[] payload = new byte[pixelOffset + (width * height * 4)];
         payload[0] = (byte)'B';
         payload[1] = (byte)'M';
         BitConverter.GetBytes(payload.Length).CopyTo(payload, 2);
         BitConverter.GetBytes(pixelOffset).CopyTo(payload, 10);
         BitConverter.GetBytes(124).CopyTo(payload, 14);
-        BitConverter.GetBytes(1).CopyTo(payload, 18);
-        BitConverter.GetBytes(-1).CopyTo(payload, 22);
+        BitConverter.GetBytes(width).CopyTo(payload, 18);
+        BitConverter.GetBytes(-height).CopyTo(payload, 22);
         BitConverter.GetBytes((ushort)1).CopyTo(payload, 26);
         BitConverter.GetBytes((ushort)32).CopyTo(payload, 28);
-        payload[pixelOffset] = 0x11;
-        payload[pixelOffset + 1] = 0x22;
-        payload[pixelOffset + 2] = 0x33;
-        payload[pixelOffset + 3] = alpha;
+        for (int y = visibleTop; y < visibleTop + visibleHeight; y++)
+        {
+            for (int x = visibleLeft; x < visibleLeft + visibleWidth; x++)
+            {
+                int offset = pixelOffset + ((y * width + x) * 4);
+                payload[offset] = 0x11;
+                payload[offset + 1] = 0x22;
+                payload[offset + 2] = 0x33;
+                payload[offset + 3] = alpha;
+            }
+        }
+
         return payload;
     }
 }

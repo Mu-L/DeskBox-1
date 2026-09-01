@@ -690,6 +690,34 @@ public sealed class SettingsCopyAndHierarchyTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ManagedStorageDesktopShortcutUsesActualStatusAndExplicitActions()
+    {
+        string root = FindRepositoryRoot();
+        string windowXaml = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.xaml"));
+        string storageCode = File.ReadAllText(Path.Combine(
+            root,
+            "src/DeskBox/Views/SettingsWindow.StorageAndUpdates.cs"));
+
+        Assert.Contains(
+            "x:Name=\"ManagedStorageDesktopShortcutStatusText\"",
+            windowXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Click=\"ManagedStorageDesktopShortcutActionButton_Click\"",
+            windowXaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "IsOn=\"{Binding ManagedStorageDesktopShortcutEnabled",
+            windowXaml,
+            StringComparison.Ordinal);
+        Assert.Contains("shortcutService.HasShortcut()", storageCode, StringComparison.Ordinal);
+        Assert.Contains("shortcutService.CreateAsync()", storageCode, StringComparison.Ordinal);
+        Assert.Contains("shortcutService.RemoveAsync()", storageCode, StringComparison.Ordinal);
+    }
+
     private static string SliceSection(string xaml, string startToken, string endToken)
     {
         int start = xaml.IndexOf(startToken, StringComparison.Ordinal);

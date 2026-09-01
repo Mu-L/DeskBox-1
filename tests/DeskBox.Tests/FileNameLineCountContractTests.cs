@@ -1,3 +1,6 @@
+using DeskBox.Services;
+using DeskBox.ViewModels;
+
 namespace DeskBox.Tests;
 
 public class FileNameLineCountContractTests
@@ -27,6 +30,35 @@ public class FileNameLineCountContractTests
         Assert.Contains("DataContext.IconLabelMaxLines", fileSurface, StringComparison.Ordinal);
         Assert.Contains("LayoutContext.IconLabelVisibility", itemSurface, StringComparison.Ordinal);
         Assert.Contains("DataContext.IconLabelVisibility", fileSurface, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IconTileHeight_ReservesConfiguredLinesAtMaximumSystemTextScale()
+    {
+        double oneLineHeight = WidgetViewModel.ResolveIconTileHeight(
+            iconSize: SettingsService.DefaultIconSize,
+            textSize: SettingsService.DefaultTextSize,
+            fileNameLineCount: SettingsService.MinFileNameLineCount,
+            verticalScale: SettingsService.DefaultVerticalSpacingScale,
+            systemTextScaleFactor:
+                WindowsCompatibilityService.MaxSystemTextScaleFactor);
+        double twoLineHeight = WidgetViewModel.ResolveIconTileHeight(
+            iconSize: SettingsService.DefaultIconSize,
+            textSize: SettingsService.DefaultTextSize,
+            fileNameLineCount: SettingsService.DefaultFileNameLineCount,
+            verticalScale: SettingsService.DefaultVerticalSpacingScale,
+            systemTextScaleFactor:
+                WindowsCompatibilityService.MaxSystemTextScaleFactor);
+        double defaultScaleTwoLineHeight = WidgetViewModel.ResolveIconTileHeight(
+            iconSize: SettingsService.DefaultIconSize,
+            textSize: SettingsService.DefaultTextSize,
+            fileNameLineCount: SettingsService.DefaultFileNameLineCount,
+            verticalScale: SettingsService.DefaultVerticalSpacingScale,
+            systemTextScaleFactor:
+                WindowsCompatibilityService.MinSystemTextScaleFactor);
+
+        Assert.True(twoLineHeight > oneLineHeight);
+        Assert.True(twoLineHeight > defaultScaleTwoLineHeight);
     }
 
     private static string FindRepositoryRoot()

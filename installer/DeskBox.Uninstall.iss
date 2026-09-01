@@ -25,48 +25,6 @@ begin
   Result := Trim(Value);
 end;
 
-function TryReadJsonBooleanValue(Json: string; PropertyName: string; var Value: Boolean): Boolean;
-var
-  Key: string;
-  KeyPosition: Integer;
-  ColonPosition: Integer;
-  StartPosition: Integer;
-  ValueText: string;
-begin
-  Result := False;
-  Key := '"' + PropertyName + '"';
-  KeyPosition := Pos(Key, Json);
-  if KeyPosition = 0 then
-    Exit;
-
-  ColonPosition := KeyPosition + Length(Key);
-  while (ColonPosition <= Length(Json)) and (Copy(Json, ColonPosition, 1) <> ':') do
-    ColonPosition := ColonPosition + 1;
-
-  if ColonPosition > Length(Json) then
-    Exit;
-
-  StartPosition := ColonPosition + 1;
-  while (StartPosition <= Length(Json)) and
-        ((Copy(Json, StartPosition, 1) = ' ') or
-         (Copy(Json, StartPosition, 1) = #9) or
-         (Copy(Json, StartPosition, 1) = #10) or
-         (Copy(Json, StartPosition, 1) = #13)) do
-    StartPosition := StartPosition + 1;
-
-  ValueText := Lowercase(Copy(Json, StartPosition, 5));
-  if Copy(ValueText, 1, 4) = 'true' then
-  begin
-    Value := True;
-    Result := True;
-  end
-  else if ValueText = 'false' then
-  begin
-    Value := False;
-    Result := True;
-  end;
-end;
-
 function UnescapeJsonString(Value: string): string;
 begin
   StringChangeEx(Value, '\/', '/', True);
@@ -158,16 +116,12 @@ begin
   end;
 end;
 
-procedure GetManagedStorageShortcutSettings(
-  var ShortcutEnabled: Boolean;
-  var ShortcutPath: string);
+procedure GetManagedStorageShortcutPath(var ShortcutPath: string);
 var
   SettingsPath: string;
   Json: AnsiString;
-  ConfiguredEnabled: Boolean;
   ConfiguredPath: string;
 begin
-  ShortcutEnabled := True;
   ShortcutPath := '';
   SettingsPath := ExpandConstant(DeskBoxDataSettingsPath);
 
@@ -176,9 +130,6 @@ begin
 
   if not LoadStringFromFile(SettingsPath, Json) then
     Exit;
-
-  if TryReadJsonBooleanValue(Json, 'managedStorageDesktopShortcutEnabled', ConfiguredEnabled) then
-    ShortcutEnabled := ConfiguredEnabled;
 
   if TryReadJsonStringValue(Json, 'managedStorageDesktopShortcutPath', ConfiguredPath) then
     ShortcutPath := TrimString(ConfiguredPath);
@@ -326,18 +277,12 @@ var
   ConfiguredShortcutPath: string;
   ExistingShortcutPath: string;
   NewShortcutPath: string;
-  ShortcutEnabled: Boolean;
 begin
   FolderPath := GetManagedStorageRootPath;
   if not FolderContainsManagedStorageItems(FolderPath) then
     Exit;
 
-  GetManagedStorageShortcutSettings(ShortcutEnabled, ConfiguredShortcutPath);
-  if not ShortcutEnabled then
-  begin
-    Log('DeskBox uninstall respected the disabled managed storage desktop shortcut setting.');
-    Exit;
-  end;
+  GetManagedStorageShortcutPath(ConfiguredShortcutPath);
 
   if FindManagedStorageShortcut(
        FolderPath,
@@ -819,6 +764,14 @@ begin
     // account's LocalAppData as the data of every DeskBox user.
     PurgeDeskBoxAppData := False;
     Log('DeskBox all-users uninstall will preserve every user profile''s application data.');
+    // The usual split-token elevation keeps the initiating user's profile, so
+    // their settings file is a safe signal that this uninstaller can offer an
+    // access shortcut for that same profile. If different administrator
+    // credentials were supplied, do not guess another user's storage path.
+    if FileExists(ExpandConstant(DeskBoxDataSettingsPath)) then
+      OfferManagedStorageShortcut
+    else
+      Log('DeskBox all-users uninstall skipped the managed storage shortcut offer because the current account has no DeskBox settings.');
     Result := True;
   end
   else

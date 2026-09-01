@@ -40,22 +40,20 @@ public sealed class NativeShellFileDragProviderTests
     }
 
     [Fact]
-    public void RequiresStorageBrokerBypass_AcceptsBlockedOrUnreadableShortcuts()
+    public void RequiresStorageBrokerBypass_AcceptsAllExistingShortcuts()
     {
-        string[] paths = [@"E:\DeskBox\my\Hidden.lnk"];
+        string[] paths = [@"E:\DeskBox\my\App.lnk"];
 
         Assert.True(NativeShellFileDragProvider.RequiresStorageBrokerBypass(
             paths,
-            _ => true,
-            _ => IOFileAttributes.Hidden | IOFileAttributes.System));
-        Assert.True(NativeShellFileDragProvider.RequiresStorageBrokerBypass(
-            paths,
-            _ => true,
-            _ => throw new UnauthorizedAccessException()));
+            _ => true));
         Assert.False(NativeShellFileDragProvider.RequiresStorageBrokerBypass(
-            paths,
-            _ => true,
-            _ => IOFileAttributes.Archive));
+            [@"E:\DeskBox\my\Missing.lnk"],
+            _ => false));
+
+        Assert.False(NativeShellFileDragProvider.RequiresStorageBrokerBypass(
+            [@"E:\DeskBox\my\Readme.txt"],
+            _ => true));
     }
 
     [Fact]
@@ -128,6 +126,47 @@ public sealed class NativeShellFileDragProviderTests
                 File.SetAttributes(shortcutPath, IOFileAttributes.Normal);
             }
 
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DragPackage_UsesNativeShellForNormalShortcutWithoutBroker()
+    {
+        string tempDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "DeskBox.Tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        string shortcutPath = Path.Combine(tempDirectory, "Normal app.lnk");
+        File.WriteAllBytes(shortcutPath, [0x4C, 0x00, 0x00, 0x00]);
+
+        try
+        {
+            var dataPackage = new DataPackage();
+            int brokerCallCount = 0;
+            bool prepared = FileItemDragPackage.TryPrepare(
+                dataPackage,
+                [new WidgetItem { Path = shortcutPath, IsShortcut = true }],
+                "widget-test",
+                _ =>
+                {
+                    brokerCallCount++;
+                    return Array.Empty<IStorageItem>();
+                },
+                _ => "Normal app.lnk",
+                out FileItemDragPackageResult result);
+
+            Assert.True(prepared);
+            Assert.True(result.UsesNativeShellDataObject);
+            Assert.True(result.HasStorageItems);
+            Assert.Equal(0, brokerCallCount);
+            Assert.Contains(
+                StandardDataFormats.StorageItems,
+                dataPackage.GetView().AvailableFormats);
+        }
+        finally
+        {
             Directory.Delete(tempDirectory, recursive: true);
         }
     }

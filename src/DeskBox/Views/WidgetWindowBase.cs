@@ -64,8 +64,6 @@ public abstract partial class WidgetWindowBase : Window
     private bool _isInteractionBackdropDowngraded;
     private Windows.UI.Color _lastLegacyAccentTintColor;
     private double _lastLegacyAccentOpacity;
-    private bool? _acrylicControllerUsesBase;
-    private bool? _micaControllerUsesAlt;
     private BackdropSignature? _lastAppliedBackdropSignature;
     private WinUIEx.TransparentTintBackdrop? _solidColorBackdrop;
     protected SystemBackdropConfiguration? BackdropConfiguration;

@@ -7,6 +7,7 @@
     xmlns:local="using:DeskBox.Controls.WidgetContents"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:viewModels="using:DeskBox.ViewModels"
     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d"
     SizeChanged="UserControl_SizeChanged">
@@ -105,7 +106,10 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" ColumnSpacing="4">
+            <Grid
+                Grid.Row="0"
+                ColumnSpacing="4"
+                Visibility="{x:Bind ViewModel.MiniHeaderVisibility, Mode=OneWay}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -157,6 +161,7 @@
                     VerticalAlignment="Center"
                     FontFamily="Segoe UI Emoji"
                     FontSize="{Binding CurrentEmojiSize}"
+                    IsTextScaleFactorEnabled="False"
                     Text="{Binding CurrentEmoji}" />
                 <StackPanel
                     Grid.Column="1"
@@ -179,11 +184,12 @@
                             Visibility="{Binding MiniDescriptionVisibility}" />
                     </StackPanel>
                     <TextBlock
-                        FontSize="9"
+                        FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Text="{Binding ApparentTemperatureText}"
                         TextTrimming="CharacterEllipsis"
-                        TextWrapping="NoWrap" />
+                        TextWrapping="NoWrap"
+                        Visibility="{x:Bind ViewModel.MiniDetailsVisibility, Mode=OneWay}" />
                 </StackPanel>
             </Grid>
         </Grid>
@@ -247,6 +253,7 @@
                     VerticalAlignment="Center"
                     FontFamily="Segoe UI Emoji"
                     FontSize="{Binding CurrentEmojiSize}"
+                    IsTextScaleFactorEnabled="False"
                     Text="{Binding CurrentEmoji}" />
                 <StackPanel
                     Grid.Column="1"
@@ -279,7 +286,7 @@
 
             <Border
                 Grid.Row="2"
-                MinHeight="38"
+                MinHeight="48"
                 Padding="0,7,0,2"
                 BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                 BorderThickness="0,1,0,0"
@@ -298,13 +305,13 @@
                         Visibility="{Binding HumidityVisibility}">
                         <TextBlock
                             HorizontalAlignment="Center"
-                            FontSize="9"
+                            FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding HumidityLabel}" />
                         <TextBlock
                             x:Name="CompactHumidityValueText"
                             HorizontalAlignment="Center"
-                            FontSize="10"
+                            FontSize="{x:Bind ViewModel.BodyTextSize, Mode=OneWay}"
                             FontWeight="SemiBold"
                             Text="{Binding HumidityValueText}"
                             TextTrimming="CharacterEllipsis"
@@ -318,13 +325,13 @@
                         Visibility="{Binding WindVisibility}">
                         <TextBlock
                             HorizontalAlignment="Center"
-                            FontSize="9"
+                            FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding WindLabel}" />
                         <TextBlock
                             x:Name="CompactWindText"
                             HorizontalAlignment="Center"
-                            FontSize="10"
+                            FontSize="{x:Bind ViewModel.BodyTextSize, Mode=OneWay}"
                             FontWeight="SemiBold"
                             Text="{Binding WindValueText}"
                             TextTrimming="CharacterEllipsis"
@@ -338,13 +345,13 @@
                         Visibility="{Binding PrecipitationVisibility}">
                         <TextBlock
                             HorizontalAlignment="Center"
-                            FontSize="9"
+                            FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding PrecipitationLabel}" />
                         <TextBlock
                             x:Name="CompactPrecipitationValueText"
                             HorizontalAlignment="Center"
-                            FontSize="10"
+                            FontSize="{x:Bind ViewModel.BodyTextSize, Mode=OneWay}"
                             FontWeight="SemiBold"
                             Text="{Binding PrecipitationValueText}"
                             TextTrimming="CharacterEllipsis"
@@ -398,7 +405,6 @@
                 <toolkit:Segmented
                     x:Name="WeatherViewSegmented"
                     Grid.Column="1"
-                    Height="32"
                     MinHeight="32"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center"
@@ -458,6 +464,7 @@
                     VerticalAlignment="Center"
                     FontFamily="Segoe UI Emoji"
                     FontSize="{Binding CurrentEmojiSize}"
+                    IsTextScaleFactorEnabled="False"
                     Text="{Binding CurrentEmoji}" />
                 <StackPanel
                     Grid.Column="1"
@@ -490,7 +497,7 @@
 
             <Border
                 Grid.Row="2"
-                Height="41"
+                MinHeight="48"
                 Padding="0,5"
                 BorderBrush="{ThemeResource WidgetLayerStrokeBrush}"
                 BorderThickness="0,1,0,1"
@@ -509,7 +516,7 @@
                         Visibility="{Binding HumidityVisibility}">
                         <TextBlock
                             HorizontalAlignment="Center"
-                            FontSize="9"
+                            FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding HumidityLabel}" />
                         <TextBlock
@@ -527,7 +534,7 @@
                         Visibility="{Binding WindVisibility}">
                         <TextBlock
                             HorizontalAlignment="Center"
-                            FontSize="9"
+                            FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding WindLabel}" />
                         <TextBlock
@@ -547,7 +554,7 @@
                         Visibility="{Binding PrecipitationVisibility}">
                         <TextBlock
                             HorizontalAlignment="Center"
-                            FontSize="9"
+                            FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="{Binding PrecipitationLabel}" />
                         <TextBlock
@@ -572,12 +579,12 @@
                     Spacing="6"
                     Visibility="{Binding UvIndexVisibility}">
                     <TextBlock
-                        FontSize="9"
+                        FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Text="{Binding UvIndexLabel}" />
                     <TextBlock
                         x:Name="ExpandedUvValueText"
-                        FontSize="{Binding CaptionTextSize}"
+                        FontSize="{Binding BodyTextSize}"
                         FontWeight="SemiBold"
                         Text="{Binding UvIndexValueText}" />
                 </StackPanel>
@@ -587,12 +594,12 @@
                     Spacing="6"
                     Visibility="{Binding PressureVisibility}">
                     <TextBlock
-                        FontSize="9"
+                        FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Text="{Binding PressureLabel}" />
                     <TextBlock
                         x:Name="ExpandedPressureValueText"
-                        FontSize="{Binding CaptionTextSize}"
+                        FontSize="{Binding BodyTextSize}"
                         FontWeight="SemiBold"
                         Text="{Binding PressureValueText}" />
                 </StackPanel>
@@ -601,7 +608,7 @@
             <!-- Parent RowSpacing adds about 5px above and below this track. -->
             <Grid
                 Grid.Row="4"
-                Height="24"
+                MinHeight="32"
                 Margin="5,0"
                 ColumnSpacing="12"
                 Visibility="{Binding ExpandedSunriseVisibility}">
@@ -615,11 +622,11 @@
                     VerticalAlignment="Center"
                     Spacing="-1">
                     <TextBlock
-                        FontSize="9"
+                        FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Text="{Binding SunriseLabel}" />
                     <TextBlock
-                        FontSize="{Binding CaptionTextSize}"
+                        FontSize="{Binding BodyTextSize}"
                         FontWeight="SemiBold"
                         Text="{Binding SunriseText}" />
                 </StackPanel>
@@ -672,12 +679,12 @@
                     Spacing="-1">
                     <TextBlock
                         HorizontalAlignment="Right"
-                        FontSize="9"
+                        FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Text="{Binding SunsetLabel}" />
                     <TextBlock
                         HorizontalAlignment="Right"
-                        FontSize="{Binding CaptionTextSize}"
+                        FontSize="{Binding BodyTextSize}"
                         FontWeight="SemiBold"
                         Text="{Binding SunsetText}" />
                 </StackPanel>
@@ -690,7 +697,8 @@
                 <Border
                     Height="1"
                     VerticalAlignment="Top"
-                    Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                    Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    Visibility="{x:Bind ViewModel.ExpandedHourlyDividerVisibility, Mode=OneWay}" />
                 <ScrollViewer
                     x:Name="ExpandedHourlyScroll"
                     Height="{Binding ExpandedHourlyCardHeight}"
@@ -719,7 +727,7 @@
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="viewModels:WeatherHourViewModel">
                                 <Grid
                                     Width="{Binding DataContext.HourlyCardWidth, ElementName=ExpandedLayout}"
                                     Height="{Binding DataContext.ExpandedHourlyCardHeight, ElementName=ExpandedLayout}">
@@ -735,7 +743,7 @@
                                             x:Name="HourlyHourText"
                                             Grid.Row="0"
                                             HorizontalAlignment="Center"
-                                            FontSize="9"
+                                            FontSize="{x:Bind ForecastHourTextSize, Mode=OneWay}"
                                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                             Text="{Binding HourLabel}" />
                                         <TextBlock
@@ -744,6 +752,7 @@
                                             VerticalAlignment="Center"
                                             FontFamily="Segoe UI Emoji"
                                             FontSize="{Binding DataContext.ForecastEmojiSize, ElementName=ExpandedLayout}"
+                                            IsTextScaleFactorEnabled="False"
                                             Text="{Binding Emoji}" />
                                         <TextBlock
                                             x:Name="HourlyTemperatureText"
@@ -755,7 +764,7 @@
                                         <TextBlock
                                             Grid.Row="3"
                                             HorizontalAlignment="Center"
-                                            FontSize="9"
+                                            FontSize="{x:Bind ForecastHourTextSize, Mode=OneWay}"
                                             Foreground="{StaticResource WeatherAccentBrush}"
                                             Text="{Binding PrecipitationText}"
                                             Visibility="{Binding DataContext.ExpandedHourlyPrecipVisibility, ElementName=ExpandedLayout}" />
@@ -808,8 +817,8 @@
                                     ToolTipService.ToolTip="{Binding Description}">
                                     <Grid ColumnSpacing="6">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="48" />
-                                            <ColumnDefinition Width="28" />
+                                            <ColumnDefinition Width="Auto" MinWidth="56" />
+                                            <ColumnDefinition Width="Auto" MinWidth="28" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="72" />
                                             <ColumnDefinition Width="Auto" />
@@ -827,6 +836,7 @@
                                             VerticalAlignment="Center"
                                             FontFamily="Segoe UI Emoji"
                                             FontSize="{Binding DataContext.WeekEmojiSize, ElementName=ExpandedLayout}"
+                                            IsTextScaleFactorEnabled="False"
                                             Text="{Binding Emoji}" />
                                         <Grid
                                             Grid.Column="3"
@@ -883,7 +893,7 @@
             CornerRadius="{StaticResource WidgetCornerRadiusMedium}"
             Visibility="Collapsed">
             <TextBlock
-                FontSize="11"
+                FontSize="{x:Bind ViewModel.CaptionTextSize, Mode=OneWay}"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Text="{Binding RefreshStatusText}" />
         </Border>
@@ -903,7 +913,7 @@
                     IsActive="True" />
                 <TextBlock
                     HorizontalAlignment="Center"
-                    FontSize="11"
+                    FontSize="{x:Bind ViewModel.BodyTextSize, Mode=OneWay}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="{Binding LoadingText}" />
             </StackPanel>

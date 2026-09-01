@@ -84,4 +84,20 @@ public sealed class WindowsCompatibilityServiceTests
                 advancedEffectsEnabled,
                 highContrast));
     }
+
+    [Theory]
+    [InlineData(0.5, 1.0)]
+    [InlineData(1.0, 1.0)]
+    [InlineData(1.5, 1.5)]
+    [InlineData(2.25, 2.25)]
+    [InlineData(3.0, 2.25)]
+    [InlineData(double.NaN, 1.0)]
+    public void NormalizeSystemTextScaleFactor_ClampsToWindowsRange(
+        double value,
+        double expected)
+    {
+        Assert.Equal(
+            expected,
+            WindowsCompatibilityService.NormalizeSystemTextScaleFactor(value));
+    }
 }

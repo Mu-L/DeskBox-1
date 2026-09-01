@@ -9,6 +9,8 @@ namespace DeskBox.ViewModels;
     nameof(EmptyStateGlyph),
     nameof(EmptyStateTitle),
     nameof(FolderNavigationVisibility),
+    nameof(IconCellHeight),
+    nameof(IconCellWidth),
     nameof(IconContentSpacing),
     nameof(IconImageSize),
     nameof(IconLabelFontSize),

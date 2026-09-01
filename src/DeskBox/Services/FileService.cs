@@ -765,10 +765,17 @@ public sealed partial class FileService
 
     internal static void ClearShellKindCache()
     {
+        _ = ReleaseHiddenShellKindCache();
+    }
+
+    internal static int ReleaseHiddenShellKindCache()
+    {
         lock (s_shellKindCacheGate)
         {
+            int released = s_shellKindCache.Count;
             s_shellKindCache.Clear();
             s_shellKindCacheOrder.Clear();
+            return released;
         }
     }
 
@@ -1807,6 +1814,68 @@ public sealed partial class FileService
         return sanitized;
     }
 
+    /// <summary>
+    /// Resolves the destination file name for an inline rename. Folders and
+    /// shortcuts always keep their original extension. With extensions hidden
+    /// the input is treated as a name-only edit and the original extension is
+    /// appended. With extensions visible a typed extension that differs from
+    /// the original (compared with Path.GetExtension, case-insensitive) is
+    /// honored, but only after the caller confirms it through
+    /// <c>requiresExtensionChangeConfirmation</c>; an input without any
+    /// extension is conservatively treated as a name-only edit. The input must
+    /// already be sanitized via <see cref="SanitizeFileSystemName"/>.
+    /// </summary>
+    public static string ResolveRenameDestination(
+        string originalFileName,
+        string sanitizedName,
+        bool isFolder,
+        bool isShortcut,
+        bool showFileExtensions,
+        out bool requiresExtensionChangeConfirmation)
+    {
+        ArgumentNullException.ThrowIfNull(originalFileName);
+        ArgumentNullException.ThrowIfNull(sanitizedName);
+
+        requiresExtensionChangeConfirmation = false;
+        if (isFolder)
+        {
+            return sanitizedName;
+        }
+
+        string originalExtension = Path.GetExtension(originalFileName);
+
+        if (isShortcut || !showFileExtensions)
+        {
+            return AppendExtensionUnlessPresent(sanitizedName, originalExtension);
+        }
+
+        string inputExtension = Path.GetExtension(sanitizedName);
+        if (string.Equals(inputExtension, originalExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            return sanitizedName;
+        }
+
+        if (string.IsNullOrEmpty(inputExtension))
+        {
+            return AppendExtensionUnlessPresent(sanitizedName, originalExtension);
+        }
+
+        requiresExtensionChangeConfirmation = true;
+        return sanitizedName;
+    }
+
+    private static string AppendExtensionUnlessPresent(string name, string extension)
+    {
+        if (string.IsNullOrEmpty(extension))
+        {
+            return name;
+        }
+
+        return name.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
+            ? name
+            : name + extension;
+    }
+
     public static string GetAvailablePath(string desiredPath, ISet<string>? reservedPaths = null)
     {
         string normalizedPath = Path.GetFullPath(desiredPath);
@@ -2126,60 +2195,43 @@ public sealed partial class FileService
     /// </summary>
     public static OpenItemResult OpenItem(WidgetItem item, IntPtr ownerHwnd)
     {
-        try
+        if (item is null)
         {
-            if (ShortcutHelper.IsShellLinkPath(item.Path) &&
-                string.IsNullOrWhiteSpace(item.TargetPath))
-            {
-                item.TargetPath = ShortcutHelper.ReadStoredMetadata(item.Path)?.TargetPath ??
-                    string.Empty;
-            }
-
-            if (ShortcutHelper.IsShellLinkPath(item.Path) && IsBrokenShortcut(item))
-            {
-                var resolution = ShortcutHelper.ResolveBrokenShortcutWithShellUi(item.Path, ownerHwnd);
-                return resolution == BrokenShortcutResolution.ShortcutDeleted
-                    ? OpenItemResult.ShortcutDeleted
-                    : OpenItemResult.OpenedOrHandled;
-            }
-
-            var pathToOpen = item.IsShortcut ? item.Path : item.TargetPath;
-            if (string.IsNullOrEmpty(pathToOpen))
-            {
-                return OpenItemResult.Failed;
-            }
-
-            if (!item.IsShortcut &&
-                TryResolveExistingPathForTraversal(
-                    pathToOpen,
-                    out string traversalPath))
-            {
-                pathToOpen = traversalPath;
-            }
-
-            // Forward the real owner hwnd so any system UI (Open With / UAC) is parented to
-            // the widget instead of IntPtr.Zero, which previously left dialogs hidden behind
-            // the topmost widget. Returns Failed instead of swallowing the result so the
-            // caller can surface the failure to the user.
-            return Win32Helper.OpenFile(ownerHwnd, pathToOpen)
-                ? OpenItemResult.OpenedOrHandled
-                : OpenItemResult.Failed;
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[OpenItem] Unexpected failure path='{item.Path}' target='{item.TargetPath}': {ex}");
             return OpenItemResult.Failed;
         }
+
+        string itemPath = item.Path;
+        string targetPath = item.TargetPath;
+        bool isShortcut = item.IsShortcut;
+        OpenItemResult result = OpenItemCore(
+            itemPath,
+            targetPath,
+            isShortcut,
+            ownerHwnd,
+            trace: null,
+            out string resolvedTargetPath);
+
+        // Keep the synchronous compatibility path's existing hydration
+        // behavior, but never mutate a WidgetItem from the asynchronous launch
+        // worker. The UI path uses OpenItemAsync below and only needs the result.
+        if (ShortcutHelper.IsShellLinkPath(itemPath) &&
+            string.IsNullOrWhiteSpace(item.TargetPath) &&
+            !string.IsNullOrWhiteSpace(resolvedTargetPath))
+        {
+            item.TargetPath = resolvedTargetPath;
+        }
+
+        return result;
     }
 
-    private static bool IsBrokenShortcut(WidgetItem item)
+    private static bool IsBrokenShortcut(string shortcutPath, string targetPath)
     {
-        if (!File.Exists(item.Path))
+        if (!File.Exists(shortcutPath))
         {
             return true;
         }
 
-        if (string.IsNullOrWhiteSpace(item.TargetPath))
+        if (string.IsNullOrWhiteSpace(targetPath))
         {
             // Advertised MSI shortcuts and shell-namespace links may not expose a
             // filesystem target through IShellLink.GetPath. ShellExecute can still
@@ -2188,7 +2240,7 @@ public sealed partial class FileService
             return false;
         }
 
-        string expandedTarget = Environment.ExpandEnvironmentVariables(item.TargetPath);
+        string expandedTarget = Environment.ExpandEnvironmentVariables(targetPath);
         if (!Path.IsPathFullyQualified(expandedTarget))
         {
             return false;
@@ -2213,6 +2265,7 @@ public sealed partial class FileService
     {
         OpenedOrHandled,
         ShortcutDeleted,
+        Busy,
         Failed
     }
 

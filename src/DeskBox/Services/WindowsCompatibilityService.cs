@@ -14,6 +14,8 @@ namespace DeskBox.Services;
 public static class WindowsCompatibilityService
 {
     public const int Windows11Build = 22000;
+    public const double MinSystemTextScaleFactor = 1.0;
+    public const double MaxSystemTextScaleFactor = 2.25;
 
     private static readonly Lazy<int> s_osBuild = new(GetOsBuild);
     private static readonly object s_animationSettingsCacheGate = new();
@@ -32,6 +34,13 @@ public static class WindowsCompatibilityService
     private static AccessibilitySettings? s_accessibilitySettings;
     private static readonly Lazy<System.Reflection.PropertyInfo?> s_advancedEffectsProperty =
         new(() => typeof(UISettings).GetProperty("AdvancedEffectsEnabled"));
+
+    /// <summary>
+    /// Raised when Windows' accessibility text-size setting changes. The
+    /// callback can arrive off the UI thread; visual consumers must marshal
+    /// back to their dispatcher before changing layout state.
+    /// </summary>
+    public static event Action? TextScaleFactorChanged;
 
     public static int OsBuild => s_osBuild.Value;
 
@@ -156,6 +165,36 @@ public static class WindowsCompatibilityService
     public static bool AreAnimationsEnabled => ReadUiSetting(
         static settings => settings.AnimationsEnabled,
         fallback: true);
+
+    /// <summary>
+    /// Returns Windows' text-only accessibility scale. Display DPI is already
+    /// handled by WinUI and is deliberately not folded into this value.
+    /// </summary>
+    public static double ResolveSystemTextScaleFactor()
+    {
+        UISettings? settings = UiSettingsInstance;
+        if (settings is null)
+        {
+            return MinSystemTextScaleFactor;
+        }
+
+        try
+        {
+            return NormalizeSystemTextScaleFactor(settings.TextScaleFactor);
+        }
+        catch
+        {
+            return MinSystemTextScaleFactor;
+        }
+    }
+
+    internal static double NormalizeSystemTextScaleFactor(double value) =>
+        double.IsFinite(value)
+            ? Math.Clamp(
+                value,
+                MinSystemTextScaleFactor,
+                MaxSystemTextScaleFactor)
+            : MinSystemTextScaleFactor;
 
     /// <summary>
     /// Advanced effects is not available on every supported Windows contract;
@@ -305,6 +344,8 @@ public static class WindowsCompatibilityService
                     var settings = new UISettings();
                     settings.AnimationsEnabledChanged +=
                         UiSettings_Changed;
+                    settings.TextScaleFactorChanged +=
+                        UiSettings_TextScaleFactorChanged;
                     s_uiSettings = settings;
                 }
                 catch
@@ -353,6 +394,11 @@ public static class WindowsCompatibilityService
 
     private static void UiSettings_Changed(UISettings sender, object args) =>
         InvalidateAnimationCapabilityCache();
+
+    private static void UiSettings_TextScaleFactorChanged(
+        UISettings sender,
+        object args) =>
+        TextScaleFactorChanged?.Invoke();
 
     private static void AccessibilitySettings_Changed(
         AccessibilitySettings sender,

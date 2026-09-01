@@ -34,9 +34,9 @@ public sealed class ManagedStorageDesktopShortcutService
     }
 
     /// <summary>
-    /// Creates, updates, or removes the managed-storage desktop shortcut to
-    /// match the current setting. <paramref name="previousRootPath"/> allows a
-    /// verified DeskBox shortcut to follow a successful storage migration.
+    /// Updates an existing managed-storage desktop shortcut without creating a
+    /// replacement when the user has removed it. <paramref name="previousRootPath"/>
+    /// allows a verified DeskBox shortcut to follow a successful storage migration.
     /// </summary>
     public async Task SyncAsync(string? previousRootPath = null)
     {
@@ -52,35 +52,37 @@ public sealed class ManagedStorageDesktopShortcutService
 
             if (!settings.ManagedStorageDesktopShortcutEnabled)
             {
-                if (storedShortcutPath is not null &&
-                    TryDeleteOwnedShortcut(
-                        storedShortcutPath,
-                        currentRootPath,
-                        normalizedPreviousRootPath))
-                {
-                    await StoreShortcutPathAsync(string.Empty);
-                }
-
                 return;
             }
 
-            if (!ShouldMaintainShortcut(settings, currentRootPath, storedShortcutPath))
+            if (!Directory.Exists(_desktopDirectory))
             {
+                App.Log(
+                    $"[ManagedStorageShortcut] Sync deferred because the desktop " +
+                    $"directory is unavailable path='{_desktopDirectory}'");
                 return;
             }
 
             string? shortcutPath = storedShortcutPath;
-            if (shortcutPath is not null && File.Exists(shortcutPath) &&
+            if (shortcutPath is null ||
+                !File.Exists(shortcutPath) ||
                 !IsOwnedShortcut(shortcutPath, currentRootPath, normalizedPreviousRootPath))
             {
-                // The saved filename has been replaced by something that no
-                // longer belongs to DeskBox. Leave it untouched and pick a new
-                // collision-free name.
-                shortcutPath = null;
+                shortcutPath = FindOwnedShortcut(
+                    currentRootPath,
+                    normalizedPreviousRootPath);
             }
 
-            shortcutPath ??= FindOwnedShortcut(currentRootPath, normalizedPreviousRootPath);
-            shortcutPath ??= GetAvailableShortcutPath(_desktopDirectory);
+            if (shortcutPath is null)
+            {
+                // A missing shortcut is an ordinary user deletion. Clear the
+                // preference instead of resurrecting the desktop entry.
+                await StoreShortcutStateAsync(enabled: false, string.Empty);
+                App.Log(
+                    "[ManagedStorageShortcut] Disabled because the previously " +
+                    "maintained shortcut is no longer present.");
+                return;
+            }
 
             Directory.CreateDirectory(currentRootPath);
             ShortcutHelper.CreateOrUpdateFolderShortcut(
@@ -93,7 +95,7 @@ public sealed class ManagedStorageDesktopShortcutService
                     shortcutPath,
                     StringComparison.OrdinalIgnoreCase))
             {
-                await StoreShortcutPathAsync(shortcutPath);
+                await StoreShortcutStateAsync(enabled: true, shortcutPath);
             }
 
             App.Log(
@@ -110,6 +112,128 @@ public sealed class ManagedStorageDesktopShortcutService
         finally
         {
             _syncGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Creates the desktop shortcut only after an explicit user action.
+    /// </summary>
+    public async Task<bool> CreateAsync()
+    {
+        await _syncGate.WaitAsync();
+        try
+        {
+            AppSettings settings = _settingsService.Settings;
+            string currentRootPath = SettingsService.NormalizeManagedStorageRootPath(
+                settings.DefaultManagedStorageRootPath);
+            string? shortcutPath = GetSafeStoredShortcutPath(
+                settings.ManagedStorageDesktopShortcutPath);
+
+            if (shortcutPath is not null && File.Exists(shortcutPath) &&
+                !IsOwnedShortcut(shortcutPath, currentRootPath, previousRootPath: null))
+            {
+                shortcutPath = null;
+            }
+
+            shortcutPath ??= FindOwnedShortcut(currentRootPath, previousRootPath: null);
+            if (shortcutPath is null || Directory.Exists(shortcutPath))
+            {
+                shortcutPath = GetAvailableShortcutPath(_desktopDirectory);
+            }
+
+            Directory.CreateDirectory(currentRootPath);
+            ShortcutHelper.CreateOrUpdateFolderShortcut(
+                shortcutPath,
+                currentRootPath,
+                ShortcutDescription);
+            await StoreShortcutStateAsync(enabled: true, shortcutPath);
+            App.Log(
+                $"[ManagedStorageShortcut] Created by user action path='{shortcutPath}' " +
+                $"target='{currentRootPath}'");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[ManagedStorageShortcut] Explicit creation failed: {ex}");
+            return false;
+        }
+        finally
+        {
+            _syncGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Removes the verified DeskBox shortcut after an explicit user action.
+    /// </summary>
+    public async Task<bool> RemoveAsync()
+    {
+        await _syncGate.WaitAsync();
+        try
+        {
+            AppSettings settings = _settingsService.Settings;
+            string currentRootPath = SettingsService.NormalizeManagedStorageRootPath(
+                settings.DefaultManagedStorageRootPath);
+            string? shortcutPath = GetSafeStoredShortcutPath(
+                settings.ManagedStorageDesktopShortcutPath);
+
+            if (shortcutPath is null ||
+                !IsOwnedShortcut(shortcutPath, currentRootPath, previousRootPath: null))
+            {
+                shortcutPath = FindOwnedShortcut(
+                    currentRootPath,
+                    previousRootPath: null);
+            }
+
+            if (shortcutPath is not null &&
+                !TryDeleteOwnedShortcut(
+                    shortcutPath,
+                    currentRootPath,
+                    previousRootPath: null))
+            {
+                return false;
+            }
+
+            await StoreShortcutStateAsync(enabled: false, string.Empty);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.Log($"[ManagedStorageShortcut] Explicit removal failed: {ex}");
+            return false;
+        }
+        finally
+        {
+            _syncGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Returns whether a verified shortcut currently exists on the desktop.
+    /// The persisted preference is deliberately not treated as proof because
+    /// the user can delete the external .lnk file in Explorer.
+    /// </summary>
+    public bool HasShortcut()
+    {
+        try
+        {
+            AppSettings settings = _settingsService.Settings;
+            string currentRootPath = SettingsService.NormalizeManagedStorageRootPath(
+                settings.DefaultManagedStorageRootPath);
+            string? shortcutPath = GetSafeStoredShortcutPath(
+                settings.ManagedStorageDesktopShortcutPath);
+            return (shortcutPath is not null &&
+                    IsOwnedShortcut(
+                        shortcutPath,
+                        currentRootPath,
+                        previousRootPath: null)) ||
+                   FindOwnedShortcut(
+                       currentRootPath,
+                       previousRootPath: null) is not null;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -137,37 +261,6 @@ public sealed class ManagedStorageDesktopShortcutService
         return Path.Combine(
             normalizedDesktopDirectory,
             $"{baseName} ({Guid.NewGuid():N}).lnk");
-    }
-
-    private static bool ShouldMaintainShortcut(
-        AppSettings settings,
-        string currentRootPath,
-        string? storedShortcutPath)
-    {
-        if (storedShortcutPath is not null && File.Exists(storedShortcutPath))
-        {
-            return true;
-        }
-
-        if (Directory.Exists(currentRootPath))
-        {
-            try
-            {
-                if (Directory.EnumerateFileSystemEntries(currentRootPath).Any())
-                {
-                    return true;
-                }
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        return settings.Widgets.Any(widget =>
-            widget.WidgetKind == WidgetKind.File &&
-            widget.FollowsDefaultStoragePath &&
-            !settings.DeletedWidgetIds.Contains(widget.Id, StringComparer.Ordinal));
     }
 
     private string? FindOwnedShortcut(
@@ -251,8 +344,9 @@ public sealed class ManagedStorageDesktopShortcutService
                 (previousRootPath is not null && PathsEqual(targetPath, previousRootPath)));
     }
 
-    private async Task StoreShortcutPathAsync(string shortcutPath)
+    private async Task StoreShortcutStateAsync(bool enabled, string shortcutPath)
     {
+        _settingsService.Settings.ManagedStorageDesktopShortcutEnabled = enabled;
         _settingsService.Settings.ManagedStorageDesktopShortcutPath = shortcutPath;
         await _settingsService.SaveAsync(notifySubscribers: false);
     }

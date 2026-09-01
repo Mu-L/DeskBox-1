@@ -140,7 +140,8 @@ public sealed partial class WidgetShell : UserControl
         FeedbackPresenter.Show(request);
     }
 
-    public void ClearFeedback() => FeedbackPresenter.Clear();
+    public void ClearFeedback(string? deduplicationKey = null) =>
+        FeedbackPresenter.Clear(deduplicationKey);
 
     /// <summary>
     /// Content hosted below the title area. Future widget kinds should provide their body through this slot.

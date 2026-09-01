@@ -16,13 +16,57 @@ public partial class SettingsViewModel
 {
     partial void OnAutoStartChanged(bool value)
     {
-        if (_isRestoringDefaults)
+        if (_isRestoringDefaults || _isApplyingSettingsSnapshot)
         {
             return;
         }
 
-        StartupService.SetEnabled(value);
-        _settingsService.Settings.AutoStart = value;
+        ApplyAutoStartOperationResult(StartupService.SetEnabled(value));
+    }
+
+    public void RefreshAutoStartState()
+    {
+        ApplyAutoStartState(StartupService.GetState());
+    }
+
+    private void ApplyAutoStartOperationResult(StartupOperationResult result)
+    {
+        if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+        {
+            App.Log(
+                $"[Settings] Startup state={result.State}: {result.ErrorMessage}");
+        }
+
+        ApplyAutoStartState(result.State);
+    }
+
+    private void ApplyAutoStartState(StartupRegistrationState state)
+    {
+        _autoStartState = state;
+        bool effectiveValue = state is
+            StartupRegistrationState.Enabled or
+            StartupRegistrationState.Pending;
+        bool wasApplyingSettingsSnapshot = _isApplyingSettingsSnapshot;
+        _isApplyingSettingsSnapshot = true;
+        try
+        {
+            AutoStart = effectiveValue;
+        }
+        finally
+        {
+            _isApplyingSettingsSnapshot = wasApplyingSettingsSnapshot;
+        }
+
+        OnPropertyChanged(nameof(AutoStartStatusText));
+        OnPropertyChanged(nameof(AutoStartStatusVisibility));
+        OnPropertyChanged(nameof(AutoStartSystemSettingsVisibility));
+
+        if (_settingsService.Settings.AutoStart == effectiveValue)
+        {
+            return;
+        }
+
+        _settingsService.Settings.AutoStart = effectiveValue;
         _settingsService.SaveDebounced();
     }
 
@@ -298,6 +342,17 @@ public partial class SettingsViewModel
         }
 
         _settingsService.Settings.HideShortcutExtensionWhenShowingFileExtensions = value;
+        _settingsService.SaveDebounced();
+    }
+
+    partial void OnIdleWorkingSetTrimEnabledChanged(bool value)
+    {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
+        _settingsService.Settings.IdleWorkingSetTrimEnabled = value;
         _settingsService.SaveDebounced();
     }
 }

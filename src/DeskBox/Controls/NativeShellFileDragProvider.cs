@@ -6,9 +6,10 @@ namespace DeskBox.Controls;
 
 /// <summary>
 /// Wraps the Shell's native file data object in a WinRT DataPackage. This is
-/// used when the StorageItem broker cannot open an existing path (most notably
-/// hidden or system .lnk files). Explorer then receives a real CF_HDROP in the
-/// original drag transaction and remains responsible for the drop position.
+/// used for existing .lnk files because the StorageItem broker does not expose
+/// a reliable, non-blocking preflight for shortcut paths. Explorer then
+/// receives a real CF_HDROP in the original drag transaction and remains
+/// responsible for the drop position.
 /// </summary>
 internal static partial class NativeShellFileDragProvider
 {
@@ -152,35 +153,15 @@ internal static partial class NativeShellFileDragProvider
 
     internal static bool RequiresStorageBrokerBypass(
         IReadOnlyList<string> sourcePaths,
-        Func<string, bool>? fileExists = null,
-        Func<string, FileAttributes>? getAttributes = null)
+        Func<string, bool>? fileExists = null)
     {
-        if (!AreExistingShortcuts(sourcePaths, fileExists))
-        {
-            return false;
-        }
-
-        getAttributes ??= File.GetAttributes;
-        foreach (string path in sourcePaths)
-        {
-            try
-            {
-                FileAttributes attributes = getAttributes(path);
-                if ((attributes &
-                     (FileAttributes.Hidden | FileAttributes.System)) != 0)
-                {
-                    return true;
-                }
-            }
-            catch
-            {
-                // Avoid a synchronous StorageFile broker call on the UI STA
-                // when even the path attributes cannot be read.
-                return true;
-            }
-        }
-
-        return false;
+        // Attribute checks are not a safe preflight here. A normal-looking
+        // .lnk can still be rejected by the WinRT StorageFile broker (for
+        // example when its target is unavailable or permission-sensitive),
+        // and TryPrepare runs on the UI STA. Route every existing shell link
+        // through the native Shell data object so the drag never has to wait
+        // synchronously for that broker.
+        return AreExistingShortcuts(sourcePaths, fileExists);
     }
 
     private static unsafe nint CreateShellDataObject(

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using DeskBox.Controls;
 using DeskBox.Contracts;
 using DeskBox.Helpers;
@@ -19,6 +20,8 @@ public sealed partial class FileSurfaceContent
 {
     private readonly HashSet<Border> _itemSurfaces = [];
     private readonly HashSet<Border> _stackSurfaces = [];
+    private readonly Dictionary<Border, (WidgetStackItem Stack, PropertyChangedEventHandler Handler)>
+        _stackSurfacePropertyChangedHandlers = [];
     private readonly FileItemSurfaceStyleCache _itemSurfaceStyleCache = new();
     private bool _folderDropVisualActive;
     private SolidColorBrush? _stackDropBackgroundBrush;
@@ -74,6 +77,9 @@ public sealed partial class FileSurfaceContent
             // exactly one callback to this content instance.
             surface.VisualStateChanged -= ItemSurface_VisualStateChanged;
             surface.VisualStateChanged += ItemSurface_VisualStateChanged;
+            surface.DataContextChanged -= ItemSurface_DataContextChanged;
+            surface.DataContextChanged += ItemSurface_DataContextChanged;
+            ApplyOpeningStateToSurface(surface);
         }
 
         if (FileItemSurface.TryGetInteractiveBorder(sender) is { } border)
@@ -91,6 +97,7 @@ public sealed partial class FileSurfaceContent
         if (sender is FileItemSurface surface)
         {
             surface.VisualStateChanged -= ItemSurface_VisualStateChanged;
+            surface.DataContextChanged -= ItemSurface_DataContextChanged;
         }
 
         if (FileItemSurface.TryGetInteractiveBorder(sender) is { } border)
@@ -170,6 +177,7 @@ public sealed partial class FileSurfaceContent
         {
             PersistSurfaceReorder();
         }
+        ClearExternalDropPreviewPlacement();
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
         if (!payload.IsDeskBoxFileDrag && payload.HasSurfacePathData)
@@ -778,6 +786,42 @@ public sealed partial class FileSurfaceContent
         }
     }
 
+    private void ApplyImportedStackMemberInsertion(
+        WidgetStackItem originalStack,
+        IReadOnlyList<WidgetItem> importedItems,
+        int memberInsertionIndex)
+    {
+        if (importedItems.Count == 0)
+        {
+            return;
+        }
+
+        // Importing a new member can convert an automatic group into a
+        // manual stack and rebuild the projection under a new stack key. Make
+        // that projection current before resolving the stack that owns the
+        // imported objects, then reuse the same member reorder primitive as
+        // the in-popover drag path.
+        ViewModel.StabilizeStackDisplay();
+        WidgetStackItem? currentStack = ViewModel.VisibleItems
+            .OfType<WidgetStackItem>()
+            .FirstOrDefault(candidate => importedItems.Any(imported =>
+                candidate.Members.Any(member =>
+                    string.Equals(
+                        member.Path,
+                        imported.Path,
+                        StringComparison.OrdinalIgnoreCase))));
+        currentStack ??= ViewModel.FindStackByKey(originalStack.StackKey);
+        if (currentStack is null)
+        {
+            return;
+        }
+
+        ViewModel.MoveStackMembersForReorder(
+            currentStack.StackKey,
+            importedItems,
+            memberInsertionIndex);
+    }
+
     private static bool TryGetFolderDropTarget(
         object sender,
         out Border border,
@@ -798,6 +842,38 @@ public sealed partial class FileSurfaceContent
         border = null!;
         folder = null!;
         return false;
+    }
+
+    private Border? FindItemSurfaceBorder(WidgetItem item)
+    {
+        foreach (Border border in _itemSurfaces)
+        {
+            WidgetItem? candidate =
+                FileItemSurface.FindOwner(border)?.DataContext as WidgetItem ??
+                border.DataContext as WidgetItem;
+            if (ReferenceEquals(candidate, item))
+            {
+                return border;
+            }
+        }
+
+        return null;
+    }
+
+    private void ApplyNativeFolderDropTarget(WidgetItem folder)
+    {
+        if (FindItemSurfaceBorder(folder) is { } border)
+        {
+            SetFolderDropTarget(border);
+        }
+    }
+
+    private void ApplyNativeStackDropTarget(WidgetStackItem stack)
+    {
+        if (FindStackSurface(stack.StackKey) is { } border)
+        {
+            SetStackMemberDropTarget(border);
+        }
     }
 
     private DataPackageOperation ResolveFolderDropOperation(
@@ -871,6 +947,9 @@ public sealed partial class FileSurfaceContent
         {
             RestoreStackAnimationElement(border);
             _stackSurfaces.Add(border);
+            border.DataContextChanged -= StackSurface_DataContextChanged;
+            border.DataContextChanged += StackSurface_DataContextChanged;
+            SubscribeStackSurfacePropertyChanges(border);
             ApplyStackFolderPreviewMode(border);
             ApplyStackSurfaceVisual(border, hovered: false);
         }
@@ -883,12 +962,74 @@ public sealed partial class FileSurfaceContent
         if (sender is Border border)
         {
             RestoreStackAnimationElement(border);
+            border.DataContextChanged -= StackSurface_DataContextChanged;
+            UnsubscribeStackSurfacePropertyChanges(border);
             if (ReferenceEquals(border, _stackMemberDropTarget))
             {
                 _stackMemberDropTarget = null;
                 _stackMemberDropVisualActive = false;
             }
             _stackSurfaces.Remove(border);
+        }
+    }
+
+    private void StackSurface_DataContextChanged(
+        FrameworkElement sender,
+        DataContextChangedEventArgs args)
+    {
+        if (sender is not Border border)
+        {
+            return;
+        }
+
+        SubscribeStackSurfacePropertyChanges(border);
+        ApplyStackFolderPreviewMode(border);
+    }
+
+    private void SubscribeStackSurfacePropertyChanges(Border border)
+    {
+        UnsubscribeStackSurfacePropertyChanges(border);
+        if (border.DataContext is not WidgetStackItem stack)
+        {
+            return;
+        }
+
+        PropertyChangedEventHandler handler = (_, e) =>
+        {
+            // The folder-style preview sets the fourth miniature's Visibility
+            // directly so it can switch between the inline and popover
+            // compositions. That local value does not get replaced by a
+            // binding notification when a stack grows. Reapply the preview
+            // layout as soon as the stack publishes its new member list.
+            if (e.PropertyName != nameof(WidgetStackItem.Members) ||
+                border.XamlRoot is null)
+            {
+                return;
+            }
+
+            ApplyStackFolderPreviewMode(border);
+        };
+
+        stack.PropertyChanged += handler;
+        _stackSurfacePropertyChangedHandlers[border] = (stack, handler);
+    }
+
+    private void UnsubscribeStackSurfacePropertyChanges(Border border)
+    {
+        if (_stackSurfacePropertyChangedHandlers.Remove(
+                border,
+                out (WidgetStackItem Stack, PropertyChangedEventHandler Handler) subscription))
+        {
+            subscription.Stack.PropertyChanged -= subscription.Handler;
+        }
+    }
+
+    private void DisposeStackSurfacePropertyChanges()
+    {
+        foreach (Border border in _stackSurfacePropertyChangedHandlers.Keys.ToArray())
+        {
+            border.DataContextChanged -= StackSurface_DataContextChanged;
+            UnsubscribeStackSurfacePropertyChanges(border);
         }
     }
 
@@ -984,6 +1125,7 @@ public sealed partial class FileSurfaceContent
         DragEventArgs e)
     {
         e.Handled = true;
+        ClearExternalDropPreviewPlacement();
         if (sender is not Border
             {
                 DataContext: WidgetStackItem stack
@@ -1101,6 +1243,18 @@ public sealed partial class FileSurfaceContent
         DragEventArgs e)
     {
         e.Handled = true;
+        int? preferredStackMemberIndex = null;
+        if (ReferenceEquals(sender, _stackPopoverSurface) &&
+            _stackPopoverItemsView is { } popoverView &&
+            _stackPopoverReorderInsertionIndex >= 0 &&
+            _stackPopoverReorderInsertionIndex < popoverView.Items.Count)
+        {
+            preferredStackMemberIndex =
+                ResolveStackPopoverMemberInsertionIndex(
+                    popoverView,
+                    e.GetPosition(popoverView));
+        }
+        HideStackPopoverReorderIndicator();
         if (sender is not Border
             {
                 DataContext: WidgetStackItem stack
@@ -1208,6 +1362,14 @@ public sealed partial class FileSurfaceContent
                     ViewModel.AddItemsToStack(
                         stack.StackKey,
                         importedItems);
+                if (importedIntoStack &&
+                    preferredStackMemberIndex is { } stackMemberIndex)
+                {
+                    ApplyImportedStackMemberInsertion(
+                        stack,
+                        importedItems,
+                        stackMemberIndex);
+                }
                 if (moveWhenMapped == true &&
                     sourceWidgetId is { Length: > 0 } &&
                     App.Current?.WidgetManager is { } manager)

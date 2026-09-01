@@ -14,6 +14,7 @@ namespace DeskBox.Services;
 internal sealed class WidgetTopologyLayoutService
 {
     internal const int MaximumRetainedProfiles = 12;
+    private const string CurrentTopologyKeyPrefix = "v3-";
     private const uint EddGetDeviceInterfaceName = 0x00000001;
 
     public bool ActivateCurrentTopology(AppSettings settings)
@@ -77,6 +78,8 @@ internal sealed class WidgetTopologyLayoutService
         bool changed = false;
         string? previousKey = settings.ActiveWidgetTopologyKey;
         bool initialCapture = string.IsNullOrWhiteSpace(previousKey);
+        bool targetMonitorProjectionChanged = false;
+        bool targetWasSeededFromCompatibleProfile = false;
         WidgetTopologyLayoutProfile? sourceProfile = null;
         if (!string.IsNullOrWhiteSpace(previousKey) &&
             settings.WidgetTopologyLayouts.TryGetValue(previousKey, out sourceProfile))
@@ -89,13 +92,29 @@ internal sealed class WidgetTopologyLayoutService
 
         if (!settings.WidgetTopologyLayouts.TryGetValue(topology.Key, out WidgetTopologyLayoutProfile? targetProfile))
         {
+            WidgetTopologyLayoutProfile? compatibleProfile = FindCompatibleProfile(
+                settings,
+                topology,
+                out string? compatibleKey);
             targetProfile = new WidgetTopologyLayoutProfile
             {
                 Monitors = CloneMonitors(topology.Monitors),
                 LastUsedAtUtc = DateTimeOffset.UtcNow
             };
 
-            if (initialCapture && sourceProfile is null)
+            if (compatibleProfile is not null)
+            {
+                // Legacy v1/v2 profiles used earlier key algorithms, including
+                // keys influenced by the transient \\.\DISPLAYn alias. Lazily
+                // project the newest semantically equivalent profile into the
+                // stable v3 key instead of making the user arrange it again.
+                SeedProfile(settings, compatibleProfile, targetProfile);
+                targetWasSeededFromCompatibleProfile = true;
+                App.Log(
+                    $"[DisplayTopology] Migrated compatible layout profile " +
+                    $"{compatibleKey} -> {topology.Key}");
+            }
+            else if (initialCapture && sourceProfile is null)
             {
                 CaptureAllSurfaces(settings, targetProfile);
             }
@@ -108,20 +127,41 @@ internal sealed class WidgetTopologyLayoutService
         }
         else
         {
+            List<WidgetTopologyMonitorProfile> savedMonitors = CloneMonitors(targetProfile.Monitors);
+            targetMonitorProjectionChanged = !HaveSameProjectionMetadata(
+                savedMonitors,
+                topology.Monitors);
+            if (targetMonitorProjectionChanged)
+            {
+                // The stable topology can remain the same while Windows
+                // reassigns \\.\DISPLAYn aliases or changes the taskbar work
+                // area. Rebind saved surfaces to the current monitor metadata
+                // before projecting them into the runtime WidgetConfig fields.
+                ReprojectSurfaces(targetProfile, savedMonitors, topology.Monitors);
+                changed = true;
+            }
+
             targetProfile.Version = WidgetTopologyLayoutProfile.CurrentVersion;
             targetProfile.Monitors = CloneMonitors(topology.Monitors);
             targetProfile.LastUsedAtUtc = DateTimeOffset.UtcNow;
             changed |= EnsureMissingSurfaces(settings, sourceProfile, targetProfile);
         }
 
-        if (!string.Equals(previousKey, topology.Key, StringComparison.Ordinal))
+        bool topologyKeyChanged = !string.Equals(previousKey, topology.Key, StringComparison.Ordinal);
+        if (topologyKeyChanged || targetMonitorProjectionChanged)
         {
-            if (!initialCapture || sourceProfile is not null)
+            if (!initialCapture ||
+                sourceProfile is not null ||
+                targetWasSeededFromCompatibleProfile)
             {
                 ApplyProfile(settings, targetProfile);
             }
-            settings.ActiveWidgetTopologyKey = topology.Key;
-            changed = true;
+
+            if (topologyKeyChanged)
+            {
+                settings.ActiveWidgetTopologyKey = topology.Key;
+                changed = true;
+            }
         }
         else
         {
@@ -167,19 +207,106 @@ internal sealed class WidgetTopologyLayoutService
 
     private static string CreateTopologyKey(IReadOnlyList<WidgetTopologyMonitorProfile> monitors)
     {
+        string signature = CreateTopologySignature(monitors);
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(signature));
+        return CurrentTopologyKeyPrefix + Convert.ToHexString(hash.AsSpan(0, 12));
+    }
+
+    private static string CreateTopologySignature(
+        IReadOnlyList<WidgetTopologyMonitorProfile> monitors)
+    {
         string signature = string.Join(
             "|",
             monitors
-                .OrderBy(monitor => monitor.StableId, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(monitor => monitor.DeviceName, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(
+                    monitor => NormalizeStableIdentityForKey(monitor.StableId),
+                    StringComparer.Ordinal)
+                .ThenBy(monitor => monitor.MonitorX)
+                .ThenBy(monitor => monitor.MonitorY)
+                .ThenBy(monitor => monitor.MonitorWidth)
+                .ThenBy(monitor => monitor.MonitorHeight)
+                .Select(monitor =>
+                    FormattableString.Invariant(
+                        $"{NormalizeStableIdentityForKey(monitor.StableId)};{monitor.IsPrimary};{NormalizeScale(monitor.DpiScale):F3};{monitor.MonitorX},{monitor.MonitorY},{monitor.MonitorWidth},{monitor.MonitorHeight}")));
+        return signature;
+    }
+
+    private static WidgetTopologyLayoutProfile? FindCompatibleProfile(
+        AppSettings settings,
+        WidgetDisplayTopologySnapshot topology,
+        out string? compatibleKey)
+    {
+        string targetSignature = CreateTopologySignature(topology.Monitors);
+        foreach ((string key, WidgetTopologyLayoutProfile profile) in
+                 settings.WidgetTopologyLayouts
+                     .Where(pair =>
+                         pair.Value is not null &&
+                         pair.Value.Monitors is { Count: > 0 } &&
+                         string.Equals(
+                             CreateTopologySignature(pair.Value.Monitors),
+                             targetSignature,
+                             StringComparison.Ordinal))
+                     .OrderByDescending(pair => pair.Value.LastUsedAtUtc))
+        {
+            compatibleKey = key;
+            return profile;
+        }
+
+        compatibleKey = null;
+        return null;
+    }
+
+    private static string NormalizeStableIdentityForKey(string? stableId)
+    {
+        if (string.IsNullOrWhiteSpace(stableId))
+        {
+            return "geometry-only";
+        }
+
+        string normalized = stableId.Trim();
+        if (normalized.Equals("unknown-display", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith(@"\\.\DISPLAY", StringComparison.OrdinalIgnoreCase))
+        {
+            return "geometry-only";
+        }
+
+        return normalized.ToUpperInvariant();
+    }
+
+    private static bool HaveSameProjectionMetadata(
+        IReadOnlyList<WidgetTopologyMonitorProfile> left,
+        IReadOnlyList<WidgetTopologyMonitorProfile> right) =>
+        string.Equals(
+            CreateProjectionMetadataSignature(left),
+            CreateProjectionMetadataSignature(right),
+            StringComparison.Ordinal);
+
+    private static string CreateProjectionMetadataSignature(
+        IReadOnlyList<WidgetTopologyMonitorProfile> monitors) =>
+        string.Join(
+            "|",
+            monitors
+                .OrderBy(
+                    monitor => NormalizeStableIdentityForKey(monitor.StableId),
+                    StringComparer.Ordinal)
                 .ThenBy(monitor => monitor.MonitorX)
                 .ThenBy(monitor => monitor.MonitorY)
                 .Select(monitor =>
-                    $"{monitor.StableId};{monitor.DeviceName};{monitor.IsPrimary};" +
-                    $"{monitor.DpiScale:F3};{monitor.MonitorX},{monitor.MonitorY}," +
-                    $"{monitor.MonitorWidth},{monitor.MonitorHeight}"));
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(signature));
-        return "v1-" + Convert.ToHexString(hash.AsSpan(0, 12));
+                    FormattableString.Invariant(
+                        $"{NormalizeStableIdentityForKey(monitor.StableId)};{(monitor.DeviceName ?? string.Empty).Trim().ToUpperInvariant()};{monitor.IsPrimary};{NormalizeScale(monitor.DpiScale):F3};{monitor.MonitorX},{monitor.MonitorY},{monitor.MonitorWidth},{monitor.MonitorHeight};{monitor.WorkAreaX},{monitor.WorkAreaY},{monitor.WorkAreaWidth},{monitor.WorkAreaHeight}")));
+
+    private static void ReprojectSurfaces(
+        WidgetTopologyLayoutProfile profile,
+        IReadOnlyList<WidgetTopologyMonitorProfile> sourceMonitors,
+        IReadOnlyList<WidgetTopologyMonitorProfile> targetMonitors)
+    {
+        foreach ((string surfaceId, WidgetSurfaceLayoutProfile layout) in profile.Surfaces.ToList())
+        {
+            profile.Surfaces[surfaceId] = MapToTopology(
+                layout,
+                sourceMonitors,
+                targetMonitors);
+        }
     }
 
     private static void SeedProfile(
@@ -561,6 +688,13 @@ internal sealed class WidgetTopologyLayoutService
             {
                 return stable;
             }
+
+            WidgetTopologyMonitorProfile? samePlacement = targets.FirstOrDefault(target =>
+                MonitorPlacementEquals(sourceMonitor, target));
+            if (samePlacement is not null)
+            {
+                return samePlacement;
+            }
         }
 
         if (layout.PositionMonitorWasPrimary == true || sourceMonitor?.IsPrimary == true)
@@ -589,14 +723,27 @@ internal sealed class WidgetTopologyLayoutService
         WidgetTopologyMonitorProfile left,
         WidgetTopologyMonitorProfile right)
     {
-        if (!string.IsNullOrWhiteSpace(left.StableId) && !string.IsNullOrWhiteSpace(right.StableId))
+        string leftStableId = NormalizeStableIdentityForKey(left.StableId);
+        string rightStableId = NormalizeStableIdentityForKey(right.StableId);
+        if (!string.Equals(leftStableId, "geometry-only", StringComparison.Ordinal) &&
+            !string.Equals(rightStableId, "geometry-only", StringComparison.Ordinal))
         {
-            return string.Equals(left.StableId, right.StableId, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(leftStableId, rightStableId, StringComparison.Ordinal);
         }
 
         return !string.IsNullOrWhiteSpace(left.DeviceName) &&
             string.Equals(left.DeviceName, right.DeviceName, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool MonitorPlacementEquals(
+        WidgetTopologyMonitorProfile left,
+        WidgetTopologyMonitorProfile right) =>
+        left.IsPrimary == right.IsPrimary &&
+        left.MonitorX == right.MonitorX &&
+        left.MonitorY == right.MonitorY &&
+        left.MonitorWidth == right.MonitorWidth &&
+        left.MonitorHeight == right.MonitorHeight &&
+        Math.Abs(NormalizeScale(left.DpiScale) - NormalizeScale(right.DpiScale)) < 0.001;
 
     private static bool PruneProfiles(AppSettings settings, string activeKey)
     {

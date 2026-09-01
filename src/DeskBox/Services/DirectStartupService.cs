@@ -51,36 +51,49 @@ public sealed class DirectStartupService : IStartupService
         _runEntryApprovedProvider = runEntryApprovedProvider ?? IsRunEntryApproved;
     }
 
-    public bool IsEnabled()
+    public StartupRegistrationState GetState()
     {
         try
         {
             string? executablePath = GetExecutablePath();
             if (executablePath is null)
             {
-                return false;
+                return StartupRegistrationState.BlockedOrFailed;
             }
 
             // The Run entry is the primary registration: visible in Windows'
             // Startup apps and user-toggleable there. When the user disables
             // DeskBox in that UI, the registry value survives but Windows marks
-            // it disapproved — honor that state so the in-app toggle agrees.
-            if (IsCommandOwnedBy(_runEntryStore.Read(), executablePath) &&
-                _runEntryApprovedProvider())
+            // it disapproved. That choice is authoritative even if a legacy
+            // scheduled task still exists.
+            string? runValue = _runEntryStore.Read();
+            if (IsCommandOwnedBy(runValue, executablePath))
             {
-                return true;
+                return _runEntryApprovedProvider()
+                    ? StartupRegistrationState.Enabled
+                    : StartupRegistrationState.DisabledByUser;
             }
 
             DirectStartupTaskRegistration? task = _taskBackend.Read();
-            return task is not null &&
-                   task.Enabled &&
-                   task.IsOwnedBy(executablePath);
+            if (task is not null && task.Enabled && task.IsOwnedBy(executablePath))
+            {
+                return StartupRegistrationState.Enabled;
+            }
+
+            if (!string.IsNullOrWhiteSpace(runValue) || task is not null)
+            {
+                return StartupRegistrationState.PathMismatch;
+            }
+
+            return StartupRegistrationState.NotRegistered;
         }
         catch
         {
-            return false;
+            return StartupRegistrationState.BlockedOrFailed;
         }
     }
+
+    public bool IsEnabled() => GetState() == StartupRegistrationState.Enabled;
 
     public string? GetRunValue()
     {
@@ -89,8 +102,7 @@ public sealed class DirectStartupService : IStartupService
             string? executablePath = GetExecutablePath();
             string? runValue = _runEntryStore.Read();
             if (executablePath is not null &&
-                IsCommandOwnedBy(runValue, executablePath) &&
-                _runEntryApprovedProvider())
+                IsCommandOwnedBy(runValue, executablePath))
             {
                 return runValue;
             }
@@ -112,74 +124,118 @@ public sealed class DirectStartupService : IStartupService
         }
     }
 
-    public void Enable()
+    public StartupOperationResult Enable()
     {
         try
         {
             string? executablePath = GetExecutablePath();
             if (executablePath is null)
             {
-                Log("Cannot enable startup: the executable path is unavailable.");
-                return;
+                const string message =
+                    "Cannot enable startup: the executable path is unavailable.";
+                Log(message);
+                return new StartupOperationResult(
+                    StartupRegistrationState.BlockedOrFailed,
+                    message);
             }
 
-            if (TryEnableRunEntry(executablePath))
+            StartupOperationResult runResult = TryEnableRunEntry(executablePath);
+            if (runResult.State == StartupRegistrationState.Enabled)
             {
-                // Drop any owned scheduled task so logon launches DeskBox once.
-                if (_taskBackend.Read() is { } task &&
-                    task.IsOwnedBy(executablePath) &&
-                    !_taskBackend.TryDelete())
-                {
-                    Log(
-                        $"Failed to remove the superseded startup task: {_taskBackend.LastError}");
-                }
-
-                DeleteLegacyStartupShortcutIfOwnedBy(executablePath);
+                string cleanupError = RemoveOwnedAlternativeRegistrations(executablePath);
                 Log("Startup enabled through the per-user Run entry");
-                return;
+                return new StartupOperationResult(
+                    StartupRegistrationState.Enabled,
+                    cleanupError);
+            }
+
+            if (runResult.State == StartupRegistrationState.DisabledByUser)
+            {
+                // Do not silently bypass Windows' Startup apps choice with an
+                // older task or Startup-folder shortcut.
+                string cleanupError = RemoveOwnedAlternativeRegistrations(executablePath);
+                string error = CombineErrors(runResult.ErrorMessage, cleanupError);
+                Log(
+                    "Startup remains disabled by Windows Startup apps; " +
+                    "the user must re-enable DeskBox there.");
+                return new StartupOperationResult(
+                    StartupRegistrationState.DisabledByUser,
+                    error);
             }
 
             if (TryEnableScheduledTask(executablePath))
             {
                 DeleteLegacyRunEntryIfOwnedBy(executablePath);
                 DeleteLegacyStartupShortcutIfOwnedBy(executablePath);
-                return;
+                return new StartupOperationResult(StartupRegistrationState.Enabled);
             }
 
-            Log(
+            string failure =
                 "Startup could not be enabled: the Run entry was unavailable " +
-                $"and task registration failed: {_taskBackend.LastError}");
+                $"and task registration failed: {_taskBackend.LastError}";
+            Log(failure);
+            return new StartupOperationResult(
+                StartupRegistrationState.BlockedOrFailed,
+                CombineErrors(runResult.ErrorMessage, failure));
         }
         catch (Exception ex)
         {
             Log($"Failed to enable startup: {ex.Message}");
+            return new StartupOperationResult(
+                StartupRegistrationState.BlockedOrFailed,
+                ex.Message);
         }
     }
 
-    public void Disable()
+    public StartupOperationResult Disable()
     {
         try
         {
             string? executablePath = GetExecutablePath();
             if (executablePath is null)
             {
-                Log("Cannot disable startup: the executable path is unavailable.");
-                return;
+                const string message =
+                    "Cannot disable startup: the executable path is unavailable.";
+                Log(message);
+                return new StartupOperationResult(
+                    StartupRegistrationState.BlockedOrFailed,
+                    message);
             }
 
+            List<string> failures = [];
             DirectStartupTaskRegistration? task = _taskBackend.Read();
             if (task is not null && task.IsOwnedBy(executablePath) && !_taskBackend.TryDelete())
             {
-                Log($"Failed to delete the owned startup task: {_taskBackend.LastError}");
+                string failure =
+                    $"Failed to delete the owned startup task: {_taskBackend.LastError}";
+                failures.Add(failure);
+                Log(failure);
             }
 
-            DeleteLegacyRunEntryIfOwnedBy(executablePath);
-            DeleteLegacyStartupShortcutIfOwnedBy(executablePath);
+            try
+            {
+                DeleteLegacyRunEntryIfOwnedBy(executablePath);
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"Failed to delete the owned Run entry: {ex.Message}");
+            }
+
+            if (!DeleteLegacyStartupShortcutIfOwnedBy(executablePath, out string shortcutError))
+            {
+                failures.Add(shortcutError);
+            }
+
             Log("Startup disabled");
+            StartupRegistrationState state = GetState();
+            return new StartupOperationResult(state, string.Join("; ", failures));
         }
         catch (Exception ex)
         {
             Log($"Failed to disable startup: {ex.Message}");
+            return new StartupOperationResult(
+                StartupRegistrationState.BlockedOrFailed,
+                ex.Message);
         }
     }
 
@@ -201,36 +257,80 @@ public sealed class DirectStartupService : IStartupService
             DirectStartupTaskRegistration? existingTask = _taskBackend.Read();
             bool ownsTask = existingTask is not null &&
                             existingTask.IsOwnedBy(executablePath);
-            bool ownsRunEntry = IsCommandOwnedBy(_runEntryStore.Read(), executablePath);
+            string? existingRunValue = _runEntryStore.Read();
+            bool ownsRunEntry = IsCommandOwnedBy(existingRunValue, executablePath);
             bool ownsShortcut = IsLegacyShortcutOwnedBy(executablePath);
             if (!ownsTask && !ownsRunEntry && !ownsShortcut)
             {
                 return;
             }
 
-            if (!TryEnableRunEntry(executablePath))
+            bool hasPreferredRunEntry =
+                IsPreferredRunCommand(existingRunValue, executablePath);
+            if (ownsRunEntry && hasPreferredRunEntry)
             {
-                if (ownsTask)
+                if (!ownsTask && !ownsShortcut)
+                {
+                    // The common steady state. Avoid rewriting the Run entry or
+                    // emitting a migration log on every application launch.
+                    return;
+                }
+
+                StartupRegistrationState currentState = _runEntryApprovedProvider()
+                    ? StartupRegistrationState.Enabled
+                    : StartupRegistrationState.DisabledByUser;
+                string cleanupError = RemoveOwnedAlternativeRegistrations(executablePath);
+                if (currentState == StartupRegistrationState.Enabled)
+                {
+                    Log("Migrated startup registration to the per-user Run entry");
+                }
+                else
                 {
                     Log(
-                        "Startup migration deferred: the Run entry is unavailable, " +
-                        $"the scheduled task remains: {_taskBackend.LastError}");
+                        "Removed legacy startup registrations while preserving " +
+                        "the Windows-disabled Startup apps state.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(cleanupError))
+                {
+                    Log($"Startup migration cleanup was incomplete: {cleanupError}");
                 }
 
                 return;
             }
 
-            if (ownsTask && !_taskBackend.TryDelete())
+            StartupOperationResult runResult = TryEnableRunEntry(executablePath);
+            if (runResult.State is not
+                (StartupRegistrationState.Enabled or
+                 StartupRegistrationState.DisabledByUser))
             {
-                Log($"Failed to remove the migrated startup task: {_taskBackend.LastError}");
+                if (ownsTask)
+                {
+                    Log(
+                        "Startup migration deferred: the Run entry is unavailable, " +
+                        $"the scheduled task remains: {runResult.ErrorMessage}");
+                }
+
+                return;
             }
 
-            if (ownsShortcut)
+            string migrationCleanupError =
+                RemoveOwnedAlternativeRegistrations(executablePath);
+            if (runResult.State == StartupRegistrationState.Enabled)
             {
-                DeleteLegacyStartupShortcutIfOwnedBy(executablePath);
+                Log("Migrated startup registration to the per-user Run entry");
+            }
+            else
+            {
+                Log(
+                    "Startup migration preserved the Windows-disabled Startup " +
+                    "apps state and removed legacy launch mechanisms.");
             }
 
-            Log("Migrated startup registration to the per-user Run entry");
+            if (!string.IsNullOrWhiteSpace(migrationCleanupError))
+            {
+                Log($"Startup migration cleanup was incomplete: {migrationCleanupError}");
+            }
         }
         catch (Exception ex)
         {
@@ -238,7 +338,7 @@ public sealed class DirectStartupService : IStartupService
         }
     }
 
-    private bool TryEnableRunEntry(string executablePath)
+    private StartupOperationResult TryEnableRunEntry(string executablePath)
     {
         string? existing = _runEntryStore.Read();
         if (!string.IsNullOrWhiteSpace(existing) &&
@@ -247,7 +347,9 @@ public sealed class DirectStartupService : IStartupService
             if (CommandTargetExists(existing))
             {
                 Log($"Preserved Run entry owned by another installation: '{existing}'");
-                return false;
+                return new StartupOperationResult(
+                    StartupRegistrationState.PathMismatch,
+                    "The Run entry belongs to another DeskBox installation.");
             }
 
             Log(
@@ -256,13 +358,41 @@ public sealed class DirectStartupService : IStartupService
 
         try
         {
-            _runEntryStore.Write($"\"{executablePath}\" --startup");
-            return true;
+            string desiredCommand = BuildRunCommand(executablePath);
+            if (!string.Equals(
+                    existing?.Trim(),
+                    desiredCommand,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _runEntryStore.Write(desiredCommand);
+            }
+
+            string? writtenValue = _runEntryStore.Read();
+            if (!IsPreferredRunCommand(writtenValue, executablePath))
+            {
+                const string message =
+                    "The per-user Run entry could not be verified after writing.";
+                Log(message);
+                return new StartupOperationResult(
+                    StartupRegistrationState.BlockedOrFailed,
+                    message);
+            }
+
+            if (!_runEntryApprovedProvider())
+            {
+                return new StartupOperationResult(
+                    StartupRegistrationState.DisabledByUser,
+                    "Windows Startup apps has disabled the DeskBox Run entry.");
+            }
+
+            return new StartupOperationResult(StartupRegistrationState.Enabled);
         }
         catch (Exception ex)
         {
             Log($"The per-user Run entry could not be written: {ex.Message}");
-            return false;
+            return new StartupOperationResult(
+                StartupRegistrationState.BlockedOrFailed,
+                ex.Message);
         }
     }
 
@@ -328,6 +458,56 @@ public sealed class DirectStartupService : IStartupService
         return !string.IsNullOrWhiteSpace(target) && File.Exists(target);
     }
 
+    private static string BuildRunCommand(string executablePath) =>
+        $"\"{executablePath}\" --startup";
+
+    private static bool IsPreferredRunCommand(
+        string? commandLine,
+        string executablePath) =>
+        string.Equals(
+            commandLine?.Trim(),
+            BuildRunCommand(executablePath),
+            StringComparison.OrdinalIgnoreCase);
+
+    private string RemoveOwnedAlternativeRegistrations(string executablePath)
+    {
+        List<string> failures = [];
+        DirectStartupTaskRegistration? task = _taskBackend.Read();
+        if (task is not null &&
+            task.IsOwnedBy(executablePath) &&
+            !_taskBackend.TryDelete())
+        {
+            string failure =
+                $"Failed to remove the superseded startup task: {_taskBackend.LastError}";
+            failures.Add(failure);
+            Log(failure);
+        }
+
+        if (!DeleteLegacyStartupShortcutIfOwnedBy(
+                executablePath,
+                out string shortcutError))
+        {
+            failures.Add(shortcutError);
+        }
+
+        return string.Join("; ", failures);
+    }
+
+    private static string CombineErrors(string first, string second)
+    {
+        if (string.IsNullOrWhiteSpace(first))
+        {
+            return second;
+        }
+
+        if (string.IsNullOrWhiteSpace(second))
+        {
+            return first;
+        }
+
+        return $"{first}; {second}";
+    }
+
     private void DeleteLegacyRunEntryIfOwnedBy(string executablePath)
     {
         if (IsCommandOwnedBy(_runEntryStore.Read(), executablePath))
@@ -356,21 +536,31 @@ public sealed class DirectStartupService : IStartupService
         }
     }
 
-    private void DeleteLegacyStartupShortcutIfOwnedBy(string executablePath)
+    private void DeleteLegacyStartupShortcutIfOwnedBy(string executablePath) =>
+        _ = DeleteLegacyStartupShortcutIfOwnedBy(executablePath, out _);
+
+    private bool DeleteLegacyStartupShortcutIfOwnedBy(
+        string executablePath,
+        out string error)
     {
+        error = string.Empty;
         if (!IsLegacyShortcutOwnedBy(executablePath) ||
             string.IsNullOrWhiteSpace(_legacyShortcutPath))
         {
-            return;
+            return true;
         }
 
         try
         {
             _shortcutDelete(_legacyShortcutPath);
+            return true;
         }
         catch (Exception ex)
         {
-            Log($"Failed to delete the owned legacy startup shortcut: {ex.Message}");
+            error =
+                $"Failed to delete the owned legacy startup shortcut: {ex.Message}";
+            Log(error);
+            return false;
         }
     }
 
@@ -412,15 +602,14 @@ public sealed class DirectStartupService : IStartupService
 
     private void Log(string message) => _log(message);
 
-    public void SetEnabled(bool enabled)
+    public StartupOperationResult SetEnabled(bool enabled)
     {
         if (enabled)
         {
-            Enable();
-            return;
+            return Enable();
         }
 
-        Disable();
+        return Disable();
     }
 }
 

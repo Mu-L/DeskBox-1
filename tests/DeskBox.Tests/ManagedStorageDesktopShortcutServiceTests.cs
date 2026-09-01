@@ -12,11 +12,11 @@ public sealed class ManagedStorageDesktopShortcutServiceTests : IDisposable
         Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public void AppSettings_DesktopStorageShortcutDefaultsOnForExistingProfiles()
+    public void AppSettings_DesktopStorageShortcutDefaultsOff()
     {
         var settings = new AppSettings();
 
-        Assert.True(settings.ManagedStorageDesktopShortcutEnabled);
+        Assert.False(settings.ManagedStorageDesktopShortcutEnabled);
         Assert.Equal(string.Empty, settings.ManagedStorageDesktopShortcutPath);
     }
 
@@ -37,7 +37,31 @@ public sealed class ManagedStorageDesktopShortcutServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SyncAsync_CreatesRetargetsAndRemovesTheOwnedShortcut()
+    public async Task SyncAsync_DoesNotCreateWithoutAnExplicitUserAction()
+    {
+        string dataDirectory = Path.Combine(_root, "data");
+        string desktopDirectory = Path.Combine(_root, "desktop");
+        string storageRoot = Path.Combine(_root, "storage");
+        Directory.CreateDirectory(desktopDirectory);
+        Directory.CreateDirectory(storageRoot);
+        File.WriteAllText(Path.Combine(storageRoot, "kept.txt"), "one");
+
+        var settingsService = new SettingsService(dataDirectory);
+        settingsService.Settings.DefaultManagedStorageRootPath = storageRoot;
+        settingsService.Settings.ManagedStorageDesktopShortcutEnabled = true;
+        var service = new ManagedStorageDesktopShortcutService(
+            settingsService,
+            desktopDirectory);
+
+        await service.SyncAsync();
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(desktopDirectory));
+        Assert.False(settingsService.Settings.ManagedStorageDesktopShortcutEnabled);
+        Assert.Equal(string.Empty, settingsService.Settings.ManagedStorageDesktopShortcutPath);
+    }
+
+    [Fact]
+    public async Task ExplicitShortcut_CreatesRetargetsHonorsManualDeletionAndRemoves()
     {
         string dataDirectory = Path.Combine(_root, "data");
         string desktopDirectory = Path.Combine(_root, "desktop");
@@ -55,9 +79,11 @@ public sealed class ManagedStorageDesktopShortcutServiceTests : IDisposable
             settingsService,
             desktopDirectory);
 
-        await service.SyncAsync();
+        Assert.True(await service.CreateAsync());
 
         string shortcutPath = settingsService.Settings.ManagedStorageDesktopShortcutPath;
+        Assert.True(settingsService.Settings.ManagedStorageDesktopShortcutEnabled);
+        Assert.True(service.HasShortcut());
         Assert.True(File.Exists(shortcutPath));
         Assert.Equal(
             Path.GetFullPath(firstRoot),
@@ -71,10 +97,21 @@ public sealed class ManagedStorageDesktopShortcutServiceTests : IDisposable
             Path.GetFullPath(secondRoot),
             Path.GetFullPath(ShortcutHelper.ReadStoredMetadata(shortcutPath)!.TargetPath));
 
-        settingsService.Settings.ManagedStorageDesktopShortcutEnabled = false;
+        File.Delete(shortcutPath);
         await service.SyncAsync();
 
         Assert.False(File.Exists(shortcutPath));
+        Assert.False(service.HasShortcut());
+        Assert.False(settingsService.Settings.ManagedStorageDesktopShortcutEnabled);
+        Assert.Equal(string.Empty, settingsService.Settings.ManagedStorageDesktopShortcutPath);
+
+        Assert.True(await service.CreateAsync());
+        string recreatedShortcutPath =
+            settingsService.Settings.ManagedStorageDesktopShortcutPath;
+        Assert.True(File.Exists(recreatedShortcutPath));
+        Assert.True(await service.RemoveAsync());
+        Assert.False(File.Exists(recreatedShortcutPath));
+        Assert.False(settingsService.Settings.ManagedStorageDesktopShortcutEnabled);
         Assert.Equal(string.Empty, settingsService.Settings.ManagedStorageDesktopShortcutPath);
     }
 

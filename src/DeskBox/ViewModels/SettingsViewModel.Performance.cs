@@ -15,6 +15,8 @@ public partial class SettingsViewModel
         PerformanceSettingsPolicy.DefaultTransientWindowReleaseDelaySeconds;
     private string _selectedPerformanceCacheBudget =
         PerformanceSettingsPolicy.DefaultCacheBudget;
+    private string _selectedHiddenCacheCleanupScope =
+        PerformanceSettingsPolicy.DefaultHiddenCacheCleanupScope;
     private bool _enableTextMarqueeAnimations =
         PerformanceSettingsPolicy.DefaultTextMarqueeAnimationsEnabled;
     private bool _enableVinylRotationAnimations =
@@ -119,6 +121,20 @@ public partial class SettingsViewModel
                 _localizationService.T("Settings.Performance.CacheBudget.Large"))
         ]);
 
+    public IReadOnlyList<SettingsOption>
+        AvailableHiddenCacheCleanupScopeOptions =>
+        WrapOptions(
+        [
+            new(
+                PerformanceSettingsPolicy.HiddenCacheCleanupScopeAllRecreatable,
+                _localizationService.T(
+                    "Settings.Performance.HiddenScope.AllRecreatable")),
+            new(
+                PerformanceSettingsPolicy.HiddenCacheCleanupScopeWarm,
+                _localizationService.T(
+                    "Settings.Performance.HiddenScope.Warm"))
+        ]);
+
     public string SelectedPerformanceMode
     {
         get => _selectedPerformanceMode;
@@ -216,6 +232,25 @@ public partial class SettingsViewModel
 
             UpdateCustomPerformanceSetting(settings =>
                 settings.PerformanceCacheBudget = normalized);
+        }
+    }
+
+    public string SelectedHiddenCacheCleanupScope
+    {
+        get => _selectedHiddenCacheCleanupScope;
+        set
+        {
+            string normalized = PerformanceSettingsPolicy
+                .NormalizeHiddenCacheCleanupScope(value);
+            if (!SetProperty(
+                    ref _selectedHiddenCacheCleanupScope,
+                    normalized))
+            {
+                return;
+            }
+
+            UpdateCustomPerformanceSetting(settings =>
+                settings.HiddenCacheCleanupScope = normalized);
         }
     }
 
@@ -325,6 +360,8 @@ public partial class SettingsViewModel
         _selectedTransientWindowReleaseDelaySeconds =
             effective.TransientWindowReleaseDelaySeconds;
         _selectedPerformanceCacheBudget = effective.CacheBudget;
+        _selectedHiddenCacheCleanupScope =
+            effective.HiddenCacheCleanupScope;
         ApplyContinuousDecorativeAnimationSelection(effective);
     }
 
@@ -340,6 +377,7 @@ public partial class SettingsViewModel
         SelectedTransientWindowReleaseDelaySeconds =
             effective.TransientWindowReleaseDelaySeconds;
         SelectedPerformanceCacheBudget = effective.CacheBudget;
+        SelectedHiddenCacheCleanupScope = effective.HiddenCacheCleanupScope;
         ApplyContinuousDecorativeAnimationSelection(effective);
     }
 
@@ -356,6 +394,7 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(AvailableVisibleIdleCacheCleanupDelayOptions));
         OnPropertyChanged(nameof(AvailableTransientWindowReleaseDelayOptions));
         OnPropertyChanged(nameof(AvailablePerformanceCacheBudgetOptions));
+        OnPropertyChanged(nameof(AvailableHiddenCacheCleanupScopeOptions));
         OnPropertyChanged(nameof(ContinuousDecorativeAnimationsSummaryText));
     }
 
@@ -379,6 +418,10 @@ public partial class SettingsViewModel
             ref _selectedPerformanceCacheBudget,
             effective.CacheBudget,
             nameof(SelectedPerformanceCacheBudget));
+        SynchronizePerformanceProperty(
+            ref _selectedHiddenCacheCleanupScope,
+            effective.HiddenCacheCleanupScope,
+            nameof(SelectedHiddenCacheCleanupScope));
         ApplyContinuousDecorativeAnimationSelection(effective);
     }
 

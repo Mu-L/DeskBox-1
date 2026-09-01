@@ -35,9 +35,10 @@ public interface IWidgetContent
     void OnWindowRevealCompleted() { }
 
     /// <summary>
-    /// Called only after the host has remained hidden for the configured deep
-    /// cleanup interval. Content can release native watchers and other warm
-    /// resources here without making an ordinary tray toggle a cold start.
+    /// Called only after the host has remained hidden for the configured long-idle
+    /// interval. Implementations may cancel transient rendering work, but must not
+    /// discard the view, its data projection, warm media, or background resources
+    /// whose recreation would add work to the next reveal or first interaction.
     /// </summary>
     void OnWindowLongHidden() { }
 

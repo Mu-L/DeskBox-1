@@ -169,25 +169,6 @@ public static partial class Win32Helper
             : path;
     }
 
-    [LibraryImport("kernel32.dll")]
-    private static partial IntPtr GetCurrentProcess();
-
-    [LibraryImport("psapi.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool EmptyWorkingSet(IntPtr process);
-
-    public static bool TrimCurrentProcessWorkingSet()
-    {
-        try
-        {
-            return EmptyWorkingSet(GetCurrentProcess());
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     // ────────────────────────────────────────────────────────────────
     //  SetWindowPos – Z-order manipulation
     // ────────────────────────────────────────────────────────────────
@@ -333,6 +314,24 @@ public static partial class Win32Helper
 
     [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     public static partial uint RegisterWindowMessage(string lpString);
+
+    private const uint MB_YESNO = 0x00000004;
+    private const uint MB_ICONWARNING = 0x00000030;
+    private const int IDYES = 6;
+
+    [LibraryImport("user32.dll", EntryPoint = "MessageBoxW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int MessageBox(IntPtr hWnd, string lpText, string lpCaption, uint uType);
+
+    /// <summary>
+    /// Shows the shell-style warning that changing a file extension may make
+    /// the file unusable. Returns true only when the user explicitly picks
+    /// Yes; No, closing the dialog, and Escape all decline the rename.
+    /// </summary>
+    public static bool ConfirmExtensionChange(IntPtr ownerHandle, string message, string caption)
+    {
+        int choice = MessageBox(ownerHandle, message, caption, MB_YESNO | MB_ICONWARNING);
+        return choice == IDYES;
+    }
 
     public const uint GA_ROOT = 2;
     public const uint GA_ROOTOWNER = 3;
@@ -1242,6 +1241,36 @@ public static partial class Win32Helper
         };
 
         DwmExtendFrameIntoClientArea(hWnd, ref margins);
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetProcessWorkingSetSize(
+        IntPtr hProcess,
+        IntPtr dwMinWorkingSetSize,
+        IntPtr dwMaxWorkingSetSize);
+
+    /// <summary>
+    /// Pages the whole working set out (same effect as minimizing a window).
+    /// Only safe to call while every widget is hidden and the user is idle:
+    /// touched pages fault back in afterwards, which would jitter interaction
+    /// or frame pacing if anything were visible at the time.
+    /// </summary>
+    public static bool TrimWorkingSet()
+    {
+        try
+        {
+            return SetProcessWorkingSetSize(
+                GetCurrentProcess(),
+                (IntPtr)(-1),
+                (IntPtr)(-1));
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

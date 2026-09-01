@@ -15,7 +15,11 @@ public sealed class WidgetCompactTrayVisibilityContractTests
         Assert.Contains("UsesSmartCollapseBehavior()", method, StringComparison.Ordinal);
         Assert.Contains("_isSmartPinnedOpen", method, StringComparison.Ordinal);
         Assert.Contains(
-            "RefreshCompactPlacementFromExpandedBounds(persist: true);",
+            "EnsureCompactPlacementFromExpandedBounds(persist: true);",
+            method,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Config.CompactPlacement = null;",
             method,
             StringComparison.Ordinal);
         Assert.Contains("collapsed: true", method, StringComparison.Ordinal);
@@ -210,7 +214,7 @@ public sealed class WidgetCompactTrayVisibilityContractTests
     }
 
     [Fact]
-    public void EnteringCompactBehavior_CapturesDirectionAwareTitleEdgeBeforeStateTransition()
+    public void EnteringCompactBehavior_CapturesOnlyAnInitialPlacementBeforeStateTransition()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Views/WidgetWindowBase.Collapse.cs"));
@@ -220,14 +224,14 @@ public sealed class WidgetCompactTrayVisibilityContractTests
             "private void SynchronizeCompactPointerStateForSmartEntry()");
 
         int captureIndex = method.IndexOf(
-            "RefreshCompactPlacementFromExpandedBounds(persist: true);",
+            "EnsureCompactPlacementFromExpandedBounds(persist: true);",
             StringComparison.Ordinal);
         int transitionIndex = method.IndexOf("SetCollapsedState(", StringComparison.Ordinal);
         Assert.True(captureIndex >= 0 && captureIndex < transitionIndex);
     }
 
     [Fact]
-    public void EveryFixedDirectionCollapse_RepairsLegacyOppositeEdgePlacementFirst()
+    public void FixedDirectionCollapse_DoesNotRepairOrRewriteExistingPlacement()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Views/WidgetWindowBase.Collapse.cs"));
@@ -236,16 +240,73 @@ public sealed class WidgetCompactTrayVisibilityContractTests
             "private void SetCollapsedState(",
             "private RectInt32 ResolvePersistedExpandedHostBounds()");
 
-        int repairCheckIndex = method.IndexOf(
-            "CompactPlacementNeedsDirectionRepair()",
+        Assert.DoesNotContain("CompactPlacementNeedsDirectionRepair()", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("RefreshCompactPlacementFromExpandedBounds", method, StringComparison.Ordinal);
+        Assert.Contains("EnsureCompactPlacementFromExpandedBounds(persist: true);", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DirectionOnlySettingsChange_DoesNotMoveTheCurrentWindow()
+    {
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.Collapse.cs"));
+        string method = ExtractSection(
+            source,
+            "private void ApplyCollapseSettingsChanged(bool appearanceOnly)",
+            "private void ApplyEffectiveCollapseBehavior(bool animate)");
+
+        int directionChangedIndex = method.IndexOf(
+            "if (compactExpansionDirectionChanged)",
             StringComparison.Ordinal);
-        int captureIndex = method.IndexOf(
-            "RefreshCompactPlacementFromExpandedBounds(persist: true);",
-            repairCheckIndex,
+        int directionOnlyGuardIndex = method.IndexOf(
+            "EffectiveCollapseBehavior == _lastEffectiveCollapseBehavior",
+            directionChangedIndex,
             StringComparison.Ordinal);
-        int targetChangeIndex = method.IndexOf("_targetCollapsed = collapsed;", StringComparison.Ordinal);
-        Assert.True(repairCheckIndex >= 0 && repairCheckIndex < captureIndex);
-        Assert.True(captureIndex >= 0 && captureIndex < targetChangeIndex);
+        int returnIndex = method.IndexOf(
+            "return;",
+            directionOnlyGuardIndex,
+            StringComparison.Ordinal);
+        int behaviorApplyIndex = method.IndexOf(
+            "ApplyEffectiveCollapseBehavior(animate: true);",
+            StringComparison.Ordinal);
+
+        Assert.True(directionChangedIndex >= 0);
+        Assert.Contains("CancelPendingCompactExpansion();", method, StringComparison.Ordinal);
+        Assert.Contains("InvalidateCompactExpansionReadiness();", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("Config.CompactPlacement = null;", method, StringComparison.Ordinal);
+        Assert.True(directionOnlyGuardIndex > directionChangedIndex);
+        Assert.True(returnIndex > directionOnlyGuardIndex && returnIndex < behaviorApplyIndex);
+    }
+
+    [Fact]
+    public void FixedDirectionExpansion_StopsBeforeChangingCapsuleStateWhenFullSizeDoesNotFit()
+    {
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Views/WidgetWindowBase.Collapse.cs"));
+        string method = ExtractSection(
+            source,
+            "private void SetCollapsedState(",
+            "private RectInt32 ResolvePersistedExpandedHostBounds()");
+
+        int strictResolveIndex = method.IndexOf(
+            "ResolveCompactExpansionLayout(compact, requireFullSize: true)",
+            StringComparison.Ordinal);
+        int currentPlacementCaptureIndex = method.IndexOf(
+            "CaptureCompactPlacement(GetCurrentWindowBounds(), persist: false);",
+            StringComparison.Ordinal);
+        int blockedIndex = method.IndexOf(
+            "if (!readinessLayout.CanExpand)",
+            strictResolveIndex,
+            StringComparison.Ordinal);
+        int blockedReturnIndex = method.IndexOf("return;", blockedIndex, StringComparison.Ordinal);
+        int targetChangeIndex = method.IndexOf(
+            "_targetCollapsed = collapsed;",
+            StringComparison.Ordinal);
+
+        Assert.True(currentPlacementCaptureIndex >= 0 && currentPlacementCaptureIndex < strictResolveIndex);
+        Assert.True(strictResolveIndex >= 0 && strictResolveIndex < blockedIndex);
+        Assert.Contains("LogCompactExpansionBlocked", method, StringComparison.Ordinal);
+        Assert.True(blockedReturnIndex > blockedIndex && blockedReturnIndex < targetChangeIndex);
     }
 
     private static string ExtractSection(string source, string startMarker, string endMarker)

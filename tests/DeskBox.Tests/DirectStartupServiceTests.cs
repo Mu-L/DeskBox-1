@@ -124,8 +124,9 @@ public sealed class DirectStartupServiceTests
         var runStore = new FakeRunEntryStore();
         var service = CreateService(taskBackend, runStore);
 
-        service.Enable();
+        StartupOperationResult result = service.Enable();
 
+        Assert.Equal(StartupRegistrationState.Enabled, result.State);
         Assert.Equal(0, taskBackend.RegisterCount);
         Assert.Equal($"\"{ExecutablePath}\" --startup", runStore.Value);
         Assert.Equal(1, runStore.WriteCount);
@@ -142,8 +143,9 @@ public sealed class DirectStartupServiceTests
         var runStore = new FakeRunEntryStore();
         var service = CreateService(taskBackend, runStore);
 
-        service.Enable();
+        StartupOperationResult result = service.Enable();
 
+        Assert.Equal(StartupRegistrationState.Enabled, result.State);
         Assert.Equal(1, taskBackend.DeleteCount);
         Assert.Null(taskBackend.Registration);
         Assert.Equal($"\"{ExecutablePath}\" --startup", runStore.Value);
@@ -160,8 +162,9 @@ public sealed class DirectStartupServiceTests
         };
         var service = CreateService(taskBackend, runStore);
 
-        service.Enable();
+        StartupOperationResult result = service.Enable();
 
+        Assert.Equal(StartupRegistrationState.Enabled, result.State);
         Assert.Equal(1, taskBackend.RegisterCount);
         Assert.Equal(0, runStore.WriteCount);
         Assert.Equal(
@@ -187,18 +190,100 @@ public sealed class DirectStartupServiceTests
     }
 
     [Fact]
-    public void IsEnabled_FalseWhenStartupAppsDisablesTheRunEntry()
+    public void Enable_RechecksWindowsApprovalAfterWritingTheRunEntry()
     {
+        var taskBackend = new FakeTaskBackend
+        {
+            RegisterResult = true,
+            Registration = CreatePreferredRegistration(ExecutablePath)
+        };
+        var runStore = new FakeRunEntryStore();
+        var service = CreateService(
+            taskBackend,
+            runStore,
+            runEntryApproved: false);
+
+        StartupOperationResult result = service.Enable();
+
+        Assert.Equal(StartupRegistrationState.DisabledByUser, result.State);
+        Assert.True(result.RequiresSystemSettings);
+        Assert.Equal($"\"{ExecutablePath}\" --startup", runStore.Value);
+        Assert.Equal(1, runStore.WriteCount);
+        Assert.Equal(0, taskBackend.RegisterCount);
+        Assert.Equal(1, taskBackend.DeleteCount);
+        Assert.Null(taskBackend.Registration);
+        Assert.False(service.IsEnabled());
+    }
+
+    [Fact]
+    public void Migration_DisabledRunEntryIsNotRewrittenAndLegacyTaskIsRemoved()
+    {
+        var taskBackend = new FakeTaskBackend
+        {
+            Registration = CreatePreferredRegistration(ExecutablePath)
+        };
         var runStore = new FakeRunEntryStore
         {
             Value = $"\"{ExecutablePath}\" --startup"
         };
         var service = CreateService(
-            new FakeTaskBackend(),
+            taskBackend,
+            runStore,
+            runEntryApproved: false);
+
+        service.TryMigrateLegacyRegistration();
+
+        Assert.Equal(0, runStore.WriteCount);
+        Assert.Equal(0, taskBackend.RegisterCount);
+        Assert.Equal(1, taskBackend.DeleteCount);
+        Assert.Null(taskBackend.Registration);
+        Assert.Equal(
+            StartupRegistrationState.DisabledByUser,
+            service.GetState());
+    }
+
+    [Fact]
+    public void Migration_CurrentRunEntryWithoutLegacyRegistrationIsIdempotent()
+    {
+        var logs = new List<string>();
+        var taskBackend = new FakeTaskBackend();
+        var runStore = new FakeRunEntryStore
+        {
+            Value = $"\"{ExecutablePath}\" --startup"
+        };
+        var service = CreateService(
+            taskBackend,
+            runStore,
+            logger: logs.Add);
+
+        service.TryMigrateLegacyRegistration();
+        service.TryMigrateLegacyRegistration();
+
+        Assert.Equal(0, runStore.WriteCount);
+        Assert.Equal(0, taskBackend.DeleteCount);
+        Assert.Empty(logs);
+    }
+
+    [Fact]
+    public void IsEnabled_FalseWhenStartupAppsDisablesTheRunEntry()
+    {
+        var taskBackend = new FakeTaskBackend
+        {
+            Registration = CreatePreferredRegistration(ExecutablePath)
+        };
+        var runStore = new FakeRunEntryStore
+        {
+            Value = $"\"{ExecutablePath}\" --startup"
+        };
+        var service = CreateService(
+            taskBackend,
             runStore,
             runEntryApproved: false);
 
         Assert.False(service.IsEnabled());
+        Assert.Equal(
+            StartupRegistrationState.DisabledByUser,
+            service.GetState());
     }
 
     [Fact]
@@ -247,12 +332,13 @@ public sealed class DirectStartupServiceTests
     private static DirectStartupService CreateService(
         IDirectStartupTaskBackend taskBackend,
         IDirectStartupRunEntryStore runStore,
-        bool runEntryApproved = true) =>
+        bool runEntryApproved = true,
+        Action<string>? logger = null) =>
         new(
             taskBackend,
             runStore,
             () => ExecutablePath,
-            logger: _ => { },
+            logger: logger ?? (_ => { }),
             runEntryApprovedProvider: () => runEntryApproved);
 
     private static DirectStartupTaskRegistration CreatePreferredRegistration(

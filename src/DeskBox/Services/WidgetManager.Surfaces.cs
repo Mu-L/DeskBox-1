@@ -160,6 +160,13 @@ public sealed partial class WidgetManager
             _temporaryRaiseLease,
             window.WindowHandle);
         _widgetSurfaces.UnregisterHost(window);
+        if (App.UiDispatcherQueue?.TryEnqueue(() =>
+                ReconcileBackgroundMemoryCleanupForWidgetVisibility(
+                    "surface-unregistered")) != true)
+        {
+            ReconcileBackgroundMemoryCleanupForWidgetVisibility(
+                "surface-unregistered");
+        }
     }
 
     private void SynchronizeLoadedSurfaceDefinitions()

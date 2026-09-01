@@ -181,7 +181,8 @@ public sealed class StoreAppUpdateService : IAppUpdateService
     {
         try
         {
-            return global::DeskBox.App.Current.SettingsWindowInstance is { } window
+            return global::DeskBox.App.Current.SettingsWindowInstance is
+                { IsVisibleToUser: true } window
                 ? WindowNative.GetWindowHandle(window)
                 : IntPtr.Zero;
         }

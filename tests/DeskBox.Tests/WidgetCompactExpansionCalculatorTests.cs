@@ -62,6 +62,38 @@ public sealed class WidgetCompactExpansionCalculatorTests
             WidgetCompactExpansionCalculator.GetPivot(result.ExpandedBounds, result.Anchor));
     }
 
+    [Fact]
+    public void Resolve_StrictFixedDirectionRefusesAConstrainedTarget()
+    {
+        RectInt32 compact = new(480, 738, 80, 42);
+        WidgetCompactExpansionLayout result = WidgetCompactExpansionCalculator.Resolve(
+            compact,
+            new SizeInt32(900, 700),
+            new RectInt32(0, 0, 1000, 800),
+            [WidgetCompactExpansionAnchor.LeftTop],
+            requireFullSize: true);
+
+        Assert.False(result.CanExpand);
+        Assert.Equal(compact, result.ExpandedBounds);
+        Assert.True(result.IsSizeConstrained);
+        Assert.Equal(new SizeInt32(900, 700), result.RequestedSize);
+    }
+
+    [Fact]
+    public void Resolve_StrictFixedDirectionAllowsAFullTarget()
+    {
+        WidgetCompactExpansionLayout result = WidgetCompactExpansionCalculator.Resolve(
+            new RectInt32(480, 100, 80, 42),
+            new SizeInt32(400, 300),
+            new RectInt32(0, 0, 1000, 800),
+            [WidgetCompactExpansionAnchor.LeftTop],
+            requireFullSize: true);
+
+        Assert.True(result.CanExpand);
+        Assert.False(result.IsSizeConstrained);
+        Assert.Equal(new RectInt32(480, 100, 400, 300), result.ExpandedBounds);
+    }
+
     [Theory]
     [InlineData(WidgetCompactExpansionAnchor.LeftTop)]
     [InlineData(WidgetCompactExpansionAnchor.RightTop)]

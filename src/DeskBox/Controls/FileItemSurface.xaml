@@ -53,8 +53,8 @@
                 <StackPanel Spacing="2">
                     <TextBlock
                         FontWeight="SemiBold"
-                        Text="{x:Bind TransferStatusText, Mode=OneWay}"
-                        Visibility="{x:Bind TransferStatusVisibility, Mode=OneWay}" />
+                        Text="{x:Bind ActivityStatusText, Mode=OneWay}"
+                        Visibility="{x:Bind ActivityStatusVisibility, Mode=OneWay}" />
                     <TextBlock
                         Text="{Binding FullPath}"
                         Visibility="{x:Bind PathTooltipVisibility, Mode=OneWay}" />
@@ -90,11 +90,11 @@
                     BorderThickness="1"
                     CornerRadius="10"
                     IsHitTestVisible="False"
-                    Visibility="{Binding TransferBadgeVisibility, ElementName=SurfaceRoot}">
+                    Visibility="{Binding ActivityBadgeVisibility, ElementName=SurfaceRoot}">
                     <ProgressRing
                         Width="13"
                         Height="13"
-                        IsActive="{Binding IsTransferActive, ElementName=SurfaceRoot}"
+                        IsActive="{Binding IsActivityActive, ElementName=SurfaceRoot}"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center" />
                 </Border>
@@ -146,11 +146,11 @@
                     BorderThickness="1"
                     CornerRadius="9"
                     IsHitTestVisible="False"
-                    Visibility="{Binding TransferBadgeVisibility, ElementName=SurfaceRoot}">
+                    Visibility="{Binding ActivityBadgeVisibility, ElementName=SurfaceRoot}">
                     <ProgressRing
                         Width="12"
                         Height="12"
-                        IsActive="{Binding IsTransferActive, ElementName=SurfaceRoot}"
+                        IsActive="{Binding IsActivityActive, ElementName=SurfaceRoot}"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center" />
                 </Border>
