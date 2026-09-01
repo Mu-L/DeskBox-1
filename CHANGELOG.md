@@ -1,5 +1,29 @@
 ﻿# Changelog
 
+## 1.4.9 - 2026-09-01
+
+### English
+
+- Fixed unbounded memory growth from repeatedly opening and closing the Settings window: each cycle used to leak a full native XAML tree (~10 MB) due to a known WinUI 3 window-close defect. The settings window is now reused — closing hides it and the same instance is reshown, with state refreshed on reopen.
+- The idle deep memory collection no longer gives up when vetoed by its 120-second cooldown: it retries with backoff until the finalizer collection actually runs.
+- Switching widget materials no longer destroys and recreates system backdrop controllers (their kind is mutable), eliminating per-switch native handle accumulation; DWM theme attributes are only re-issued when the theme actually changes.
+- Restored the pre-1.4.5 idle memory compression behind a new setting, "Compress memory when idle" (on by default, in Performance settings): after the hidden-idle deep cleanup completes, the working set is paged out (e.g. 350 MB down to under 10 MB); while widgets are visible it only runs when the user is fully away and the footprint exceeds the original bloat thresholds.
+- Hardened file-open interactions: opening is gated and traced, runs on a bounded STA runner, and file items get opening animations and text scaling.
+- Renaming a file to a different extension now asks for confirmation using the Windows extension-change warning; the stack popover supports in-place rename.
+- Startup registration was refactored into direct and store services with contract tests.
+- Release validation: x64 test suite 3078/3078 passed; Debug and Release Native AOT builds verified (Release AOT steady state: ~115 MB private / ~171 MB working set).
+
+### 中文
+
+- 修复反复打开/关闭设置窗口导致的内存无上限增长：每次开关都会因 WinUI 3 已知的窗口关闭缺陷泄漏一整棵原生界面树（约 10 MB）。设置窗口改为复用——关闭即隐藏，再次打开时复用同一实例并刷新状态。
+- 空闲深度内存回收被 120 秒冷却否决后不再放弃，改为退避重试，直到终结器回收真正执行。
+- 切换格子材质不再销毁重建系统背景控制器（材质类型本身可变），消除了每次切换的原生句柄累积；DWM 主题属性仅在主题实际变化时重新下发。
+- 以新设置项「空闲时压缩内存占用」恢复了 1.4.5 之前的空闲内存压缩（默认开启，位于性能设置）：隐藏后的深度清理完成时把工作集换出（例如 350 MB 压到 10 MB 以内）；格子可见时仅在用户完全离开且占用超过原有膨胀阈值时才执行。
+- 加固文件打开交互：打开操作加闸与追踪，运行在有界的 STA 执行器上，文件项增加打开动画与文字缩放。
+- 重命名为不同扩展名时使用 Windows 扩展名变更警告进行确认；叠放弹窗支持就地重命名。
+- 启动注册重构为直连与商店两个服务，并补充契约测试。
+- 发布验证：x64 测试套件 3078/3078 通过；Debug 与 Release Native AOT 构建均已验证（Release AOT 稳态：私有约 115 MB / 工作集约 171 MB）。
+
 ## 1.4.8 - 2026-08-29
 
 ### English
