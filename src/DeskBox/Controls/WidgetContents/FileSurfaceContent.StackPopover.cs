@@ -2408,6 +2408,70 @@ public sealed partial class FileSurfaceContent
         }
     }
 
+    private bool TryCompleteReleasedStackPopoverReorder(
+        IReadOnlyCollection<string> sourcePaths,
+        bool handledAsStackMembership)
+    {
+        ListViewBase? view = _stackPopoverItemsView;
+        StackPopoverHostWindow? host = _stackPopoverHostWindow;
+        bool pointerInsideItems =
+            view is not null &&
+            host is { IsVisible: true } &&
+            Win32Helper.GetCursorPos(out Win32Helper.POINT cursor) &&
+            TryGetScreenPointInElement(
+                view,
+                host.WindowHandle,
+                cursor.X,
+                cursor.Y,
+                out _);
+        if (!ShouldCommitReleasedStackPopoverReorder(
+                _stackPopoverDragActive,
+                _stackPopoverReorderInsertionIndex,
+                pointerInsideItems,
+                sourcePaths.Count,
+                handledAsStackMembership) ||
+            view is null ||
+            _stackPopoverKey is not { Length: > 0 } stackKey ||
+            !TryGetStackPopoverDragItems(
+                stackKey,
+                sourcePaths,
+                out WidgetStackItem sourceStack,
+                out WidgetItem[] items))
+        {
+            return false;
+        }
+
+        int insertionIndex = ResolveStackPopoverMemberInsertionIndex(
+            view,
+            _stackPopoverReorderInsertionIndex);
+        bool reordered = ReorderStackPopoverMembers(
+            sourceStack,
+            items,
+            insertionIndex);
+        HideStackPopoverReorderIndicator();
+        if (!reordered)
+        {
+            QueueStackPopoverReconciliation();
+        }
+
+        App.Log(
+            $"[FileStack] Recovered internal reorder after pointer release " +
+            $"widget={WidgetId} reordered={reordered}");
+        return true;
+    }
+
+    internal static bool ShouldCommitReleasedStackPopoverReorder(
+        bool dragActive,
+        int insertionIndex,
+        bool pointerInsideItems,
+        int sourcePathCount,
+        bool handledAsStackMembership) =>
+        dragActive &&
+        insertionIndex >= 0 &&
+        pointerInsideItems &&
+        sourcePathCount > 0 &&
+        !handledAsStackMembership;
+
     private bool IsItemInStackPopover(WidgetItem item) =>
         IsStackPopoverInteractionActive &&
         _stackPopoverItemsView?.Items
@@ -2441,6 +2505,7 @@ public sealed partial class FileSurfaceContent
 
                 FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
                     payload.DataView,
+                    e.AllowedOperations,
                     destinationFolderPath: ViewModel.CurrentFolderPath);
                 e.AcceptedOperation = ToDataPackageOperation(resolvedIntent);
                 if (payload.IsDeskBoxFileDrag)
@@ -2472,8 +2537,11 @@ public sealed partial class FileSurfaceContent
         }
 
         e.Handled = true;
-        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer
-            .DataPackageOperation.Link;
+        e.AcceptedOperation = ResolveInternalArrangementFeedbackOperation(
+            payload.IsDeskBoxFileDrag,
+            e.AllowedOperations,
+            e.DataView.RequestedOperation);
+        TraceInternalDragDecision("stack-reorder", payload, e);
         e.DragUIOverride.IsGlyphVisible = true;
         e.DragUIOverride.IsCaptionVisible = true;
         e.DragUIOverride.Caption = T("Widget.DragCaption.Reorder");
@@ -2587,18 +2655,13 @@ public sealed partial class FileSurfaceContent
         int insertionIndex = ResolveStackPopoverMemberInsertionIndex(
             view,
             e.GetPosition(view));
-        bool reordered = false;
-        ApplyStackProjectionChange(() =>
-            reordered = ViewModel.MoveStackMembersForReorder(
-                sourceStack.StackKey,
-                items,
-                insertionIndex));
-        if (reordered)
-        {
-            UpdateStackPopoverKeyAfterReorder(items);
-        }
-        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer
-            .DataPackageOperation.Link;
+        bool reordered = ReorderStackPopoverMembers(
+            sourceStack,
+            items,
+            insertionIndex);
+        e.AcceptedOperation = ResolveInternalArrangementCompletionOperation(
+            e.AllowedOperations,
+            e.DataView.RequestedOperation);
         HideStackPopoverReorderIndicator();
         PersistSurfaceReorder();
         ResetDragPayloadCache();
@@ -2637,6 +2700,25 @@ public sealed partial class FileSurfaceContent
             reorderedItems.Select(item => item.Path));
     }
 
+    private bool ReorderStackPopoverMembers(
+        WidgetStackItem sourceStack,
+        IReadOnlyList<WidgetItem> items,
+        int insertionIndex)
+    {
+        bool reordered = false;
+        ApplyStackProjectionChange(() =>
+            reordered = ViewModel.MoveStackMembersForReorder(
+                sourceStack.StackKey,
+                items,
+                insertionIndex));
+        if (reordered)
+        {
+            UpdateStackPopoverKeyAfterReorder(items);
+        }
+
+        return reordered;
+    }
+
     private int ResolveStackPopoverMemberInsertionIndex(
         ListViewBase view,
         Windows.Foundation.Point position)
@@ -2645,6 +2727,15 @@ public sealed partial class FileSurfaceContent
             view,
             position,
             _stackPopoverReorderInsertionIndex);
+        return ResolveStackPopoverMemberInsertionIndex(
+            view,
+            visibleInsertionIndex);
+    }
+
+    private int ResolveStackPopoverMemberInsertionIndex(
+        ListViewBase view,
+        int visibleInsertionIndex)
+    {
         WidgetItem[] visibleItems = view.Items
             .OfType<WidgetItem>()
             .ToArray();

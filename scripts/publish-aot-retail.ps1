@@ -41,6 +41,117 @@ function Assert-PathInsideRoot {
     }
 }
 
+function Copy-WindowsAppRuntimeInsightsResource {
+    param(
+        [Parameter(Mandatory)][string]$AssetsPath,
+        [Parameter(Mandatory)][ValidateSet("x64", "arm64")][string]$NativePlatform,
+        [Parameter(Mandatory)][string]$DestinationDirectory
+    )
+
+    if (-not (Test-Path -LiteralPath $AssetsPath -PathType Leaf)) {
+        throw "The restored DeskBox assets file is missing: '$AssetsPath'."
+    }
+
+    $assets = Get-Content -LiteralPath $AssetsPath -Raw | ConvertFrom-Json
+    $runtimeLibraries = @(
+        $assets.libraries.PSObject.Properties |
+            Where-Object Name -Like "Microsoft.WindowsAppSDK.Runtime/*"
+    )
+    if ($runtimeLibraries.Count -ne 1) {
+        throw "Expected exactly one restored Microsoft.WindowsAppSDK.Runtime package, found $($runtimeLibraries.Count)."
+    }
+
+    $runtimeLibrary = $runtimeLibraries[0]
+    $packageRelativePath = [string]$runtimeLibrary.Value.path
+    $frameworkMsixRelativePath =
+        "tools/MSIX/win10-$NativePlatform/Microsoft.WindowsAppRuntime.2.msix"
+    if ($frameworkMsixRelativePath -notin @($runtimeLibrary.Value.files)) {
+        throw "The restored $($runtimeLibrary.Name) package does not declare '$frameworkMsixRelativePath'."
+    }
+
+    $runtimePackageDirectories = @(
+        foreach ($packageRootValue in @($assets.packageFolders.PSObject.Properties.Name)) {
+            $packageRoot = [System.IO.Path]::GetFullPath($packageRootValue).TrimEnd('\', '/')
+            $candidate = [System.IO.Path]::GetFullPath((Join-Path $packageRoot $packageRelativePath))
+            if (-not $candidate.StartsWith(
+                    $packageRoot + [System.IO.Path]::DirectorySeparatorChar,
+                    [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Refusing to read a restored package path outside '$packageRoot': '$candidate'."
+            }
+            if (Test-Path -LiteralPath $candidate -PathType Container) {
+                $candidate
+            }
+        }
+    )
+    if ($runtimePackageDirectories.Count -eq 0) {
+        throw "The restored $($runtimeLibrary.Name) package directory was not found in any NuGet package folder."
+    }
+
+    $frameworkMsixCandidates = @(
+        foreach ($packageDirectory in $runtimePackageDirectories) {
+            $candidate = Join-Path $packageDirectory $frameworkMsixRelativePath
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $candidate
+            }
+        }
+    )
+    if ($frameworkMsixCandidates.Count -eq 0) {
+        throw "The restored $($runtimeLibrary.Name) framework MSIX is missing for '$NativePlatform'."
+    }
+
+    # WindowsAppSDK 2.4.0 resolves Foundation 2.3.9, whose self-contained
+    # component payload omits this signed resource DLL even though the matching
+    # Runtime framework MSIX contains it. Extract the file from that exact,
+    # restore-locked MSIX so app-local RuntimeInfo/AppNotification startup does
+    # not fail with ERROR_MOD_NOT_FOUND on Windows 10.
+    $resourceFileName = "Microsoft.WindowsAppRuntime.Insights.Resource.dll"
+    $destinationPath = Join-Path $DestinationDirectory $resourceFileName
+    Assert-PathInsideRoot -Root $DestinationDirectory -Candidate $destinationPath
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($frameworkMsixCandidates[0])
+    try {
+        $entry = $archive.GetEntry($resourceFileName)
+        if ($null -eq $entry) {
+            throw "The restored $($runtimeLibrary.Name) framework MSIX does not contain '$resourceFileName'."
+        }
+
+        $sourceStream = $entry.Open()
+        try {
+            $destinationStream = [System.IO.File]::Open(
+                $destinationPath,
+                [System.IO.FileMode]::Create,
+                [System.IO.FileAccess]::Write,
+                [System.IO.FileShare]::None)
+            try {
+                $sourceStream.CopyTo($destinationStream)
+            }
+            finally {
+                $destinationStream.Dispose()
+            }
+        }
+        finally {
+            $sourceStream.Dispose()
+        }
+
+        $publishedResource = Get-Item -LiteralPath $destinationPath
+        if ($publishedResource.Length -ne $entry.Length) {
+            throw "The extracted '$resourceFileName' size does not match the restored framework MSIX entry."
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+
+    [ordered]@{
+        package = $runtimeLibrary.Name
+        sourceArchive = $frameworkMsixRelativePath
+        file = $resourceFileName
+        bytes = (Get-Item -LiteralPath $destinationPath).Length
+        sha256 = (Get-FileHash -LiteralPath $destinationPath -Algorithm SHA256).Hash
+    }
+}
+
 function Get-TextSha256 {
     param([AllowEmptyString()][string]$Value)
 
@@ -203,6 +314,12 @@ finally {
     Exit-DeskBoxMsvcEnvironment -State $environmentState
 }
 
+$deskBoxProjectAssetsPath = Join-Path $buildArtifactsDir "obj\DeskBox\project.assets.json"
+$windowsAppRuntimeInsightsResource = Copy-WindowsAppRuntimeInsightsResource `
+    -AssetsPath $deskBoxProjectAssetsPath `
+    -NativePlatform ($runtimeIdentifier.Substring(4)) `
+    -DestinationDirectory $publishDir
+
 $nativeValidation = & (Join-Path $PSScriptRoot "build-rust-native.ps1") `
     -Platform $Platform `
     -Configuration Release `
@@ -263,6 +380,7 @@ $requiredFiles = @(
     "Microsoft.UI.Input.dll",
     "Microsoft.ui.xaml.dll",
     "Microsoft.WindowsAppRuntime.dll",
+    "Microsoft.WindowsAppRuntime.Insights.Resource.dll",
     $installManifestName,
     "ThirdParty/Everything/LICENSE.txt"
 )
@@ -308,7 +426,8 @@ $peResults = @(
             "DeskBox.Updater.exe",
             "DeskBox.ThumbnailProxy.exe",
             "deskbox_native.dll",
-            "EverythingSdk.dll")) {
+            "EverythingSdk.dll",
+            "Microsoft.WindowsAppRuntime.Insights.Resource.dll")) {
         $path = Join-Path $publishDir $fileName
         $machine = Get-PeMachine -Path $path
         if ($machine -ne $expectedMachine) {
@@ -389,6 +508,7 @@ $summary = [ordered]@{
     smokeHarnessEnabled = $false
     selfContained = $true
     windowsAppSdkSelfContained = $true
+    windowsAppRuntimeInsightsResource = $windowsAppRuntimeInsightsResource
     gitCommit = $sourceSnapshotBefore.GitCommit
     gitDirty = $sourceSnapshotBefore.GitDirty
     gitStatusEntries = $sourceSnapshotBefore.StatusEntries

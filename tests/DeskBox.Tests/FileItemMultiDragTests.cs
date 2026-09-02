@@ -11,6 +11,194 @@ namespace DeskBox.Tests;
 public sealed class FileItemMultiDragTests
 {
     [Theory]
+    [InlineData(
+        false,
+        DataPackageOperation.Copy | DataPackageOperation.Move |
+            DataPackageOperation.Link)]
+    [InlineData(
+        true,
+        DataPackageOperation.Move | DataPackageOperation.Link)]
+    public void SourceDragOperations_KeepOnePreferredMoveAndSafeCapabilities(
+        bool isManagedShortcutDrag,
+        DataPackageOperation expectedAllowed)
+    {
+        Assert.Equal(
+            DataPackageOperation.Move,
+            FileItemDragPackage.PreferredOperation);
+        Assert.Equal(
+            expectedAllowed,
+            FileItemDragPackage.ResolveSupportedOperations(
+                isManagedShortcutDrag));
+    }
+
+    [Theory]
+    [InlineData(true, true, true, false, true)]
+    [InlineData(false, true, true, false, false)]
+    [InlineData(true, false, true, false, false)]
+    [InlineData(true, true, false, false, false)]
+    [InlineData(true, true, true, true, false)]
+    public void ReleasedSurfaceReorder_OnlyCommitsConfirmedInternalTarget(
+        bool reorderActive,
+        bool hasLastPosition,
+        bool pointerInsideRoot,
+        bool hasActiveChildDropTarget,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            FileSurfaceContent.ShouldCommitReleasedSurfaceReorder(
+                reorderActive,
+                hasLastPosition,
+                pointerInsideRoot,
+                hasActiveChildDropTarget));
+    }
+
+    [Theory]
+    [InlineData(true, 0, true, 1, false, true)]
+    [InlineData(true, 3, true, 2, false, true)]
+    [InlineData(false, 0, true, 1, false, false)]
+    [InlineData(true, -1, true, 1, false, false)]
+    [InlineData(true, 0, false, 1, false, false)]
+    [InlineData(true, 0, true, 0, false, false)]
+    [InlineData(true, 0, true, 1, true, false)]
+    public void ReleasedStackPopoverReorder_OnlyCommitsPendingInternalTarget(
+        bool dragActive,
+        int insertionIndex,
+        bool pointerInsideItems,
+        int sourcePathCount,
+        bool handledAsStackMembership,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            FileSurfaceContent.ShouldCommitReleasedStackPopoverReorder(
+                dragActive,
+                insertionIndex,
+                pointerInsideItems,
+                sourcePathCount,
+                handledAsStackMembership));
+    }
+
+    [Theory]
+    [InlineData(
+        true,
+        DataPackageOperation.Copy | DataPackageOperation.Move |
+            DataPackageOperation.Link,
+        DataPackageOperation.Move,
+        DataPackageOperation.Link)]
+    [InlineData(
+        true,
+        DataPackageOperation.Link,
+        DataPackageOperation.Move,
+        DataPackageOperation.Link)]
+    [InlineData(
+        false,
+        DataPackageOperation.Copy | DataPackageOperation.Move |
+            DataPackageOperation.Link,
+        DataPackageOperation.Link,
+        DataPackageOperation.Link)]
+    [InlineData(
+        true,
+        DataPackageOperation.None,
+        DataPackageOperation.Move,
+        DataPackageOperation.Move)]
+    [InlineData(
+        true,
+        DataPackageOperation.Move,
+        DataPackageOperation.Move,
+        DataPackageOperation.Move)]
+    [InlineData(
+        false,
+        DataPackageOperation.Move,
+        DataPackageOperation.Move,
+        DataPackageOperation.None)]
+    [InlineData(
+        true,
+        DataPackageOperation.Copy | DataPackageOperation.Move,
+        DataPackageOperation.Move,
+        DataPackageOperation.Copy)]
+    [InlineData(
+        true,
+        DataPackageOperation.None,
+        DataPackageOperation.None,
+        DataPackageOperation.None)]
+    public void InternalArrangementFeedback_AcceptsAdvertisedDeskBoxMove(
+        bool isDeskBoxFileDrag,
+        DataPackageOperation allowedOperations,
+        DataPackageOperation requestedOperation,
+        DataPackageOperation expected)
+    {
+        Assert.Equal(
+            expected,
+            FileSurfaceContent.ResolveInternalArrangementFeedbackOperation(
+                isDeskBoxFileDrag,
+                allowedOperations,
+                requestedOperation));
+    }
+
+    [Theory]
+    [InlineData(
+        DataPackageOperation.Copy | DataPackageOperation.Move |
+            DataPackageOperation.Link,
+        DataPackageOperation.Move,
+        DataPackageOperation.Link)]
+    [InlineData(
+        DataPackageOperation.Link,
+        DataPackageOperation.Move,
+        DataPackageOperation.Link)]
+    [InlineData(
+        DataPackageOperation.None,
+        DataPackageOperation.Move,
+        DataPackageOperation.None)]
+    [InlineData(
+        DataPackageOperation.Move,
+        DataPackageOperation.Move,
+        DataPackageOperation.None)]
+    [InlineData(
+        DataPackageOperation.Copy | DataPackageOperation.Move,
+        DataPackageOperation.Move,
+        DataPackageOperation.Copy)]
+    [InlineData(
+        DataPackageOperation.None,
+        DataPackageOperation.None,
+        DataPackageOperation.None)]
+    public void InternalArrangementCompletion_NeverAuthorizesSourceMove(
+        DataPackageOperation allowedOperations,
+        DataPackageOperation requestedOperation,
+        DataPackageOperation expected)
+    {
+        Assert.Equal(
+            expected,
+            FileSurfaceContent.ResolveInternalArrangementCompletionOperation(
+                allowedOperations,
+                requestedOperation));
+    }
+
+    [Theory]
+    [InlineData(true, "old", "new", false, true)]
+    [InlineData(false, "same", "same", false, true)]
+    [InlineData(false, "old", "new", true, false)]
+    [InlineData(false, "old", null, true, false)]
+    [InlineData(false, null, "old", true, false)]
+    [InlineData(false, null, null, true, true)]
+    [InlineData(false, null, null, false, false)]
+    public void DragPayloadCache_IsScopedToDeskBoxDragSession(
+        bool sameDataView,
+        string? incomingSessionId,
+        string? cachedSessionId,
+        bool sameLegacyPayload,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            FileSurfaceContent.CanReuseDragPayloadSnapshot(
+                sameDataView,
+                incomingSessionId,
+                cachedSessionId,
+                sameLegacyPayload));
+    }
+
+    [Theory]
     [InlineData(DataPackageOperation.Move, true, false, true, true)]
     [InlineData(DataPackageOperation.None, true, false, true, false)]
     [InlineData(DataPackageOperation.None, true, false, false, true)]
@@ -189,6 +377,9 @@ public sealed class FileItemMultiDragTests
 
             Assert.True(prepared);
             Assert.Equal([firstPath, secondPath], result.SourcePaths);
+            Assert.Equal(
+                DataPackageOperation.Move,
+                dataPackage.GetView().RequestedOperation);
             Assert.True(dataPackage.Properties.TryGetValue(
                 DeskBoxDragData.SourcePathsProperty,
                 out object? payload));
@@ -198,6 +389,22 @@ public sealed class FileItemMultiDragTests
         {
             Directory.Delete(tempDirectory, recursive: true);
         }
+    }
+
+    [Theory]
+    [InlineData(true, 0, false)]
+    [InlineData(false, 0, true)]
+    [InlineData(false, 1, false)]
+    public void EmptyState_TracksSourceItemsWithoutWaitingForStackProjection(
+        bool isLoading,
+        int sourceItemCount,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            FileSurfaceContent.ShouldShowEmptyState(
+                isLoading,
+                sourceItemCount));
     }
 
     private static WidgetItem CreateItem(string path) => new()

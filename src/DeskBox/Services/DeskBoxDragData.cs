@@ -16,6 +16,8 @@ public static class DeskBoxDragData
         "DeskBoxInternalDragToken";
     public const string InternalFileDragToken =
         "DeskBox.WidgetItemDrag.v2";
+    public const string DragSessionIdProperty =
+        "DeskBoxDragSessionId";
     public const string StackReorderKeyProperty =
         "DeskBoxStackReorderKey";
     public const string SourceStackKeyProperty =

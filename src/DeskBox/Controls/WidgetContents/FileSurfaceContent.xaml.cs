@@ -60,6 +60,8 @@ public sealed partial class FileSurfaceContent :
     private string[] _activeDragSourcePaths = [];
     private bool _activeDragHasStorageItems;
     private bool _activeDragHandledAsStackMembership;
+    private string? _activeDragSessionId;
+    private string? _lastInternalDragDecisionTrace;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private Border? _folderDropTarget;
     private Border? _stackMemberDropTarget;
@@ -107,7 +109,8 @@ public sealed partial class FileSurfaceContent :
             string? stackReorderKey,
             string? sourceStackKey,
             string? sourceWidgetId,
-            string? internalDragToken)
+            string? internalDragToken,
+            string? dragSessionId)
         {
             DataView = dataView;
             Paths = paths;
@@ -117,6 +120,7 @@ public sealed partial class FileSurfaceContent :
             SourceStackKey = sourceStackKey;
             SourceWidgetId = sourceWidgetId;
             InternalDragToken = internalDragToken;
+            DragSessionId = dragSessionId;
         }
 
         public DataPackageView DataView { get; }
@@ -147,6 +151,8 @@ public sealed partial class FileSurfaceContent :
         public string? SourceWidgetId { get; }
 
         public string? InternalDragToken { get; }
+
+        public string? DragSessionId { get; }
     }
 
     public FileSurfaceContent(
@@ -646,10 +652,15 @@ public sealed partial class FileSurfaceContent :
         }
 
         EmptyState.Visibility =
-            !ViewModel.IsLoading && !ViewModel.VisibleItems.Any()
+            ShouldShowEmptyState(ViewModel.IsLoading, ViewModel.Items.Count)
                 ? Visibility.Visible
                 : Visibility.Collapsed;
     }
+
+    internal static bool ShouldShowEmptyState(
+        bool isLoading,
+        int sourceItemCount) =>
+        !isLoading && sourceItemCount == 0;
 
     private void ToggleViewButton_Click(object sender, RoutedEventArgs e)
     {
@@ -877,6 +888,7 @@ public sealed partial class FileSurfaceContent :
         object sender,
         DragItemsStartingEventArgs e)
     {
+        _activeDragSessionId = null;
         bool fromStackPopover =
             ReferenceEquals(sender, _stackPopoverItemsView);
         if (fromStackPopover)
@@ -923,6 +935,9 @@ public sealed partial class FileSurfaceContent :
         _activeDragSourcePaths = [];
         _activeDragHasStorageItems = false;
         _activeDragHandledAsStackMembership = false;
+        _activeDragSessionId = Guid.NewGuid().ToString("N");
+        e.Data.Properties[DeskBoxDragData.DragSessionIdProperty] =
+            _activeDragSessionId;
         ResetDragPayloadCache();
         ClearFolderDropTarget();
         HideSurfaceReorderInsertionIndicator();
@@ -952,6 +967,10 @@ public sealed partial class FileSurfaceContent :
                 stack.StackKey;
             e.Data.Properties.Title = stack.Name;
             e.Data.SetText(stack.Name);
+            App.Log(
+                $"[DragProtocol] stage=PackagePrepared widget={WidgetId} " +
+                $"session={FormatDragSessionId(_activeDragSessionId)} " +
+                $"kind=stack requested={e.Data.RequestedOperation}");
             return;
         }
 
@@ -991,6 +1010,7 @@ public sealed partial class FileSurfaceContent :
                     : paths.Count.ToString(),
                 out FileItemDragPackageResult result))
         {
+            _activeDragSessionId = null;
             e.Cancel = true;
             if (fromStackPopover)
             {
@@ -1008,12 +1028,26 @@ public sealed partial class FileSurfaceContent :
                 DeskBoxDragData.SourceStackKeyProperty] =
                 _stackPopoverKey;
         }
+
+        App.Log(
+            $"[DragProtocol] stage=PackagePrepared widget={WidgetId} " +
+            $"session={FormatDragSessionId(_activeDragSessionId)} " +
+            $"kind=file popover={fromStackPopover} paths=" +
+            $"{result.SourcePaths.Count} storage={result.HasStorageItems} " +
+            $"nativeShell={result.UsesNativeShellDataObject} requested=" +
+            $"{e.Data.RequestedOperation}");
     }
 
     private void Items_DragStarting(
         UIElement sender,
         DragStartingEventArgs e)
     {
+        // DragStarting can be raised before ListViewBase has finished publishing
+        // DragItemsStarting state. Advertise the safe capability set up front so
+        // internal targets never have to infer it from a possibly incomplete
+        // path/selection snapshot. RequestedOperation remains a single value.
+        e.AllowedOperations = FileItemDragPackage.SupportedOperations;
+
         string[] sourcePaths = _activeDragSourcePaths.Length > 0
             ? _activeDragSourcePaths
             : GetSelectedItems()
@@ -1030,23 +1064,36 @@ public sealed partial class FileSurfaceContent :
         }
         if (sourcePaths.Length > 0)
         {
+            e.Data.RequestedOperation =
+                FileItemDragPackage.PreferredOperation;
+
             // Use the system-provided file visual instead of WinUI's item-card
             // snapshot. This keeps widget-to-widget drags visually identical
             // to an Explorer file drag while preserving the same DataPackage.
             e.DragUI.SetContentFromDataPackage();
         }
 
-        if (!ViewModel.FollowsDefaultStoragePath ||
-            !NativeShellFileDragProvider.AreExistingShortcuts(sourcePaths))
+        bool isManagedShortcutDrag =
+            ViewModel.FollowsDefaultStoragePath &&
+            NativeShellFileDragProvider.AreExistingShortcuts(sourcePaths);
+        if (isManagedShortcutDrag)
         {
-            return;
+            // Keep Move as the preferred external action when a managed shortcut
+            // is restored to the desktop. Link remains available for metadata-only
+            // in-app arrangement without authorizing Shell source cleanup.
+            e.Data.RequestedOperation = FileItemDragPackage.PreferredOperation;
+            e.AllowedOperations =
+                FileItemDragPackage.ResolveSupportedOperations(
+                    isManagedShortcutDrag: true);
         }
 
-        // DataPackage.RequestedOperation is a single preferred operation,
-        // while AllowedOperations controls the permitted set. Managed storage
-        // shortcuts are being restored to the desktop, so both are Move.
-        e.Data.RequestedOperation = DataPackageOperation.Move;
-        e.AllowedOperations = DataPackageOperation.Move;
+        App.Log(
+            $"[DragProtocol] stage=SourceStarting widget={WidgetId} " +
+            $"popover={ReferenceEquals(sender, _stackPopoverItemsView)} " +
+            $"paths={sourcePaths.Length} cachedPaths=" +
+            $"{_activeDragSourcePaths.Length} managedShortcut=" +
+            $"{isManagedShortcutDrag} requested={e.Data.RequestedOperation} " +
+            $"allowed={e.AllowedOperations}");
     }
 
     private void Items_DragItemsCompleted(
@@ -1068,12 +1115,36 @@ public sealed partial class FileSurfaceContent :
         bool hasStorageItems = _activeDragHasStorageItems;
         bool handledAsStackMembership =
             _activeDragHandledAsStackMembership;
+        string? dragSessionId = _activeDragSessionId;
         _activeDragSourcePaths = [];
         _activeDragHasStorageItems = false;
         _activeDragHandledAsStackMembership = false;
+        _activeDragSessionId = null;
+
+        App.Log(
+            $"[DragProtocol] stage=SourceCompleted widget={WidgetId} " +
+            $"session={FormatDragSessionId(dragSessionId)} " +
+            $"popover={fromStackPopover} paths={movedPaths.Length} " +
+            $"dropResult={e.DropResult} internalHandled=" +
+            $"{handledAsStackMembership} storage={hasStorageItems}");
 
         try
         {
+            if (fromStackPopover &&
+                TryCompleteReleasedStackPopoverReorder(
+                    movedPaths,
+                    handledAsStackMembership))
+            {
+                handledAsStackMembership = true;
+            }
+            else if (!fromStackPopover &&
+                _isSurfaceReorderDragActive &&
+                _surfaceReorderHasLastPosition &&
+                CompleteReleasedDragSession())
+            {
+                handledAsStackMembership = true;
+            }
+
             if (ShouldObserveExternalDragOut(
                     e.DropResult,
                     hasStorageItems,
@@ -1103,19 +1174,7 @@ public sealed partial class FileSurfaceContent :
             _stackInputActivation.CancelPointer();
             ClearFolderDropTarget();
             ClearStackMemberDropTarget();
-            if (!fromStackPopover &&
-                _isSurfaceReorderDragActive &&
-                _surfaceReorderHasLastPosition)
-            {
-                // WinUI can complete an item drag without raising Drop. The
-                // last DragOver position is still the release position, so
-                // commit once here instead of losing the reorder.
-                CommitSurfaceReorder(_surfaceReorderLastPosition);
-            }
-            else
-            {
-                PersistSurfaceReorder();
-            }
+            PersistSurfaceReorder();
 
             if (fromStackPopover)
             {
@@ -1813,8 +1872,12 @@ public sealed partial class FileSurfaceContent :
                 out WidgetItem[] detachItems) &&
                 detachItems.Length > 0;
             e.AcceptedOperation = canDetach
-                ? DataPackageOperation.Link
+                ? ResolveInternalArrangementFeedbackOperation(
+                    payload.IsDeskBoxFileDrag,
+                    e.AllowedOperations,
+                    e.DataView.RequestedOperation)
                 : DataPackageOperation.None;
+            TraceInternalDragDecision("stack-detach", payload, e);
             e.DragUIOverride.IsGlyphVisible = canDetach;
             e.DragUIOverride.IsCaptionVisible = canDetach;
             if (canDetach)
@@ -1828,7 +1891,11 @@ public sealed partial class FileSurfaceContent :
         if (payload.IsInternalReorder)
         {
             ResetExternalDropPreview();
-            e.AcceptedOperation = DataPackageOperation.Link;
+            e.AcceptedOperation = ResolveInternalArrangementFeedbackOperation(
+                payload.IsDeskBoxFileDrag,
+                e.AllowedOperations,
+                e.DataView.RequestedOperation);
+            TraceInternalDragDecision("surface-reorder", payload, e);
             e.DragUIOverride.IsGlyphVisible = false;
             e.DragUIOverride.IsCaptionVisible = false;
             ApplyDropVisual(FileDropVisualState.None);
@@ -1865,8 +1932,11 @@ public sealed partial class FileSurfaceContent :
             // External shell drags keep their source-provided compact visual.
             // Setting DragUIOverride here replaces it with WinUI's larger card.
             FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
-                payload.DataView);
-            e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);
+                payload.DataView,
+                e.AllowedOperations);
+            e.AcceptedOperation = ResolveSurfaceDropOperation(
+                payload.DataView,
+                e.AllowedOperations);
             if (payload.IsDeskBoxFileDrag)
             {
                 string targetName = string.IsNullOrWhiteSpace(ViewModel.Name)
@@ -2001,13 +2071,6 @@ public sealed partial class FileSurfaceContent :
     {
         _pendingNativeDropInsertionIndex = null;
         _pendingNativeDropInsertionAnchor = null;
-        if (_dragPayloadSessionActive &&
-            _dragPayloadSnapshot is { } cached &&
-            !IsSameDragPayload(e.DataView, cached))
-        {
-            ResetDragPayloadCache();
-        }
-
         GetDragPayload(e.DataView);
         ResetExternalDropPreview();
         ApplyDropVisual(FileDropVisualState.None);
@@ -2090,7 +2153,9 @@ public sealed partial class FileSurfaceContent :
             }
 
             e.AcceptedOperation = removed
-                ? DataPackageOperation.Link
+                ? ResolveInternalArrangementCompletionOperation(
+                    e.AllowedOperations,
+                    e.DataView.RequestedOperation)
                 : DataPackageOperation.None;
             PersistSurfaceReorder();
             ResetExternalDropPreview();
@@ -2104,13 +2169,30 @@ public sealed partial class FileSurfaceContent :
 
         if (payload.IsInternalReorder)
         {
+            if (_activeDragHandledAsStackMembership)
+            {
+                // A pointer-release recovery or a child drop target already
+                // committed this drag. A late routed Drop must acknowledge the
+                // safe in-app operation without applying the reorder twice.
+                e.AcceptedOperation = ResolveInternalArrangementCompletionOperation(
+                    e.AllowedOperations,
+                    e.DataView.RequestedOperation);
+                PersistSurfaceReorder();
+                ResetExternalDropPreview();
+                ResetDragPayloadCache();
+                return;
+            }
+
+            _activeDragHandledAsStackMembership = true;
             _surfaceReorderStackKey ??= TryGetString(
                 e.DataView.Properties,
                 DeskBoxDragData.StackReorderKeyProperty);
             HandleSurfaceFinalReorder(
                 payload.Paths,
                 e.GetPosition(GetActiveItemsView()));
-            e.AcceptedOperation = DataPackageOperation.Link;
+            e.AcceptedOperation = ResolveInternalArrangementCompletionOperation(
+                e.AllowedOperations,
+                e.DataView.RequestedOperation);
             PersistSurfaceReorder();
             ResetExternalDropPreview();
             ResetDragPayloadCache();
@@ -2160,6 +2242,7 @@ public sealed partial class FileSurfaceContent :
                 // DragOver result.
                 FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
                     e.DataView,
+                    e.AllowedOperations,
                     forceCopy: droppedFiles.Any(file => file.ForceManagedCopy),
                     sourcePathsOverride: droppedFiles.Select(file => file.Path));
                 DataPackageOperation accepted =
@@ -2352,7 +2435,19 @@ public sealed partial class FileSurfaceContent :
     {
         if (_dragPayloadSessionActive && _dragPayloadSnapshot is { } cached)
         {
-            return cached;
+            if (IsSameDragPayload(dataView, cached))
+            {
+                return cached;
+            }
+
+            App.Log(
+                $"[DragProtocol] stage=PayloadCacheInvalidated " +
+                $"widget={WidgetId} cachedSession=" +
+                $"{FormatDragSessionId(cached.DragSessionId)} " +
+                $"incomingSession={FormatDragSessionId(TryGetString(
+                    dataView.Properties,
+                    DeskBoxDragData.DragSessionIdProperty))}");
+            ResetDragPayloadCache();
         }
 
         string[] paths = GetPackagePaths(dataView);
@@ -2368,6 +2463,9 @@ public sealed partial class FileSurfaceContent :
         string? sourceStackKey = TryGetString(
             dataView.Properties,
             DeskBoxDragData.SourceStackKeyProperty);
+        string? dragSessionId = TryGetString(
+            dataView.Properties,
+            DeskBoxDragData.DragSessionIdProperty);
         bool isInternalReorder =
             string.Equals(
                 TryGetString(
@@ -2393,7 +2491,8 @@ public sealed partial class FileSurfaceContent :
             stackReorderKey,
             sourceStackKey,
             sourceWidgetId,
-            internalDragToken);
+            internalDragToken,
+            dragSessionId);
         _dragPayloadSessionActive = true;
         _dragDirectoryCache.Clear();
         _dragUnsafeDropCache.Clear();
@@ -2411,6 +2510,7 @@ public sealed partial class FileSurfaceContent :
         _stackDropItemsTargetKey = null;
         _stackDropItemsTargetMemberCount = -1;
         _stackDropItemsCache = [];
+        _lastInternalDragDecisionTrace = null;
     }
 
     internal void ClearDragSessionVisualState()
@@ -2422,6 +2522,53 @@ public sealed partial class FileSurfaceContent :
         PersistSurfaceReorder();
         ResetDragPayloadCache();
     }
+
+    internal bool CompleteReleasedDragSession()
+    {
+        bool pointerInsideRoot =
+            Win32Helper.GetCursorPos(out Win32Helper.POINT cursor) &&
+            IsScreenPointInsideElement(Root, cursor.X, cursor.Y);
+        bool shouldCommit = ShouldCommitReleasedSurfaceReorder(
+            _isSurfaceReorderDragActive,
+            _surfaceReorderHasLastPosition,
+            pointerInsideRoot,
+            HasActiveChildDropTargetVisual);
+        Windows.Foundation.Point releasePosition =
+            _surfaceReorderLastPosition;
+
+        ClearFolderDropTarget();
+        ClearStackMemberDropTarget();
+        ResetExternalDropPreview();
+        ApplyDropVisual(FileDropVisualState.None);
+        if (shouldCommit)
+        {
+            // The compact-window recovery probe can observe button-up before
+            // WinUI raises Drop or DragItemsCompleted. Preserve the last valid
+            // DragOver position and commit it before clearing the session.
+            _activeDragHandledAsStackMembership = true;
+            CommitSurfaceReorder(releasePosition);
+            App.Log(
+                $"[WidgetSurface] Recovered internal reorder after pointer " +
+                $"release id={WidgetId}");
+        }
+        else
+        {
+            PersistSurfaceReorder();
+        }
+
+        ResetDragPayloadCache();
+        return shouldCommit;
+    }
+
+    internal static bool ShouldCommitReleasedSurfaceReorder(
+        bool reorderActive,
+        bool hasLastPosition,
+        bool pointerInsideRoot,
+        bool hasActiveChildDropTarget) =>
+        reorderActive &&
+        hasLastPosition &&
+        pointerInsideRoot &&
+        !hasActiveChildDropTarget;
 
     internal void CaptureNativeDropInsertion(
         int screenX,
@@ -2581,14 +2728,29 @@ public sealed partial class FileSurfaceContent :
         int screenY,
         out Windows.Foundation.Point point)
     {
+        return TryGetScreenPointInElement(
+            element,
+            _hostWindowHandle,
+            screenX,
+            screenY,
+            out point);
+    }
+
+    private static bool TryGetScreenPointInElement(
+        FrameworkElement element,
+        IntPtr windowHandle,
+        int screenX,
+        int screenY,
+        out Windows.Foundation.Point point)
+    {
         point = default;
-        if (_hostWindowHandle == IntPtr.Zero ||
+        if (windowHandle == IntPtr.Zero ||
             element.Visibility != Visibility.Visible ||
             element.XamlRoot is null ||
             element.ActualWidth <= 0 ||
             element.ActualHeight <= 0 ||
             !Win32Helper.GetWindowRect(
-                _hostWindowHandle,
+                windowHandle,
                 out Win32Helper.RECT windowBounds))
         {
             return false;
@@ -2631,7 +2793,20 @@ public sealed partial class FileSurfaceContent :
         DataPackageView dataView,
         DragPayloadSnapshot cached)
     {
-        if (ReferenceEquals(cached.DataView, dataView))
+        bool sameDataView = ReferenceEquals(cached.DataView, dataView);
+        string? incomingSessionId = TryGetString(
+            dataView.Properties,
+            DeskBoxDragData.DragSessionIdProperty);
+        if (!CanReuseDragPayloadSnapshot(
+                sameDataView,
+                incomingSessionId,
+                cached.DragSessionId,
+                sameLegacyPayload: true))
+        {
+            return false;
+        }
+
+        if (sameDataView || !string.IsNullOrWhiteSpace(incomingSessionId))
         {
             return true;
         }
@@ -2670,6 +2845,34 @@ public sealed partial class FileSurfaceContent :
                    StringComparison.Ordinal);
     }
 
+    internal static bool CanReuseDragPayloadSnapshot(
+        bool sameDataView,
+        string? incomingSessionId,
+        string? cachedSessionId,
+        bool sameLegacyPayload)
+    {
+        if (sameDataView)
+        {
+            return true;
+        }
+
+        bool hasIncomingSession =
+            !string.IsNullOrWhiteSpace(incomingSessionId);
+        bool hasCachedSession =
+            !string.IsNullOrWhiteSpace(cachedSessionId);
+        if (hasIncomingSession || hasCachedSession)
+        {
+            return hasIncomingSession &&
+                   hasCachedSession &&
+                   string.Equals(
+                       incomingSessionId,
+                       cachedSessionId,
+                       StringComparison.Ordinal);
+        }
+
+        return sameLegacyPayload;
+    }
+
     internal bool IsInternalReorderDrag(DataPackageView dataView) =>
         GetDragPayload(dataView).IsInternalReorder;
 
@@ -2678,18 +2881,37 @@ public sealed partial class FileSurfaceContent :
         out WidgetStackItem sourceStack,
         out WidgetItem[] items)
     {
+        if (!payload.IsStackPopoverMemberDrag ||
+            payload.SourceStackKey is not { Length: > 0 } sourceStackKey)
+        {
+            sourceStack = null!;
+            items = [];
+            return false;
+        }
+
+        return TryGetStackPopoverDragItems(
+            sourceStackKey,
+            payload.Paths,
+            out sourceStack,
+            out items);
+    }
+
+    private bool TryGetStackPopoverDragItems(
+        string sourceStackKey,
+        IReadOnlyCollection<string> paths,
+        out WidgetStackItem sourceStack,
+        out WidgetItem[] items)
+    {
         sourceStack = null!;
         items = [];
-        if (!payload.IsStackPopoverMemberDrag ||
-            payload.SourceStackKey is not { Length: > 0 } sourceStackKey ||
-            ViewModel.FindStackByKey(sourceStackKey) is not { } currentStack)
+        if (ViewModel.FindStackByKey(sourceStackKey) is not { } currentStack)
         {
             return false;
         }
 
         var sourcePaths = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase);
-        foreach (string path in payload.Paths)
+        foreach (string path in paths)
         {
             try
             {
@@ -2748,11 +2970,105 @@ public sealed partial class FileSurfaceContent :
 
     private DataPackageOperation ResolveSurfaceDropOperation(
         DataPackageView dataView,
+        DataPackageOperation allowedOperations,
         bool forceCopy = false)
     {
         return ToDataPackageOperation(
-            ResolveSurfaceDropIntent(dataView, forceCopy));
+            ResolveSurfaceDropIntent(
+                dataView,
+                allowedOperations,
+                forceCopy));
     }
+
+    internal static DataPackageOperation ResolveInternalArrangementFeedbackOperation(
+        bool isDeskBoxFileDrag,
+        DataPackageOperation allowedOperations,
+        DataPackageOperation requestedOperation)
+    {
+        DataPackageOperation supported =
+            allowedOperations == DataPackageOperation.None
+                ? requestedOperation
+                : allowedOperations;
+
+        if (supported.HasFlag(DataPackageOperation.Link))
+        {
+            return DataPackageOperation.Link;
+        }
+
+        if (supported.HasFlag(DataPackageOperation.Copy))
+        {
+            return DataPackageOperation.Copy;
+        }
+
+        // ListViewBase item drags expose RequestedOperation as the target's
+        // allowed operation and do not reliably raise UIElement.DragStarting.
+        // Move is therefore required as DragOver feedback so WinUI will route
+        // Drop. The completion policy below never returns Move for the
+        // metadata-only mutation.
+        return isDeskBoxFileDrag &&
+               supported.HasFlag(DataPackageOperation.Move)
+            ? DataPackageOperation.Move
+            : DataPackageOperation.None;
+    }
+
+    internal static DataPackageOperation ResolveInternalArrangementCompletionOperation(
+        DataPackageOperation allowedOperations,
+        DataPackageOperation requestedOperation)
+    {
+        DataPackageOperation supported =
+            allowedOperations == DataPackageOperation.None
+                ? requestedOperation
+                : allowedOperations;
+
+        // Reordering items or changing stack membership only updates DeskBox
+        // state. Returning Move from Drop would authorize a native Shell data
+        // object to clean up its source, which can send .lnk files to the
+        // Recycle Bin.
+        if (supported.HasFlag(DataPackageOperation.Link))
+        {
+            return DataPackageOperation.Link;
+        }
+
+        return supported.HasFlag(DataPackageOperation.Copy)
+            ? DataPackageOperation.Copy
+            : DataPackageOperation.None;
+    }
+
+    private void TraceInternalDragDecision(
+        string route,
+        DragPayloadSnapshot payload,
+        DragEventArgs e)
+    {
+        string signature =
+            $"{route}|{payload.DragSessionId}|{payload.SourceWidgetId}|" +
+            $"{payload.SourceStackKey}|" +
+            $"{payload.Paths.Length}|{e.DataView.RequestedOperation}|" +
+            $"{e.AllowedOperations}|{e.AcceptedOperation}";
+        if (string.Equals(
+                signature,
+                _lastInternalDragDecisionTrace,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastInternalDragDecisionTrace = signature;
+        App.Log(
+            $"[DragProtocol] stage=TargetDecision widget={WidgetId} " +
+            $"session={FormatDragSessionId(payload.DragSessionId)} " +
+            $"route={route} sourceWidget={payload.SourceWidgetId ?? "-"} " +
+            $"sourceStack={payload.SourceStackKey ?? "-"} " +
+            $"paths={payload.Paths.Length} requested=" +
+            $"{e.DataView.RequestedOperation} allowed={e.AllowedOperations} " +
+            $"accepted={e.AcceptedOperation}");
+    }
+
+    private static string FormatDragSessionId(string? sessionId) =>
+        string.IsNullOrWhiteSpace(sessionId)
+            ? "-"
+            : sessionId.Length <= 8
+                ? sessionId
+                : sessionId[..8];
 
     internal static DataPackageOperation ResolveSafeDropCompletionOperation(
         DataPackageOperation requestedOperation,

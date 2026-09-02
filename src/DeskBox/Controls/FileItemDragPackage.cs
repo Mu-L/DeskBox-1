@@ -16,6 +16,24 @@ public readonly record struct FileItemDragPackageResult(
 /// </summary>
 public static class FileItemDragPackage
 {
+    internal const DataPackageOperation PreferredOperation =
+        DataPackageOperation.Move;
+
+    internal const DataPackageOperation SupportedOperations =
+        DataPackageOperation.Copy |
+        DataPackageOperation.Move |
+        DataPackageOperation.Link;
+
+    internal const DataPackageOperation ManagedShortcutSupportedOperations =
+        DataPackageOperation.Move |
+        DataPackageOperation.Link;
+
+    internal static DataPackageOperation ResolveSupportedOperations(
+        bool isManagedShortcutDrag) =>
+        isManagedShortcutDrag
+            ? ManagedShortcutSupportedOperations
+            : SupportedOperations;
+
     public static IReadOnlyList<WidgetItem> ResolveDraggedItems(
         IReadOnlyList<WidgetItem> eventItems,
         IReadOnlyList<WidgetItem> selectedItems)
@@ -112,10 +130,11 @@ public static class FileItemDragPackage
             }
         }
 
-        dataPackage.RequestedOperation =
-            DataPackageOperation.Copy |
-            DataPackageOperation.Move |
-            DataPackageOperation.Link;
+        // RequestedOperation is one preferred action. The full capability
+        // set belongs to DragStartingEventArgs.AllowedOperations; combining
+        // the flags here makes Windows 10 Explorer ask the user to choose an
+        // operation for every otherwise ordinary left-button drop.
+        dataPackage.RequestedOperation = PreferredOperation;
 
         dataPackage.Properties[DeskBoxDragData.SourceWidgetIdProperty] =
             sourceWidgetId;

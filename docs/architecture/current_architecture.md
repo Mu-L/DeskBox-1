@@ -185,6 +185,11 @@ The shared file surface owns the high-risk behaviors:
 - mapped-folder behavior
 - right-click menus
 
+The detailed drag/stack protocol, operation semantics, regression matrix, and
+known failure modes are documented in
+[`file_drag_stack_contract.md`](file_drag_stack_contract.md). Treat its
+internal-arrangement versus filesystem-transfer boundary as a release contract.
+
 Current shared pieces used by file widgets:
 
 - `WidgetShell` hosts the outer shell.

@@ -210,6 +210,7 @@ public sealed partial class FileSurfaceContent
 
         FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
             payload.DataView,
+            e.AllowedOperations,
             destinationFolderPath: targetFolder.Path);
         DataPackageOperation operation =
             ToDataPackageOperation(resolvedIntent);
@@ -337,6 +338,7 @@ public sealed partial class FileSurfaceContent
             // during the drag changes the actual transfer, not only its glyph.
             FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
                 e.DataView,
+                e.AllowedOperations,
                 forceCopy: droppedFiles.Any(file => file.ForceManagedCopy),
                 destinationFolderPath: targetFolder.Path,
                 sourcePathsOverride: droppedFiles.Select(file => file.Path));
@@ -878,11 +880,13 @@ public sealed partial class FileSurfaceContent
 
     private DataPackageOperation ResolveFolderDropOperation(
         DataPackageView dataView,
+        DataPackageOperation allowedOperations,
         bool forceCopy = false,
         string? destinationFolderPath = null) =>
         ToDataPackageOperation(
             ResolveSurfaceDropIntent(
                 dataView,
+                allowedOperations,
                 forceCopy,
                 destinationFolderPath));
 
@@ -1163,12 +1167,18 @@ public sealed partial class FileSurfaceContent
                 out _))
         {
             SetStackMemberDropTarget(border);
-            e.AcceptedOperation = DataPackageOperation.Link;
+            DataPackageOperation internalOperation =
+                ResolveInternalArrangementFeedbackOperation(
+                    payload.IsDeskBoxFileDrag,
+                    e.AllowedOperations,
+                    e.DataView.RequestedOperation);
+            e.AcceptedOperation = internalOperation;
+            TraceInternalDragDecision("stack-membership", payload, e);
             if (payload.IsDeskBoxFileDrag)
             {
                 ApplyDeskBoxFileDragFeedback(
                     e,
-                    DataPackageOperation.Link,
+                    internalOperation,
                     _localizationService.Format(
                         "Widget.Stack.DragCaption.Add",
                         stack.Name));
@@ -1204,6 +1214,7 @@ public sealed partial class FileSurfaceContent
         SetStackMemberDropTarget(border);
         FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
             payload.DataView,
+            e.AllowedOperations,
             destinationFolderPath: ViewModel.CurrentFolderPath);
         e.AcceptedOperation = ToDataPackageOperation(resolvedIntent);
         if (payload.IsDeskBoxFileDrag)
@@ -1327,6 +1338,7 @@ public sealed partial class FileSurfaceContent
                     await GetSurfaceDropFilesAsync(e.DataView);
                 FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
                     payload.DataView,
+                    e.AllowedOperations,
                     forceCopy: batch.Files.Any(file => file.ForceManagedCopy),
                     destinationFolderPath: ViewModel.CurrentFolderPath,
                     sourcePathsOverride: batch.Files.Select(file => file.Path));
@@ -1379,8 +1391,14 @@ public sealed partial class FileSurfaceContent
                         completedSourcePaths);
                 }
 
+                int requestedMoveCount = batch.Files.Count(file =>
+                    !file.ForceManagedCopy);
                 e.AcceptedOperation = importedIntoStack
-                    ? DataPackageOperation.Link
+                    ? ResolveSafeDropCompletionOperation(
+                        accepted,
+                        payload.IsDeskBoxFileDrag,
+                        requestedMoveCount,
+                        completedSourcePaths.Count)
                     : DataPackageOperation.None;
                 if (importedIntoStack)
                 {
@@ -1423,10 +1441,7 @@ public sealed partial class FileSurfaceContent
         ClearStackMemberDropTarget();
         try
         {
-            if (payload.IsStackPopoverMemberDrag)
-            {
-                _activeDragHandledAsStackMembership = true;
-            }
+            _activeDragHandledAsStackMembership = true;
             bool added = false;
             if (payload.IsStackPopoverMemberDrag)
             {
@@ -1442,8 +1457,9 @@ public sealed partial class FileSurfaceContent
                     items);
             }
             e.AcceptedOperation = added
-                ? Windows.ApplicationModel.DataTransfer
-                    .DataPackageOperation.Link
+                ? ResolveInternalArrangementCompletionOperation(
+                    e.AllowedOperations,
+                    e.DataView.RequestedOperation)
                 : Windows.ApplicationModel.DataTransfer
                     .DataPackageOperation.None;
             // This is a stack-membership drop, not an ordering drop. Clear the

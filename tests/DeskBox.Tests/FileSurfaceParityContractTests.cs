@@ -355,7 +355,11 @@ public sealed class FileSurfaceParityContractTests
             surface,
             StringComparison.Ordinal);
         Assert.Contains(
-            "e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);",
+            "ResolveSurfaceDropOperation(",
+            surface,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.AllowedOperations);",
             surface,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -390,7 +394,11 @@ public sealed class FileSurfaceParityContractTests
         Assert.True(externalEnd > externalStart);
         string externalFeedback = feedback[externalStart..externalEnd];
         Assert.Contains(
-            "e.AcceptedOperation = ResolveSurfaceDropOperation(payload.DataView);",
+            "ResolveSurfaceDropOperation(",
+            externalFeedback,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.AllowedOperations);",
             externalFeedback,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -1057,6 +1065,18 @@ public sealed class FileSurfaceParityContractTests
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
+            "TryCompleteReleasedStackPopoverReorder(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ShouldCommitReleasedStackPopoverReorder(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "host.WindowHandle",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "QueueStackPopoverReconciliation(\n" +
             "                        targetStackKey,\n" +
             "                        targetStackMemberAnchors)",
@@ -1097,6 +1117,22 @@ public sealed class FileSurfaceParityContractTests
         Assert.Contains(
             "ViewModel.RemoveItemsFromStack(",
             source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveInternalArrangementFeedbackOperation(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveInternalArrangementFeedbackOperation(",
+            stackPopover,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveInternalArrangementCompletionOperation(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveInternalArrangementCompletionOperation(",
+            stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
             "DeskBoxDragData.SourceStackKeyProperty",
@@ -1279,7 +1315,7 @@ public sealed class FileSurfaceParityContractTests
     }
 
     [Fact]
-    public void ManagedShortcutDrag_UsesMoveOnlyWithoutPostDropDesktopMove()
+    public void ManagedShortcutDrag_PrefersMoveButAllowsSafeInternalLink()
     {
         string root = FindRepositoryRoot();
         XDocument document = XDocument.Load(Path.Combine(
@@ -1301,9 +1337,30 @@ public sealed class FileSurfaceParityContractTests
             "Items_DragStarting",
             (string?)view.Attribute("DragStarting")));
         Assert.Contains(
-            "e.AllowedOperations = DataPackageOperation.Move",
+            "FileItemDragPackage.SupportedOperations",
             source,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "FileItemDragPackage.ResolveSupportedOperations(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DeskBoxDragData.DragSessionIdProperty",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CanReuseDragPayloadSnapshot(",
+            source,
+            StringComparison.Ordinal);
+        int allowedOperationsIndex = source.IndexOf(
+            "e.AllowedOperations = FileItemDragPackage.SupportedOperations;",
+            StringComparison.Ordinal);
+        Assert.True(allowedOperationsIndex >= 0);
+        int sourcePathGuardIndex = source.IndexOf(
+            "if (sourcePaths.Length > 0)",
+            allowedOperationsIndex,
+            StringComparison.Ordinal);
+        Assert.True(sourcePathGuardIndex > allowedOperationsIndex);
         Assert.DoesNotContain(
             "CompleteVirtualShortcutDesktopMoveAsync",
             source,
@@ -1322,6 +1379,23 @@ public sealed class FileSurfaceParityContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "return !fromStackPopover &&",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmptyState_UsesSourceCollectionInsteadOfDeferredStackProjection()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs"));
+
+        Assert.Contains(
+            "ShouldShowEmptyState(ViewModel.IsLoading, ViewModel.Items.Count)",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "!ViewModel.VisibleItems.Any()",
             source,
             StringComparison.Ordinal);
     }

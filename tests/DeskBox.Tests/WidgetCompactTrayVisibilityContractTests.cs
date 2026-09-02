@@ -193,7 +193,8 @@ public sealed class WidgetCompactTrayVisibilityContractTests
 
         Assert.Contains("Win32Helper.IsAnyMouseButtonDown()", shellRecovery, StringComparison.Ordinal);
         Assert.Contains("_isShellDragActive = false;", shellRecovery, StringComparison.Ordinal);
-        Assert.Contains("fileSurface.ClearDragSessionVisualState();", shellRecovery, StringComparison.Ordinal);
+        Assert.Contains("fileSurface.CompleteReleasedDragSession();", shellRecovery, StringComparison.Ordinal);
+        Assert.DoesNotContain("fileSurface.ClearDragSessionVisualState();", shellRecovery, StringComparison.Ordinal);
         Assert.DoesNotContain("CompactDragLeft?.Invoke", shellRecovery, StringComparison.Ordinal);
         Assert.Contains(
             "EndShellDragSession(notifyCompact: true);",

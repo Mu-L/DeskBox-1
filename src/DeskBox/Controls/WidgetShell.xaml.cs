@@ -4768,14 +4768,16 @@ public sealed partial class WidgetShell : UserControl
             return false;
         }
 
-        // A drag that finishes outside the XAML island can miss the final
-        // routed DragLeave. Do not raise CompactDragLeft here: its delayed
-        // restore belongs to a real drag leave and can race the hover request
-        // that is repairing this stale session.
+        // WinUI can miss the final Drop/DragItemsCompleted callback even when
+        // the pointer is released over the file surface. Let that surface
+        // commit its last confirmed internal insertion before clearing state.
+        // Do not raise CompactDragLeft here: its delayed restore belongs to a
+        // real drag leave and can race the hover request repairing this stale
+        // session.
         _isShellDragActive = false;
         if (_hostedContent is FileSurfaceContent fileSurface)
         {
-            fileSurface.ClearDragSessionVisualState();
+            fileSurface.CompleteReleasedDragSession();
         }
         return true;
     }

@@ -10,8 +10,11 @@
 - Restored the pre-1.4.5 idle memory compression behind a new setting, "Compress memory when idle" (on by default, in Performance settings): after the hidden-idle deep cleanup completes, the working set is paged out (e.g. 350 MB down to under 10 MB); while widgets are visible it only runs when the user is fully away and the footprint exceeds the original bloat thresholds.
 - Hardened file-open interactions: opening is gated and traced, runs on a bounded STA runner, and file items get opening animations and text scaling.
 - Renaming a file to a different extension now asks for confirmation using the Windows extension-change warning; the stack popover supports in-place rename.
+- Stabilized the complete file drag protocol across Windows 10 and Windows 11: normal left-button drag-out no longer opens an operation chooser, internal sorting and stack membership never authorize Shell source deletion, and files can again move between the surface and stacks in both inline and popover modes. Session-scoped payload caching and guarded pointer-release recovery prevent stale targets and insertion lines that do not commit.
+- File-widget empty states now follow the underlying source collection, so importing the first item hides the empty view immediately and moving out the final item restores it immediately.
+- Full Native AOT Direct packages now include and architecture-audit the restore-locked Windows App Runtime Insights resource required by Windows 10 notification initialization.
 - Startup registration was refactored into direct and store services with contract tests.
-- Release validation: x64 test suite 3078/3078 passed; Debug and Release Native AOT builds verified (Release AOT steady state: ~115 MB private / ~171 MB working set).
+- Release validation: x64 test suite 3118/3118 passed; Debug and Release Native AOT builds verified (Release AOT steady state: ~115 MB private / ~171 MB working set).
 
 ### 中文
 
@@ -21,8 +24,11 @@
 - 以新设置项「空闲时压缩内存占用」恢复了 1.4.5 之前的空闲内存压缩（默认开启，位于性能设置）：隐藏后的深度清理完成时把工作集换出（例如 350 MB 压到 10 MB 以内）；格子可见时仅在用户完全离开且占用超过原有膨胀阈值时才执行。
 - 加固文件打开交互：打开操作加闸与追踪，运行在有界的 STA 执行器上，文件项增加打开动画与文字缩放。
 - 重命名为不同扩展名时使用 Windows 扩展名变更警告进行确认；叠放弹窗支持就地重命名。
+- 稳定了 Windows 10/11 的完整文件拖拽协议：普通左键拖出不再弹出操作选择菜单，内部排序和叠放关系调整不再授权 Shell 删除源文件，弹窗与非弹窗模式均可在格子和叠放之间正常移入、移出。按拖拽会话隔离的载荷缓存和受边界保护的鼠标释放恢复，避免复用旧目标以及“有插入线但未提交”的问题。
+- 文件格子的空状态改为跟随底层源集合，拖入第一个项目后立即隐藏，移出最后一个项目后立即恢复。
+- Full Native AOT 直发包现在会补入并校验 Windows 10 通知初始化所需、由还原版本锁定的 Windows App Runtime Insights 资源及其架构。
 - 启动注册重构为直连与商店两个服务，并补充契约测试。
-- 发布验证：x64 测试套件 3078/3078 通过；Debug 与 Release Native AOT 构建均已验证（Release AOT 稳态：私有约 115 MB / 工作集约 171 MB）。
+- 发布验证：x64 测试套件 3118/3118 通过；Debug 与 Release Native AOT 构建均已验证（Release AOT 稳态：私有约 115 MB / 工作集约 171 MB）。
 
 ## 1.4.8 - 2026-08-29
 

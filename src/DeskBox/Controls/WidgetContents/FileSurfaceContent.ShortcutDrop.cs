@@ -10,12 +10,18 @@ public sealed partial class FileSurfaceContent
 {
     private FileDropIntent ResolveSurfaceDropIntent(
         DataPackageView dataView,
+        DataPackageOperation allowedOperations,
         bool forceCopy = false,
         string? destinationFolderPath = null,
         IEnumerable<string>? sourcePathsOverride = null)
     {
         DataPackageOperation requested = dataView.RequestedOperation;
-        bool noPreference = requested == DataPackageOperation.None;
+        DataPackageOperation supported =
+            allowedOperations == DataPackageOperation.None
+                ? requested
+                : allowedOperations;
+        bool noOperationMetadata =
+            supported == DataPackageOperation.None;
         string destination = destinationFolderPath ??
             ViewModel.CurrentFolderPath ??
             ViewModel.MappedFolderPath ??
@@ -42,9 +48,11 @@ public sealed partial class FileSurfaceContent
                 action,
                 SettingsService.ManagedDropActionMove,
                 StringComparison.Ordinal),
-            canCopy: noPreference || requested.HasFlag(DataPackageOperation.Copy),
-            canMove: noPreference || requested.HasFlag(DataPackageOperation.Move) ||
-                requested.HasFlag(DataPackageOperation.Link),
+            canCopy: noOperationMetadata ||
+                supported.HasFlag(DataPackageOperation.Copy),
+            canMove: noOperationMetadata ||
+                supported.HasFlag(DataPackageOperation.Move) ||
+                supported.HasFlag(DataPackageOperation.Link),
             altDown: Win32Helper.IsKeyPressed(VirtualKey.Menu),
             followWindows,
             sameVolume,
