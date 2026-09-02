@@ -3581,7 +3581,7 @@ $stage5B4B1MissingBindableTypePatterns = @(
         }
     }
 )
-$stage5B4B1ExpectedBindableViewModelPropertyCount = 306
+$stage5B4B1ExpectedBindableViewModelPropertyCount = 309
 $stage5B4B1ActualBindableViewModelPropertyCount = [regex]::Matches(
     $stage5B4B1Sources[$stage5B4B1SourceFiles[9]],
     [regex]::Escape('nameof(')).Count
@@ -6906,7 +6906,11 @@ $stage5B4C1C2ARequiredProductPatterns = @(
     'HasActiveChildDropTargetVisual',
     'IsScreenPointInsideElement(Root, screenX, screenY)',
     'TransformToVisual(null)',
-    'This path only clears stale state and never',
+    'IReadOnlyList<string>? pathHints = null',
+    'WidgetItem? nativeTarget = null',
+    'ApplyNativeFolderDropTarget(nativeTarget)',
+    'ApplyNativeStackDropTarget(nativeStack)',
+    'UpdateExternalDropPreview(',
     'copyWhenMapped switch'
 )
 $stage5B4C1C2AMissingProductPatterns = @(

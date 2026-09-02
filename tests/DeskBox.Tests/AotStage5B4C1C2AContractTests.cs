@@ -53,7 +53,7 @@ public sealed class AotStage5B4C1C2AContractTests
     }
 
     [Fact]
-    public void NativePointerFallback_OnlyClearsStaleTargetsUsingRealScreenBounds()
+    public void NativePointerFallback_ClearsStaleTargetsAndMaintainsExternalPreviewUsingRealScreenBounds()
     {
         string surface = ReadRepositoryFile(
             "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.xaml.cs");
@@ -69,6 +69,11 @@ public sealed class AotStage5B4C1C2AContractTests
         Assert.Contains("ClearDragSessionVisualState();", method, StringComparison.Ordinal);
         Assert.Contains("ClearFolderDropTarget();", method, StringComparison.Ordinal);
         Assert.Contains("ClearStackMemberDropTarget();", method, StringComparison.Ordinal);
+        Assert.Contains("IReadOnlyList<string>? pathHints = null", method, StringComparison.Ordinal);
+        Assert.Contains("WidgetItem? nativeTarget = null", method, StringComparison.Ordinal);
+        Assert.Contains("ApplyNativeFolderDropTarget(nativeTarget)", method, StringComparison.Ordinal);
+        Assert.Contains("ApplyNativeStackDropTarget(nativeStack)", method, StringComparison.Ordinal);
+        Assert.Contains("UpdateExternalDropPreview(", method, StringComparison.Ordinal);
         Assert.DoesNotContain("SetFolderDropTarget", method, StringComparison.Ordinal);
         Assert.DoesNotContain("SetStackMemberDropTarget", method, StringComparison.Ordinal);
     }
