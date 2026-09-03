@@ -5,7 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/badge/release-1.4.8-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.8)
+[![Latest release](https://img.shields.io/badge/release-1.4.9-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.9)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#system-requirements)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#download)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,12 +36,12 @@ All twelve selectable languages share the same resource-key and formatting-place
 
 ## Download
 
-The current stable release is DeskBox 1.4.8, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.8).
+The current stable release is DeskBox 1.4.9, available from [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.9).
 
-- [DeskBox 1.4.8 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.8/DeskBox_Setup_1.4.8_x64.exe), recommended for most Intel and AMD PCs.
-- [DeskBox 1.4.8 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.8/DeskBox_Setup_1.4.8_arm64.exe), recommended for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
+- [DeskBox 1.4.9 for x64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.9/DeskBox_Setup_1.4.9_x64.exe), recommended for most Intel and AMD PCs.
+- [DeskBox 1.4.9 for ARM64](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.9/DeskBox_Setup_1.4.9_arm64.exe), recommended for Snapdragon, Surface Pro X, and other Windows on ARM PCs.
 
-Both packages are Native AOT builds, so no separate .NET 10 runtime is downloaded or required. Setup checks for Windows App Runtime 2.4 and downloads it only when the matching architecture is missing; Windows may request a restart after that runtime install. On a fully offline PC, install the matching x64 or ARM64 Windows App Runtime 2.4 first.
+Both packages are Full Native AOT builds with the matching private Windows App Runtime 2.4, so they can install offline without downloading a separate .NET 10 or Windows App Runtime package.
 
 Every release also publishes a matching `.sha256` sidecar for each installer. The installers are currently unsigned, so verify the hash before running one if that matters to you.
 

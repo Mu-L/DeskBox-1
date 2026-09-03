@@ -5,7 +5,7 @@
 简体中文 | [English](README.md)
 
 [![CI](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tianyu199509/DeskBox/actions/workflows/ci.yml)
-[![最新版本](https://img.shields.io/badge/release-1.4.8-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.8)
+[![最新版本](https://img.shields.io/badge/release-1.4.9-2563EB.svg)](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.9)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](#环境要求)
 [![x64 and ARM64](https://img.shields.io/badge/architecture-x64%20%7C%20ARM64-5C2D91.svg)](#下载)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -36,12 +36,12 @@ DeskBox 使用贴近 Windows 原生体验的材质，同时保留普通桌面文
 
 ## 下载
 
-当前线上稳定版为 DeskBox 1.4.8，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.8) 下载。
+当前线上稳定版为 DeskBox 1.4.9，可从 [GitHub Releases](https://github.com/Tianyu199509/DeskBox/releases/tag/v1.4.9) 下载。
 
-- [DeskBox 1.4.8 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.8/DeskBox_Setup_1.4.8_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
-- [DeskBox 1.4.8 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.8/DeskBox_Setup_1.4.8_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
+- [DeskBox 1.4.9 x64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.9/DeskBox_Setup_1.4.9_x64.exe)，推荐大多数 Intel 和 AMD 电脑使用。
+- [DeskBox 1.4.9 ARM64 安装包](https://github.com/Tianyu199509/DeskBox/releases/download/v1.4.9/DeskBox_Setup_1.4.9_arm64.exe)，推荐骁龙、Surface Pro X 等 Windows on ARM 电脑使用。
 
-两个安装包都是 Native AOT 构建，不再下载、也不再需要单独的 .NET 10 运行时。安装程序会检查 Windows App Runtime 2.4，只有当前架构缺少它时才联网安装；运行时安装完成后，少数电脑可能需要重启。完全离线的电脑请先手动安装对应架构的 Windows App Runtime 2.4。
+两个安装包都是 Full Native AOT 构建，并内置对应架构的私有 Windows App Runtime 2.4，可离线安装，不需要另外下载 .NET 10 或 Windows App Runtime。
 
 每个安装包都提供同名的 `.sha256` 校验文件。安装包目前尚未进行 Authenticode 签名，介意者请在运行前核对哈希。
 
