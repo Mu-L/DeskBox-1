@@ -76,7 +76,7 @@ Runtime 检测，仍保留 Windows App Runtime 2.2 检测与安装。ARM64 安�
 
 跨架构摘要保存在：
 
-`D:\project\wingezi-actions-evidence-32650821484\stage7c1-cross-architecture-summary\stage7c1-cross-architecture-summary.json`
+`evidence/32650821484/stage7c1-cross-architecture-summary/stage7c1-cross-architecture-summary.json`
 
 摘要状态为 `passed`，最终 SHA-256：
 

@@ -85,8 +85,8 @@ x64-only 判断拒绝。该限制已改为只接受 x64 或 ARM64，并继续拒
 
 首轮结构化证据：
 
-- `D:\project\wingezi-actions-evidence-32644378767\arm64-stage7b-runtime-evidence\arm64-stage7b-runtime-evidence.json`
-- `D:\project\wingezi-actions-evidence-32644378767\arm64-stage7c0-crt-evidence\rust-crt-stage7c0-evidence.json`
+- `evidence/32644378767/arm64-stage7b-runtime-evidence/arm64-stage7b-runtime-evidence.json`
+- `evidence/32644378767/arm64-stage7c0-crt-evidence/rust-crt-stage7c0-evidence.json`
 - `status=passed`
 - `targetArchitectureRuntimeExecuted=true`
 - `physicalUserDeviceExecuted=false`
@@ -96,8 +96,8 @@ x64-only 判断拒绝。该限制已改为只接受 x64 或 ARM64，并继续拒
 
 最终生产配置证据：
 
-- `D:\project\wingezi-actions-evidence-32645299871\arm64-stage7b-runtime-evidence\arm64-stage7b-runtime-evidence.json`
-- `D:\project\wingezi-actions-evidence-32645299871\arm64-stage7c0-crt-evidence\rust-crt-stage7c0-evidence.json`
+- `evidence/32645299871/arm64-stage7b-runtime-evidence/arm64-stage7b-runtime-evidence.json`
+- `evidence/32645299871/arm64-stage7c0-crt-evidence/rust-crt-stage7c0-evidence.json`
 - Stage 7B 的 `native.crtLinkage` 与 `searchCore.crtLinkage` 均为 `Static`；两个 runtime probe 均执行；
 - Stage 7C0 的两个静态 DLL `vcRuntimeImports` 均为空；静态产品测试 11/11；
 - 两个 JSON 均为 `status=passed`，commit 与 Actions head SHA 均为 `0b3b67a2...`。
