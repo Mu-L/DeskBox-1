@@ -40,6 +40,43 @@ ARM64 使用同一入口，只把 `-Platform` 改为 `ARM64`。Native AOT 模式
 `deskbox_search_core.dll`、`.NET` deps/runtimeconfig、PDB 或 Direct 素材放入 MSIX。主程序和 Rust PDB
 只进入 `.appxsym`。
 
+## 正式 Partner Center 合并包
+
+`build-stage-7c1-distribution.ps1` 和上面的单架构命令生成的是 x64、ARM64 各自的构建与审计输入。
+DeskBox 已发布版本采用一个双架构上传包；正式提交前必须再聚合为：
+
+```text
+DeskBox_<version>_x64_arm64.msixupload
+├── DeskBox_<version>_x64_arm64.msixbundle
+├── DeskBox_<version>_x64.appxsym
+└── DeskBox_<version>_arm64.appxsym
+```
+
+聚合时从两个 `StoreUpload` 构建的 `*_Test` 目录取得经过审计的 `.msix` 和匹配的 `.appxsym`，先用
+MakeAppx 创建双架构 Bundle，再把 Bundle 与两份符号包封装到根目录无子目录的 `.msixupload`。
+MakeAppx 必须显式指定四段式 Bundle 版本，例如：
+
+```powershell
+makeappx bundle `
+  /d <bundle-input> `
+  /p DeskBox_1.4.9.0_x64_arm64.msixbundle `
+  /bv 1.4.9.0 `
+  /o
+```
+
+不可省略 `/bv`。省略后 MakeAppx 会用当前日期时间生成 Bundle 版本，即使两个内包版本正确，最终
+Bundle 身份仍会偏离发布版本。封装完成后必须再次 `unbundle`，确认：
+
+- Bundle `Identity Version` 等于应用版本；
+- Bundle 只包含一个 x64 和一个 ARM64 应用包，两个内包版本相同；
+- 外层 `.msixupload` 恰好包含一个 `.msixbundle` 和两份对应架构的 `.appxsym`；
+- 解出的两个 `.msix` 哈希与合并输入一致，并分别再次通过 Store Native AOT 包审计；
+- 包身份、Publisher、最低系统和 Windows App Runtime 框架依赖与已发布版本连续；
+- 包内没有 `DeskBox.Updater`、CoreCLR、自包含 Windows App Runtime 或 Direct 专用素材。
+
+单架构 `.msixupload` 可以保留为构建证据，但不是 DeskBox 既有发布模式下应提交的最终商店包。Partner
+Center 只上传合并后的 `x64_arm64.msixupload`，不上传其内部 `.msixbundle`。
+
 带证书签名：
 
 ```powershell
