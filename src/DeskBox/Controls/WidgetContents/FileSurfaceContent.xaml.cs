@@ -61,6 +61,7 @@ public sealed partial class FileSurfaceContent :
     private bool _activeDragHasStorageItems;
     private bool _activeDragHandledAsStackMembership;
     private string? _activeDragSessionId;
+    private readonly FileDragSessionState _sourceDragSession = new();
     private string? _lastInternalDragDecisionTrace;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private Border? _folderDropTarget;
@@ -888,6 +889,7 @@ public sealed partial class FileSurfaceContent :
         object sender,
         DragItemsStartingEventArgs e)
     {
+        _sourceDragSession.Complete(_activeDragSessionId);
         _activeDragSessionId = null;
         bool fromStackPopover =
             ReferenceEquals(sender, _stackPopoverItemsView);
@@ -967,6 +969,7 @@ public sealed partial class FileSurfaceContent :
                 stack.StackKey;
             e.Data.Properties.Title = stack.Name;
             e.Data.SetText(stack.Name);
+            _sourceDragSession.Begin(_activeDragSessionId);
             App.Log(
                 $"[DragProtocol] stage=PackagePrepared widget={WidgetId} " +
                 $"session={FormatDragSessionId(_activeDragSessionId)} " +
@@ -1021,6 +1024,7 @@ public sealed partial class FileSurfaceContent :
 
         _activeDragSourcePaths = result.SourcePaths.ToArray();
         _activeDragHasStorageItems = result.HasStorageItems;
+        _sourceDragSession.Begin(_activeDragSessionId);
         if (fromStackPopover &&
             !string.IsNullOrWhiteSpace(_stackPopoverKey))
         {
@@ -1035,7 +1039,9 @@ public sealed partial class FileSurfaceContent :
             $"kind=file popover={fromStackPopover} paths=" +
             $"{result.SourcePaths.Count} storage={result.HasStorageItems} " +
             $"nativeShell={result.UsesNativeShellDataObject} requested=" +
-            $"{e.Data.RequestedOperation}");
+            $"{e.Data.RequestedOperation} mode=" +
+            $"{(sender is ListView ? "list" : "icons")} " +
+            $"pathSample='{string.Join(" | ", result.SourcePaths.Take(5))}'");
     }
 
     private void Items_DragStarting(
@@ -1116,6 +1122,8 @@ public sealed partial class FileSurfaceContent :
         bool handledAsStackMembership =
             _activeDragHandledAsStackMembership;
         string? dragSessionId = _activeDragSessionId;
+        bool releaseRecoveryPending = _sourceDragSession.ReleaseRecoveryPending;
+        _sourceDragSession.Complete(dragSessionId);
         _activeDragSourcePaths = [];
         _activeDragHasStorageItems = false;
         _activeDragHandledAsStackMembership = false;
@@ -1126,18 +1134,21 @@ public sealed partial class FileSurfaceContent :
             $"session={FormatDragSessionId(dragSessionId)} " +
             $"popover={fromStackPopover} paths={movedPaths.Length} " +
             $"dropResult={e.DropResult} internalHandled=" +
-            $"{handledAsStackMembership} storage={hasStorageItems}");
+            $"{handledAsStackMembership} storage={hasStorageItems} " +
+            $"releaseRecoveryPending={releaseRecoveryPending}");
 
         try
         {
-            if (fromStackPopover &&
+            bool allowReleaseRecovery = ShouldRecoverUnhandledSourceDrop(
+                e.DropResult, handledAsStackMembership);
+            if (allowReleaseRecovery && fromStackPopover &&
                 TryCompleteReleasedStackPopoverReorder(
                     movedPaths,
                     handledAsStackMembership))
             {
                 handledAsStackMembership = true;
             }
-            else if (!fromStackPopover &&
+            else if (allowReleaseRecovery && !fromStackPopover &&
                 _isSurfaceReorderDragActive &&
                 _surfaceReorderHasLastPosition &&
                 CompleteReleasedDragSession())
@@ -1182,6 +1193,11 @@ public sealed partial class FileSurfaceContent :
             }
         }
     }
+
+    internal static bool ShouldRecoverUnhandledSourceDrop(
+        DataPackageOperation dropResult,
+        bool internalHandled) =>
+        !internalHandled && dropResult != DataPackageOperation.None;
 
     internal static bool ShouldObserveExternalDragOut(
         DataPackageOperation dropResult,
@@ -2180,7 +2196,11 @@ public sealed partial class FileSurfaceContent :
     private async void Root_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        // Rebuilding an item projection can reenter WinUI. Revoke DragOver's
+        // provisional Move before any projection or target state can change.
+        e.AcceptedOperation = DataPackageOperation.None;
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
+        TraceTargetDropEntered("surface", payload, e);
         int? preferredManualIndex = payload.IsInternalReorder
             ? null
             : CaptureExternalDropInsertionIndex(
@@ -2614,8 +2634,31 @@ public sealed partial class FileSurfaceContent :
         ResetDragPayloadCache();
     }
 
+    internal bool ShouldDeferReleasedDragSessionRecovery()
+    {
+        bool wasPending = _sourceDragSession.ReleaseRecoveryPending;
+        if (!_sourceDragSession.DeferReleaseRecovery())
+        {
+            return false;
+        }
+
+        if (!wasPending)
+        {
+            App.Log(
+                $"[DragProtocol] stage=ReleaseRecoveryDeferred widget={WidgetId} " +
+                $"session={FormatDragSessionId(_activeDragSessionId)} " +
+                "reason=source-operation-in-progress");
+        }
+        return true;
+    }
+
     internal bool CompleteReleasedDragSession()
     {
+        if (ShouldDeferReleasedDragSessionRecovery())
+        {
+            return false;
+        }
+
         bool pointerInsideRoot =
             Win32Helper.GetCursorPos(out Win32Helper.POINT cursor) &&
             IsScreenPointInsideElement(Root, cursor.X, cursor.Y);
@@ -2633,9 +2676,8 @@ public sealed partial class FileSurfaceContent :
         ApplyDropVisual(FileDropVisualState.None);
         if (shouldCommit)
         {
-            // The compact-window recovery probe can observe button-up before
-            // WinUI raises Drop or DragItemsCompleted. Preserve the last valid
-            // DragOver position and commit it before clearing the session.
+            // Source completion has ended the native drag loop. Recover a
+            // missing routed Drop now, without removing a still-active target.
             _activeDragHandledAsStackMembership = true;
             CommitSurfaceReorder(releasePosition);
             App.Log(
@@ -3152,6 +3194,18 @@ public sealed partial class FileSurfaceContent :
             $"paths={payload.Paths.Length} requested=" +
             $"{e.DataView.RequestedOperation} allowed={e.AllowedOperations} " +
             $"accepted={e.AcceptedOperation}");
+    }
+
+    private void TraceTargetDropEntered(
+        string route,
+        DragPayloadSnapshot payload,
+        DragEventArgs e)
+    {
+        App.Log(
+            $"[DragProtocol] stage=TargetDropEntered widget={WidgetId} " +
+            $"session={FormatDragSessionId(payload.DragSessionId)} " +
+            $"route={route} internal={payload.IsInternalReorder} " +
+            $"paths={payload.Paths.Length} accepted={e.AcceptedOperation}");
     }
 
     private static string FormatDragSessionId(string? sessionId) =>

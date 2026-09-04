@@ -61,6 +61,10 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
     private string _openingStatusText = string.Empty;
     private WidgetViewModel? _subscribedLayoutContext;
     private bool _isSurfaceLoaded;
+    private FrameworkElement? _iconLayout;
+    private FrameworkElement? _listLayout;
+    private TextBlock? _iconItemNameText;
+    private TextBlock? _listItemNameText;
 
     public FileItemSurface()
     {
@@ -204,10 +208,64 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
 
     public Border InteractiveBorder => SurfaceBorder;
 
-    public TextBlock ItemNameText =>
-        Mode == FileItemSurfaceMode.List
-            ? ListItemNameText
-            : IconItemNameText;
+    public TextBlock ItemNameText
+    {
+        get
+        {
+            // Rename can ask for the name before the first Loaded event.
+            EnsureActiveLayout();
+            return Mode == FileItemSurfaceMode.List
+                ? _listItemNameText!
+                : _iconItemNameText!;
+        }
+    }
+
+    protected override Windows.Foundation.Size MeasureOverride(
+        Windows.Foundation.Size availableSize)
+    {
+        // XAML assigns Mode after construction. Waiting until measurement
+        // avoids creating an unused icon layout for every list-mode item,
+        // while still measuring the real content before it can receive input.
+        EnsureActiveLayout();
+        return base.MeasureOverride(availableSize);
+    }
+
+    private void EnsureActiveLayout()
+    {
+        if (Mode == FileItemSurfaceMode.List)
+        {
+            if (_listLayout is null)
+            {
+                (_listLayout, _listItemNameText) = CreateLayout(
+                    "ListItemLayoutTemplate", "ListItemNameText");
+            }
+        }
+        else if (_iconLayout is null)
+        {
+            (_iconLayout, _iconItemNameText) = CreateLayout(
+                "IconItemLayoutTemplate", "IconItemNameText");
+        }
+    }
+
+    private (FrameworkElement Layout, TextBlock NameText) CreateLayout(
+        string templateKey,
+        string nameElement)
+    {
+        var template = (DataTemplate)Resources[templateKey];
+        var layout = (FrameworkElement)template.LoadContent();
+        var nameText = (TextBlock)layout.FindName(nameElement);
+        var bindings = Microsoft.UI.Xaml.Markup.XamlBindingHelper
+            .GetDataTemplateComponent(layout) ??
+            throw new InvalidOperationException($"Missing file item bindings: {templateKey}");
+
+        // Compiled presentation bindings read this surface. ProcessBindings
+        // also detaches the generated DataContextChanged handler before the
+        // layout inherits the WidgetItem from its unchanged interaction shell.
+        // Ordinary file/thumbnail bindings therefore keep their original source.
+        bindings.ProcessBindings(this, 0, 0, out _);
+        LayoutHost.Children.Add(layout);
+        return (layout, nameText);
+    }
 
     internal void SetTransferState(
         FileTransferPathState state,
@@ -305,6 +363,15 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
                 surface.RefreshLayoutContextSubscription();
             }
 
+            if (args.Property == ModeProperty)
+            {
+                if (surface._iconLayout is not null || surface._listLayout is not null)
+                {
+                    surface.EnsureActiveLayout();
+                }
+                surface.InvalidateMeasure();
+            }
+
             surface.NotifyPresentationChanged();
         }
     }
@@ -374,6 +441,7 @@ public sealed partial class FileItemSurface : UserControl, INotifyPropertyChange
 
     private void SurfaceBorder_Loaded(object sender, RoutedEventArgs e)
     {
+        EnsureActiveLayout();
         _isSurfaceLoaded = true;
         RefreshLayoutContextSubscription();
         _pointerFeedback.ResetForReuse();

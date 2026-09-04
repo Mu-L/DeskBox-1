@@ -4768,9 +4768,16 @@ public sealed partial class WidgetShell : UserControl
             return false;
         }
 
-        // WinUI can miss the final Drop/DragItemsCompleted callback even when
-        // the pointer is released over the file surface. Let that surface
-        // commit its last confirmed internal insertion before clearing state.
+        // Button-up can precede native Drop completion. Rebuilding the file
+        // projection here can remove the active target while its last feedback
+        // is still Move, authorizing Shell to delete the source shortcut.
+        if (_hostedContent is FileSurfaceContent activeFileSurface &&
+            activeFileSurface.ShouldDeferReleasedDragSessionRecovery())
+        {
+            return false;
+        }
+
+        // Once the source has completed, recover any remaining visual state.
         // Do not raise CompactDragLeft here: its delayed restore belongs to a
         // real drag leave and can race the hover request repairing this stale
         // session.

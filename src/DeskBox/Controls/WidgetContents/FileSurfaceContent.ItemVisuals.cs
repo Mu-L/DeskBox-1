@@ -283,6 +283,7 @@ public sealed partial class FileSurfaceContent
         ApplyDropVisual(FileDropVisualState.None);
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
+        TraceTargetDropEntered("folder", payload, e);
         if (_isImportBusy ||
             !payload.HasSurfacePathData ||
             HasTransferConflict(payload.Paths, targetFolder.Path))
@@ -1298,6 +1299,7 @@ public sealed partial class FileSurfaceContent
         DragEventArgs e)
     {
         e.Handled = true;
+        e.AcceptedOperation = DataPackageOperation.None;
         int? preferredStackMemberIndex = null;
         if (ReferenceEquals(sender, _stackPopoverSurface) &&
             _stackPopoverItemsView is { } popoverView &&
@@ -1328,6 +1330,7 @@ public sealed partial class FileSurfaceContent
             .ToArray();
 
         DragPayloadSnapshot payload = GetDragPayload(e.DataView);
+        TraceTargetDropEntered("stack-membership", payload, e);
 
         if (HasTransferConflict(payload.Paths, ViewModel.CurrentFolderPath))
         {

@@ -81,19 +81,23 @@ public sealed class AotStage4E4ContractTests
     public void SettingsWindow_AssignsAndClearsTheTypedBridgeAroundViewModelLifetime()
     {
         string code = ReadRepositoryFile("src/DeskBox/Views/SettingsWindow.xaml.cs");
+        string factory = ReadRepositoryFile("src/DeskBox/Views/SettingsWindow.DeferredSections.cs");
 
-        int rootAssignment = code.IndexOf(
-            "SettingsRoot.DataContext = ViewModel;",
+        int rootCreation = factory.IndexOf("template.LoadContent()", StringComparison.Ordinal);
+        int rootAssignment = factory.IndexOf(
+            "section.DataContext = ViewModel;",
             StringComparison.Ordinal);
-        int bridgeAssignment = code.IndexOf(
-            "AppearanceDetailSection.ViewModel = ViewModel;",
+        int bridgeAssignment = factory.IndexOf(
+            "fileSettings.ViewModel = ViewModel;",
             StringComparison.Ordinal);
+        int rootAttachment = factory.IndexOf("ContentHost.Children.Add(section);", StringComparison.Ordinal);
         int bridgeClear = code.IndexOf(
             "AppearanceDetailSection.ViewModel = null;",
             StringComparison.Ordinal);
         int viewModelDispose = code.IndexOf("ViewModel.Dispose();", StringComparison.Ordinal);
 
-        Assert.True(rootAssignment >= 0 && bridgeAssignment > rootAssignment);
+        Assert.True(rootCreation >= 0 && rootAssignment > rootCreation);
+        Assert.True(bridgeAssignment > rootAssignment && bridgeAssignment < rootAttachment);
         Assert.True(bridgeClear >= 0 && bridgeClear < viewModelDispose);
     }
 

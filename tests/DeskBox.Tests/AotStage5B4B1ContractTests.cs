@@ -188,24 +188,27 @@ public sealed class AotStage5B4B1ContractTests
             xaml,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ItemsSource=\"{x:Bind ViewModel.FileStackCustomRules, Mode=OneWay}\"",
+            "ItemsSource=\"{x:Bind FileStackCustomRules, Mode=OneWay}\"",
             xaml,
             StringComparison.Ordinal);
-        Assert.Equal(309, CountOccurrences(bindableViewModel, "nameof("));
+        Assert.Equal(310, CountOccurrences(bindableViewModel, "nameof("));
+        Assert.Contains("nameof(ImmediateHiddenWorkingSetTrimEnabled)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(WidgetCapsuleModeEnabled)", bindableViewModel, StringComparison.Ordinal);
         Assert.Contains("nameof(SelectedWidgetCapsuleBarPlacement)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(ResetAllCapsuleOverridesCommand)", bindableViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(ResetCapsuleWidthOverridesCommand)", bindableViewModel, StringComparison.Ordinal);
         Assert.Contains(
-            "Command=\"{x:Bind ViewModel.ResetAllCapsuleOverridesCommand, Mode=OneWay}\"",
+            "Command=\"{x:Bind ResetAllCapsuleOverridesCommand, Mode=OneWay}\"",
             xaml,
             StringComparison.Ordinal);
+        Assert.Contains("x:DataType=\"viewModels:SettingsViewModel\"", xaml, StringComparison.Ordinal);
         Assert.Contains(
             "Command=\"{x:Bind ViewModel.ResetCapsuleWidthOverridesCommand, Mode=OneWay}\"",
             capsuleXaml,
             StringComparison.Ordinal);
         Assert.Contains("ViewModelProperty", capsuleCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("CapsuleModeSection.ViewModel = ViewModel", window, StringComparison.Ordinal);
+        Assert.Contains("capsuleSettings.ViewModel = ViewModel",
+            ReadRepositoryFile("src/DeskBox/Views/SettingsWindow.DeferredSections.cs"), StringComparison.Ordinal);
     }
 
     [Fact]

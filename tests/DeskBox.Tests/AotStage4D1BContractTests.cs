@@ -57,10 +57,10 @@ public sealed class AotStage4D1BContractTests
         Assert.Equal(5, usages.Count);
         Assert.Equal(164, usages["toolkit:SettingsCard|HeaderKey"]);
         Assert.Equal(135, usages["toolkit:SettingsCard|DescriptionKey"]);
-        Assert.Equal(20, usages["toolkit:SettingsExpander|HeaderKey"]);
-        Assert.Equal(7, usages["toolkit:SettingsExpander|DescriptionKey"]);
+        Assert.Equal(21, usages["toolkit:SettingsExpander|HeaderKey"]);
+        Assert.Equal(8, usages["toolkit:SettingsExpander|DescriptionKey"]);
         Assert.Equal(2, usages["TextBox|HeaderKey"]);
-        Assert.Equal(328, usages.Values.Sum());
+        Assert.Equal(330, usages.Values.Sum());
     }
 
     [Fact]
