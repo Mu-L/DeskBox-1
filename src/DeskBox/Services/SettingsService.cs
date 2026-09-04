@@ -433,6 +433,8 @@ public const int DefaultSearchMaxResults = 100;
             PerformanceSettingsPolicy.DefaultTransientWindowReleaseDelaySeconds;
         settings.IdleWorkingSetTrimEnabled =
             PerformanceSettingsPolicy.DefaultIdleWorkingSetTrimEnabled;
+        settings.ImmediateHiddenWorkingSetTrimEnabled =
+            PerformanceSettingsPolicy.DefaultImmediateHiddenWorkingSetTrimEnabled;
         settings.PerformanceCacheBudget =
             PerformanceSettingsPolicy.DefaultCacheBudget;
         settings.EnableContinuousDecorativeAnimations =

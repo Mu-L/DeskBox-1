@@ -132,6 +132,7 @@ public partial class SettingsViewModel
             ShowFileExtensions = settings.ShowFileExtensions;
             HideShortcutExtensionWhenShowingFileExtensions = settings.HideShortcutExtensionWhenShowingFileExtensions;
             IdleWorkingSetTrimEnabled = settings.IdleWorkingSetTrimEnabled;
+            ImmediateHiddenWorkingSetTrimEnabled = settings.ImmediateHiddenWorkingSetTrimEnabled;
 
             ApplyContentEditorSettingsSnapshot(settings);
             ApplyFileStackSettingsSnapshot(settings);

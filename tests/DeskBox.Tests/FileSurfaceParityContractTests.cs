@@ -1155,7 +1155,15 @@ public sealed class FileSurfaceParityContractTests
             stackPopover,
             StringComparison.Ordinal);
         Assert.Contains(
-            "if (IsItemInStackPopover(item) ||",
+            "isFolderShortcut || (!isStackPopoverItem && item.IsFolder)",
+            navigation,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "NavigateIntoFolderShortcutAsync(",
+            navigation,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await OpenFileItemAsync(item)",
             navigation,
             StringComparison.Ordinal);
         Assert.Contains(

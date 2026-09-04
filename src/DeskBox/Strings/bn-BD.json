@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "পুনরায় তৈরি করা যায় এমন আইকন, থাম্বনেইল ও ডিকোড করা ছবির ক্যাশ সীমা নিয়ন্ত্রণ করে",
     "Settings.Performance.IdleWorkingSetTrim.Title": "Compress memory when idle",
     "Settings.Performance.IdleWorkingSetTrim.Description": "While widgets are hidden or you are away, page unused memory out to the system; it is read back on demand when you return",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "লুকানোর সঙ্গে সঙ্গে মেমরি কমান (পরীক্ষামূলক)",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "সব উইজেট লুকানোর অ্যানিমেশন শেষ হলেই রেসিডেন্ট মেমরি কমায়। সেগুলি আবার দেখাতে সামান্য বেশি সময় লাগতে পারে।",
     "Settings.Performance.CacheBudget.Small": "ছোট",
     "Settings.Performance.CacheBudget.Balanced": "ভারসাম্যপূর্ণ",
     "Settings.Performance.CacheBudget.Large": "বড়",

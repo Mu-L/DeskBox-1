@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DeskBox.Models;
 using DeskBox.Services;
 
@@ -58,7 +59,7 @@ public sealed class WidgetManagerStorageCleanupTests : IDisposable
     }
 
     [Fact]
-    public void EnsureFileWidgetPathAvailable_RejectsEqualAndNestedWidgetPaths()
+    public void EnsureFileWidgetPathAvailable_AllowsStrictlyNestedExternalWidgetPaths()
     {
         string mappedFolder = Directory.CreateDirectory(Path.Combine(_tempRoot, "mapped", "projects")).FullName;
         _settingsService.Settings.Widgets.Add(new WidgetConfig
@@ -71,12 +72,92 @@ public sealed class WidgetManagerStorageCleanupTests : IDisposable
 
         Assert.Throws<InvalidOperationException>(() =>
             _widgetManager.EnsureFileWidgetPathAvailable(mappedFolder));
-        Assert.Throws<InvalidOperationException>(() =>
-            _widgetManager.EnsureFileWidgetPathAvailable(Path.Combine(mappedFolder, "nested")));
-        Assert.Throws<InvalidOperationException>(() =>
-            _widgetManager.EnsureFileWidgetPathAvailable(Path.GetDirectoryName(mappedFolder)!));
+        _widgetManager.EnsureFileWidgetPathAvailable(
+            Path.Combine(mappedFolder, "nested"));
+        _widgetManager.EnsureFileWidgetPathAvailable(
+            Path.GetDirectoryName(mappedFolder)!);
 
         _widgetManager.EnsureFileWidgetPathAvailable(Path.Combine(_tempRoot, "mapped", "sibling"));
+    }
+
+    [Fact]
+    public void EnsureFileWidgetPathAvailable_RejectsOverlapWithManagedWidget()
+    {
+        string managedFolder = Directory.CreateDirectory(
+            Path.Combine(_storageRoot, "Managed")).FullName;
+        _settingsService.Settings.Widgets.Add(new WidgetConfig
+        {
+            Name = "Managed",
+            WidgetKind = WidgetKind.File,
+            MappedFolderPath = managedFolder,
+            FollowsDefaultStoragePath = true,
+            ManagedFolderName = "Managed"
+        });
+
+        Assert.Throws<InvalidOperationException>(() =>
+            _widgetManager.EnsureFileWidgetPathAvailable(
+                Path.Combine(managedFolder, "nested")));
+        Assert.Throws<InvalidOperationException>(() =>
+            _widgetManager.EnsureFileWidgetPathAvailable(
+                Path.GetDirectoryName(managedFolder)!));
+    }
+
+    [Fact]
+    public void EnsureFileWidgetPathAvailable_RejectsManagedCandidateOverlappingExternalWidget()
+    {
+        string mappedFolder = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "mapped", "projects")).FullName;
+        _settingsService.Settings.Widgets.Add(new WidgetConfig
+        {
+            Name = "External",
+            WidgetKind = WidgetKind.File,
+            MappedFolderPath = mappedFolder,
+            FollowsDefaultStoragePath = false
+        });
+
+        Assert.Throws<InvalidOperationException>(() =>
+            _widgetManager.EnsureFileWidgetPathAvailable(
+                Path.Combine(mappedFolder, "managed"),
+                candidateFollowsDefaultStoragePath: true));
+    }
+
+    [Fact]
+    public void EnsureFileWidgetPathAvailable_RejectsExternalMappingOverlappingManagedRoot()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            _widgetManager.EnsureFileWidgetPathAvailable(
+                Path.Combine(_storageRoot, "external")));
+        Assert.Throws<InvalidOperationException>(() =>
+            _widgetManager.EnsureFileWidgetPathAvailable(
+                Path.GetDirectoryName(_storageRoot)!));
+    }
+
+    [Fact]
+    public void EnsureFileWidgetPathAvailable_RejectsAliasOfExistingExternalWidget()
+    {
+        string mappedFolder = Directory.CreateDirectory(
+            Path.Combine(_tempRoot, "mapped-alias-target")).FullName;
+        string mappedAlias = Path.Combine(_tempRoot, "mapped-alias");
+        _settingsService.Settings.Widgets.Add(new WidgetConfig
+        {
+            Name = "External",
+            WidgetKind = WidgetKind.File,
+            MappedFolderPath = mappedFolder,
+            FollowsDefaultStoragePath = false
+        });
+
+        Assert.True(
+            TryCreateDirectoryJunction(mappedAlias, mappedFolder),
+            "The Windows test host must support creating a directory junction.");
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                _widgetManager.EnsureFileWidgetPathAvailable(mappedAlias));
+        }
+        finally
+        {
+            TryDeleteDirectoryJunction(mappedAlias);
+        }
     }
 
     [Fact]
@@ -478,6 +559,41 @@ public sealed class WidgetManagerStorageCleanupTests : IDisposable
             FollowsDefaultStoragePath = true,
             ManagedFolderName = Path.GetFileName(folderPath)
         };
+    }
+
+    private static bool TryCreateDirectoryJunction(string junction, string target)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/d /c mklink /J \"{junction}\" \"{target}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+            process?.WaitForExit();
+            return process?.ExitCode == 0 && Directory.Exists(junction);
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or
+            System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private static void TryDeleteDirectoryJunction(string junction)
+    {
+        try
+        {
+            Directory.Delete(junction, recursive: false);
+        }
+        catch
+        {
+        }
     }
 
     public void Dispose()

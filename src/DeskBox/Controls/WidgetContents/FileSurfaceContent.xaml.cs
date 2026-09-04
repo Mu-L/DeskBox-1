@@ -1929,6 +1929,23 @@ public sealed partial class FileSurfaceContent :
                 return;
             }
 
+            if (AreAllSourcesAlreadyInDestinationLexically(
+                    payload.Paths,
+                    ViewModel.CurrentFolderPath))
+            {
+                ResetExternalDropPreview();
+                e.AcceptedOperation = DataPackageOperation.None;
+                if (payload.IsDeskBoxFileDrag)
+                {
+                    ApplyDeskBoxFileDragFeedback(
+                        e,
+                        DataPackageOperation.None,
+                        T("Widget.DragCaption.CurrentWidget"));
+                }
+                ApplyDropVisual(FileDropVisualState.None);
+                return;
+            }
+
             // External shell drags keep their source-provided compact visual.
             // Setting DragUIOverride here replaces it with WinUI's larger card.
             FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
@@ -2065,6 +2082,72 @@ public sealed partial class FileSurfaceContent :
 
         _dragUnsafeDropCache[normalizedDestination] = unsafeDrop;
         return unsafeDrop;
+    }
+
+    private static bool AreAllSourcesAlreadyInDestinationLexically(
+        IEnumerable<string> sourcePaths,
+        string? destinationFolder)
+    {
+        if (string.IsNullOrWhiteSpace(destinationFolder))
+        {
+            return false;
+        }
+
+        try
+        {
+            string normalizedDestination = Path.TrimEndingDirectorySeparator(
+                Path.GetFullPath(destinationFolder));
+            string[] paths = sourcePaths
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToArray();
+            return paths.Length > 0 && paths.All(sourcePath =>
+            {
+                string? parentPath = Path.GetDirectoryName(
+                    Path.GetFullPath(sourcePath));
+                return !string.IsNullOrWhiteSpace(parentPath) &&
+                       string.Equals(
+                           Path.TrimEndingDirectorySeparator(parentPath),
+                           normalizedDestination,
+                           StringComparison.OrdinalIgnoreCase);
+            });
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static Task<bool> AreAllSourcesAlreadyInDestinationResolvedAsync(
+        IEnumerable<string> sourcePaths,
+        string? destinationFolder)
+    {
+        if (string.IsNullOrWhiteSpace(destinationFolder))
+        {
+            return Task.FromResult(false);
+        }
+
+        string[] paths = sourcePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (paths.Length == 0)
+        {
+            return Task.FromResult(false);
+        }
+
+        string destination = destinationFolder;
+        return Task.Run(() => paths.All(path =>
+            FileService.IsEntryDirectlyInDirectoryResolved(
+                path,
+                destination)));
+    }
+
+    private void ShowSameDirectoryDropFeedback()
+    {
+        ShowFeedback(new WidgetFeedbackRequest(
+            T("Widget.DragCaption.CurrentWidget"),
+            WidgetFeedbackSeverity.Warning,
+            "same-directory-drop"));
     }
 
     private void Root_DragEnter(object sender, DragEventArgs e)
@@ -2233,6 +2316,14 @@ public sealed partial class FileSurfaceContent :
                         ? sourceState
                         : _fileService.TransferSessions.GetState(
                             ViewModel.CurrentFolderPath));
+                return;
+            }
+            if (await AreAllSourcesAlreadyInDestinationResolvedAsync(
+                    paths,
+                    ViewModel.CurrentFolderPath))
+            {
+                e.AcceptedOperation = DataPackageOperation.None;
+                ShowSameDirectoryDropFeedback();
                 return;
             }
             if (droppedFiles.Count > 0)
@@ -3355,6 +3446,13 @@ public sealed partial class FileSurfaceContent :
             : ViewModel.CurrentFolderPath ??
                 ViewModel.MappedFolderPath ??
                 string.Empty;
+        if (await AreAllSourcesAlreadyInDestinationResolvedAsync(
+                droppedFiles.Select(file => file.Path),
+                destinationPath))
+        {
+            ShowSameDirectoryDropFeedback();
+            return false;
+        }
         bool sameVolume = FileDropIntentPolicy.AreAllOnSameVolume(
             droppedFiles.Select(file => file.Path),
             destinationPath);

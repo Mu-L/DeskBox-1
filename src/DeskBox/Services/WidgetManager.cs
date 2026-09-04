@@ -218,6 +218,8 @@ public sealed partial class WidgetManager
                 hasNativeVisibleWidgets;
         _lastNativeWidgetVisibilityForMemoryCleanup = hasNativeVisibleWidgets;
 
+        App.Current.ObserveWidgetVisibilityForImmediateWorkingSetTrim(visibility, reason);
+
         if (!stateChanged &&
             !(forceScheduleWhenHidden && !hasNativeVisibleWidgets))
         {
@@ -975,7 +977,9 @@ public sealed partial class WidgetManager
     public async Task CreateFolderWidgetAsync(string folderPath)
     {
         string normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folderPath));
-        EnsureFileWidgetPathAvailable(normalizedPath);
+        EnsureFileWidgetPathAvailable(
+            normalizedPath,
+            candidateFollowsDefaultStoragePath: false);
 
         string folderName = Path.GetFileName(normalizedPath);
         if (string.IsNullOrWhiteSpace(folderName))
@@ -1001,15 +1005,34 @@ public sealed partial class WidgetManager
         await CreateWidgetFromConfigAsync(config, revealAfterCreate: true);
     }
 
-    public void EnsureFileWidgetPathAvailable(string folderPath, string? excludedWidgetId = null)
+    public void EnsureFileWidgetPathAvailable(
+        string folderPath,
+        string? excludedWidgetId = null,
+        bool candidateFollowsDefaultStoragePath = false)
     {
         string normalizedPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folderPath));
+        if (!candidateFollowsDefaultStoragePath)
+        {
+            string managedStorageRoot =
+                SettingsService.NormalizeManagedStorageRootPath(
+                    _settingsService.Settings.DefaultManagedStorageRootPath);
+            if (FileService.PathsOverlap(normalizedPath, managedStorageRoot))
+            {
+                throw new InvalidOperationException(_localizationService.Format(
+                    "Widget.Error.FileWidgetPathConflict",
+                    _localizationService.T("WidgetTitleIcon.Label.ManagedStorage")));
+            }
+        }
+
         WidgetConfig? conflict = _settingsService.Settings.Widgets.FirstOrDefault(widget =>
             widget.WidgetKind == WidgetKind.File &&
             !IsDeleted(widget.Id) &&
             !string.Equals(widget.Id, excludedWidgetId, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(widget.MappedFolderPath) &&
-            FileService.PathsOverlap(normalizedPath, widget.MappedFolderPath));
+            IsFileWidgetPathConflict(
+                normalizedPath,
+                candidateFollowsDefaultStoragePath,
+                widget));
 
         if (conflict is null)
         {
@@ -1019,6 +1042,49 @@ public sealed partial class WidgetManager
         throw new InvalidOperationException(_localizationService.Format(
             "Widget.Error.FileWidgetPathConflict",
             conflict.Name));
+    }
+
+    internal static bool IsFileWidgetPathConflict(
+        string candidatePath,
+        bool candidateFollowsDefaultStoragePath,
+        WidgetConfig existingWidget)
+    {
+        if (string.IsNullOrWhiteSpace(existingWidget.MappedFolderPath))
+        {
+            return false;
+        }
+
+        if (!FileService.TryIsPathUnderDirectoryResolved(
+                candidatePath,
+                existingWidget.MappedFolderPath,
+                out bool candidateUnderExisting) ||
+            !FileService.TryIsPathUnderDirectoryResolved(
+                existingWidget.MappedFolderPath,
+                candidatePath,
+                out bool existingUnderCandidate))
+        {
+            // Mapping aliases that cannot be resolved safely must not bypass
+            // exact-path or managed-storage isolation.
+            return true;
+        }
+
+        if (!candidateUnderExisting && !existingUnderCandidate)
+        {
+            return false;
+        }
+
+        if (candidateUnderExisting && existingUnderCandidate)
+        {
+            // Two logical aliases for the same physical directory still
+            // represent one storage surface and remain forbidden.
+            return true;
+        }
+
+        // Strict parent/child mappings are supported only when both widgets
+        // are external mappings. Managed storage keeps exclusive ownership of
+        // its tree so migration and cleanup cannot touch an overlapping widget.
+        return candidateFollowsDefaultStoragePath ||
+               existingWidget.FollowsDefaultStoragePath;
     }
 
     /// <summary>

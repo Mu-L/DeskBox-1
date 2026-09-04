@@ -502,13 +502,32 @@ public sealed partial class FileService
         StringBuilder volumePathName,
         uint bufferLength);
 
-    private static async Task CopyDirectoryWithProgressAsync(
+    private static Task CopyDirectoryWithProgressAsync(
         string sourceDirectory,
         string destinationDirectory,
         TransferProgressReporter reporter,
         CancellationToken cancellationToken)
     {
+        return CopyDirectoryWithProgressAsync(
+            sourceDirectory,
+            destinationDirectory,
+            reporter,
+            cancellationToken,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static async Task CopyDirectoryWithProgressAsync(
+        string sourceDirectory,
+        string destinationDirectory,
+        TransferProgressReporter reporter,
+        CancellationToken cancellationToken,
+        ISet<string> visitedSourceDirectories)
+    {
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureSafeRecursiveDirectoryCopy(
+            sourceDirectory,
+            destinationDirectory,
+            visitedSourceDirectories);
         Directory.CreateDirectory(destinationDirectory);
         var completedChildOperations = new List<TransferOperation>();
         try
@@ -538,7 +557,8 @@ public sealed partial class FileService
                     subDirectory,
                     destinationSubDirectory,
                     reporter,
-                    cancellationToken);
+                    cancellationToken,
+                    visitedSourceDirectories);
                 completedChildOperations.Add(
                     new TransferOperation(subDirectory, destinationSubDirectory));
             }

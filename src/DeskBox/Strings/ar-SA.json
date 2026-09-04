@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "يتحكم في حد ذاكرة الأيقونات والصور المصغرة والصور المفكوكة القابلة لإعادة الإنشاء",
     "Settings.Performance.IdleWorkingSetTrim.Title": "Compress memory when idle",
     "Settings.Performance.IdleWorkingSetTrim.Description": "While widgets are hidden or you are away, page unused memory out to the system; it is read back on demand when you return",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "تقليل الذاكرة فور الإخفاء (تجريبي)",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "يقلل الذاكرة المقيمة بمجرد انتهاء حركة إخفاء جميع عناصر الواجهة. قد يستغرق إظهارها مجددًا وقتًا أطول قليلًا.",
     "Settings.Performance.CacheBudget.Small": "صغيرة",
     "Settings.Performance.CacheBudget.Balanced": "متوازنة",
     "Settings.Performance.CacheBudget.Large": "كبيرة",

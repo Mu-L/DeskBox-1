@@ -62,6 +62,9 @@ public class AppSettings
     /// </summary>
     public bool IdleWorkingSetTrimEnabled { get; set; } = true;
 
+    /// <summary>Experimental working-set trim once all widget hide animations have completed.</summary>
+    public bool ImmediateHiddenWorkingSetTrimEnabled { get; set; }
+
     /// <summary>Finite delay before closing a hidden transient window such as Search.</summary>
     public int TransientWindowReleaseDelaySeconds { get; set; } = 10 * 60;
 

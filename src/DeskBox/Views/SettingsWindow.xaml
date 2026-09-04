@@ -2477,15 +2477,32 @@ svc:Localized.DescriptionKey="Settings.DefaultWidth.Description"
                                 controls:SettingsComboBox.Value="{Binding SelectedPerformanceCacheBudget, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
 
-                        <toolkit:SettingsCard
-                            HorizontalContentAlignment="Right"
+                        <toolkit:SettingsExpander
+                            AutomationProperties.AutomationId="IdleWorkingSetTrimExpander"
+                            HorizontalContentAlignment="Stretch"
+                            IsExpanded="False"
                             svc:Localized.DescriptionKey="Settings.Performance.IdleWorkingSetTrim.Description"
                             svc:Localized.HeaderKey="Settings.Performance.IdleWorkingSetTrim.Title">
-                            <toolkit:SettingsCard.HeaderIcon>
+                            <toolkit:SettingsExpander.HeaderIcon>
                                 <FontIcon Glyph="&#xE950;" />
-                            </toolkit:SettingsCard.HeaderIcon>
+                            </toolkit:SettingsExpander.HeaderIcon>
                             <ToggleSwitch OnContent="" OffContent="" MinWidth="0" IsOn="{Binding IdleWorkingSetTrimEnabled, Mode=TwoWay}" />
-                        </toolkit:SettingsCard>
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    IsEnabled="{Binding IdleWorkingSetTrimEnabled}"
+                                    svc:Localized.DescriptionKey="Settings.Performance.ImmediateHiddenWorkingSetTrim.Description"
+                                    svc:Localized.HeaderKey="Settings.Performance.ImmediateHiddenWorkingSetTrim.Title">
+                                    <toolkit:SettingsCard.HeaderIcon>
+                                        <FontIcon Glyph="&#xE950;" />
+                                    </toolkit:SettingsCard.HeaderIcon>
+                                    <ToggleSwitch
+                                        AutomationProperties.AutomationId="ImmediateHiddenWorkingSetTrimToggle"
+                                        OnContent="" OffContent="" MinWidth="0"
+                                        IsOn="{Binding ImmediateHiddenWorkingSetTrimEnabled, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
 
                         <toolkit:SettingsCard
                             HorizontalContentAlignment="Right"

@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "控制可重建的图标、缩略图和解码图片缓存上限",
     "Settings.Performance.IdleWorkingSetTrim.Title": "空闲时压缩内存占用",
     "Settings.Performance.IdleWorkingSetTrim.Description": "小组件隐藏或你离开时把暂不使用的内存换出到系统，回到桌面时按需读回",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "隐藏后立即裁剪工作集（实验性）",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "全部格子隐藏动画结束后立即减少驻留内存，再次显示时可能短暂延迟",
     "Settings.Performance.CacheBudget.Small": "较小",
     "Settings.Performance.CacheBudget.Balanced": "均衡",
     "Settings.Performance.CacheBudget.Large": "较大",

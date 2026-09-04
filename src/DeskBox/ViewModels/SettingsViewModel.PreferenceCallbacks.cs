@@ -355,4 +355,15 @@ public partial class SettingsViewModel
         _settingsService.Settings.IdleWorkingSetTrimEnabled = value;
         _settingsService.SaveDebounced();
     }
+
+    partial void OnImmediateHiddenWorkingSetTrimEnabledChanged(bool value)
+    {
+        if (_isRestoringDefaults)
+        {
+            return;
+        }
+
+        _settingsService.Settings.ImmediateHiddenWorkingSetTrimEnabled = value;
+        _settingsService.SaveDebounced();
+    }
 }

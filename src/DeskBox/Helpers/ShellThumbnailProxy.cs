@@ -14,7 +14,8 @@ internal static class ShellThumbnailProxy
     private enum ShellImageMode
     {
         Thumbnail,
-        Icon
+        Icon,
+        IconWithOverlays
     }
 
     private readonly record struct BitmapPayloadInfo(
@@ -75,9 +76,15 @@ internal static class ShellThumbnailProxy
 
     public static async Task<byte[]?> TryLoadIconAsync(
         string path,
-        int requestedSize)
+        int requestedSize,
+        bool includeOverlays = false)
     {
-        return await TryLoadAsync(path, requestedSize, ShellImageMode.Icon);
+        return await TryLoadAsync(
+            path,
+            requestedSize,
+            includeOverlays
+                ? ShellImageMode.IconWithOverlays
+                : ShellImageMode.Icon);
     }
 
     private static async Task<byte[]?> TryLoadAsync(
@@ -118,9 +125,12 @@ internal static class ShellThumbnailProxy
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        if (mode == ShellImageMode.Icon)
+        if (mode is ShellImageMode.Icon or ShellImageMode.IconWithOverlays)
         {
-            startInfo.ArgumentList.Add("--icon-only");
+            startInfo.ArgumentList.Add(
+                mode == ShellImageMode.IconWithOverlays
+                    ? "--icon-with-overlays"
+                    : "--icon-only");
         }
 
         startInfo.ArgumentList.Add(normalizedPath);
@@ -195,14 +205,14 @@ internal static class ShellThumbnailProxy
             return null;
         }
 
-        if (mode == ShellImageMode.Icon)
+        if (mode is ShellImageMode.Icon or ShellImageMode.IconWithOverlays)
         {
             byte[]? normalizedOutput = NormalizeIconPayload(output);
             if (normalizedOutput is null)
             {
                 RecordFailure(failureKey);
                 App.LogVerbose(
-                    $"[ShellThumbnailProxy] Unable to normalize shortcut icon " +
+                    $"[ShellThumbnailProxy] Unable to normalize Shell-item icon " +
                     $"path={normalizedPath}");
                 return null;
             }
@@ -210,7 +220,7 @@ internal static class ShellThumbnailProxy
             if (normalizedOutput.Length != output.Length)
             {
                 App.LogVerbose(
-                    $"[ShellThumbnailProxy] Cropped padded shortcut icon " +
+                    $"[ShellThumbnailProxy] Cropped padded Shell-item icon " +
                     $"path={normalizedPath}");
             }
 
@@ -229,6 +239,9 @@ internal static class ShellThumbnailProxy
             out _);
         s_recentFailures.TryRemove(
             BuildFailureKey(normalizedPath, ShellImageMode.Icon),
+            out _);
+        s_recentFailures.TryRemove(
+            BuildFailureKey(normalizedPath, ShellImageMode.IconWithOverlays),
             out _);
     }
 

@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "Begrenzt wiederherstellbare Symbol-, Miniaturansicht- und dekodierte Bild-Caches",
     "Settings.Performance.IdleWorkingSetTrim.Title": "Compress memory when idle",
     "Settings.Performance.IdleWorkingSetTrim.Description": "While widgets are hidden or you are away, page unused memory out to the system; it is read back on demand when you return",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "Speicher sofort nach dem Ausblenden reduzieren (experimentell)",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "Reduziert den residenten Speicher, sobald alle Widgets vollständig ausgeblendet sind. Beim erneuten Anzeigen kann es kurz zu Verzögerungen kommen.",
     "Settings.Performance.CacheBudget.Small": "Klein",
     "Settings.Performance.CacheBudget.Balanced": "Ausgeglichen",
     "Settings.Performance.CacheBudget.Large": "Groß",

@@ -59,6 +59,84 @@ public sealed class FileOpenInteractionContractTests
     }
 
     [Fact]
+    public void FileSurfaceOpenPath_ClearsOpenedSelectionOnlyAfterSuccessfulDispatch()
+    {
+        string opening = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/WidgetContents/FileSurfaceContent.Opening.cs"));
+        int successBranch = opening.IndexOf(
+            "else if (result == FileService.OpenItemResult.OpenedOrHandled)",
+            StringComparison.Ordinal);
+        int clearSelection = opening.IndexOf(
+            "ClearOpenedItemSelection(item, stackPopoverGeneration);",
+            StringComparison.Ordinal);
+        int successFeedback = opening.IndexOf(
+            "T(\"Widget.OpenItemDispatched\")",
+            StringComparison.Ordinal);
+
+        Assert.True(successBranch >= 0 && clearSelection > successBranch);
+        Assert.True(successFeedback > clearSelection);
+        Assert.Equal(
+            clearSelection,
+            opening.LastIndexOf(
+                "ClearOpenedItemSelection(item, stackPopoverGeneration);",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            "generation != _openStateGeneration",
+            opening[..successBranch],
+            StringComparison.Ordinal);
+
+        int helperStart = opening.IndexOf(
+            "private void ClearOpenedItemSelection(",
+            StringComparison.Ordinal);
+        int helperEnd = opening.IndexOf(
+            "private bool TryBeginOpenItem(",
+            helperStart,
+            StringComparison.Ordinal);
+        Assert.True(helperStart >= 0 && helperEnd > helperStart);
+        string helper = opening[helperStart..helperEnd];
+
+        Assert.Contains("ItemsGrid.SelectedItems.Remove(item)", helper, StringComparison.Ordinal);
+        Assert.Contains("ItemsList.SelectedItems.Remove(item)", helper, StringComparison.Ordinal);
+        Assert.Contains("ClearOpenedItemPointerFeedback(ItemsGrid, item)", helper, StringComparison.Ordinal);
+        Assert.Contains("ClearOpenedItemPointerFeedback(ItemsList, item)", helper, StringComparison.Ordinal);
+        Assert.Contains("_stackPopoverItemsView?.SelectedItems.Remove(item)", helper, StringComparison.Ordinal);
+        Assert.Contains("stackPopoverGeneration == _stackPopoverShowGeneration", helper, StringComparison.Ordinal);
+        Assert.Contains("ClearOpenedItemPointerFeedback(popover, item)", helper, StringComparison.Ordinal);
+        Assert.Contains("view.ContainerFromItem(item)", helper, StringComparison.Ordinal);
+        Assert.Contains("ReferenceEquals(surface.DataContext, item)", helper, StringComparison.Ordinal);
+        Assert.Contains("surface.ClearPointerFeedbackAfterOpen()", helper, StringComparison.Ordinal);
+        Assert.Contains("ApplyItemSurfaceVisual(border, surface.VisualState)", helper, StringComparison.Ordinal);
+        Assert.Contains("UpdateSelectionCommandBar()", helper, StringComparison.Ordinal);
+        Assert.Contains("RefreshItemSelectionVisuals()", helper, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectedItems.Clear()", helper, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClearItemSelection()", helper, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FileItemSurface_UsesPointerFeedbackPolicyAndResetsRecycledContainers()
+    {
+        string source = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/FileItemSurface.xaml.cs"));
+
+        Assert.Contains("SetVisualState(_pointerFeedback.OnOpenDispatched())", source, StringComparison.Ordinal);
+        Assert.Contains("SetVisualState(_pointerFeedback.OnPointerEntered())", source, StringComparison.Ordinal);
+        Assert.Contains("SetVisualState(_pointerFeedback.OnPointerPressed())", source, StringComparison.Ordinal);
+        Assert.Contains("SetVisualState(_pointerFeedback.OnPointerReleased(inside))", source, StringComparison.Ordinal);
+
+        foreach (string handler in new[]
+                 {
+                     "private void FileItemSurface_DataContextChanged(",
+                     "private void SurfaceBorder_Loaded(",
+                     "private void SurfaceBorder_Unloaded("
+                 })
+        {
+            int start = source.IndexOf(handler, StringComparison.Ordinal);
+            int end = source.IndexOf("\n    private ", start + handler.Length, StringComparison.Ordinal);
+            Assert.Contains("_pointerFeedback.ResetForReuse()", source[start..end], StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void FileOpenWorker_PreservesStaAndBoundedDispatch()
     {
         string source = File.ReadAllText(TestPaths.FromRepository(

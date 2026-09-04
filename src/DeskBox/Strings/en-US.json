@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "Controls the limit for recreatable icon, thumbnail, and decoded-image caches",
     "Settings.Performance.IdleWorkingSetTrim.Title": "Compress memory when idle",
     "Settings.Performance.IdleWorkingSetTrim.Description": "While widgets are hidden or you are away, page unused memory out to the system; it is read back on demand when you return",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "Trim memory immediately after hiding (experimental)",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "Reduce resident memory as soon as all widgets finish hiding. Showing them again may briefly take longer.",
     "Settings.Performance.CacheBudget.Small": "Small",
     "Settings.Performance.CacheBudget.Balanced": "Balanced",
     "Settings.Performance.CacheBudget.Large": "Large",

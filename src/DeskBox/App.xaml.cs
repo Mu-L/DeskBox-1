@@ -3008,6 +3008,7 @@ public partial class App : Application
     internal static void CancelBackgroundMemoryCleanup(string reason = "activity")
     {
         CancelBackgroundMemoryCleanupDelay();
+        Current._immediateHiddenWorkingSetTrimTracker.CancelPending();
 
         int generation = Interlocked.Increment(
             ref s_backgroundMemoryCleanupGeneration);
@@ -3878,7 +3879,9 @@ public partial class App : Application
         // state lazily when they come back.
         bool workingSetTrimmed = false;
         if (reclaimResult.Executed &&
-            SettingsService.Settings.IdleWorkingSetTrimEnabled)
+            SettingsService.Settings.IdleWorkingSetTrimEnabled &&
+            !(SettingsService.Settings.ImmediateHiddenWorkingSetTrimEnabled &&
+              _immediateHiddenWorkingSetTrimTracker.TrimmedCurrentHiddenSession))
         {
             workingSetTrimmed = Win32Helper.TrimWorkingSet();
             if (workingSetTrimmed)

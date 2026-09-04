@@ -38,9 +38,13 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
-        if (IsItemInStackPopover(item) ||
-            !item.IsFolder ||
-            !ViewModel.IsEmbeddedFolderNavigationEnabled)
+        bool isStackPopoverItem = IsItemInStackPopover(item);
+        bool isFolderShortcut =
+            FolderNavigationPathPolicy.IsFolderShortcutCandidate(item);
+        bool shouldNavigateInside =
+            ViewModel.IsEmbeddedFolderNavigationEnabled &&
+            (isFolderShortcut || (!isStackPopoverItem && item.IsFolder));
+        if (!shouldNavigateInside)
         {
             await OpenFileItemAsync(item);
             return;
@@ -51,18 +55,54 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
+        if (isStackPopoverItem && isFolderShortcut)
+        {
+            // The upcoming item replacement belongs to the main surface. Hide
+            // the independent popover host before its member source changes.
+            CloseStackPopover();
+        }
+
+        string? previousFolderPath = ViewModel.CurrentFolderPath;
         bool navigated = await RunFolderNavigationOperationAsync(
-            beforeItemsReplaced => ViewModel.NavigateIntoFolderAsync(
-                item,
-                beforeItemsReplaced),
+            beforeItemsReplaced => isFolderShortcut
+                ? ViewModel.NavigateIntoFolderShortcutAsync(
+                    item,
+                    beforeItemsReplaced)
+                : ViewModel.NavigateIntoFolderAsync(
+                    item,
+                    beforeItemsReplaced),
             navigatingUp: false);
         if (!navigated)
         {
             RestoreFolderNavigationVisuals();
+            if (isFolderShortcut)
+            {
+                // Broken, non-filesystem, external-root and unverifiable
+                // shortcuts retain the normal Windows Shell behavior.
+                await OpenFileItemAsync(item);
+                return;
+            }
+
             ShowFeedback(new WidgetFeedbackRequest(
                 T("Widget.FolderNavigation.Unavailable"),
                 WidgetFeedbackSeverity.Warning,
                 "folder-navigation-unavailable"));
+            return;
+        }
+
+        if (FolderNavigationPathPolicy.ArePathsEqual(
+                previousFolderPath,
+                ViewModel.CurrentFolderPath))
+        {
+            RestoreFolderNavigationVisuals();
+            if (isFolderShortcut)
+            {
+                // A shortcut back to the directory already displayed cannot
+                // produce an in-widget navigation change. Preserve a visible
+                // activation result by handing the original .lnk to Shell.
+                await OpenFileItemAsync(item);
+            }
+
             return;
         }
 
@@ -96,7 +136,7 @@ public sealed partial class FileSurfaceContent
         if (!string.IsNullOrWhiteSpace(exitedFolderPath))
         {
             DispatcherQueue.TryEnqueue(() =>
-                RestoreExitedFolderSelection(exitedFolderPath));
+                ScrollExitedFolderIntoView(exitedFolderPath));
         }
     }
 
@@ -238,8 +278,13 @@ public sealed partial class FileSurfaceContent
         AnimateFolderNavigation(navigatingUp);
     }
 
-    private void RestoreExitedFolderSelection(string exitedFolderPath)
+    private void ScrollExitedFolderIntoView(string exitedFolderPath)
     {
+        if (_isDisposed || _isFolderNavigationOperationActive)
+        {
+            return;
+        }
+
         WidgetItem? folder = ViewModel.Items.FirstOrDefault(item =>
             string.Equals(
                 item.Path,
@@ -251,10 +296,12 @@ public sealed partial class FileSurfaceContent
         }
 
         ListViewBase activeView = GetActiveItemsView();
-        activeView.SelectedItems.Clear();
-        activeView.SelectedItems.Add(folder);
-        activeView.ScrollIntoView(folder);
-        UpdateSelectionCommandBar();
+        if (activeView.Items.Contains(folder))
+        {
+            // Keep the return location visible without selecting the folder
+            // again or overwriting a selection made after navigation finished.
+            activeView.ScrollIntoView(folder);
+        }
     }
 
     private void AnimateFolderNavigation(bool navigatingUp)

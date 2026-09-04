@@ -71,14 +71,9 @@ public sealed partial class FileSurfaceContent
             // Main-surface templates already supply this value through XAML;
             // assigning the same context here is a safe fallback for both.
             surface.LayoutContext ??= ViewModel;
-            // Loaded can be raised again when a virtualized popup container is
-            // reattached without a matching unload on some WinUI versions.
-            // Make the host subscription idempotent so each item surface keeps
-            // exactly one callback to this content instance.
-            surface.VisualStateChanged -= ItemSurface_VisualStateChanged;
-            surface.VisualStateChanged += ItemSurface_VisualStateChanged;
-            surface.DataContextChanged -= ItemSurface_DataContextChanged;
-            surface.DataContextChanged += ItemSurface_DataContextChanged;
+            // State and data-context callbacks are wired once by the template.
+            // They must already work during first realization and remain
+            // connected when WinUI recycles an item without another Loaded.
             ApplyOpeningStateToSurface(surface);
         }
 
@@ -86,7 +81,10 @@ public sealed partial class FileSurfaceContent
         {
             RestoreStackAnimationElement(border);
             _itemSurfaces.Add(border);
-            ApplyItemSurfaceVisual(border, FileItemSurfaceVisualState.Normal);
+            ApplyItemSurfaceVisual(
+                border,
+                FileItemSurface.FindOwner(border)?.VisualState ??
+                    FileItemSurfaceVisualState.Normal);
         }
     }
 
@@ -94,12 +92,6 @@ public sealed partial class FileSurfaceContent
         object sender,
         RoutedEventArgs e)
     {
-        if (sender is FileItemSurface surface)
-        {
-            surface.VisualStateChanged -= ItemSurface_VisualStateChanged;
-            surface.DataContextChanged -= ItemSurface_DataContextChanged;
-        }
-
         if (FileItemSurface.TryGetInteractiveBorder(sender) is { } border)
         {
             RestoreStackAnimationElement(border);
@@ -117,6 +109,11 @@ public sealed partial class FileSurfaceContent
         object? sender,
         FileItemSurfaceVisualStateChangedEventArgs e)
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
         if (FileItemSurface.TryGetInteractiveBorder(sender) is { } border)
         {
             ApplyItemSurfaceVisual(border, e.State);
@@ -203,6 +200,22 @@ public sealed partial class FileSurfaceContent
                     e,
                     DataPackageOperation.None,
                     T("Widget.CannotMoveToFolder"));
+            }
+            ClearFolderDropTarget();
+            return;
+        }
+
+        if (AreAllSourcesAlreadyInDestinationLexically(
+                payload.Paths,
+                targetFolder.Path))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            if (payload.IsDeskBoxFileDrag)
+            {
+                ApplyDeskBoxFileDragFeedback(
+                    e,
+                    DataPackageOperation.None,
+                    T("Widget.DragCaption.CurrentWidget"));
             }
             ClearFolderDropTarget();
             return;
@@ -309,12 +322,23 @@ public sealed partial class FileSurfaceContent
             string[] sourcePaths = droppedFiles
                 .Select(file => file.Path)
                 .ToArray();
+            bool transferConflict = HasTransferConflict(
+                sourcePaths,
+                targetFolder.Path);
+            bool unsafeFolderDrop = IsUnsafeFolderDrop(
+                sourcePaths,
+                targetFolder.Path);
+            bool sameDirectoryDrop = sourcePaths.Length > 0 &&
+                await AreAllSourcesAlreadyInDestinationResolvedAsync(
+                    sourcePaths,
+                    targetFolder.Path);
             if (sourcePaths.Length == 0 ||
-                HasTransferConflict(sourcePaths, targetFolder.Path) ||
-                IsUnsafeFolderDrop(sourcePaths, targetFolder.Path))
+                transferConflict ||
+                unsafeFolderDrop ||
+                sameDirectoryDrop)
             {
                 e.AcceptedOperation = DataPackageOperation.None;
-                if (HasTransferConflict(sourcePaths, targetFolder.Path))
+                if (transferConflict)
                 {
                     FileTransferPathState targetState =
                         GetTransferState(targetFolder);
@@ -324,7 +348,11 @@ public sealed partial class FileSurfaceContent
                             : _fileService.TransferSessions.GetState(
                                 sourcePaths.FirstOrDefault()));
                 }
-                if (sourcePaths.Length > 0)
+                if (sameDirectoryDrop)
+                {
+                    ShowSameDirectoryDropFeedback();
+                }
+                else if (sourcePaths.Length > 0 && !transferConflict)
                 {
                     ShowFeedback(new(
                         T("Widget.CannotMoveToFolder"),
@@ -1211,6 +1239,22 @@ public sealed partial class FileSurfaceContent
             return;
         }
 
+        if (AreAllSourcesAlreadyInDestinationLexically(
+                payload.Paths,
+                ViewModel.CurrentFolderPath))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            if (payload.IsDeskBoxFileDrag)
+            {
+                ApplyDeskBoxFileDragFeedback(
+                    e,
+                    DataPackageOperation.None,
+                    T("Widget.DragCaption.CurrentWidget"));
+            }
+            ClearStackMemberDropTarget();
+            return;
+        }
+
         SetStackMemberDropTarget(border);
         FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
             payload.DataView,
@@ -1336,6 +1380,15 @@ public sealed partial class FileSurfaceContent
             {
                 using DroppedFileBatch batch =
                     await GetSurfaceDropFilesAsync(e.DataView);
+                if (await AreAllSourcesAlreadyInDestinationResolvedAsync(
+                        batch.Files.Select(file => file.Path),
+                        ViewModel.CurrentFolderPath))
+                {
+                    e.AcceptedOperation = DataPackageOperation.None;
+                    ShowSameDirectoryDropFeedback();
+                    CancelAndResetTrackedImport();
+                    return;
+                }
                 FileDropIntent resolvedIntent = ResolveSurfaceDropIntent(
                     payload.DataView,
                     e.AllowedOperations,

@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "再作成可能なアイコン、サムネイル、デコード画像のキャッシュ上限を制御します",
     "Settings.Performance.IdleWorkingSetTrim.Title": "Compress memory when idle",
     "Settings.Performance.IdleWorkingSetTrim.Description": "While widgets are hidden or you are away, page unused memory out to the system; it is read back on demand when you return",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "非表示後すぐにメモリを削減（試験的）",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "すべてのウィジェットの非表示アニメーション完了後、常駐メモリをすぐに削減します。再表示時に少し時間がかかる場合があります。",
     "Settings.Performance.CacheBudget.Small": "小",
     "Settings.Performance.CacheBudget.Balanced": "バランス",
     "Settings.Performance.CacheBudget.Large": "大",

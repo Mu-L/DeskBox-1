@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "Ограничивает восстанавливаемый кэш значков, эскизов и декодированных изображений",
     "Settings.Performance.IdleWorkingSetTrim.Title": "Compress memory when idle",
     "Settings.Performance.IdleWorkingSetTrim.Description": "While widgets are hidden or you are away, page unused memory out to the system; it is read back on demand when you return",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "Сокращать память сразу после скрытия (экспериментально)",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "Уменьшает резидентную память после завершения скрытия всех виджетов. При повторном показе возможна небольшая задержка.",
     "Settings.Performance.CacheBudget.Small": "Малая",
     "Settings.Performance.CacheBudget.Balanced": "Сбалансированная",
     "Settings.Performance.CacheBudget.Large": "Большая",

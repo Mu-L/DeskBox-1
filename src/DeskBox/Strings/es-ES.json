@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "Controla el límite de las cachés recreables de iconos, miniaturas e imágenes decodificadas",
     "Settings.Performance.IdleWorkingSetTrim.Title": "Compress memory when idle",
     "Settings.Performance.IdleWorkingSetTrim.Description": "While widgets are hidden or you are away, page unused memory out to the system; it is read back on demand when you return",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "Reducir memoria inmediatamente al ocultar (experimental)",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "Reduce la memoria residente cuando todos los widgets terminan de ocultarse. Mostrarlos de nuevo puede tardar un poco más.",
     "Settings.Performance.CacheBudget.Small": "Pequeña",
     "Settings.Performance.CacheBudget.Balanced": "Equilibrada",
     "Settings.Performance.CacheBudget.Large": "Grande",

@@ -30,6 +30,8 @@
     "Settings.Performance.CacheBudget.Description": "पुनः बनाए जा सकने वाले आइकन, थंबनेल और डिकोड की गई छवि कैश की सीमा नियंत्रित करता है",
     "Settings.Performance.IdleWorkingSetTrim.Title": "Compress memory when idle",
     "Settings.Performance.IdleWorkingSetTrim.Description": "While widgets are hidden or you are away, page unused memory out to the system; it is read back on demand when you return",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Title": "छिपाने के तुरंत बाद मेमोरी कम करें (प्रायोगिक)",
+    "Settings.Performance.ImmediateHiddenWorkingSetTrim.Description": "सभी विजेट के छिपने का एनिमेशन पूरा होते ही रेज़िडेंट मेमोरी कम करें। उन्हें दोबारा दिखाने में थोड़ी देर लग सकती है।",
     "Settings.Performance.CacheBudget.Small": "छोटी",
     "Settings.Performance.CacheBudget.Balanced": "संतुलित",
     "Settings.Performance.CacheBudget.Large": "बड़ी",

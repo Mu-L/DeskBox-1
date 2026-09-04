@@ -243,6 +243,7 @@ namespace DeskBox.ViewModels;
     nameof(SelectedWidgetTitleIconMode),
     nameof(SelectedWidgetTitleIconModeText),
     nameof(IdleWorkingSetTrimEnabled),
+    nameof(ImmediateHiddenWorkingSetTrimEnabled),
     nameof(ShowFileExtensions),
     nameof(ShowFileItemPathTooltips),
     nameof(ShowImageFilesAsIcons),

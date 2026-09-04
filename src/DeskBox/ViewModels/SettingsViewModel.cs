@@ -222,6 +222,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
     [ObservableProperty] public partial bool ShowFileExtensions { get; set; }
     [ObservableProperty] public partial bool HideShortcutExtensionWhenShowingFileExtensions { get; set; } = true;
     [ObservableProperty] public partial bool IdleWorkingSetTrimEnabled { get; set; } = true;
+    [ObservableProperty] public partial bool ImmediateHiddenWorkingSetTrimEnabled { get; set; }
     [ObservableProperty] public partial bool QuickCaptureEnabled { get; set; }
     [ObservableProperty] public partial bool QuickCaptureShowTabBar { get; set; } = true;
     [ObservableProperty] public partial bool QuickCaptureShowRecordsTab { get; set; } = true;
@@ -374,6 +375,7 @@ private string[]? _cachedWeatherRefreshIntervalDisplayNames;
         ShowFileExtensions = settings.ShowFileExtensions;
         HideShortcutExtensionWhenShowingFileExtensions = settings.HideShortcutExtensionWhenShowingFileExtensions;
         IdleWorkingSetTrimEnabled = settings.IdleWorkingSetTrimEnabled;
+        ImmediateHiddenWorkingSetTrimEnabled = settings.ImmediateHiddenWorkingSetTrimEnabled;
         QuickCaptureEnabled = FeatureWidgetSettings.IsEnabled(settings, WidgetKind.QuickCapture);
         QuickCaptureClipboardEnabled = settings.QuickCaptureClipboardEnabled;
         QuickCaptureImageClipboardEnabled = settings.QuickCaptureImageClipboardEnabled;

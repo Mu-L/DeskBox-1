@@ -94,6 +94,17 @@ public sealed class OrganizerService
                 () => CreateTransferPlans(rootPath, normalizedSourcePaths),
                 cancellationToken);
 
+            if (plans.Count == 0)
+            {
+                return CreateHistoryEntry(
+                    widget.Id,
+                    widgetName,
+                    OrganizationActionType.ManagedDrop,
+                    move,
+                    [],
+                    canUndo: false);
+            }
+
             var results = await _fileService.ExecuteTransferPlanAsync(
                 plans,
                 move,
@@ -198,12 +209,15 @@ public sealed class OrganizerService
         return new DropPreparation(rootPath, normalizedSourcePaths);
     }
 
-    private static IReadOnlyList<FileService.FileTransferPlan> CreateTransferPlans(
+    internal static IReadOnlyList<FileService.FileTransferPlan> CreateTransferPlans(
         string rootPath,
         IReadOnlyList<string> sourcePaths)
     {
         var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         return sourcePaths
+            .Where(path => !FileService.IsEntryDirectlyInDirectoryResolved(
+                path,
+                rootPath))
             .Select(path =>
             {
                 string destinationPath = FileService.GetAvailablePath(
